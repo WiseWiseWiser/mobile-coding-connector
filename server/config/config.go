@@ -1,0 +1,155 @@
+package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+// Config represents the application configuration
+type Config struct {
+	// AI configuration
+	AI AIConfig `json:"ai"`
+}
+
+// AIConfig represents the AI configuration
+type AIConfig struct {
+	// Providers is a list of AI provider configurations
+	Providers []ProviderConfig `json:"providers"`
+
+	// Models is a list of available models with their provider mapping
+	Models []ModelConfig `json:"models"`
+
+	// DefaultProvider is the default provider to use
+	DefaultProvider string `json:"default_provider,omitempty"`
+
+	// DefaultModel is the default model to use
+	DefaultModel string `json:"default_model,omitempty"`
+}
+
+// ProviderConfig represents an AI provider configuration
+type ProviderConfig struct {
+	// Name is the unique identifier for this provider (e.g., "deepseek", "moonshot-cn", "openai")
+	Name string `json:"name"`
+
+	// BaseURL is the API endpoint for this provider
+	BaseURL string `json:"base_url"`
+
+	// APIKey is the API key for this provider
+	APIKey string `json:"api_key,omitempty"`
+}
+
+// ModelConfig represents an AI model configuration
+type ModelConfig struct {
+	// Provider is the name of the provider this model belongs to
+	Provider string `json:"provider"`
+
+	// Model is the model identifier (e.g., "deepseek-reasoner", "kimi-k2")
+	Model string `json:"model"`
+
+	// DisplayName is a human-readable name for the model (optional)
+	DisplayName string `json:"display_name,omitempty"`
+
+	// MaxTokens is the max tokens for this model (optional)
+	MaxTokens int `json:"max_tokens,omitempty"`
+}
+
+// global config instance
+var globalConfig *Config
+
+// Load loads configuration from a JSON file
+func Load(configPath string) (*Config, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	globalConfig = &cfg
+	return &cfg, nil
+}
+
+// Get returns the global config instance
+// Returns nil if config is not loaded
+func Get() *Config {
+	return globalConfig
+}
+
+// Set sets the global config instance
+func Set(cfg *Config) {
+	globalConfig = cfg
+}
+
+// GetAI returns the AI configuration
+func (c *Config) GetAI() AIConfig {
+	return c.AI
+}
+
+// GetProvider returns a provider config by name
+func (c *Config) GetProvider(name string) *ProviderConfig {
+	for i := range c.AI.Providers {
+		if c.AI.Providers[i].Name == name {
+			return &c.AI.Providers[i]
+		}
+	}
+	return nil
+}
+
+// GetModel returns a model config by provider and model name
+func (c *Config) GetModel(provider, model string) *ModelConfig {
+	for i := range c.AI.Models {
+		if c.AI.Models[i].Provider == provider && c.AI.Models[i].Model == model {
+			return &c.AI.Models[i]
+		}
+	}
+	return nil
+}
+
+// GetDefaultAIConfig returns the default AI configuration for making API calls
+func (c *Config) GetDefaultAIConfig() (baseURL, apiKey, model string) {
+	// Use default provider/model if specified
+	providerName := c.AI.DefaultProvider
+	modelName := c.AI.DefaultModel
+
+	// Fall back to first provider/model if not specified
+	if providerName == "" && len(c.AI.Providers) > 0 {
+		providerName = c.AI.Providers[0].Name
+	}
+	if modelName == "" && len(c.AI.Models) > 0 {
+		modelName = c.AI.Models[0].Model
+	}
+
+	provider := c.GetProvider(providerName)
+	if provider != nil {
+		baseURL = provider.BaseURL
+		apiKey = provider.APIKey
+	}
+
+	model = modelName
+	return
+}
+
+// GetModelsForProvider returns all models for a given provider
+func (c *Config) GetModelsForProvider(provider string) []ModelConfig {
+	var models []ModelConfig
+	for _, m := range c.AI.Models {
+		if m.Provider == provider {
+			models = append(models, m)
+		}
+	}
+	return models
+}
+
+// GetAvailableProviders returns a list of configured providers
+func (c *Config) GetAvailableProviders() []ProviderConfig {
+	return c.AI.Providers
+}
+
+// GetAvailableModels returns a list of all configured models
+func (c *Config) GetAvailableModels() []ModelConfig {
+	return c.AI.Models
+}
