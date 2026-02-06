@@ -7,3 +7,9 @@ dist
 
 /cloudflared
 /rules
+
+.server-credentials
+.ai-critic-enc-key
+.ai-critic-enc-key.pub
+.ai-critic-github-oauth.json
+.ai-critic/

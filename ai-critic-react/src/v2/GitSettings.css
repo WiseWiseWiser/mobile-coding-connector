@@ -1,0 +1,456 @@
+/* ==================== Git Settings ==================== */
+
+.mcc-git-settings {
+    padding-bottom: 24px;
+}
+
+/* Tab bar */
+.mcc-git-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 16px 12px;
+}
+
+.mcc-git-tab {
+    flex: 1;
+    padding: 10px 14px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+}
+
+.mcc-git-tab.active {
+    background: rgba(96, 165, 250, 0.2);
+    border-color: #60a5fa;
+    color: #60a5fa;
+}
+
+.mcc-git-tab:hover:not(.active) {
+    background: #475569;
+    color: #f1f5f9;
+}
+
+.mcc-git-tab-content {
+    padding: 0 16px;
+}
+
+/* Common description text */
+.mcc-git-desc {
+    font-size: 13px;
+    color: #94a3b8;
+    line-height: 1.5;
+    margin: 0 0 16px;
+}
+
+.mcc-git-desc a {
+    color: #60a5fa;
+    text-decoration: none;
+}
+
+.mcc-git-desc a:hover {
+    text-decoration: underline;
+}
+
+.mcc-git-desc code {
+    padding: 2px 6px;
+    background: #334155;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 12px;
+    color: #e2e8f0;
+    word-break: break-all;
+}
+
+.mcc-git-empty {
+    padding: 24px 0;
+    text-align: center;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.mcc-git-loading {
+    padding: 24px;
+    text-align: center;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.mcc-git-hint {
+    font-size: 12px;
+    color: #64748b;
+    margin: 8px 0 0;
+}
+
+/* Form fields vertical layout */
+.mcc-git-form-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.mcc-git-form-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+/* ==================== SSH Keys ==================== */
+
+.mcc-ssh-keys-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.mcc-ssh-key-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mcc-ssh-key-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px 14px;
+}
+
+.mcc-ssh-key-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: #94a3b8;
+}
+
+.mcc-ssh-key-name {
+    font-weight: 600;
+    color: #f1f5f9;
+    font-size: 14px;
+}
+
+.mcc-ssh-key-host {
+    margin-left: auto;
+    padding: 2px 8px;
+    background: #334155;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #64748b;
+    font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.mcc-ssh-key-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.mcc-ssh-test-result {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    line-height: 1.5;
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+
+.mcc-ssh-test-success {
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #22c55e;
+}
+
+.mcc-ssh-test-error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+}
+
+.mcc-ssh-key-textarea {
+    width: 100%;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #f1f5f9;
+    font-size: 12px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    resize: vertical;
+    min-height: 100px;
+    box-sizing: border-box;
+}
+
+.mcc-ssh-key-textarea:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.mcc-ssh-key-textarea::placeholder {
+    color: #64748b;
+}
+
+/* ==================== GitHub OAuth ==================== */
+
+.mcc-github-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.mcc-git-section {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.mcc-git-section h3 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+.mcc-git-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.mcc-git-section-header h3 {
+    margin-bottom: 0;
+}
+
+.mcc-git-config-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #94a3b8;
+}
+
+.mcc-git-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.mcc-git-status-ok {
+    background: #22c55e;
+}
+
+.mcc-git-status-error {
+    background: #ef4444;
+}
+
+.mcc-git-logged-in {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.mcc-github-login-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* ==================== Clone Repo ==================== */
+
+.mcc-clone-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.mcc-clone-ssh-section {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mcc-clone-ssh-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #e2e8f0;
+    cursor: pointer;
+}
+
+.mcc-clone-ssh-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #3b82f6;
+}
+
+.mcc-clone-ssh-select {
+    width: 100%;
+    padding: 8px 12px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #f1f5f9;
+    font-size: 13px;
+}
+
+.mcc-clone-ssh-select:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.mcc-clone-manual {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 14px;
+}
+
+.mcc-clone-manual-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mcc-clone-manual-row input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.mcc-clone-btn {
+    padding: 12px 16px;
+    font-size: 14px;
+    white-space: nowrap;
+    width: 100%;
+}
+
+@media (min-width: 768px) {
+    .mcc-clone-manual-row {
+        flex-direction: row;
+        align-items: flex-end;
+    }
+
+    .mcc-clone-manual-row input {
+        flex: 1;
+        width: auto;
+    }
+
+    .mcc-clone-btn {
+        width: auto;
+        flex-shrink: 0;
+    }
+}
+
+.mcc-clone-result {
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    word-break: break-all;
+}
+
+.mcc-clone-success {
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #22c55e;
+}
+
+.mcc-clone-error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+}
+
+.mcc-clone-search {
+    position: relative;
+}
+
+.mcc-clone-search input {
+    width: 100%;
+    padding: 10px 14px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 10px;
+    color: #f1f5f9;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.mcc-clone-search input:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.mcc-clone-search input::placeholder {
+    color: #64748b;
+}
+
+.mcc-clone-repo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.mcc-clone-repo-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.mcc-clone-repo-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.mcc-clone-repo-name {
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: #f1f5f9;
+    margin-bottom: 4px;
+    word-break: break-all;
+}
+
+.mcc-clone-repo-desc {
+    font-size: 12px;
+    color: #94a3b8;
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-clone-repo-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: #64748b;
+}
+
+.mcc-clone-repo-lang {
+    padding: 1px 6px;
+    background: #334155;
+    border-radius: 4px;
+}
+

@@ -1,5 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useCurrent } from './useCurrent';
+import {
+    fetchProviders as apiFetchProviders,
+    fetchPorts as apiFetchPorts,
+    addPort as apiAddPort,
+    removePort as apiRemovePort,
+} from '../api/ports';
+import type { ProviderInfo as ApiProviderInfo } from '../api/ports';
 
 // Port forward status
 export const PortStatuses = {
@@ -30,12 +37,7 @@ export interface PortForward {
     error?: string;
 }
 
-export interface ProviderInfo {
-    id: string;
-    name: string;
-    description: string;
-    available: boolean;
-}
+export type ProviderInfo = ApiProviderInfo;
 
 export interface UsePortForwardsReturn {
     ports: PortForward[];
@@ -57,20 +59,15 @@ export function usePortForwards(pollIntervalMs = 3000): UsePortForwardsReturn {
 
     // Fetch available providers once on mount
     useEffect(() => {
-        fetch('/api/ports/providers')
-            .then(resp => resp.json())
-            .then((data: ProviderInfo[]) => setProviders(data ?? []))
+        apiFetchProviders()
+            .then((data) => setProviders(data))
             .catch(() => { /* ignore provider fetch errors */ });
     }, []);
 
     const fetchPorts = async () => {
         try {
-            const resp = await fetch('/api/ports');
-            if (!resp.ok) {
-                throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-            }
-            const data: PortForward[] = await resp.json();
-            setPorts(data ?? []);
+            const data = await apiFetchPorts();
+            setPorts(data as PortForward[]);
             setError(null);
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
@@ -91,27 +88,13 @@ export function usePortForwards(pollIntervalMs = 3000): UsePortForwardsReturn {
     }, [pollIntervalMs]);
 
     const addPort = async (port: number, label: string, provider?: TunnelProvider) => {
-        const resp = await fetch('/api/ports', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ port, label, provider: provider || TunnelProviders.Localtunnel }),
-        });
-        if (!resp.ok) {
-            const text = await resp.text();
-            throw new Error(text);
-        }
+        await apiAddPort(port, label, provider || TunnelProviders.Localtunnel);
         // Refresh immediately
         await fetchPorts();
     };
 
     const removePort = async (port: number) => {
-        const resp = await fetch(`/api/ports?port=${port}`, {
-            method: 'DELETE',
-        });
-        if (!resp.ok) {
-            const text = await resp.text();
-            throw new Error(text);
-        }
+        await apiRemovePort(port);
         // Optimistic update - remove from local state immediately
         setPorts(portsRef.current.filter(p => p.localPort !== port));
     };

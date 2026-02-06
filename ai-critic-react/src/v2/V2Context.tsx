@@ -1,0 +1,60 @@
+import { createContext, useContext, useState, useEffect } from 'react';
+import { usePortForwards } from '../hooks/usePortForwards';
+import type { UsePortForwardsReturn } from '../hooks/usePortForwards';
+import { fetchProjects as apiFetchProjects } from '../api/projects';
+import type { ProjectInfo } from '../api/projects';
+
+interface V2ContextValue {
+    // Projects
+    projectsList: ProjectInfo[];
+    projectsLoading: boolean;
+    fetchProjects: () => void;
+    // Current project
+    currentProject: ProjectInfo | null;
+    setCurrentProject: (project: ProjectInfo | null) => void;
+    // Port forwarding
+    portForwards: UsePortForwardsReturn;
+}
+
+const V2Ctx = createContext<V2ContextValue | null>(null);
+
+export function useV2Context(): V2ContextValue {
+    const ctx = useContext(V2Ctx);
+    if (!ctx) throw new Error('useV2Context must be used within V2Provider');
+    return ctx;
+}
+
+export function V2Provider({ children }: { children: React.ReactNode }) {
+    // Projects
+    const [projectsList, setProjectsList] = useState<ProjectInfo[]>([]);
+    const [projectsLoading, setProjectsLoading] = useState(true);
+
+    const fetchProjects = () => {
+        apiFetchProjects()
+            .then(data => { setProjectsList(data); setProjectsLoading(false); })
+            .catch(() => setProjectsLoading(false));
+    };
+
+    useEffect(() => {
+        fetchProjects();
+    }, []);
+
+    // Current project
+    const [currentProject, setCurrentProject] = useState<ProjectInfo | null>(null);
+
+    // Port forwarding
+    const portForwards = usePortForwards();
+
+    return (
+        <V2Ctx.Provider value={{
+            projectsList,
+            projectsLoading,
+            fetchProjects,
+            currentProject,
+            setCurrentProject,
+            portForwards,
+        }}>
+            {children}
+        </V2Ctx.Provider>
+    );
+}

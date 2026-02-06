@@ -20,10 +20,15 @@ import (
 	"time"
 
 	"github.com/xhd2015/kool/pkgs/web"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
 	pfcloudflare "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/cloudflare"
 	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/localtunnel"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
 )
 
@@ -85,11 +90,15 @@ func EnsureFrontendDevServer(ctx context.Context) (chan struct{}, error) {
 
 func Serve(port int, dev bool) error {
 	mux := http.NewServeMux()
+
+	// Wrap with auth middleware - skip login, ping, and public key endpoints
+	handler := auth.Middleware(mux, []string{"/api/login", "/ping", "/api/encrypt/public-key"})
+
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 5 * time.Minute, // Long timeout for SSE streaming
-		Handler:      mux,
+		Handler:      handler,
 	}
 
 	if dev {
@@ -228,6 +237,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// ping
 	mux.HandleFunc("/ping", handlePing)
 
+	// auth API (login)
+	auth.RegisterAPI(mux)
+
 	// code review API
 	registerReviewAPI(mux)
 
@@ -253,6 +265,18 @@ func RegisterAPI(mux *http.ServeMux) error {
 	}
 
 	portforward.RegisterAPI(mux)
+
+	// GitHub API
+	github.RegisterAPI(mux)
+
+	// Encryption API (public key for frontend)
+	encrypt.RegisterAPI(mux)
+
+	// Projects API
+	projects.RegisterAPI(mux)
+
+	// Agents API
+	agents.RegisterAPI(mux)
 
 	return nil
 }

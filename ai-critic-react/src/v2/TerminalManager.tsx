@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import { useTerminal } from '../hooks/useTerminal';
 import type { TerminalTheme } from '../hooks/useTerminal';
 import { useCurrent } from '../hooks/useCurrent';
+import { fetchTerminalSessions, deleteTerminalSession } from '../api/terminal';
+import type { TerminalSessionInfo } from '../api/terminal';
 import './TerminalManager.css';
 
 // Mobile-friendly dark theme
@@ -33,6 +35,10 @@ const v2Theme: TerminalTheme = {
 interface TerminalTab {
     id: string;
     name: string;
+    cwd?: string;
+    initialCommand?: string;
+    /** Backend session ID, set after session is created or when restoring */
+    sessionId?: string;
 }
 
 interface TerminalManagerProps {
@@ -43,14 +49,31 @@ interface TerminalManagerProps {
 function TerminalInstance({ 
     id, 
     isActive,
-    onConnectionChange
+    cwd,
+    name,
+    initialCommand,
+    sessionId,
+    onConnectionChange,
+    onSessionId,
 }: { 
     id: string; 
     isActive: boolean;
+    cwd?: string;
+    name?: string;
+    initialCommand?: string;
+    sessionId?: string;
     onConnectionChange: (connected: boolean) => void;
+    onSessionId: (sessionId: string) => void;
 }) {
     // Terminal is always active since parent keeps us mounted
-    const { terminalRef, connected, sendKey } = useTerminal(true, { theme: v2Theme });
+    const { terminalRef, connected, sendKey } = useTerminal(true, {
+        theme: v2Theme,
+        cwd,
+        name,
+        initialCommand,
+        sessionId,
+        onSessionId,
+    });
     const onConnectionChangeRef = useCurrent(onConnectionChange);
 
     // Report connection status to parent when this instance is active
@@ -85,13 +108,46 @@ function TerminalInstance({
     );
 }
 
-export function TerminalManager(_props: TerminalManagerProps) {
-    const [tabs, setTabs] = useState<TerminalTab[]>([
-        { id: 'term-1', name: 'Terminal 1' }
-    ]);
-    const [activeTabId, setActiveTabId] = useState('term-1');
+export interface TerminalManagerHandle {
+    /** Open a new terminal tab, optionally in a given working directory and with an initial command */
+    openTab: (name: string, cwd?: string, initialCommand?: string) => void;
+}
+
+export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManagerProps>(function TerminalManager(_props, ref) {
+    const [tabs, setTabs] = useState<TerminalTab[]>([]);
+    const [activeTabId, setActiveTabId] = useState('');
     const [activeConnected, setActiveConnected] = useState(false);
+    const [sessionsLoaded, setSessionsLoaded] = useState(false);
     const tabsRef = useCurrent(tabs);
+
+    // Fetch existing sessions from backend on mount
+    useEffect(() => {
+        const defaultTab: TerminalTab = { id: 'term-1', name: 'Terminal 1' };
+
+        fetchTerminalSessions()
+            .then((sessions: TerminalSessionInfo[]) => {
+                if (sessions.length === 0) {
+                    setTabs([defaultTab]);
+                    setActiveTabId(defaultTab.id);
+                    setSessionsLoaded(true);
+                    return;
+                }
+                const restoredTabs: TerminalTab[] = sessions.map(s => ({
+                    id: `term-${s.id}`,
+                    name: s.name,
+                    cwd: s.cwd,
+                    sessionId: s.id,
+                }));
+                setTabs(restoredTabs);
+                setActiveTabId(restoredTabs[0].id);
+                setSessionsLoaded(true);
+            })
+            .catch(() => {
+                setTabs([defaultTab]);
+                setActiveTabId(defaultTab.id);
+                setSessionsLoaded(true);
+            });
+    }, []);
 
     const handleAddTab = () => {
         const newId = `term-${Date.now()}`;
@@ -100,8 +156,24 @@ export function TerminalManager(_props: TerminalManagerProps) {
         setActiveTabId(newId);
     };
 
+    const handleOpenTab = (name: string, cwd?: string, initialCommand?: string) => {
+        const newId = `term-${Date.now()}`;
+        setTabs(prev => [...prev, { id: newId, name, cwd, initialCommand }]);
+        setActiveTabId(newId);
+    };
+
+    useImperativeHandle(ref, () => ({
+        openTab: handleOpenTab,
+    }));
+
     const handleCloseTab = (tabId: string) => {
         if (tabs.length <= 1) return; // Don't close last tab
+
+        // Find the tab to get its session ID for cleanup
+        const tab = tabs.find(t => t.id === tabId);
+        if (tab?.sessionId) {
+            deleteTerminalSession(tab.sessionId).catch(() => {});
+        }
         
         const tabIndex = tabs.findIndex(t => t.id === tabId);
         const newTabs = tabs.filter(t => t.id !== tabId);
@@ -113,6 +185,29 @@ export function TerminalManager(_props: TerminalManagerProps) {
             setActiveTabId(newTabs[newActiveIndex].id);
         }
     };
+
+    const handleSessionId = (tabId: string, sessionId: string) => {
+        setTabs(prev => prev.map(t => t.id === tabId ? { ...t, sessionId } : t));
+    };
+
+    // Don't render terminals until sessions are loaded to avoid creating duplicate sessions
+    if (!sessionsLoaded) {
+        return (
+            <div className="terminal-manager">
+                <div className="terminal-manager-header">
+                    <div className="terminal-tabs-container">
+                        <div className="terminal-tab-item active">
+                            <span className="terminal-tab-name">Loading...</span>
+                        </div>
+                    </div>
+                    <div className="terminal-connection-status disconnected">
+                        <span className="status-dot">○</span>
+                        <span className="status-text">Loading</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="terminal-manager">
@@ -153,10 +248,15 @@ export function TerminalManager(_props: TerminalManagerProps) {
                         key={tab.id}
                         id={tab.id}
                         isActive={activeTabId === tab.id}
+                        cwd={tab.cwd}
+                        name={tab.name}
+                        initialCommand={tab.initialCommand}
+                        sessionId={tab.sessionId}
                         onConnectionChange={setActiveConnected}
+                        onSessionId={(sid) => handleSessionId(tab.id, sid)}
                     />
                 ))}
             </div>
         </div>
     );
-}
+});

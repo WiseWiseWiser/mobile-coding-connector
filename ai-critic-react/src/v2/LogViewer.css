@@ -1,0 +1,53 @@
+/* ==================== Shared Log Viewer ==================== */
+
+.mcc-log-viewer {
+    overflow-y: auto;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.mcc-log-viewer-line {
+    color: #94a3b8;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.mcc-log-viewer-line-error {
+    color: #f87171;
+}
+
+.mcc-log-viewer-empty {
+    color: #475569;
+    font-style: italic;
+    text-align: center;
+    padding: 8px;
+}
+
+.mcc-log-viewer-pending {
+    color: #60a5fa;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mcc-log-viewer-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #334155;
+    border-top-color: #60a5fa;
+    border-radius: 50%;
+    animation: mcc-log-viewer-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes mcc-log-viewer-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

@@ -1,10 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useCurrent } from '../hooks/useCurrent';
-import { usePortForwards } from '../hooks/usePortForwards';
 import type { PortForward, TunnelProvider, ProviderInfo } from '../hooks/usePortForwards';
 import { PortStatuses, TunnelProviders } from '../hooks/usePortForwards';
+import { deleteProject as apiDeleteProject } from '../api/projects';
+import type { ProjectInfo } from '../api/projects';
+import { fetchDiagnostics as apiFetchDiagnostics, fetchPortLogs as apiFetchPortLogs } from '../api/ports';
+import type { DiagnosticsData } from '../api/ports';
+import { useV2Context } from './V2Context';
 import { TerminalManager } from './TerminalManager';
+import type { TerminalManagerHandle } from './TerminalManager';
+import { GitSettings, CloneRepoView } from './GitSettings';
+import { AgentView } from './AgentView';
+import { LogViewer } from './LogViewer';
 import './MobileCodingConnector.css';
 
 // Navigation tabs
@@ -18,159 +26,91 @@ const NavTabs = {
 
 type NavTab = typeof NavTabs[keyof typeof NavTabs];
 
-// Workspace status
-const WorkspaceStatuses = {
-    Running: 'running',
-    Stopped: 'stopped',
-    Error: 'error',
-} as const;
-
-type WorkspaceStatus = typeof WorkspaceStatuses[keyof typeof WorkspaceStatuses];
-
-// Agent status
-const AgentStatuses = {
-    Idle: 'idle',
-    Thinking: 'thinking',
-    Executing: 'executing',
-} as const;
-
-type AgentStatus = typeof AgentStatuses[keyof typeof AgentStatuses];
-
-
-// Types
-interface Workspace {
-    id: string;
-    name: string;
-    type: string;
-    status: WorkspaceStatus;
-    lastAccessed: string;
-    memory: string;
-}
-
-interface ChatMessage {
-    id: string;
-    role: 'user' | 'agent';
-    content: string;
-    actions?: AgentAction[];
-}
-
-interface AgentAction {
-    type: string;
-    status: 'pending' | 'running' | 'done' | 'error';
-    description: string;
-}
-
-// Mock data
-const mockWorkspaces: Workspace[] = [
-    { id: '1', name: 'my-react-app', type: 'React', status: WorkspaceStatuses.Running, lastAccessed: '2h ago', memory: '512MB' },
-    { id: '2', name: 'backend-api', type: 'Go', status: WorkspaceStatuses.Running, lastAccessed: '1d ago', memory: '256MB' },
-    { id: '3', name: 'ml-training', type: 'Python', status: WorkspaceStatuses.Stopped, lastAccessed: '3d ago', memory: '--' },
-];
-
-const mockChatHistory: ChatMessage[] = [
-    { id: '1', role: 'user', content: 'Add a login page with Google OAuth' },
-    {
-        id: '2',
-        role: 'agent',
-        content: "I'll create a login page with Google OAuth integration. Let me set that up for you.",
-        actions: [
-            { type: 'file_create', status: 'done', description: 'Created LoginPage.tsx' },
-            { type: 'file_edit', status: 'done', description: 'Added OAuth config' },
-            { type: 'install', status: 'running', description: 'Installing dependencies...' },
-        ],
-    },
-];
-
 export function MobileCodingConnector() {
+    const params = useParams<{ tab?: string; view?: string; projectName?: string }>();
     const navigate = useNavigate();
-    const { workspaceId } = useParams<{ workspaceId: string }>();
-    const [searchParams, setSearchParams] = useSearchParams();
-    
-    // Get tab from URL search params, default to 'home'
-    const tabFromUrl = (searchParams.get('tab') as NavTab) || NavTabs.Home;
-    const [activeTab, setActiveTab] = useState<NavTab>(tabFromUrl);
-    
-    // Find workspace from URL param
-    const workspaceFromUrl = workspaceId ? mockWorkspaces.find(w => w.id === workspaceId) ?? null : null;
-    const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(workspaceFromUrl);
-    
-    const [chatInput, setChatInput] = useState('');
-    const [agentStatus, setAgentStatus] = useState<AgentStatus>(AgentStatuses.Executing);
 
-    // Port forwarding - real API
-    const { ports, providers: availableProviders, loading: portsLoading, error: portsError, addPort, removePort, refresh: refreshPorts } = usePortForwards();
+    // Derive state from URL path params
+    const activeTab = (params.tab as NavTab) || NavTabs.Home;
+    const viewFromUrl = params.view || '';
+    const projectNameFromUrl = params.projectName || '';
+
+    // Shared state from V2Context (survives remounts across route changes)
+    const {
+        projectsList, projectsLoading, fetchProjects,
+        currentProject, setCurrentProject,
+        portForwards: { ports, providers: availableProviders, loading: portsLoading, error: portsError, addPort, removePort, refresh: refreshPorts },
+    } = useV2Context();
+
+    const terminalManagerRef = useRef<TerminalManagerHandle>(null);
+
+    // Restore project from URL on mount
+    useEffect(() => {
+        if (!projectNameFromUrl || projectsLoading || currentProject) return;
+        const project = projectsList.find(p => p.name === projectNameFromUrl);
+        if (project) {
+            setCurrentProject(project);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [projectNameFromUrl, projectsLoading, projectsList]);
+
+    // Port form state (local - ok to reset on remount)
     const [showNewPortForm, setShowNewPortForm] = useState(false);
     const [newPortNumber, setNewPortNumber] = useState('');
     const [newPortLabel, setNewPortLabel] = useState('');
     const [newPortProvider, setNewPortProvider] = useState<TunnelProvider>(TunnelProviders.Localtunnel);
     const [portActionError, setPortActionError] = useState<string | null>(null);
 
-    // Refs for callbacks
-    const activeTabRef = useCurrent(activeTab);
-    const currentWorkspaceRef = useCurrent(currentWorkspace);
-
-    // Get sub-view from URL (e.g., view=diagnostics)
-    const viewFromUrl = searchParams.get('view') || '';
-
-    const navigateToView = (view: string) => {
-        const params = new URLSearchParams(searchParams);
-        if (view) {
-            params.set('view', view);
-        } else {
-            params.delete('view');
+    // Helper: build a path for navigation
+    const currentProjectRef = useCurrent(currentProject);
+    const buildPath = (tab: NavTab, view?: string): string => {
+        const proj = currentProjectRef.current;
+        const base = '/v2';
+        if (proj) {
+            const projBase = `${base}/project/${encodeURIComponent(proj.name)}`;
+            // Home tab with a project shows the project list (no /tab suffix)
+            if (tab === NavTabs.Home) return projBase;
+            if (view) return `${projBase}/${tab}/${view}`;
+            return `${projBase}/${tab}`;
         }
-        setSearchParams(params, { replace: true });
+        if (tab === NavTabs.Home) return base;
+        if (view) return `${base}/${tab}/${view}`;
+        return `${base}/${tab}`;
     };
 
-    // Sync URL with tab changes
-    useEffect(() => {
-        const params = new URLSearchParams(searchParams);
-        if (activeTab !== NavTabs.Home) {
-            params.set('tab', activeTab);
-        } else {
-            params.delete('tab');
-        }
-        // Clear view when switching tabs
-        params.delete('view');
-        setSearchParams(params, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab]);
+    // Preserve route history per tab
+    const tabViewHistoryRef = useRef<Record<string, string>>({});
+    const activeTabRef = useCurrent(activeTab);
+    const viewFromUrlRef = useCurrent(viewFromUrl);
 
-    // Sync state from URL on mount or URL change
-    useEffect(() => {
-        if (workspaceId) {
-            const ws = mockWorkspaces.find(w => w.id === workspaceId);
-            if (ws && ws.id !== currentWorkspaceRef.current?.id) {
-                setCurrentWorkspace(ws);
-            }
-        }
-        const urlTab = searchParams.get('tab') as NavTab;
-        if (urlTab && urlTab !== activeTabRef.current) {
-            setActiveTab(urlTab);
-        }
-    }, [workspaceId, searchParams, currentWorkspaceRef, activeTabRef]);
+    const navigateToView = (view: string) => {
+        const tab = activeTabRef.current;
+        // Save this view in the tab history
+        tabViewHistoryRef.current[tab] = view;
+        navigate(buildPath(tab, view || undefined), { replace: true });
+    };
 
-    const handleSelectWorkspace = (workspace: Workspace) => {
-        setCurrentWorkspace(workspace);
-        setActiveTab(NavTabs.Agent);
-        // Navigate to workspace URL - using /v2 path
-        navigate(`/v2/${workspace.id}?tab=agent`);
+    // Keep tab history in sync with current URL view
+    useEffect(() => {
+        if (viewFromUrl) {
+            tabViewHistoryRef.current[activeTab] = viewFromUrl;
+        }
+    }, [activeTab, viewFromUrl]);
+
+    const handleSelectProject = (project: ProjectInfo) => {
+        setCurrentProject(project);
+        navigate(`/v2/project/${encodeURIComponent(project.name)}/${NavTabs.Agent}`);
     };
 
     const handleTabChange = (tab: NavTab) => {
-        setActiveTab(tab);
-        if (currentWorkspace) {
-            navigate(`/v2/${currentWorkspace.id}?tab=${tab}`, { replace: true });
-        } else {
-            navigate(`/v2?tab=${tab}`, { replace: true });
+        // Save current view for the current tab before leaving
+        const currentView = viewFromUrlRef.current;
+        if (currentView) {
+            tabViewHistoryRef.current[activeTabRef.current] = currentView;
         }
-    };
-
-    const handleSendPrompt = () => {
-        if (!chatInput.trim()) return;
-        // In real app, this would send to server
-        setChatInput('');
-        setAgentStatus(AgentStatuses.Thinking);
+        // Restore saved view for the target tab
+        const savedView = tabViewHistoryRef.current[tab];
+        navigate(buildPath(tab, savedView || undefined));
     };
 
     const handleAddPortForward = async () => {
@@ -205,16 +145,20 @@ export function MobileCodingConnector() {
     const renderContent = () => {
         switch (activeTab) {
             case NavTabs.Home:
-                return <WorkspaceListView workspaces={mockWorkspaces} onSelect={handleSelectWorkspace} />;
+                if (viewFromUrl === 'git-settings') {
+                    return <GitSettings onBack={() => navigateToView('')} />;
+                }
+                if (viewFromUrl === 'clone-repo') {
+                    return <CloneRepoView onBack={() => { navigateToView(''); fetchProjects(); }} />;
+                }
+                return <WorkspaceListView projects={projectsList} projectsLoading={projectsLoading} activeProjectName={currentProject?.name ?? null} onRefreshProjects={fetchProjects} onNavigateToView={navigateToView} onSelectProject={handleSelectProject} />;
             case NavTabs.Agent:
                 return (
-                    <AgentChatView
-                        workspace={currentWorkspace}
-                        messages={mockChatHistory}
-                        agentStatus={agentStatus}
-                        inputValue={chatInput}
-                        onInputChange={setChatInput}
-                        onSend={handleSendPrompt}
+                    <AgentView
+                        projectDir={currentProject?.dir ?? null}
+                        projectName={currentProject?.name ?? null}
+                        currentView={viewFromUrl}
+                        onNavigateToView={navigateToView}
                     />
                 );
             case NavTabs.Terminal:
@@ -256,7 +200,7 @@ export function MobileCodingConnector() {
                     <MenuIcon />
                 </button>
                 <div className="mcc-title">
-                    {currentWorkspace ? currentWorkspace.name : 'Mobile Coding Connector'}
+                    {currentProject ? currentProject.name : 'Mobile Coding Connector'}
                 </div>
                 <button className="mcc-settings-btn">
                     <SettingsIcon />
@@ -274,7 +218,7 @@ export function MobileCodingConnector() {
                 </div>
                 {/* Terminal is ALWAYS mounted but hidden when not active - this preserves state */}
                 <div className={`mcc-terminal-container ${activeTab === NavTabs.Terminal ? 'visible' : ''}`}>
-                    <TerminalManager isVisible={true} />
+                    <TerminalManager ref={terminalManagerRef} isVisible={true} />
                 </div>
             </div>
 
@@ -317,136 +261,79 @@ export function MobileCodingConnector() {
 
 // Workspace List View
 interface WorkspaceListViewProps {
-    workspaces: Workspace[];
-    onSelect: (workspace: Workspace) => void;
+    projects: ProjectInfo[];
+    projectsLoading: boolean;
+    activeProjectName: string | null;
+    onRefreshProjects: () => void;
+    onNavigateToView: (view: string) => void;
+    onSelectProject: (project: ProjectInfo) => void;
 }
 
-function WorkspaceListView({ workspaces, onSelect }: WorkspaceListViewProps) {
+function WorkspaceListView({ projects, projectsLoading, activeProjectName, onRefreshProjects, onNavigateToView, onSelectProject }: WorkspaceListViewProps) {
+    const handleRemoveProject = async (id: string) => {
+        try {
+            await apiDeleteProject(id);
+            onRefreshProjects();
+        } catch {
+            // ignore
+        }
+    };
+
     return (
         <div className="mcc-workspace-list">
             <div className="mcc-section-header">
-                <h2>Your Workspaces</h2>
+                <h2>Your Projects</h2>
             </div>
-            <div className="mcc-workspace-cards">
-                {workspaces.map(workspace => (
-                    <WorkspaceCard key={workspace.id} workspace={workspace} onClick={() => onSelect(workspace)} />
-                ))}
-            </div>
-            <button className="mcc-new-workspace-btn">
+            {projectsLoading ? (
+                <div className="mcc-ports-empty">Loading projects...</div>
+            ) : projects.length === 0 ? (
+                <div className="mcc-ports-empty">No projects yet. Clone a repository from Git Settings.</div>
+            ) : (
+                <div className="mcc-workspace-cards">
+                    {projects.map(project => (
+                        <ProjectCard key={project.id} project={project} isActive={project.name === activeProjectName} onSelect={() => onSelectProject(project)} onRemove={() => handleRemoveProject(project.id)} />
+                    ))}
+                </div>
+            )}
+            <button className="mcc-new-workspace-btn" onClick={() => onNavigateToView('clone-repo')}>
                 <PlusIcon />
-                <span>New Workspace</span>
+                <span>Clone Repository</span>
+            </button>
+            <button className="mcc-git-settings-btn" onClick={() => onNavigateToView('git-settings')}>
+                <GitIcon />
+                <span>Git Settings</span>
             </button>
         </div>
     );
 }
 
-// Workspace Card
-interface WorkspaceCardProps {
-    workspace: Workspace;
-    onClick: () => void;
+// Project Card
+interface ProjectCardProps {
+    project: ProjectInfo;
+    isActive: boolean;
+    onSelect: () => void;
+    onRemove: () => void;
 }
 
-function WorkspaceCard({ workspace, onClick }: WorkspaceCardProps) {
-    const statusClass = `mcc-status-${workspace.status}`;
-    const statusIcon = workspace.status === WorkspaceStatuses.Running ? '🟢' :
-                       workspace.status === WorkspaceStatuses.Stopped ? '🔴' : '🟡';
+function ProjectCard({ project, isActive, onSelect, onRemove }: ProjectCardProps) {
+    const createdDate = new Date(project.created_at).toLocaleDateString();
 
     return (
-        <div className={`mcc-workspace-card ${statusClass}`} onClick={onClick}>
+        <div className={`mcc-workspace-card mcc-workspace-card-clickable${isActive ? ' mcc-workspace-card-active' : ''}`} onClick={onSelect}>
             <div className="mcc-workspace-card-header">
-                <span className="mcc-workspace-status-icon">{statusIcon}</span>
-                <span className="mcc-workspace-name">{workspace.name}</span>
+                <span className="mcc-workspace-name">{project.name}</span>
+                {isActive && <span className="mcc-workspace-active-badge">Working on</span>}
             </div>
             <div className="mcc-workspace-card-meta">
-                <span>{workspace.type}</span>
-                <span>•</span>
-                <span>{workspace.lastAccessed}</span>
-                <span>•</span>
-                <span>{workspace.memory}</span>
+                <span>{project.dir}</span>
             </div>
-        </div>
-    );
-}
-
-// Agent Chat View
-interface AgentChatViewProps {
-    workspace: Workspace | null;
-    messages: ChatMessage[];
-    agentStatus: AgentStatus;
-    inputValue: string;
-    onInputChange: (value: string) => void;
-    onSend: () => void;
-}
-
-function AgentChatView({ workspace, messages, agentStatus, inputValue, onInputChange, onSend }: AgentChatViewProps) {
-    if (!workspace) {
-        return (
-            <div className="mcc-empty-state">
-                <AgentIcon />
-                <h3>No Workspace Selected</h3>
-                <p>Select a workspace from the Home tab to start chatting with the agent.</p>
+            <div className="mcc-workspace-card-meta" style={{ marginTop: 4 }}>
+                <span>{project.repo_url}</span>
+                <span>{createdDate}</span>
             </div>
-        );
-    }
-
-    return (
-        <div className="mcc-agent-chat">
-            <div className="mcc-chat-header">
-                <span className="mcc-chat-context">Context: {workspace.name}</span>
-                {agentStatus !== AgentStatuses.Idle && (
-                    <span className={`mcc-agent-status mcc-agent-${agentStatus}`}>
-                        {agentStatus === AgentStatuses.Thinking ? '🤔 Thinking...' : '⚡ Executing...'}
-                    </span>
-                )}
-            </div>
-            <div className="mcc-chat-messages">
-                {messages.map(message => (
-                    <ChatMessageItem key={message.id} message={message} />
-                ))}
-            </div>
-            <div className="mcc-chat-input-area">
-                <textarea
-                    className="mcc-chat-input"
-                    placeholder="Type your prompt..."
-                    value={inputValue}
-                    onChange={e => onInputChange(e.target.value)}
-                    rows={2}
-                />
-                <button className="mcc-send-btn" onClick={onSend}>
-                    <SendIcon />
-                </button>
-            </div>
-        </div>
-    );
-}
-
-// Chat Message Item
-interface ChatMessageItemProps {
-    message: ChatMessage;
-}
-
-function ChatMessageItem({ message }: ChatMessageItemProps) {
-    const isUser = message.role === 'user';
-
-    return (
-        <div className={`mcc-chat-message ${isUser ? 'mcc-message-user' : 'mcc-message-agent'}`}>
-            <div className="mcc-message-avatar">
-                {isUser ? '👤' : '🤖'}
-            </div>
-            <div className="mcc-message-content">
-                <p>{message.content}</p>
-                {message.actions && message.actions.length > 0 && (
-                    <div className="mcc-message-actions">
-                        {message.actions.map((action, idx) => (
-                            <div key={idx} className={`mcc-action-item mcc-action-${action.status}`}>
-                                <span className="mcc-action-icon">
-                                    {action.status === 'done' ? '✓' : action.status === 'running' ? '○' : '•'}
-                                </span>
-                                <span>{action.description}</span>
-                            </div>
-                        ))}
-                    </div>
-                )}
+            <div className="mcc-port-actions" style={{ marginTop: 8 }}>
+                <button className="mcc-port-action-btn" onClick={e => { e.stopPropagation(); onSelect(); }}>Open</button>
+                <button className="mcc-port-action-btn mcc-port-stop" onClick={e => { e.stopPropagation(); onRemove(); }}>Remove</button>
             </div>
         </div>
     );
@@ -651,25 +538,12 @@ function PortForwardingHelp() {
 
 // --- Cloudflare Diagnostics ---
 
-interface DiagnosticCheck {
-    id: string;
-    label: string;
-    status: 'ok' | 'warning' | 'error';
-    description: string;
-}
-
-interface DiagnosticsData {
-    overall: 'ok' | 'warning' | 'error';
-    checks: DiagnosticCheck[];
-}
-
 function CloudflareStatusBanner({ onClick }: { onClick: () => void }) {
     const [data, setData] = useState<DiagnosticsData | null>(null);
 
     useEffect(() => {
-        fetch('/api/ports/diagnostics')
-            .then(r => r.json())
-            .then((d: DiagnosticsData) => setData(d))
+        apiFetchDiagnostics()
+            .then(d => setData(d))
             .catch(() => {});
     }, []);
 
@@ -691,12 +565,8 @@ function CloudflareDiagnosticsView({ onBack }: { onBack: () => void }) {
 
     useEffect(() => {
         setLoading(true);
-        fetch('/api/ports/diagnostics')
-            .then(r => r.json())
-            .then((d: DiagnosticsData) => {
-                setData(d);
-                setLoading(false);
-            })
+        apiFetchDiagnostics()
+            .then(d => { setData(d); setLoading(false); })
             .catch(() => setLoading(false));
     }, []);
 
@@ -747,9 +617,8 @@ function CloudflareDiagnosticsView({ onBack }: { onBack: () => void }) {
                     </div>
                     <button className="mcc-diag-refresh" onClick={() => {
                         setLoading(true);
-                        fetch('/api/ports/diagnostics')
-                            .then(r => r.json())
-                            .then((d: DiagnosticsData) => { setData(d); setLoading(false); })
+                        apiFetchDiagnostics()
+                            .then(d => { setData(d); setLoading(false); })
                             .catch(() => setLoading(false));
                     }}>
                         Refresh
@@ -787,9 +656,8 @@ function PortDiagnoseView({ port, portData, onBack }: { port: number; portData?:
     // Detect common issues from logs
     const [logs, setLogs] = useState<string[]>([]);
     useEffect(() => {
-        fetch(`/api/ports/logs?port=${port}`)
-            .then(r => r.json())
-            .then((data: string[]) => setLogs(data ?? []))
+        apiFetchPortLogs(port)
+            .then(data => setLogs(data))
             .catch(() => {});
     }, [port]);
 
@@ -888,10 +756,8 @@ function PortDiagnoseView({ port, portData, onBack }: { port: number; portData?:
             {logs.length > 0 && (
                 <>
                     <div className="mcc-ports-subtitle" style={{ margin: '16px 16px 8px' }}>Recent Logs</div>
-                    <div className="mcc-port-logs" style={{ margin: '0 16px 16px' }}>
-                        {logs.map((line, i) => (
-                            <div key={i} className="mcc-port-log-line">{line}</div>
-                        ))}
+                    <div style={{ margin: '0 16px 16px' }}>
+                        <LogViewer lines={logs.map(text => ({ text }))} />
                     </div>
                 </>
             )}
@@ -910,8 +776,6 @@ function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwardCardPr
     const [showLogs, setShowLogs] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
     const [copied, setCopied] = useState(false);
-    const logsContainerRef = useRef<HTMLDivElement>(null);
-    const isAtBottomRef = useRef(true);
 
     const statusIcon = port.status === PortStatuses.Active ? '🟢' :
                        port.status === PortStatuses.Connecting ? '🟡' : '🔴';
@@ -924,24 +788,14 @@ function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwardCardPr
         }
     };
 
-    // Track whether user is at the bottom of the logs
-    const handleLogsScroll = () => {
-        const el = logsContainerRef.current;
-        if (!el) return;
-        isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 20;
-    };
-
     // Fetch logs when visible
     useEffect(() => {
         if (!showLogs) return;
 
         const fetchLogs = async () => {
             try {
-                const resp = await fetch(`/api/ports/logs?port=${port.localPort}`);
-                if (resp.ok) {
-                    const data = await resp.json();
-                    setLogs(data ?? []);
-                }
+                const data = await apiFetchPortLogs(port.localPort);
+                setLogs(data);
             } catch { /* ignore */ }
         };
 
@@ -949,13 +803,6 @@ function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwardCardPr
         const timer = setInterval(fetchLogs, 2000);
         return () => clearInterval(timer);
     }, [showLogs, port.localPort]);
-
-    // Auto-scroll logs to bottom only if user is already at the bottom
-    useEffect(() => {
-        if (showLogs && isAtBottomRef.current && logsContainerRef.current) {
-            logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
-        }
-    }, [logs, showLogs]);
 
     return (
         <div className="mcc-port-card">
@@ -996,15 +843,10 @@ function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwardCardPr
                 <button className="mcc-port-action-btn mcc-port-stop" onClick={onRemove}>Stop</button>
             </div>
             {showLogs && (
-                <div className="mcc-port-logs" ref={logsContainerRef} onScroll={handleLogsScroll}>
-                    {logs.length === 0 ? (
-                        <div className="mcc-port-logs-empty">No logs yet...</div>
-                    ) : (
-                        logs.map((line, i) => (
-                            <div key={i} className="mcc-port-log-line">{line}</div>
-                        ))
-                    )}
-                </div>
+                <LogViewer
+                    lines={logs.map(text => ({ text }))}
+                    className="mcc-port-logs-margin"
+                />
             )}
         </div>
     );
@@ -1153,11 +995,13 @@ function PlusIcon() {
     );
 }
 
-function SendIcon() {
+function GitIcon() {
     return (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            <circle cx="18" cy="18" r="3" />
+            <circle cx="6" cy="6" r="3" />
+            <path d="M13 6h3a2 2 0 0 1 2 2v7" />
+            <line x1="6" y1="9" x2="6" y2="21" />
         </svg>
     );
 }

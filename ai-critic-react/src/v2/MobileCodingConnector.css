@@ -195,6 +195,25 @@ body:has(.mcc) {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+.mcc-workspace-card-active {
+    border-color: #34d399;
+    background: #0f2d1f;
+}
+
+.mcc-workspace-card-active:hover {
+    border-color: #34d399;
+}
+
+.mcc-workspace-active-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: #34d399;
+    background: rgba(52, 211, 153, 0.15);
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
 .mcc-workspace-card-header {
     display: flex;
     align-items: center;
@@ -240,6 +259,28 @@ body:has(.mcc) {
 .mcc-new-workspace-btn:hover {
     border-color: #60a5fa;
     background: rgba(96, 165, 250, 0.1);
+}
+
+.mcc-git-settings-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 12px 16px 0;
+    padding: 14px;
+    background: transparent;
+    border: 2px dashed #334155;
+    border-radius: 12px;
+    color: #a78bfa;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mcc-git-settings-btn:hover {
+    border-color: #a78bfa;
+    background: rgba(167, 139, 250, 0.1);
 }
 
 /* ==================== Agent Chat ==================== */
@@ -787,30 +828,8 @@ body:has(.mcc) {
     color: #60a5fa;
 }
 
-.mcc-port-logs {
+.mcc-port-logs-margin {
     margin-top: 8px;
-    max-height: 200px;
-    overflow-y: auto;
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    padding: 8px 10px;
-    font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
-    font-size: 11px;
-    line-height: 1.5;
-}
-
-.mcc-port-log-line {
-    color: #94a3b8;
-    white-space: pre-wrap;
-    word-break: break-all;
-}
-
-.mcc-port-logs-empty {
-    color: #475569;
-    font-style: italic;
-    text-align: center;
-    padding: 8px;
 }
 
 /* Port Forwarding Help */

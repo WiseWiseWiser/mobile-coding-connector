@@ -1,0 +1,101 @@
+package main
+
+import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"os"
+
+	"golang.org/x/crypto/ssh"
+)
+
+const (
+	privateKeyFile = ".ai-critic-enc-key"
+	publicKeyFile  = ".ai-critic-enc-key.pub"
+	keyBits        = 3072
+)
+
+var help = `
+Usage: go run ./script/crypto/gen
+
+Generates an RSA key pair for encrypting SSH private keys in transit.
+
+Files generated:
+  .ai-critic-enc-key      - RSA private key (OpenSSH format, used by server for decryption)
+  .ai-critic-enc-key.pub  - RSA public key (OpenSSH format)
+
+The server reads these files to provide RSA-OAEP encryption for SSH keys
+sent from the frontend. If these files don't exist, the server will not
+provide an encryption public key, and the frontend will refuse to send
+SSH private keys to the server.
+`
+
+func main() {
+	err := Handle(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+}
+
+func Handle(args []string) error {
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			fmt.Print(help)
+			return nil
+		}
+	}
+
+	// Check if files already exist
+	if _, err := os.Stat(privateKeyFile); err == nil {
+		fmt.Printf("Key pair already exists: %s\n", privateKeyFile)
+		fmt.Println("Delete the existing files to regenerate.")
+		return nil
+	}
+
+	fmt.Printf("Generating %d-bit RSA key pair...\n", keyBits)
+
+	// Generate RSA key
+	privateKey, err := rsa.GenerateKey(rand.Reader, keyBits)
+	if err != nil {
+		return fmt.Errorf("failed to generate RSA key: %v", err)
+	}
+
+	// Write private key in OpenSSH format
+	privBlock, err := ssh.MarshalPrivateKey(privateKey, "")
+	if err != nil {
+		return fmt.Errorf("failed to marshal private key to OpenSSH format: %v", err)
+	}
+	privPEM := pem.EncodeToMemory(privBlock)
+	if err := os.WriteFile(privateKeyFile, privPEM, 0600); err != nil {
+		return fmt.Errorf("failed to write private key file: %v", err)
+	}
+	fmt.Printf("Written: %s\n", privateKeyFile)
+
+	// Write public key in OpenSSH format
+	pubKey, err := ssh.NewPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		return fmt.Errorf("failed to create SSH public key: %v", err)
+	}
+	pubBytes := ssh.MarshalAuthorizedKey(pubKey)
+	if err := os.WriteFile(publicKeyFile, pubBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write public key file: %v", err)
+	}
+	fmt.Printf("Written: %s\n", publicKeyFile)
+
+	// Also show the SPKI PEM format for reference
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err == nil {
+		pubPEM := pem.EncodeToMemory(&pem.Block{
+			Type:  "PUBLIC KEY",
+			Bytes: pubKeyBytes,
+		})
+		fmt.Println("\nSPKI PEM public key (used by frontend Web Crypto API):")
+		fmt.Println(string(pubPEM))
+	}
+
+	fmt.Println("Done! The server will now provide the public key to the frontend for SSH key encryption.")
+	return nil
+}

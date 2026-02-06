@@ -3,6 +3,7 @@ import type { MutableRefObject } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import type { TerminalTheme } from '../types/terminal';
+import { useCurrent } from './useCurrent';
 
 export type { TerminalTheme };
 
@@ -10,6 +11,16 @@ export interface UseTerminalOptions {
     theme?: TerminalTheme;
     fontSize?: number;
     fontFamily?: string;
+    /** Working directory for the terminal session */
+    cwd?: string;
+    /** Display name for the terminal session */
+    name?: string;
+    /** Command to run automatically after the terminal connects (only for new sessions) */
+    initialCommand?: string;
+    /** Existing session ID to reconnect to. If provided, reconnects instead of creating a new session */
+    sessionId?: string;
+    /** Called when the backend assigns a session ID (for new sessions) */
+    onSessionId?: (sessionId: string) => void;
 }
 
 export interface UseTerminalReturn {
@@ -57,7 +68,13 @@ export function useTerminal(
         theme = defaultTheme,
         fontSize = 14,
         fontFamily = 'Monaco, Menlo, "Ubuntu Mono", Consolas, monospace',
+        cwd,
+        name,
+        initialCommand,
+        sessionId,
     } = options;
+
+    const onSessionIdRef = useCurrent(options.onSessionId);
 
     useEffect(() => {
         if (!isActive || !terminalRef.current) {
@@ -81,11 +98,25 @@ export function useTerminal(
         xtermRef.current = xterm;
         fitAddonRef.current = fitAddon;
 
-        // Connect to WebSocket terminal
+        // Build WebSocket URL with query params
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${protocol}//${window.location.host}/api/terminal`);
+        const params = new URLSearchParams();
+        if (sessionId) {
+            params.set('session_id', sessionId);
+        }
+        if (cwd) {
+            params.set('cwd', cwd);
+        }
+        if (name) {
+            params.set('name', name);
+        }
+        const queryString = params.toString();
+        const wsUrl = `${protocol}//${window.location.host}/api/terminal${queryString ? '?' + queryString : ''}`;
+        const ws = new WebSocket(wsUrl);
         ws.binaryType = 'arraybuffer';
         wsRef.current = ws;
+
+        const isReconnecting = !!sessionId;
 
         // Send resize message to backend
         const sendResize = () => {
@@ -107,6 +138,12 @@ export function useTerminal(
             setTimeout(() => {
                 fitAddon.fit();
                 sendResize();
+                // Run initial command only for new sessions (not reconnects)
+                if (!isReconnecting && initialCommand) {
+                    setTimeout(() => {
+                        ws.send(initialCommand + '\n');
+                    }, 300);
+                }
             }, 100);
         };
 
@@ -115,7 +152,18 @@ export function useTerminal(
                 const decoder = new TextDecoder();
                 xterm.write(decoder.decode(event.data));
             } else {
-                xterm.write(event.data);
+                // Text message - could be a control message (JSON) or plain text
+                const text = event.data as string;
+                try {
+                    const msg = JSON.parse(text);
+                    if (msg.type === 'session_id' && msg.session_id) {
+                        onSessionIdRef.current?.(msg.session_id);
+                        return;
+                    }
+                } catch {
+                    // Not JSON, write as terminal output
+                }
+                xterm.write(text);
             }
         };
 
@@ -158,7 +206,8 @@ export function useTerminal(
             xtermRef.current = null;
             fitAddonRef.current = null;
         };
-    }, [isActive, theme, fontSize, fontFamily]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isActive, theme, fontSize, fontFamily, cwd, name, initialCommand, sessionId]);
 
     // Fit terminal when container size changes
     useEffect(() => {
