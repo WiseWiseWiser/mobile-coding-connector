@@ -1,0 +1,1320 @@
+/* Mobile Coding Connector - Mobile-first design */
+
+/* In standalone mode (Add to Home Screen), the body peeks through below
+   the app's viewport. Match the bottom nav color so it looks seamless. */
+body:has(.mcc) {
+    background: #1e293b !important;
+}
+
+.mcc {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    background: #0f172a;
+    color: #f1f5f9;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    text-align: left;
+    overflow: hidden;
+}
+
+/* Top Bar */
+.mcc-topbar {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.mcc-menu-btn,
+.mcc-settings-btn,
+.mcc-profile-btn {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    padding: 8px;
+    cursor: pointer;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mcc-menu-btn:hover,
+.mcc-settings-btn:hover,
+.mcc-profile-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #f1f5f9;
+}
+
+.mcc-title {
+    flex: 1;
+    font-weight: 600;
+    font-size: 16px;
+    color: #f1f5f9;
+}
+
+/* Main Content */
+.mcc-content {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.mcc-content-inner {
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.mcc-content-inner.hidden {
+    display: none;
+}
+
+.mcc-terminal-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: none;
+}
+
+.mcc-terminal-container.visible {
+    display: flex;
+}
+
+/* Bottom Navigation */
+.mcc-bottomnav {
+    display: flex;
+    background: #1e293b;
+    border-top: 1px solid #334155;
+    padding: 8px 0;
+    flex-shrink: 0;
+}
+
+.mcc-nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px;
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 11px;
+    transition: color 0.2s;
+}
+
+.mcc-nav-btn.active {
+    color: #60a5fa;
+}
+
+.mcc-nav-btn:hover {
+    color: #94a3b8;
+}
+
+.mcc-nav-btn.active:hover {
+    color: #60a5fa;
+}
+
+/* Section Header */
+.mcc-section-header {
+    padding: 20px 16px 12px;
+}
+
+.mcc-section-header h2 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+    color: #f1f5f9;
+}
+
+/* Empty State */
+.mcc-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 40px 24px;
+    text-align: center;
+    color: #64748b;
+}
+
+.mcc-empty-state svg {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.mcc-empty-state h3 {
+    font-size: 18px;
+    margin: 0 0 8px;
+    color: #94a3b8;
+}
+
+.mcc-empty-state p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* ==================== Workspace List ==================== */
+
+.mcc-workspace-list {
+    padding-bottom: 24px;
+}
+
+.mcc-workspace-cards {
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.mcc-workspace-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mcc-workspace-card:hover {
+    border-color: #60a5fa;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.mcc-workspace-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.mcc-workspace-status-icon {
+    font-size: 12px;
+}
+
+.mcc-workspace-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+.mcc-workspace-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #64748b;
+}
+
+.mcc-new-workspace-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 24px 16px 0;
+    padding: 14px;
+    background: transparent;
+    border: 2px dashed #334155;
+    border-radius: 12px;
+    color: #60a5fa;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mcc-new-workspace-btn:hover {
+    border-color: #60a5fa;
+    background: rgba(96, 165, 250, 0.1);
+}
+
+/* ==================== Agent Chat ==================== */
+
+.mcc-agent-chat {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.mcc-chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+}
+
+.mcc-chat-context {
+    font-size: 13px;
+    color: #64748b;
+}
+
+.mcc-agent-status {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 12px;
+}
+
+.mcc-agent-thinking {
+    background: rgba(251, 191, 36, 0.2);
+    color: #fbbf24;
+}
+
+.mcc-agent-executing {
+    background: rgba(96, 165, 250, 0.2);
+    color: #60a5fa;
+}
+
+.mcc-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+}
+
+.mcc-chat-message {
+    display: flex;
+    gap: 12px;
+    max-width: 90%;
+}
+
+.mcc-message-user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.mcc-message-agent {
+    align-self: flex-start;
+}
+
+.mcc-message-avatar {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.mcc-message-content {
+    background: #1e293b;
+    border-radius: 16px;
+    padding: 12px 16px;
+    text-align: left;
+}
+
+.mcc-message-user .mcc-message-content {
+    background: #3b82f6;
+}
+
+.mcc-message-content p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.mcc-message-actions {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #334155;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mcc-action-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #94a3b8;
+}
+
+.mcc-action-done {
+    color: #22c55e;
+}
+
+.mcc-action-running {
+    color: #60a5fa;
+}
+
+.mcc-action-icon {
+    width: 16px;
+    text-align: center;
+}
+
+.mcc-chat-input-area {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #1e293b;
+    border-top: 1px solid #334155;
+}
+
+.mcc-chat-input {
+    flex: 1;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: #f1f5f9;
+    font-size: 15px;
+    resize: none;
+    font-family: inherit;
+}
+
+.mcc-chat-input:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.mcc-chat-input::placeholder {
+    color: #64748b;
+}
+
+.mcc-send-btn {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #3b82f6;
+    border: none;
+    border-radius: 12px;
+    color: white;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.mcc-send-btn:hover {
+    background: #2563eb;
+}
+
+/* ==================== Terminal ==================== */
+
+.mcc-terminal {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: #0f172a;
+}
+
+.mcc-terminal-header {
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+    padding: 8px 12px;
+}
+
+.mcc-terminal-tabs {
+    display: flex;
+    gap: 4px;
+}
+
+.mcc-terminal-tab {
+    padding: 6px 12px;
+    background: #334155;
+    border: none;
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.mcc-terminal-tab.active {
+    background: #475569;
+    color: #f1f5f9;
+}
+
+.mcc-terminal-tab-add {
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px dashed #475569;
+    border-radius: 6px;
+    color: #64748b;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.mcc-terminal-tab-add:hover {
+    border-color: #60a5fa;
+    color: #60a5fa;
+}
+
+.mcc-terminal-output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    text-align: left;
+}
+
+.mcc-terminal-line {
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #e2e8f0;
+    text-align: left;
+}
+
+.mcc-terminal-prompt {
+    color: #22c55e;
+}
+
+.mcc-terminal-input {
+    color: #f1f5f9;
+}
+
+.mcc-cursor {
+    animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+.mcc-terminal-input-area {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: #1e293b;
+    border-top: 1px solid #334155;
+}
+
+.mcc-terminal-input-field {
+    flex: 1;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #f1f5f9;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    font-size: 14px;
+}
+
+.mcc-terminal-send-btn {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #22c55e;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.mcc-terminal-send-btn:hover {
+    background: #16a34a;
+}
+
+.mcc-terminal-input-field:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.mcc-terminal-input-field::placeholder {
+    color: #64748b;
+}
+
+.mcc-terminal-shortcuts {
+    display: flex;
+    gap: 6px;
+    padding: 8px 16px 12px;
+    background: #1e293b;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.mcc-shortcut-btn {
+    padding: 8px 14px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 12px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.mcc-shortcut-btn:hover {
+    background: #475569;
+    color: #f1f5f9;
+}
+
+/* ==================== Port Forwarding ==================== */
+
+.mcc-ports {
+    padding-bottom: 24px;
+}
+
+/* Cloudflare Status Banner */
+.mcc-cf-status-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: calc(100% - 32px);
+    margin: 8px 16px 12px;
+    padding: 12px 14px;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    background: #1e293b;
+    color: #94a3b8;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mcc-cf-status-banner:hover {
+    background: #334155;
+}
+
+.mcc-cf-status-ok {
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+.mcc-cf-status-warning {
+    border-color: rgba(234, 179, 8, 0.3);
+}
+
+.mcc-cf-status-error {
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.mcc-cf-status-icon {
+    font-size: 18px;
+}
+
+.mcc-cf-status-text {
+    flex: 1;
+    text-align: left;
+    font-weight: 500;
+}
+
+.mcc-cf-status-chevron {
+    font-size: 18px;
+    color: #475569;
+}
+
+/* Back button */
+.mcc-back-btn {
+    background: none;
+    border: none;
+    color: #60a5fa;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px 8px;
+    margin-right: 8px;
+}
+
+/* Diagnostics View */
+.mcc-diag-loading {
+    padding: 32px 16px;
+    text-align: center;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.mcc-diag-overall {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 12px 16px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.mcc-diag-overall-ok {
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+}
+
+.mcc-diag-overall-warning {
+    background: rgba(234, 179, 8, 0.1);
+    border: 1px solid rgba(234, 179, 8, 0.2);
+    color: #eab308;
+}
+
+.mcc-diag-overall-error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.mcc-diag-overall-icon {
+    font-size: 20px;
+}
+
+.mcc-diag-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px;
+}
+
+.mcc-diag-check {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px 14px;
+}
+
+.mcc-diag-check-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.mcc-diag-check-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.mcc-diag-check-label {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+    color: #e2e8f0;
+}
+
+.mcc-diag-check-status {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.mcc-diag-check-status-ok {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+}
+
+.mcc-diag-check-status-warning {
+    background: rgba(234, 179, 8, 0.15);
+    color: #eab308;
+}
+
+.mcc-diag-check-status-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.mcc-diag-check-desc {
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.mcc-diag-refresh {
+    display: block;
+    margin: 16px auto;
+    padding: 10px 24px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mcc-diag-refresh:hover {
+    background: #475569;
+}
+
+.mcc-ports-error {
+    margin: 0 16px 12px;
+    padding: 10px 14px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    color: #f87171;
+    font-size: 13px;
+}
+
+.mcc-ports-empty {
+    padding: 24px 16px;
+    text-align: center;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.mcc-port-url-connecting {
+    color: #eab308;
+    font-style: italic;
+}
+
+.mcc-port-url-error {
+    color: #ef4444;
+}
+
+/* Port Logs */
+.mcc-port-logs-btn.active {
+    background: rgba(96, 165, 250, 0.2);
+    color: #60a5fa;
+}
+
+.mcc-port-logs {
+    margin-top: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.mcc-port-log-line {
+    color: #94a3b8;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.mcc-port-logs-empty {
+    color: #475569;
+    font-style: italic;
+    text-align: center;
+    padding: 8px;
+}
+
+/* Port Forwarding Help */
+.mcc-ports-help {
+    margin: 16px 16px 0;
+}
+
+.mcc-ports-help-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px;
+    background: rgba(96, 165, 250, 0.08);
+    border: 1px solid rgba(96, 165, 250, 0.2);
+    border-radius: 10px;
+    color: #94a3b8;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mcc-ports-help-toggle:hover {
+    background: rgba(96, 165, 250, 0.15);
+    color: #cbd5e1;
+}
+
+.mcc-ports-help-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(96, 165, 250, 0.25);
+    color: #60a5fa;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.mcc-ports-help-chevron {
+    margin-left: auto;
+    font-size: 16px;
+    transition: transform 0.2s;
+}
+
+.mcc-ports-help-chevron.expanded {
+    transform: rotate(90deg);
+}
+
+.mcc-ports-help-content {
+    margin-top: 12px;
+    padding: 16px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #94a3b8;
+}
+
+.mcc-ports-help-content p {
+    margin: 0 0 12px;
+}
+
+.mcc-ports-help-content p:last-child {
+    margin-bottom: 0;
+}
+
+.mcc-ports-help-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.mcc-ports-help-step {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.mcc-ports-help-step-num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #334155;
+    color: #60a5fa;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.mcc-ports-help-cmd {
+    margin: 8px 0 12px;
+    padding: 10px 14px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    overflow-x: auto;
+}
+
+.mcc-ports-help-cmd code {
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 13px;
+    color: #22c55e;
+    white-space: nowrap;
+}
+
+.mcc-ports-help-content code {
+    padding: 2px 6px;
+    background: #334155;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 12px;
+    color: #e2e8f0;
+}
+
+.mcc-ports-help-content strong {
+    color: #cbd5e1;
+}
+
+.mcc-ports-help-provider {
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: #94a3b8;
+}
+
+.mcc-ports-help-provider strong {
+    color: #cbd5e1;
+}
+
+.mcc-ports-help-note {
+    padding: 10px 12px;
+    background: rgba(234, 179, 8, 0.08);
+    border: 1px solid rgba(234, 179, 8, 0.15);
+    border-radius: 8px;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.mcc-ports-subtitle {
+    padding: 0 16px 12px;
+    font-size: 13px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.mcc-ports-list {
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.mcc-port-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.mcc-port-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.mcc-port-status {
+    font-size: 10px;
+}
+
+.mcc-port-number {
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 15px;
+    font-weight: 600;
+    color: #60a5fa;
+}
+
+.mcc-port-arrow {
+    color: #64748b;
+}
+
+.mcc-port-label {
+    font-size: 15px;
+    color: #f1f5f9;
+}
+
+.mcc-port-url {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 12px;
+    word-break: break-all;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mcc-port-url-link {
+    color: #60a5fa;
+    text-decoration: none;
+    word-break: break-all;
+}
+.mcc-port-url-link:hover {
+    text-decoration: underline;
+}
+
+.mcc-port-copy-icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+    opacity: 0.7;
+    flex-shrink: 0;
+    transition: opacity 0.15s;
+}
+.mcc-port-copy-icon:hover {
+    opacity: 1;
+}
+
+/* Per-port diagnose view */
+.mcc-diag-port-info {
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 16px;
+    font-size: 13px;
+    color: #94a3b8;
+}
+.mcc-diag-port-info a {
+    color: #60a5fa;
+}
+.mcc-diag-port-error {
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+}
+.mcc-diag-refresh {
+    margin: 12px 16px;
+    padding: 8px 16px;
+    background: rgba(96, 165, 250, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(96, 165, 250, 0.3);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
+.mcc-diag-refresh:hover {
+    background: rgba(96, 165, 250, 0.25);
+}
+.mcc-diag-refresh:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.mcc-port-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.mcc-port-action-btn {
+    padding: 8px 16px;
+    background: #334155;
+    border: none;
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mcc-port-action-btn:hover:not(:disabled) {
+    background: #475569;
+    color: #f1f5f9;
+}
+
+.mcc-port-action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.mcc-port-stop {
+    color: #ef4444;
+}
+
+.mcc-port-stop:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.mcc-add-port-section {
+    padding: 16px;
+}
+
+.mcc-add-port-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 14px;
+    background: transparent;
+    border: 2px dashed #334155;
+    border-radius: 12px;
+    color: #60a5fa;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mcc-add-port-btn:hover {
+    border-color: #60a5fa;
+    background: rgba(96, 165, 250, 0.1);
+}
+
+.mcc-add-port-form {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.mcc-add-port-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    font-weight: 600;
+}
+
+.mcc-close-btn {
+    background: none;
+    border: none;
+    color: #64748b;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.mcc-close-btn:hover {
+    color: #f1f5f9;
+}
+
+.mcc-add-port-fields {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.mcc-form-field {
+    flex: 1;
+}
+
+.mcc-form-field label {
+    display: block;
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 6px;
+}
+
+.mcc-form-field input {
+    width: 100%;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #f1f5f9;
+    font-size: 14px;
+}
+
+.mcc-form-field input:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.mcc-form-field input::placeholder {
+    color: #64748b;
+}
+
+/* Provider selector */
+.mcc-provider-field {
+    margin-bottom: 16px;
+}
+
+.mcc-provider-options {
+    display: flex;
+    gap: 8px;
+}
+
+.mcc-provider-btn {
+    flex: 1;
+    padding: 10px 14px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mcc-provider-btn.active {
+    background: rgba(96, 165, 250, 0.2);
+    border-color: #60a5fa;
+    color: #60a5fa;
+}
+
+.mcc-provider-btn:hover:not(.active) {
+    background: #475569;
+    color: #f1f5f9;
+}
+
+/* Port provider badge */
+.mcc-port-provider-badge {
+    margin-left: auto;
+    padding: 2px 8px;
+    background: #334155;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #64748b;
+}
+
+.mcc-forward-btn {
+    width: 100%;
+    padding: 12px;
+    background: #3b82f6;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.mcc-forward-btn:hover {
+    background: #2563eb;
+}
+
+/* ==================== Files ==================== */
+
+.mcc-files {
+    padding-bottom: 24px;
+}
+
+.mcc-files-tree {
+    padding: 0 16px;
+}
+
+.mcc-file-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.mcc-file-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.mcc-file-icon {
+    font-size: 16px;
+}
+
+.mcc-file-item span:last-child {
+    font-size: 14px;
+    color: #e2e8f0;
+}
+
+.mcc-folder span:last-child {
+    color: #60a5fa;
+}
+
+/* ==================== Responsive ==================== */
+
+@media (min-width: 768px) {
+    .mcc-workspace-cards {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .mcc-chat-message {
+        max-width: 70%;
+    }
+
+    .mcc-add-port-fields {
+        max-width: 400px;
+    }
+}
+
+@media (min-width: 1024px) {
+    .mcc-workspace-cards {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}

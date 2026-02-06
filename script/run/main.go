@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/less-gen/flags"
+	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 	"github.com/xhd2015/xgo/support/cmd"
 )
 
@@ -88,7 +89,7 @@ func Handle(args []string) error {
 	fmt.Print("Waiting for Vite server to be ready")
 	viteReady := false
 	for i := 0; i < 30; i++ {
-		if checkPort(5173) {
+		if checkPort(lib.ViteDevPort) {
 			viteReady = true
 			break
 		}

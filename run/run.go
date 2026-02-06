@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 	"github.com/xhd2015/lifelog-private/ai-critic/server"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 
@@ -12,17 +13,18 @@ import (
 	"github.com/xhd2015/less-gen/flags"
 )
 
-const help = `
+var help = fmt.Sprintf(`
 Usage: ai-critic [options]
 
 Options:
   --dev              Run in development mode
   --dir DIR          Set the initial directory for code review (defaults to current working directory)
+  --port PORT        Port to listen on (defaults to auto-find starting from %d)
   --config-file FILE Path to configuration file (JSON)
   --rules-dir DIR    Directory containing REVIEW_RULES.md (defaults to "rules")
   --component        Serve a specific component
   -h, --help         Show this help message
-`
+`, lib.DefaultServerPort)
 
 func Run(args []string) error {
 	var devFlag bool
@@ -30,10 +32,12 @@ func Run(args []string) error {
 	var dirFlag string
 	var configFile string
 	var rulesDir string
+	var portFlag int
 	args, err := flags.
 		Bool("--dev", &devFlag).
 		String("--component", &component).
 		String("--dir", &dirFlag).
+		Int("--port", &portFlag).
 		String("--config-file", &configFile).
 		String("--rules-dir", &rulesDir).
 		Help("-h,--help", help).
@@ -77,10 +81,16 @@ func Run(args []string) error {
 		server.SetRulesDir(rulesDir)
 	}
 
-	// next port
-	port, err := web.FindAvailablePort(8080, 100)
-	if err != nil {
-		return err
+	// Determine port to use
+	var port int
+	if portFlag > 0 {
+		port = portFlag
+	} else {
+		// Auto-find available port starting from DefaultServerPort
+		port, err = web.FindAvailablePort(lib.DefaultServerPort, 100)
+		if err != nil {
+			return err
+		}
 	}
 
 	if component != "" {

@@ -10,6 +10,59 @@ import (
 type Config struct {
 	// AI configuration
 	AI AIConfig `json:"ai"`
+
+	// PortForwarding configuration
+	PortForwarding PortForwardingConfig `json:"port_forwarding,omitempty"`
+}
+
+// PortForwardingConfig represents the port forwarding configuration
+type PortForwardingConfig struct {
+	// Providers is a list of tunnel provider configurations
+	Providers []PortForwardProviderConfig `json:"providers,omitempty"`
+}
+
+// PortForwardProviderConfig represents a single tunnel provider configuration
+type PortForwardProviderConfig struct {
+	// Type is the provider type: "localtunnel", "cloudflare_quick", or "cloudflare_tunnel"
+	Type string `json:"type"`
+
+	// Enabled controls whether this provider is available (default: true)
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Cloudflare tunnel specific settings (only for type "cloudflare_tunnel")
+	Cloudflare *CloudflareTunnelConfig `json:"cloudflare,omitempty"`
+}
+
+// CloudflareTunnelConfig holds config for a named Cloudflare tunnel
+type CloudflareTunnelConfig struct {
+	// TunnelName is the named tunnel identifier (e.g. "port-forward-tunnel").
+	// Required. If the tunnel doesn't exist, it will be created automatically.
+	TunnelName string `json:"tunnel_name,omitempty"`
+
+	// TunnelID is the UUID of the tunnel. Optional - resolved automatically
+	// from TunnelName if not specified.
+	TunnelID string `json:"tunnel_id,omitempty"`
+
+	// BaseDomain is the base domain under which random subdomains are created
+	// (e.g. "xhd2015.xyz" -> generates "brave-lake-fern.xhd2015.xyz").
+	// Required.
+	BaseDomain string `json:"base_domain"`
+
+	// ConfigPath is the directory for the port-forward config file.
+	// Default: ~/.cloudflared
+	ConfigPath string `json:"config_path,omitempty"`
+
+	// CredentialsFile is the path to the tunnel credentials JSON file.
+	// Optional - resolved automatically from TunnelID if not specified.
+	CredentialsFile string `json:"credentials_file,omitempty"`
+}
+
+// IsEnabled returns whether a provider config is enabled (default true)
+func (p *PortForwardProviderConfig) IsEnabled() bool {
+	if p.Enabled == nil {
+		return true
+	}
+	return *p.Enabled
 }
 
 // AIConfig represents the AI configuration

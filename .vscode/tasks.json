@@ -1,0 +1,72 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Start Backend & Frontend (Dev)",
+			"dependsOn": [
+				"Backend: go run ./script/server/run",
+				"Frontend: npm run dev"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"runOptions": {}
+		},
+		{
+			"label": "Start Backend Only",
+			"dependsOn": [
+				"Backend: go run ./script/server/run"
+			],
+			"group": {
+				"kind": "build"
+			},
+			"runOptions": {}
+		},
+		{
+			"type": "process",
+			"label": "Backend: go run ./script/server/run",
+			"command": "bash",
+			"args": [
+				"-c",
+				"echo 'go run ./script/server/run' | bash --login -i"
+			],
+			"isBackground": true,
+			"runOptions": {},
+			"presentation": {
+				"group": "Backend",
+				"reveal": "always"
+			}
+		},
+		{
+			"type": "process",
+			"label": "Frontend: npm run dev",
+			"command": "bash",
+			"args": [
+				"-c",
+				"echo 'cd ai-critic-react && npm run dev' | bash --login -i"
+			],
+			"isBackground": true,
+			"runOptions": {},
+			"presentation": {
+				"group": "Frontend",
+				"reveal": "always"
+			}
+		},
+		{
+			"type": "process",
+			"label": "Build Production",
+			"command": "bash",
+			"args": [
+				"-c",
+				"echo 'cd ai-critic-react && npm run build && cd .. && go build -o /tmp/ai-critic ./' | bash --login -i"
+			],
+			"isBackground": false,
+			"runOptions": {},
+			"presentation": {
+				"group": "Build",
+				"reveal": "always"
+			}
+		}
+	]
+}

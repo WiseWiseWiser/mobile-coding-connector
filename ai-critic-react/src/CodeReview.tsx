@@ -166,7 +166,7 @@ function CodeReview() {
     const hasFiles = diffResult && diffResult.files && diffResult.files.length > 0;
 
     return (
-        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <Header 
                 dir={dir}
                 onDirChange={setDir}

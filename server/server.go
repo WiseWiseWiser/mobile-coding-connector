@@ -20,6 +20,11 @@ import (
 	"time"
 
 	"github.com/xhd2015/kool/pkgs/web"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
+	pfcloudflare "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/cloudflare"
+	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/localtunnel"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
 )
 
 var distFS embed.FS
@@ -225,6 +230,29 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// code review API
 	registerReviewAPI(mux)
+
+	// terminal API
+	terminal.RegisterAPI(mux)
+
+	// port forwarding: register providers and API
+	portforward.RegisterDefaultProvider(&pflocaltunnel.Provider{})
+	portforward.RegisterDefaultProvider(&pfcloudflare.QuickProvider{})
+
+	// Register cloudflare_tunnel provider from config if available
+	if cfg := config.Get(); cfg != nil {
+		for _, provCfg := range cfg.PortForwarding.Providers {
+			if !provCfg.IsEnabled() {
+				continue
+			}
+			if provCfg.Type == portforward.ProviderCloudflareTunnel && provCfg.Cloudflare != nil {
+				portforward.RegisterDefaultProvider(
+					pfcloudflare.NewTunnelProvider(*provCfg.Cloudflare),
+				)
+			}
+		}
+	}
+
+	portforward.RegisterAPI(mux)
 
 	return nil
 }

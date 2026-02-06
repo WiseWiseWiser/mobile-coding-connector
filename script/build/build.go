@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 
 	"github.com/xhd2015/xgo/support/cmd"
 )
@@ -17,23 +16,32 @@ func main() {
 }
 
 func Handle(args []string) error {
-	// check if bun installed
-	if _, err := exec.LookPath("bun"); err != nil {
-		return fmt.Errorf("bun is not installed, install it from https://bun.sh/docs/installation")
-	}
+	// Step 1: Build frontend
+	fmt.Println("=== Building frontend ===")
 
-	// check if ai-critic-react/node_modules exists
+	// Check if node_modules exists, run npm install if not
 	if _, err := os.Stat("ai-critic-react/node_modules"); err != nil {
-		// run bun install
-		err := cmd.Debug().Dir("ai-critic-react").Run("bun", "install")
+		fmt.Println("node_modules not found, running npm install...")
+		err := cmd.Debug().Dir("ai-critic-react").Run("npm", "install")
 		if err != nil {
-			return err
+			return fmt.Errorf("npm install failed: %v", err)
 		}
 	}
 
-	err := cmd.Debug().Dir("ai-critic-react").Run("bun", "run", "build")
+	// Build frontend with npm
+	err := cmd.Debug().Dir("ai-critic-react").Run("npm", "run", "build")
 	if err != nil {
-		return err
+		return fmt.Errorf("frontend build failed: %v", err)
 	}
+	fmt.Println("Frontend build complete.")
+
+	// Step 2: Build server
+	fmt.Println("\n=== Building server ===")
+	err = cmd.Debug().Run("go", "run", "./script/server/build")
+	if err != nil {
+		return fmt.Errorf("server build failed: %v", err)
+	}
+	fmt.Println("\nBuild complete!")
+
 	return nil
 }
