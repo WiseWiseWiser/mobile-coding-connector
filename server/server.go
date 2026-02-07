@@ -22,6 +22,7 @@ import (
 	"github.com/xhd2015/kool/pkgs/web"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/checkpoint"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
@@ -30,6 +31,7 @@ import (
 	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/localtunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tools"
 )
 
 var distFS embed.FS
@@ -277,6 +279,12 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Agents API
 	agents.RegisterAPI(mux)
+
+	// Checkpoint API
+	checkpoint.RegisterAPI(mux)
+
+	// Tools diagnostics API
+	tools.RegisterAPI(mux)
 
 	return nil
 }

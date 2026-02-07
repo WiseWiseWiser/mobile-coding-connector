@@ -1,9 +1,9 @@
-import { BrowserRouter as Router, Routes, Route, Link, Outlet } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, Outlet, Navigate } from 'react-router-dom';
 import { lazy, Suspense, useState, useEffect } from 'react';
 import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
-import { MobileCodingConnector, LoginPage, V2Provider } from './v2';
+import { MobileCodingConnector, LoginPage, V2Provider, WorkspaceListView, DiagnoseView, GitSettings, CloneRepoView } from './v2';
 import { checkAuth } from './api/auth';
 import './App.css';
 
@@ -139,12 +139,28 @@ function App() {
             <Routes>
                 {/* V2 routes - layout wraps all child routes */}
                 <Route path="/v2" element={<V2Layout />}>
-                    <Route index element={<MobileCodingConnector />} />
+                    {/* Redirect /v2 to /v2/home */}
+                    <Route index element={<Navigate to="home" replace />} />
+                    {/* Home tab with nested routes (no project) */}
+                    <Route path="home" element={<MobileCodingConnector />}>
+                        <Route index element={<WorkspaceListView />} />
+                        <Route path="diagnose" element={<DiagnoseView />} />
+                        <Route path="git-settings" element={<GitSettings />} />
+                        <Route path="clone-repo" element={<CloneRepoView />} />
+                    </Route>
                     <Route path=":tab" element={<MobileCodingConnector />} />
                     <Route path=":tab/:view" element={<MobileCodingConnector />} />
-                    <Route path="project/:projectName" element={<MobileCodingConnector />} />
+                    {/* Project-specific routes */}
+                    <Route path="project/:projectName" element={<Navigate to="home" replace />} />
+                    <Route path="project/:projectName/home" element={<MobileCodingConnector />}>
+                        <Route index element={<WorkspaceListView />} />
+                        <Route path="diagnose" element={<DiagnoseView />} />
+                        <Route path="git-settings" element={<GitSettings />} />
+                        <Route path="clone-repo" element={<CloneRepoView />} />
+                    </Route>
                     <Route path="project/:projectName/:tab" element={<MobileCodingConnector />} />
                     <Route path="project/:projectName/:tab/:view" element={<MobileCodingConnector />} />
+                    <Route path="project/:projectName/:tab/:view/*" element={<MobileCodingConnector />} />
                 </Route>
                 {/* All other routes use the old layout */}
                 <Route path="/*" element={<MainApp />} />

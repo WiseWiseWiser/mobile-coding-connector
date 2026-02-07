@@ -1,17 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Outlet } from 'react-router-dom';
 import { useCurrent } from '../hooks/useCurrent';
 import type { PortForward, TunnelProvider, ProviderInfo } from '../hooks/usePortForwards';
 import { PortStatuses, TunnelProviders } from '../hooks/usePortForwards';
-import { deleteProject as apiDeleteProject } from '../api/projects';
 import type { ProjectInfo } from '../api/projects';
 import { fetchDiagnostics as apiFetchDiagnostics, fetchPortLogs as apiFetchPortLogs } from '../api/ports';
 import type { DiagnosticsData } from '../api/ports';
 import { useV2Context } from './V2Context';
 import { TerminalManager } from './TerminalManager';
 import type { TerminalManagerHandle } from './TerminalManager';
-import { GitSettings, CloneRepoView } from './GitSettings';
 import { AgentView } from './AgentView';
+import { FilesView as FilesViewComponent } from './FilesView';
 import { LogViewer } from './LogViewer';
 import './MobileCodingConnector.css';
 
@@ -32,12 +31,15 @@ export function MobileCodingConnector() {
 
     // Derive state from URL path params
     const activeTab = (params.tab as NavTab) || NavTabs.Home;
-    const viewFromUrl = params.view || '';
+    // Combine view with wildcard rest for deep paths like files/browse/some/dir
+    const viewBase = params.view || '';
+    const viewRest = params['*'] || '';
+    const viewFromUrl = viewRest ? `${viewBase}/${viewRest}` : viewBase;
     const projectNameFromUrl = params.projectName || '';
 
     // Shared state from V2Context (survives remounts across route changes)
     const {
-        projectsList, projectsLoading, fetchProjects,
+        projectsList, projectsLoading,
         currentProject, setCurrentProject,
         portForwards: { ports, providers: availableProviders, loading: portsLoading, error: portsError, addPort, removePort, refresh: refreshPorts },
     } = useV2Context();
@@ -68,12 +70,13 @@ export function MobileCodingConnector() {
         const base = '/v2';
         if (proj) {
             const projBase = `${base}/project/${encodeURIComponent(proj.name)}`;
-            // Home tab with a project shows the project list (no /tab suffix)
-            if (tab === NavTabs.Home) return projBase;
+            // Home tab with a project and no view shows the project list (no /tab suffix)
+            if (tab === NavTabs.Home && !view) return projBase;
             if (view) return `${projBase}/${tab}/${view}`;
             return `${projBase}/${tab}`;
         }
-        if (tab === NavTabs.Home) return base;
+        // No project selected
+        if (tab === NavTabs.Home && !view) return base;
         if (view) return `${base}/${tab}/${view}`;
         return `${base}/${tab}`;
     };
@@ -145,13 +148,8 @@ export function MobileCodingConnector() {
     const renderContent = () => {
         switch (activeTab) {
             case NavTabs.Home:
-                if (viewFromUrl === 'git-settings') {
-                    return <GitSettings onBack={() => navigateToView('')} />;
-                }
-                if (viewFromUrl === 'clone-repo') {
-                    return <CloneRepoView onBack={() => { navigateToView(''); fetchProjects(); }} />;
-                }
-                return <WorkspaceListView projects={projectsList} projectsLoading={projectsLoading} activeProjectName={currentProject?.name ?? null} onRefreshProjects={fetchProjects} onNavigateToView={navigateToView} onSelectProject={handleSelectProject} />;
+                // Home tab uses Outlet for nested routes
+                return <Outlet context={{ onSelectProject: handleSelectProject }} />;
             case NavTabs.Agent:
                 return (
                     <AgentView
@@ -186,7 +184,10 @@ export function MobileCodingConnector() {
                     />
                 );
             case NavTabs.Files:
-                return <FilesView />;
+                if (!currentProject) {
+                    return <div className="mcc-files"><div className="mcc-section-header"><h2>Files</h2></div><div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8' }}>Select a project first</div></div>;
+                }
+                return <FilesViewComponent projectName={currentProject.name} projectDir={currentProject.dir} view={viewFromUrl} onNavigateToView={navigateToView} />;
             default:
                 return null;
         }
@@ -254,86 +255,6 @@ export function MobileCodingConnector() {
                     active={activeTab === NavTabs.Files}
                     onClick={() => handleTabChange(NavTabs.Files)}
                 />
-            </div>
-        </div>
-    );
-}
-
-// Workspace List View
-interface WorkspaceListViewProps {
-    projects: ProjectInfo[];
-    projectsLoading: boolean;
-    activeProjectName: string | null;
-    onRefreshProjects: () => void;
-    onNavigateToView: (view: string) => void;
-    onSelectProject: (project: ProjectInfo) => void;
-}
-
-function WorkspaceListView({ projects, projectsLoading, activeProjectName, onRefreshProjects, onNavigateToView, onSelectProject }: WorkspaceListViewProps) {
-    const handleRemoveProject = async (id: string) => {
-        try {
-            await apiDeleteProject(id);
-            onRefreshProjects();
-        } catch {
-            // ignore
-        }
-    };
-
-    return (
-        <div className="mcc-workspace-list">
-            <div className="mcc-section-header">
-                <h2>Your Projects</h2>
-            </div>
-            {projectsLoading ? (
-                <div className="mcc-ports-empty">Loading projects...</div>
-            ) : projects.length === 0 ? (
-                <div className="mcc-ports-empty">No projects yet. Clone a repository from Git Settings.</div>
-            ) : (
-                <div className="mcc-workspace-cards">
-                    {projects.map(project => (
-                        <ProjectCard key={project.id} project={project} isActive={project.name === activeProjectName} onSelect={() => onSelectProject(project)} onRemove={() => handleRemoveProject(project.id)} />
-                    ))}
-                </div>
-            )}
-            <button className="mcc-new-workspace-btn" onClick={() => onNavigateToView('clone-repo')}>
-                <PlusIcon />
-                <span>Clone Repository</span>
-            </button>
-            <button className="mcc-git-settings-btn" onClick={() => onNavigateToView('git-settings')}>
-                <GitIcon />
-                <span>Git Settings</span>
-            </button>
-        </div>
-    );
-}
-
-// Project Card
-interface ProjectCardProps {
-    project: ProjectInfo;
-    isActive: boolean;
-    onSelect: () => void;
-    onRemove: () => void;
-}
-
-function ProjectCard({ project, isActive, onSelect, onRemove }: ProjectCardProps) {
-    const createdDate = new Date(project.created_at).toLocaleDateString();
-
-    return (
-        <div className={`mcc-workspace-card mcc-workspace-card-clickable${isActive ? ' mcc-workspace-card-active' : ''}`} onClick={onSelect}>
-            <div className="mcc-workspace-card-header">
-                <span className="mcc-workspace-name">{project.name}</span>
-                {isActive && <span className="mcc-workspace-active-badge">Working on</span>}
-            </div>
-            <div className="mcc-workspace-card-meta">
-                <span>{project.dir}</span>
-            </div>
-            <div className="mcc-workspace-card-meta" style={{ marginTop: 4 }}>
-                <span>{project.repo_url}</span>
-                <span>{createdDate}</span>
-            </div>
-            <div className="mcc-port-actions" style={{ marginTop: 8 }}>
-                <button className="mcc-port-action-btn" onClick={e => { e.stopPropagation(); onSelect(); }}>Open</button>
-                <button className="mcc-port-action-btn mcc-port-stop" onClick={e => { e.stopPropagation(); onRemove(); }}>Remove</button>
             </div>
         </div>
     );
@@ -852,46 +773,6 @@ function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwardCardPr
     );
 }
 
-// Files View (placeholder)
-function FilesView() {
-    return (
-        <div className="mcc-files">
-            <div className="mcc-section-header">
-                <h2>Files</h2>
-            </div>
-            <div className="mcc-files-tree">
-                <div className="mcc-file-item mcc-folder">
-                    <span className="mcc-file-icon">📁</span>
-                    <span>src</span>
-                </div>
-                <div className="mcc-file-item mcc-folder" style={{ paddingLeft: '24px' }}>
-                    <span className="mcc-file-icon">📁</span>
-                    <span>components</span>
-                </div>
-                <div className="mcc-file-item" style={{ paddingLeft: '48px' }}>
-                    <span className="mcc-file-icon">📄</span>
-                    <span>App.tsx</span>
-                </div>
-                <div className="mcc-file-item" style={{ paddingLeft: '48px' }}>
-                    <span className="mcc-file-icon">📄</span>
-                    <span>LoginPage.tsx</span>
-                </div>
-                <div className="mcc-file-item" style={{ paddingLeft: '24px' }}>
-                    <span className="mcc-file-icon">📄</span>
-                    <span>main.tsx</span>
-                </div>
-                <div className="mcc-file-item">
-                    <span className="mcc-file-icon">📄</span>
-                    <span>package.json</span>
-                </div>
-                <div className="mcc-file-item">
-                    <span className="mcc-file-icon">📄</span>
-                    <span>vite.config.ts</span>
-                </div>
-            </div>
-        </div>
-    );
-}
 
 // Navigation Button
 interface NavButtonProps {
@@ -991,17 +872,6 @@ function PlusIcon() {
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-    );
-}
-
-function GitIcon() {
-    return (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="18" cy="18" r="3" />
-            <circle cx="6" cy="6" r="3" />
-            <path d="M13 6h3a2 2 0 0 1 2 2v7" />
-            <line x1="6" y1="9" x2="6" y2="21" />
         </svg>
     );
 }

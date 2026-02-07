@@ -3,7 +3,8 @@ import { useCurrent } from '../hooks/useCurrent';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import {
     fetchAgents, fetchAgentSessions, launchAgentSession, stopAgentSession,
-    getOrCreateOpencodeSession, fetchMessages, sendPromptAsync, agentEventUrl,
+    listOpencodeSessions, createOpencodeSession,
+    fetchMessages, sendPromptAsync, agentEventUrl,
     fetchOpencodeConfig, fetchOpencodeProviders,
     AgentSessionStatuses,
 } from '../api/agents';
@@ -15,7 +16,7 @@ import './AgentView.css';
 interface AgentViewProps {
     projectDir: string | null;
     projectName: string | null;
-    /** Current sub-view from URL (e.g., "chat") */
+    /** Current sub-view from URL (e.g., "chat", "chat/<opencodeSID>") */
     currentView: string;
     /** Navigate to a sub-view within the Agent tab */
     onNavigateToView: (view: string) => void;
@@ -85,14 +86,31 @@ export function AgentView({ projectDir, projectName, currentView, onNavigateToVi
         );
     }
 
-    if (currentView === 'chat' && session) {
+    // Route: chat/<opencodeSID> → specific session chat
+    const chatPrefix = 'chat/';
+    if (currentView.startsWith(chatPrefix) && session) {
+        const opencodeSID = currentView.slice(chatPrefix.length);
         return (
             <AgentChat
                 session={session}
                 projectName={projectName}
+                opencodeSID={opencodeSID}
                 onStop={handleStopSession}
-                onBack={() => onNavigateToView('')}
+                onBack={() => onNavigateToView('chat')}
                 onSessionUpdate={setSession}
+            />
+        );
+    }
+
+    // Route: chat → session list
+    if (currentView === 'chat' && session) {
+        return (
+            <SessionList
+                session={session}
+                projectName={projectName}
+                onBack={() => onNavigateToView('')}
+                onStop={handleStopSession}
+                onSelectSession={(sid) => onNavigateToView(`chat/${sid}`)}
             />
         );
     }
@@ -196,26 +214,157 @@ function AgentPicker({ agents, loading, projectName, launchError, activeSession,
     );
 }
 
+// ---- Session List ----
+
+interface SessionListProps {
+    session: AgentSessionInfo;
+    projectName: string | null;
+    onBack: () => void;
+    onStop: () => void;
+    onSelectSession: (opencodeSID: string) => void;
+}
+
+interface SessionPreview {
+    id: string;
+    firstMessage: string;
+}
+
+function SessionList({ session, projectName, onBack, onStop, onSelectSession }: SessionListProps) {
+    const [sessions, setSessions] = useState<SessionPreview[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [creating, setCreating] = useState(false);
+    const onSelectSessionRef = useCurrent(onSelectSession);
+
+    // Load sessions and fetch first user message for each
+    useEffect(() => {
+        if (session.status !== AgentSessionStatuses.Running) return;
+
+        let cancelled = false;
+        const load = async () => {
+            setLoading(true);
+            try {
+                const list = await listOpencodeSessions(session.id);
+                if (cancelled) return;
+
+                // If no sessions exist, auto-create one and navigate into it
+                if (list.length === 0) {
+                    const newSession = await createOpencodeSession(session.id);
+                    if (!cancelled) {
+                        onSelectSessionRef.current(newSession.id);
+                    }
+                    return;
+                }
+
+                // Fetch first user message for each session as preview
+                const previews = await Promise.all(
+                    list.map(async (s) => {
+                        try {
+                            const msgs = await fetchMessages(session.id, s.id);
+                            const firstUserMsg = msgs.find(m => m.info.role === 'user');
+                            const text = firstUserMsg?.parts
+                                .map(p => p.text || p.content || '')
+                                .join(' ')
+                                .trim() || '';
+                            return { id: s.id, firstMessage: text };
+                        } catch {
+                            return { id: s.id, firstMessage: '' };
+                        }
+                    })
+                );
+                if (!cancelled) {
+                    setSessions(previews);
+                    setLoading(false);
+                }
+            } catch {
+                if (!cancelled) setLoading(false);
+            }
+        };
+        load();
+        return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [session.id, session.status]);
+
+    const handleNewChat = async () => {
+        setCreating(true);
+        try {
+            const newSession = await createOpencodeSession(session.id);
+            onSelectSession(newSession.id);
+        } catch { /* ignore */ }
+        setCreating(false);
+    };
+
+    // Show spinner while starting
+    if (session.status === AgentSessionStatuses.Starting) {
+        return (
+            <div className="mcc-agent-view">
+                <AgentChatHeader agentName={session.agent_name} projectName={projectName} onStop={onStop} onBack={onBack} />
+                <div className="mcc-agent-starting">
+                    <div className="mcc-agent-spinner" />
+                    <span>Starting agent server...</span>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="mcc-agent-view">
+            <AgentChatHeader agentName={session.agent_name} projectName={projectName} onBack={onBack} />
+            <div className="mcc-agent-header" style={{ paddingTop: 4 }}>
+                <h2>Sessions</h2>
+                <button className="mcc-forward-btn" onClick={handleNewChat} disabled={creating}>
+                    {creating ? '...' : '+ New Chat'}
+                </button>
+            </div>
+            {loading ? (
+                <div className="mcc-agent-loading">Loading sessions...</div>
+            ) : sessions.length === 0 ? (
+                <div className="mcc-agent-loading">No sessions yet</div>
+            ) : (
+                <div className="mcc-agent-session-list">
+                    {sessions.map((s, idx) => (
+                        <button
+                            key={s.id}
+                            className="mcc-agent-session-card"
+                            onClick={() => onSelectSession(s.id)}
+                        >
+                            <div className="mcc-agent-session-card-title">
+                                Session {sessions.length - idx}
+                            </div>
+                            <div className="mcc-agent-session-card-preview">
+                                {s.firstMessage
+                                    ? truncate(s.firstMessage, 100)
+                                    : 'No messages yet'}
+                            </div>
+                            <div className="mcc-agent-session-card-id">
+                                {s.id.slice(0, 8)}...
+                            </div>
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ---- Agent Chat ----
 
 interface AgentChatProps {
     session: AgentSessionInfo;
     projectName: string | null;
+    opencodeSID: string;
     onStop: () => void;
     onBack: () => void;
     onSessionUpdate: (session: AgentSessionInfo) => void;
 }
 
-function AgentChat({ session, projectName, onStop, onBack, onSessionUpdate }: AgentChatProps) {
+function AgentChat({ session, projectName, opencodeSID, onStop, onBack, onSessionUpdate }: AgentChatProps) {
     const [messages, setMessages] = useState<AgentMessage[]>([]);
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
-    const [opencodeSID, setOpencodeSID] = useState<string | null>(null);
     const [agentConfig, setAgentConfig] = useState<OpencodeConfig | null>(null);
     const [contextLimit, setContextLimit] = useState<number>(0);
     const messagesContainerRef = useAutoScroll([messages]);
     const sessionRef = useCurrent(session);
-    const opencodeSIDRef = useCurrent(opencodeSID);
 
     // Poll session status while starting
     useEffect(() => {
@@ -232,19 +381,6 @@ function AgentChat({ session, projectName, onStop, onBack, onSessionUpdate }: Ag
         }, 1500);
 
         return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [session.id, session.status]);
-
-    // Create an opencode session once agent is running
-    useEffect(() => {
-        if (session.status !== AgentSessionStatuses.Running) return;
-        if (opencodeSIDRef.current) return;
-
-        getOrCreateOpencodeSession(session.id)
-            .then(data => {
-                if (data?.id) setOpencodeSID(data.id);
-            })
-            .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session.id, session.status]);
 
@@ -291,9 +427,8 @@ function AgentChat({ session, projectName, onStop, onBack, onSessionUpdate }: Ag
 
     // Initial message load (one-time HTTP fetch for existing messages)
     useEffect(() => {
-        const sid = opencodeSID;
-        if (!sid || session.status !== AgentSessionStatuses.Running) return;
-        fetchMessages(session.id, sid)
+        if (!opencodeSID || session.status !== AgentSessionStatuses.Running) return;
+        fetchMessages(session.id, opencodeSID)
             .then(msgs => setMessages(msgs))
             .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -448,17 +583,17 @@ function AgentChat({ session, projectName, onStop, onBack, onSessionUpdate }: Ag
             <div className="mcc-agent-input-area">
                 <textarea
                     className="mcc-agent-input"
-                    placeholder={opencodeSID ? 'Type a message...' : 'Connecting to agent...'}
+                    placeholder="Type a message..."
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     rows={2}
-                    disabled={!opencodeSID || sending}
+                    disabled={sending}
                 />
                 <button
                     className="mcc-agent-send-btn"
                     onClick={handleSend}
-                    disabled={!input.trim() || !opencodeSID || sending}
+                    disabled={!input.trim() || sending}
                 >
                     {sending ? '...' : 'Send'}
                 </button>
@@ -469,7 +604,7 @@ function AgentChat({ session, projectName, onStop, onBack, onSessionUpdate }: Ag
 
 // ---- Chat Header (shared) ----
 
-function AgentChatHeader({ agentName, projectName, onStop, onBack, stopLabel = 'Stop', modelName, contextPercent }: {
+function AgentChatHeader({ agentName, projectName: _projectName, onStop, onBack, stopLabel = 'Stop', modelName, contextPercent }: {
     agentName: string;
     projectName: string | null;
     onStop?: () => void;

@@ -1,0 +1,491 @@
+/* ==================== Checkpoint & Files ==================== */
+
+.mcc-files-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 14px;
+}
+
+/* Checkpoint List */
+.mcc-checkpoint-list {
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mcc-checkpoint-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.mcc-checkpoint-card:hover {
+    border-color: #60a5fa;
+}
+
+.mcc-checkpoint-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.mcc-checkpoint-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: #f1f5f9;
+}
+
+.mcc-checkpoint-file-count {
+    font-size: 12px;
+    color: #94a3b8;
+    white-space: nowrap;
+}
+
+.mcc-checkpoint-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.mcc-checkpoint-delete-btn {
+    background: none;
+    border: none;
+    color: #ef4444;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.mcc-checkpoint-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* Create Checkpoint Button */
+.mcc-create-checkpoint-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 16px;
+    padding: 12px 20px;
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.mcc-create-checkpoint-btn:hover:not(:disabled) {
+    background: #2563eb;
+}
+
+.mcc-create-checkpoint-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Back Button */
+.mcc-back-btn {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    margin-right: 4px;
+}
+
+.mcc-back-btn:hover {
+    background: rgba(148, 163, 184, 0.1);
+}
+
+/* Checkpoint Form */
+.mcc-checkpoint-form {
+    padding: 0 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mcc-checkpoint-name-input {
+    width: 100%;
+    padding: 10px 14px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #f1f5f9;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.mcc-checkpoint-name-input:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.mcc-checkpoint-name-input::placeholder {
+    color: #64748b;
+}
+
+.mcc-checkpoint-message-input {
+    width: 100%;
+    padding: 10px 14px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #f1f5f9;
+    font-size: 14px;
+    font-family: inherit;
+    box-sizing: border-box;
+    resize: vertical;
+    min-height: 60px;
+}
+
+.mcc-checkpoint-message-input:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.mcc-checkpoint-message-input::placeholder {
+    color: #64748b;
+}
+
+/* Files Select All */
+.mcc-files-select-all {
+    padding: 8px 16px;
+    border-bottom: 1px solid #1e293b;
+}
+
+.mcc-files-select-all label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #94a3b8;
+    cursor: pointer;
+}
+
+/* Changed Files List */
+.mcc-changed-files-list {
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.mcc-changed-file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    border-bottom: 1px solid #1e293b;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.mcc-changed-file-item-readonly {
+    cursor: default;
+}
+
+.mcc-changed-file-path {
+    color: #e2e8f0;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* File Status Badges */
+.mcc-file-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.mcc-file-status-added {
+    background: rgba(34, 197, 94, 0.15);
+    color: #34d399;
+}
+
+.mcc-file-status-modified {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+}
+
+.mcc-file-status-deleted {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+}
+
+/* Checkpoint Detail Meta */
+.mcc-checkpoint-detail-meta {
+    padding: 8px 16px 12px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #64748b;
+}
+
+/* Checkpoint Error */
+.mcc-checkpoint-error {
+    margin: 8px 16px;
+    padding: 10px 14px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    color: #fca5a5;
+    font-size: 13px;
+}
+
+/* Section Labels */
+.mcc-checkpoint-section-label {
+    padding: 12px 16px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+}
+
+/* Section Header with toggle */
+.mcc-checkpoint-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px 6px;
+}
+
+.mcc-checkpoint-section-header .mcc-checkpoint-section-label {
+    padding: 0;
+}
+
+/* Diff Toggle Button */
+.mcc-diff-toggle-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mcc-diff-toggle-btn:hover {
+    border-color: #60a5fa;
+    color: #e2e8f0;
+}
+
+.mcc-diff-toggle-btn.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: #fff;
+}
+
+/* Current Diffs Container */
+.mcc-current-diffs {
+    margin: 12px 16px;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Create Checkpoint Diffs */
+.mcc-create-checkpoint-diffs {
+    margin-top: 16px;
+    border-top: 1px solid #1e293b;
+    padding-top: 8px;
+}
+
+.mcc-changed-files-compact .mcc-changed-file-item {
+    padding: 6px 0;
+}
+
+/* ==================== Sub-tabs ==================== */
+
+.mcc-files-subtabs {
+    display: flex;
+    border-bottom: 1px solid #334155;
+    padding: 0 16px;
+    gap: 0;
+}
+
+.mcc-files-subtab {
+    flex: 1;
+    padding: 10px 0;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #94a3b8;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.mcc-files-subtab:hover {
+    color: #e2e8f0;
+}
+
+.mcc-files-subtab-active {
+    color: #60a5fa;
+    border-bottom-color: #60a5fa;
+}
+
+/* ==================== File Browser ==================== */
+
+.mcc-filebrowser-breadcrumb {
+    padding: 10px 16px;
+    font-size: 12px;
+    color: #94a3b8;
+    overflow-x: auto;
+    white-space: nowrap;
+    border-bottom: 1px solid #1e293b;
+}
+
+.mcc-filebrowser-crumb {
+    background: none;
+    border: none;
+    color: #60a5fa;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.mcc-filebrowser-crumb:hover {
+    background: rgba(96, 165, 250, 0.1);
+}
+
+.mcc-filebrowser-crumb-sep {
+    color: #475569;
+    margin: 0 1px;
+}
+
+.mcc-filebrowser-list {
+    padding: 0;
+}
+
+.mcc-filebrowser-entry {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #1e293b;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.mcc-filebrowser-entry:hover {
+    background: rgba(148, 163, 184, 0.05);
+}
+
+.mcc-filebrowser-icon {
+    flex-shrink: 0;
+    font-size: 16px;
+}
+
+.mcc-filebrowser-name {
+    flex: 1;
+    font-size: 13px;
+    color: #e2e8f0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-filebrowser-size {
+    font-size: 11px;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+/* ==================== File Content Viewer ==================== */
+
+.mcc-file-viewer-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-file-viewer-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px;
+    border-bottom: 1px solid #1e293b;
+    gap: 8px;
+}
+
+.mcc-file-viewer-path-inline {
+    font-size: 11px;
+    color: #64748b;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.mcc-file-viewer-wrap-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #94a3b8;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.mcc-file-viewer-wrap-toggle input[type="checkbox"] {
+    accent-color: #60a5fa;
+}
+
+.mcc-file-viewer-content {
+    padding: 0 8px 16px;
+    overflow: auto;
+}
+
+.mcc-file-viewer-code {
+    margin: 0;
+    padding: 12px;
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #e2e8f0;
+    overflow-x: auto;
+    white-space: pre;
+    tab-size: 4;
+}
+
+.mcc-file-viewer-code-wrap {
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: hidden;
+}

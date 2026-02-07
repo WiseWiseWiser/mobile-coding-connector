@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useCurrent } from '../hooks/useCurrent';
 import { encryptWithServerKey, EncryptionNotAvailableError } from './crypto';
 import {
@@ -62,17 +63,14 @@ function saveGitHubToken(token: string) {
 
 // ---- Main Component ----
 
-interface GitSettingsProps {
-    onBack: () => void;
-}
-
-export function GitSettings({ onBack }: GitSettingsProps) {
+export function GitSettings() {
+    const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<GitSettingsTab>(GitSettingsTabs.SSHKeys);
 
     return (
         <div className="mcc-git-settings">
             <div className="mcc-section-header">
-                <button className="mcc-back-btn" onClick={onBack}>← Back</button>
+                <button className="mcc-back-btn" onClick={() => navigate('..')}>← Back</button>
                 <h2>Git Settings</h2>
             </div>
             <div className="mcc-git-tabs">
@@ -471,15 +469,13 @@ function GitHubOAuthPanel() {
 
 // ---- Clone Repo View (standalone) ----
 
-interface CloneRepoViewProps {
-    onBack: () => void;
-}
+export function CloneRepoView() {
+    const navigate = useNavigate();
 
-export function CloneRepoView({ onBack }: CloneRepoViewProps) {
     return (
         <div className="mcc-git-settings">
             <div className="mcc-section-header">
-                <button className="mcc-back-btn" onClick={onBack}>← Back</button>
+                <button className="mcc-back-btn" onClick={() => navigate('..')}>← Back</button>
                 <h2>Clone Repository</h2>
             </div>
             <div className="mcc-git-tab-content">
