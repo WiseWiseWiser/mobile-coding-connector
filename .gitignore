@@ -13,3 +13,5 @@ dist
 .ai-critic-enc-key.pub
 .ai-critic-github-oauth.json
 .ai-critic/
+
+/maintest

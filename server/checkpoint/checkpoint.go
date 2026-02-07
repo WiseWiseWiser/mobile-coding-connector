@@ -367,8 +367,8 @@ func CreateCheckpoint(projectName string, req CreateCheckpointRequest) (*Checkpo
 		return nil, err
 	}
 
-	// Determine next index (0-based)
-	nextIndex := 0
+	// Determine next index (1-based)
+	nextIndex := 1
 	if len(list) > 0 {
 		nextIndex = list[len(list)-1].ID + 1
 	}
@@ -477,10 +477,70 @@ func GetCurrentChanges(projectName, projectDir string) ([]ChangedFile, error) {
 	mu.RLock()
 	defer mu.RUnlock()
 
-	// For now, always diff against git HEAD (simpler and more useful).
-	// The checkpoint stores full snapshots, so the "current changes" view shows
-	// what's different in the working tree since the last git commit.
-	return gitChangedFiles(projectDir)
+	// Get files changed since git HEAD
+	gitFiles, err := gitChangedFiles(projectDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Load the latest checkpoint to filter out already-checkpointed files
+	list, err := loadCheckpoints(projectName)
+	if err != nil || len(list) == 0 {
+		return gitFiles, nil
+	}
+
+	latestCP := list[len(list)-1]
+
+	// Build set of files in the latest checkpoint
+	cpFileSet := make(map[string]string) // path -> status
+	for _, f := range latestCP.Files {
+		cpFileSet[f.Path] = f.Status
+	}
+
+	// Filter: keep only files whose current content differs from the checkpoint
+	var result []ChangedFile
+	for _, cf := range gitFiles {
+		cpStatus, inCheckpoint := cpFileSet[cf.Path]
+		if !inCheckpoint {
+			// File wasn't in the last checkpoint, always show it
+			result = append(result, cf)
+			continue
+		}
+
+		// File was in the checkpoint — compare current content to checkpoint content
+		if cf.Status == "deleted" {
+			// File is deleted now; if it was also deleted in checkpoint, skip it
+			if cpStatus == "deleted" {
+				continue
+			}
+			result = append(result, cf)
+			continue
+		}
+
+		// Read current disk content
+		currentContent, err := readFileContent(projectDir, cf.Path)
+		if err != nil {
+			// Can't read file, show it as changed
+			result = append(result, cf)
+			continue
+		}
+
+		// Read checkpoint's saved content
+		cpContent, err := getFileContent(latestCP.DirPath, cf.Path)
+		if err != nil {
+			// Can't read checkpoint file (e.g. was deleted in checkpoint), show it
+			result = append(result, cf)
+			continue
+		}
+
+		// If contents differ, the file has changed since the checkpoint
+		if currentContent != cpContent {
+			result = append(result, cf)
+		}
+		// Otherwise skip — file hasn't changed since checkpoint
+	}
+
+	return result, nil
 }
 
 // --- HTTP API ---

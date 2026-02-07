@@ -71,21 +71,10 @@ body:has(.mcc) {
     -webkit-overflow-scrolling: touch;
 }
 
-.mcc-content-inner.hidden {
-    display: none;
-}
-
 .mcc-terminal-container {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: none;
-}
-
-.mcc-terminal-container.visible {
     display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
 /* Bottom Navigation */

@@ -4,3 +4,7 @@ export { V2Provider } from './V2Context';
 export { HomeView, WorkspaceListView } from './HomeView';
 export { DiagnoseView } from './DiagnoseView';
 export { GitSettings, CloneRepoView } from './GitSettings';
+export { TerminalView } from './TerminalView';
+export { AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute } from './agent';
+export { PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute } from './mcc';
+export { FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute } from './mcc/files';

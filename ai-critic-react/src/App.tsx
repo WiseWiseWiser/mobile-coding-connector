@@ -3,7 +3,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
-import { MobileCodingConnector, LoginPage, V2Provider, WorkspaceListView, DiagnoseView, GitSettings, CloneRepoView } from './v2';
+import { MobileCodingConnector, LoginPage, V2Provider, WorkspaceListView, DiagnoseView, GitSettings, CloneRepoView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute } from './v2';
 import { checkAuth } from './api/auth';
 import './App.css';
 
@@ -139,28 +139,68 @@ function App() {
             <Routes>
                 {/* V2 routes - layout wraps all child routes */}
                 <Route path="/v2" element={<V2Layout />}>
-                    {/* Redirect /v2 to /v2/home */}
                     <Route index element={<Navigate to="home" replace />} />
-                    {/* Home tab with nested routes (no project) */}
-                    <Route path="home" element={<MobileCodingConnector />}>
-                        <Route index element={<WorkspaceListView />} />
-                        <Route path="diagnose" element={<DiagnoseView />} />
-                        <Route path="git-settings" element={<GitSettings />} />
-                        <Route path="clone-repo" element={<CloneRepoView />} />
+                    {/* Non-project routes: MobileCodingConnector as layout */}
+                    <Route element={<MobileCodingConnector />}>
+                        <Route path="home">
+                            <Route index element={<WorkspaceListView />} />
+                            <Route path="diagnose" element={<DiagnoseView />} />
+                            <Route path="git-settings" element={<GitSettings />} />
+                            <Route path="clone-repo" element={<CloneRepoView />} />
+                        </Route>
+                        <Route path="agent" element={<AgentLayout />}>
+                            <Route index element={<AgentPickerRoute />} />
+                            <Route path=":agentId" element={<SessionListRoute />} />
+                            <Route path=":agentId/:sessionId" element={<AgentChatRoute />} />
+                        </Route>
+                        <Route path="terminal" element={<TerminalView />} />
+                        <Route path="ports" element={<PortsLayout />}>
+                            <Route index element={<PortListRoute />} />
+                            <Route path="diagnostics" element={<CloudflareDiagnosticsRoute />} />
+                            <Route path="port-diagnose/:port" element={<PortDiagnoseRoute />} />
+                        </Route>
+                        <Route path="files" element={<FilesLayout />}>
+                            <Route element={<FilesTabLayout />}>
+                                <Route index element={<CheckpointListRoute />} />
+                                <Route path="browse" element={<FileBrowserRoute />} />
+                                <Route path="browse/*" element={<FileBrowserRoute />} />
+                            </Route>
+                            <Route path="create-checkpoint" element={<CreateCheckpointRoute />} />
+                            <Route path="checkpoint/:checkpointId" element={<CheckpointDetailRoute />} />
+                            <Route path="file/*" element={<FileContentRoute />} />
+                        </Route>
                     </Route>
-                    <Route path=":tab" element={<MobileCodingConnector />} />
-                    <Route path=":tab/:view" element={<MobileCodingConnector />} />
-                    {/* Project-specific routes */}
-                    <Route path="project/:projectName" element={<Navigate to="home" replace />} />
-                    <Route path="project/:projectName/home" element={<MobileCodingConnector />}>
-                        <Route index element={<WorkspaceListView />} />
-                        <Route path="diagnose" element={<DiagnoseView />} />
-                        <Route path="git-settings" element={<GitSettings />} />
-                        <Route path="clone-repo" element={<CloneRepoView />} />
+                    {/* Project-specific routes: MobileCodingConnector as layout */}
+                    <Route path="project/:projectName" element={<MobileCodingConnector />}>
+                        <Route index element={<Navigate to="home" replace />} />
+                        <Route path="home">
+                            <Route index element={<WorkspaceListView />} />
+                            <Route path="diagnose" element={<DiagnoseView />} />
+                            <Route path="git-settings" element={<GitSettings />} />
+                            <Route path="clone-repo" element={<CloneRepoView />} />
+                        </Route>
+                        <Route path="agent" element={<AgentLayout />}>
+                            <Route index element={<AgentPickerRoute />} />
+                            <Route path=":agentId" element={<SessionListRoute />} />
+                            <Route path=":agentId/:sessionId" element={<AgentChatRoute />} />
+                        </Route>
+                        <Route path="terminal" element={<TerminalView />} />
+                        <Route path="ports" element={<PortsLayout />}>
+                            <Route index element={<PortListRoute />} />
+                            <Route path="diagnostics" element={<CloudflareDiagnosticsRoute />} />
+                            <Route path="port-diagnose/:port" element={<PortDiagnoseRoute />} />
+                        </Route>
+                        <Route path="files" element={<FilesLayout />}>
+                            <Route element={<FilesTabLayout />}>
+                                <Route index element={<CheckpointListRoute />} />
+                                <Route path="browse" element={<FileBrowserRoute />} />
+                                <Route path="browse/*" element={<FileBrowserRoute />} />
+                            </Route>
+                            <Route path="create-checkpoint" element={<CreateCheckpointRoute />} />
+                            <Route path="checkpoint/:checkpointId" element={<CheckpointDetailRoute />} />
+                            <Route path="file/*" element={<FileContentRoute />} />
+                        </Route>
                     </Route>
-                    <Route path="project/:projectName/:tab" element={<MobileCodingConnector />} />
-                    <Route path="project/:projectName/:tab/:view" element={<MobileCodingConnector />} />
-                    <Route path="project/:projectName/:tab/:view/*" element={<MobileCodingConnector />} />
                 </Route>
                 {/* All other routes use the old layout */}
                 <Route path="/*" element={<MainApp />} />

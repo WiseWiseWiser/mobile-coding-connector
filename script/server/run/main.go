@@ -36,8 +36,10 @@ func main() {
 
 func Handle(args []string) error {
 	var dirFlag string
+	var debugFlag bool
 	args, err := flags.
 		String("--dir", &dirFlag).
+		Bool("--debug", &debugFlag).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
@@ -59,7 +61,13 @@ func Handle(args []string) error {
 
 	// Build the Go server
 	fmt.Println("Building Go server...")
-	err = cmd.Debug().Run("go", "build", "-o", "/tmp/ai-critic", "./")
+	binary := "/tmp/ai-critic"	
+	buildArgs := []string{ "build", "-o", binary}
+	if debugFlag {
+		buildArgs = append(buildArgs, "-gcflags=all=-N -l")
+	}
+	buildArgs = append(buildArgs, "./")
+	err = cmd.Debug().Run("go", buildArgs...)
 	if err != nil {
 		return fmt.Errorf("failed to build Go server: %v", err)
 	}
@@ -95,8 +103,17 @@ func Handle(args []string) error {
 	fmt.Printf("Initial directory: %s\n", targetDir)
 	fmt.Printf("Frontend requests will be proxied to http://localhost:%d/\n", lib.ViteDevPort)
 	fmt.Println("Make sure the frontend dev server is running: cd ai-critic-react && npm run dev")
+
+
+	runBianry := binary
+	runArgs := serverArgs
+	if debugFlag {
+		runBianry = "kool"
+		runArgs = []string{ "debug", binary}
+		runArgs = append(runArgs, serverArgs...)
+	}
 	
-	goServerCmd := exec.CommandContext(ctx, "/tmp/ai-critic", serverArgs...)
+	goServerCmd := exec.CommandContext(ctx, runBianry, runArgs...)
 	goServerCmd.Stdout = os.Stdout
 	goServerCmd.Stderr = os.Stderr
 	goServerCmd.Stdin = os.Stdin

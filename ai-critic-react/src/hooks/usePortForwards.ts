@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useCurrent } from './useCurrent';
 import {
     fetchProviders as apiFetchProviders,
-    fetchPorts as apiFetchPorts,
     addPort as apiAddPort,
     removePort as apiRemovePort,
 } from '../api/ports';
@@ -46,16 +45,15 @@ export interface UsePortForwardsReturn {
     error: string | null;
     addPort: (port: number, label: string, provider?: TunnelProvider) => Promise<void>;
     removePort: (port: number) => Promise<void>;
-    refresh: () => void;
 }
 
-export function usePortForwards(pollIntervalMs = 3000): UsePortForwardsReturn {
+export function usePortForwards(): UsePortForwardsReturn {
     const [ports, setPorts] = useState<PortForward[]>([]);
     const [providers, setProviders] = useState<ProviderInfo[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const portsRef = useCurrent(ports);
+    const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Fetch available providers once on mount
     useEffect(() => {
@@ -64,40 +62,62 @@ export function usePortForwards(pollIntervalMs = 3000): UsePortForwardsReturn {
             .catch(() => { /* ignore provider fetch errors */ });
     }, []);
 
-    const fetchPorts = async () => {
-        try {
-            const data = await apiFetchPorts();
-            setPorts(data as PortForward[]);
-            setError(null);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : String(err));
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Initial fetch and polling
+    // SSE connection for real-time port status updates
     useEffect(() => {
-        fetchPorts();
-        pollTimerRef.current = setInterval(fetchPorts, pollIntervalMs);
+        let es: EventSource | null = null;
+        let retryDelay = 1000;
+        let cancelled = false;
+
+        function connect() {
+            if (cancelled) return;
+
+            es = new EventSource('/api/ports/events');
+
+            es.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data) as PortForward[];
+                    setPorts(data);
+                    setError(null);
+                    setLoading(false);
+                    retryDelay = 1000; // reset on success
+                } catch {
+                    // ignore parse errors
+                }
+            };
+
+            es.onerror = () => {
+                es?.close();
+                es = null;
+                if (!cancelled) {
+                    // Exponential backoff reconnect, max 30s
+                    retryTimerRef.current = setTimeout(connect, retryDelay);
+                    retryDelay = Math.min(retryDelay * 2, 30000);
+                    setError('Connection lost, reconnecting…');
+                }
+            };
+        }
+
+        connect();
+
         return () => {
-            if (pollTimerRef.current) {
-                clearInterval(pollTimerRef.current);
+            cancelled = true;
+            es?.close();
+            if (retryTimerRef.current) {
+                clearTimeout(retryTimerRef.current);
             }
         };
-    }, [pollIntervalMs]);
+    }, []);
 
-    const addPort = async (port: number, label: string, provider?: TunnelProvider) => {
+    const addPort = useCallback(async (port: number, label: string, provider?: TunnelProvider) => {
         await apiAddPort(port, label, provider || TunnelProviders.Localtunnel);
-        // Refresh immediately
-        await fetchPorts();
-    };
+        // SSE will push the update, no need to manually refresh
+    }, []);
 
-    const removePort = async (port: number) => {
+    const removePort = useCallback(async (port: number) => {
         await apiRemovePort(port);
-        // Optimistic update - remove from local state immediately
+        // Optimistic update - remove from local state immediately; SSE will confirm
         setPorts(portsRef.current.filter(p => p.localPort !== port));
-    };
+    }, [portsRef]);
 
     return {
         ports,
@@ -106,6 +126,5 @@ export function usePortForwards(pollIntervalMs = 3000): UsePortForwardsReturn {
         error,
         addPort,
         removePort,
-        refresh: fetchPorts,
     };
 }

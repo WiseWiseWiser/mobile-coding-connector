@@ -301,6 +301,15 @@
 
 /* ---- Session List ---- */
 
+.mcc-agent-new-chat-row {
+    padding: 0 16px 12px;
+}
+
+.mcc-agent-new-chat-btn {
+    width: 100%;
+    text-align: center;
+}
+
 .mcc-agent-session-list {
     display: flex;
     flex-direction: column;

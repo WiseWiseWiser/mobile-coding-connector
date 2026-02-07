@@ -84,17 +84,76 @@ type tunnel struct {
 
 // Manager manages port forwards using registered providers
 type Manager struct {
-	mu        sync.Mutex
-	tunnels   map[int]*tunnel   // keyed by local port
-	providers map[string]Provider // keyed by provider name
+	mu          sync.Mutex
+	tunnels     map[int]*tunnel    // keyed by local port
+	providers   map[string]Provider // keyed by provider name
+	subscribers map[int]chan []PortForward
+	nextSubID   int
 }
 
 // NewManager creates a new port forward manager
 func NewManager() *Manager {
 	return &Manager{
-		tunnels:   make(map[int]*tunnel),
-		providers: make(map[string]Provider),
+		tunnels:     make(map[int]*tunnel),
+		providers:   make(map[string]Provider),
+		subscribers: make(map[int]chan []PortForward),
 	}
+}
+
+// Subscribe returns a channel that receives the full port list on every change.
+func (m *Manager) Subscribe() (int, <-chan []PortForward) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	id := m.nextSubID
+	m.nextSubID++
+	ch := make(chan []PortForward, 8)
+	m.subscribers[id] = ch
+	return id, ch
+}
+
+// Unsubscribe removes a subscriber.
+func (m *Manager) Unsubscribe(id int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ch, ok := m.subscribers[id]; ok {
+		close(ch)
+		delete(m.subscribers, id)
+	}
+}
+
+// notifySubscribers sends the current port list to all subscribers.
+// Must be called with m.mu held.
+func (m *Manager) notifySubscribers() {
+	if len(m.subscribers) == 0 {
+		return
+	}
+	ports := m.listLocked()
+	for _, ch := range m.subscribers {
+		// Non-blocking send — drop if subscriber is slow
+		select {
+		case ch <- ports:
+		default:
+		}
+	}
+}
+
+// listLocked returns the port list. Must be called with m.mu held.
+func (m *Manager) listLocked() []PortForward {
+	result := make([]PortForward, 0, len(m.tunnels))
+	for _, t := range m.tunnels {
+		result = append(result, PortForward{
+			LocalPort: t.port,
+			Label:     t.label,
+			PublicURL: t.publicURL,
+			Status:    t.status,
+			Provider:  t.provider,
+			Error:     t.errMsg,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].LocalPort < result[j].LocalPort
+	})
+	return result
 }
 
 // RegisterProvider adds a provider to the manager
@@ -116,22 +175,7 @@ func RegisterDefaultProvider(p Provider) {
 func (m *Manager) List() []PortForward {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	result := make([]PortForward, 0, len(m.tunnels))
-	for _, t := range m.tunnels {
-		result = append(result, PortForward{
-			LocalPort: t.port,
-			Label:     t.label,
-			PublicURL: t.publicURL,
-			Status:    t.status,
-			Provider:  t.provider,
-			Error:     t.errMsg,
-		})
-	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].LocalPort < result[j].LocalPort
-	})
-	return result
+	return m.listLocked()
 }
 
 // Add starts a new port forward using the specified provider
@@ -159,6 +203,7 @@ func (m *Manager) Add(port int, label string, providerName string) (*PortForward
 		status:   StatusConnecting,
 	}
 	m.tunnels[port] = t
+	m.notifySubscribers()
 	m.mu.Unlock()
 
 	// Start the tunnel
@@ -167,6 +212,7 @@ func (m *Manager) Add(port int, label string, providerName string) (*PortForward
 		m.mu.Lock()
 		t.status = StatusError
 		t.errMsg = err.Error()
+		m.notifySubscribers()
 		m.mu.Unlock()
 		return &PortForward{
 			LocalPort: port,
@@ -197,6 +243,7 @@ func (m *Manager) Add(port int, label string, providerName string) (*PortForward
 			t.status = StatusActive
 			t.publicURL = result.PublicURL
 		}
+		m.notifySubscribers()
 	}()
 
 	return &PortForward{
@@ -216,6 +263,7 @@ func (m *Manager) Remove(port int) error {
 		return fmt.Errorf("port %d is not being forwarded", port)
 	}
 	delete(m.tunnels, port)
+	m.notifySubscribers()
 	m.mu.Unlock()
 
 	if t.stop != nil {
@@ -261,6 +309,7 @@ func (m *Manager) GetLogs(port int) ([]string, error) {
 // RegisterAPI registers the port forwarding API endpoints
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ports", handlePorts)
+	mux.HandleFunc("/api/ports/events", handlePortEvents)
 	mux.HandleFunc("/api/ports/providers", handleProviders)
 	mux.HandleFunc("/api/ports/logs", handlePortLogs)
 	mux.HandleFunc("/api/ports/diagnostics", handleDiagnostics)
@@ -276,6 +325,42 @@ func handlePorts(w http.ResponseWriter, r *http.Request) {
 		handleRemovePort(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func handlePortEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Subscribe to changes
+	subID, ch := defaultManager.Subscribe()
+	defer defaultManager.Unsubscribe(subID)
+
+	// Send initial state
+	data, _ := json.Marshal(defaultManager.List())
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	flusher.Flush()
+
+	// Stream updates until client disconnects
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case ports, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, _ := json.Marshal(ports)
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
 	}
 }
 
