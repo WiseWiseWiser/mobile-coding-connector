@@ -3,8 +3,8 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
-import { MobileCodingConnector, LoginPage, V2Provider, WorkspaceListView, DiagnoseView, GitSettings, CloneRepoView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute } from './v2';
-import { checkAuth } from './api/auth';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute } from './v2';
+import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './App.css';
 
 // Conditionally import mockups only in dev mode
@@ -22,10 +22,10 @@ function Home() {
                     Intelligent code review powered by AI
                 </p>
                 <div className="home-actions">
-                    <Link to="/" className="home-btn home-btn-primary">
+                    <Link to="/v1" className="home-btn home-btn-primary">
                         Start Code Review
                     </Link>
-                    <Link to="/gen" className="home-btn home-btn-secondary">
+                    <Link to="/v1/gen" className="home-btn home-btn-secondary">
                         Code Generator
                     </Link>
                 </div>
@@ -62,7 +62,7 @@ function About() {
         <div style={{ textAlign: 'center', padding: '50px' }}>
             <h1>About</h1>
             <p>This is a generic about page.</p>
-            <Link to="/" style={{ fontSize: '18px', color: '#646cff', textDecoration: 'none' }}>
+            <Link to="/v1" style={{ fontSize: '18px', color: '#646cff', textDecoration: 'none' }}>
                 Back to Home
             </Link>
         </div>
@@ -98,6 +98,7 @@ const AuthStates = {
     Loading: 'loading',
     Authenticated: 'authenticated',
     Unauthenticated: 'unauthenticated',
+    NotInitialized: 'not_initialized',
 } as const;
 
 type AuthState = typeof AuthStates[keyof typeof AuthStates];
@@ -108,8 +109,14 @@ function V2Layout() {
 
     useEffect(() => {
         checkAuth()
-            .then(authenticated => {
-                setAuthState(authenticated ? AuthStates.Authenticated : AuthStates.Unauthenticated);
+            .then(status => {
+                if (status === AuthCheckStatuses.Authenticated) {
+                    setAuthState(AuthStates.Authenticated);
+                } else if (status === AuthCheckStatuses.NotInitialized) {
+                    setAuthState(AuthStates.NotInitialized);
+                } else {
+                    setAuthState(AuthStates.Unauthenticated);
+                }
             })
             .catch(() => {
                 // Network error - assume authenticated (server might not require auth)
@@ -119,6 +126,10 @@ function V2Layout() {
 
     if (authState === AuthStates.Loading) {
         return null;
+    }
+
+    if (authState === AuthStates.NotInitialized) {
+        return <SetupPage onSetupComplete={() => setAuthState(AuthStates.Unauthenticated)} />;
     }
 
     if (authState === AuthStates.Unauthenticated) {
@@ -137,16 +148,23 @@ function App() {
     return (
         <Router>
             <Routes>
-                {/* V2 routes - layout wraps all child routes */}
-                <Route path="/v2" element={<V2Layout />}>
+                {/* Legacy v1 routes */}
+                <Route path="/v1/*" element={<MainApp />} />
+                {/* Main routes (v2) - layout wraps all child routes */}
+                <Route path="/" element={<V2Layout />}>
                     <Route index element={<Navigate to="home" replace />} />
                     {/* Non-project routes: MobileCodingConnector as layout */}
                     <Route element={<MobileCodingConnector />}>
                         <Route path="home">
                             <Route index element={<WorkspaceListView />} />
                             <Route path="diagnose" element={<DiagnoseView />} />
-                            <Route path="git-settings" element={<GitSettings />} />
+                            <Route path="settings" element={<SettingsView />} />
+                            <Route path="settings/export" element={<ExportPage />} />
+                            <Route path="settings/import" element={<ImportPage />} />
+                            <Route path="settings/cloudflare" element={<CloudflareSettingsView />} />
+                            <Route path="settings/git" element={<GitSettings />} />
                             <Route path="clone-repo" element={<CloneRepoView />} />
+                            <Route path="upload-file" element={<UploadFileView />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
@@ -176,8 +194,13 @@ function App() {
                         <Route path="home">
                             <Route index element={<WorkspaceListView />} />
                             <Route path="diagnose" element={<DiagnoseView />} />
-                            <Route path="git-settings" element={<GitSettings />} />
+                            <Route path="settings" element={<SettingsView />} />
+                            <Route path="settings/export" element={<ExportPage />} />
+                            <Route path="settings/import" element={<ImportPage />} />
+                            <Route path="settings/cloudflare" element={<CloudflareSettingsView />} />
+                            <Route path="settings/git" element={<GitSettings />} />
                             <Route path="clone-repo" element={<CloneRepoView />} />
+                            <Route path="upload-file" element={<UploadFileView />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
@@ -202,8 +225,6 @@ function App() {
                         </Route>
                     </Route>
                 </Route>
-                {/* All other routes use the old layout */}
-                <Route path="/*" element={<MainApp />} />
             </Routes>
         </Router>
     );

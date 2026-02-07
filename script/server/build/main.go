@@ -6,7 +6,7 @@ import (
 	"runtime"
 
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/xgo/support/cmd"
+	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 )
 
 var help = `
@@ -44,12 +44,7 @@ func Handle(args []string) error {
 		}
 	}
 
-	fmt.Printf("Building Go server -> %s\n", output)
-	err = cmd.Debug().Run("go", "build", "-o", output, "./")
-	if err != nil {
-		return fmt.Errorf("failed to build Go server: %v", err)
-	}
-
-	fmt.Printf("Server binary built: %s\n", output)
-	return nil
+	return lib.BuildServer(lib.BuildServerOptions{
+		Output: output,
+	})
 }

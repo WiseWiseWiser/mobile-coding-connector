@@ -1,7 +1,6 @@
 package github
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,8 +12,11 @@ import (
 	"strings"
 	"sync"
 
+	gossh "golang.org/x/crypto/ssh"
+
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
 
 // OAuthConfig holds the GitHub OAuth configuration
@@ -319,14 +321,20 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decrypt the SSH key if it was encrypted
+	// Prepare SSH key if using SSH
+	var keyFile *SSHKeyFile
 	if req.UseSSH && req.SSHKey != "" {
-		decrypted, err := decryptSSHKey(req.SSHKey)
+		var err error
+		keyFile, err = PrepareSSHKeyFile(req.SSHKey)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, CloneResponse{Status: "error", Error: fmt.Sprintf("Failed to decrypt SSH key: %v", err)})
+			writeJSON(w, http.StatusBadRequest, CloneResponse{Status: "error", Error: err.Error()})
 			return
 		}
-		req.SSHKey = decrypted
+		defer keyFile.Cleanup()
+
+		// Convert HTTPS URLs to SSH URLs when using SSH key
+		// e.g. https://github.com/user/repo.git -> git@github.com:user/repo.git
+		req.RepoURL = convertToSSHURL(req.RepoURL)
 	}
 
 	targetDir := req.TargetDir
@@ -361,109 +369,34 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 
 	// Build git clone command
 	var cmd *exec.Cmd
-	var cleanupSSHKey func()
 
-	if req.UseSSH && req.SSHKey != "" {
-		// Write SSH key to a temp file
-		tmpFile, err := os.CreateTemp("", "ai-critic-ssh-key-*")
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, CloneResponse{Status: "error", Error: "Failed to create temp SSH key file"})
-			return
-		}
-		if _, err := tmpFile.WriteString(req.SSHKey); err != nil {
-			tmpFile.Close()
-			os.Remove(tmpFile.Name())
-			writeJSON(w, http.StatusInternalServerError, CloneResponse{Status: "error", Error: "Failed to write SSH key"})
-			return
-		}
-		tmpFile.Close()
-		os.Chmod(tmpFile.Name(), 0600)
-
-		cleanupSSHKey = func() {
-			os.Remove(tmpFile.Name())
-		}
-
-		// Use GIT_SSH_COMMAND to specify the key
-		sshCmd := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", tmpFile.Name())
+	if keyFile != nil {
+		// Use GIT_SSH_COMMAND to specify the key; disable terminal prompt to prevent HTTPS fallback
+		sshCmd := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", keyFile.Path)
 		cmd = exec.Command("git", "clone", "--progress", req.RepoURL, targetDir)
-		cmd.Env = append(os.Environ(), fmt.Sprintf("GIT_SSH_COMMAND=%s", sshCmd))
+		cmd.Env = append(os.Environ(), fmt.Sprintf("GIT_SSH_COMMAND=%s", sshCmd), "GIT_TERMINAL_PROMPT=0")
 	} else {
 		cmd = exec.Command("git", "clone", "--progress", req.RepoURL, targetDir)
+		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	}
 
 	// Stream clone output via SSE
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	sw := sse.NewWriter(w)
+	if sw == nil {
 		writeJSON(w, http.StatusInternalServerError, CloneResponse{Status: "error", Error: "Streaming not supported"})
 		return
 	}
 
-	sendSSE := func(eventType string, data interface{}) {
-		jsonData, _ := json.Marshal(data)
-		fmt.Fprintf(w, "data: %s\n\n", jsonData)
-		flusher.Flush()
+	// Log the clone command for diagnostics
+	sw.SendLog(fmt.Sprintf("$ git clone --progress %s %s", req.RepoURL, targetDir))
+	if keyFile != nil {
+		sw.SendLog(fmt.Sprintf("Using SSH key: %s (%d bytes)", keyFile.KeyType, keyFile.Size))
 	}
 
-	// Combine stdout and stderr into a single pipe for streaming
-	pr, pw := io.Pipe()
-	cmd.Stdout = pw
-	cmd.Stderr = pw
+	cloneErr := sw.StreamCmd(cmd)
 
-	if err := cmd.Start(); err != nil {
-		pw.Close()
-		pr.Close()
-		if cleanupSSHKey != nil {
-			cleanupSSHKey()
-		}
-		sendSSE("error", map[string]string{"type": "error", "message": fmt.Sprintf("Failed to start clone: %v", err)})
-		return
-	}
-
-	// Wait for command in background, close pipe when done
-	waitErr := make(chan error, 1)
-	go func() {
-		waitErr <- cmd.Wait()
-		pw.Close()
-	}()
-
-	// Stream output lines - use custom split that handles \r (git progress uses \r)
-	scanner := bufio.NewScanner(pr)
-	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		if atEOF && len(data) == 0 {
-			return 0, nil, nil
-		}
-		// Find the earliest \n or \r
-		for i, b := range data {
-			if b == '\n' || b == '\r' {
-				return i + 1, data[:i], nil
-			}
-		}
-		if atEOF {
-			return len(data), data, nil
-		}
-		return 0, nil, nil // need more data
-	})
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-		sendSSE("log", map[string]string{"type": "log", "message": line})
-	}
-	pr.Close()
-
-	// Get command exit status
-	err := <-waitErr
-	if cleanupSSHKey != nil {
-		cleanupSSHKey()
-	}
-
-	if err != nil {
-		sendSSE("error", map[string]string{"type": "error", "message": fmt.Sprintf("Clone failed: %v", err)})
+	if cloneErr != nil {
+		sw.SendError(fmt.Sprintf("Clone failed: %v", cloneErr))
 		return
 	}
 
@@ -479,7 +412,7 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[GitHub] Warning: failed to save project: %v\n", saveErr)
 	}
 
-	sendSSE("done", map[string]interface{}{"type": "done", "dir": targetDir})
+	sw.SendDone(map[string]string{"dir": targetDir})
 }
 
 // SSHTestRequest is sent by the frontend to test an SSH key
@@ -512,58 +445,60 @@ func handleTestSSHKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decrypt the private key if it was encrypted
-	privateKey, err := decryptSSHKey(req.PrivateKey)
+	// Set up SSE streaming
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		writeJSON(w, http.StatusInternalServerError, SSHTestResponse{Output: "Streaming not supported"})
+		return
+	}
+
+	sw.SendLog(fmt.Sprintf("Testing SSH connection to git@%s...", req.Host))
+
+	// Prepare SSH key (decrypt, normalize, validate, write to temp file)
+	keyFile, err := PrepareSSHKeyFile(req.PrivateKey)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, SSHTestResponse{Output: fmt.Sprintf("Failed to decrypt SSH key: %v", err)})
+		sw.SendError(err.Error())
+		sw.SendDone(map[string]string{"message": "SSH key preparation failed", "success": "false"})
 		return
 	}
-	req.PrivateKey = privateKey
+	defer keyFile.Cleanup()
 
-	// Write key to temp file
-	tmpFile, err := os.CreateTemp("", "ai-critic-ssh-test-*")
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, SSHTestResponse{Output: "Failed to create temp file"})
+	sw.SendLog(fmt.Sprintf("SSH key validated: %s (%d bytes)", keyFile.KeyType, keyFile.Size))
+
+	// Check if ssh is installed
+	if _, lookErr := exec.LookPath("ssh"); lookErr != nil {
+		sw.SendError("ssh is not installed. Please install openssh-client first (e.g. apt-get install -y openssh-client).")
+		sw.SendDone(map[string]string{"message": "SSH connection failed: ssh not installed", "success": "false"})
 		return
 	}
-	defer os.Remove(tmpFile.Name())
 
-	if _, err := tmpFile.WriteString(req.PrivateKey); err != nil {
-		tmpFile.Close()
-		writeJSON(w, http.StatusInternalServerError, SSHTestResponse{Output: "Failed to write SSH key"})
-		return
-	}
-	tmpFile.Close()
-	os.Chmod(tmpFile.Name(), 0600)
-
-	// Run ssh -T git@<host> to test connection
-	cmd := exec.Command("ssh", "-T",
-		"-i", tmpFile.Name(),
+	// Run ssh -vT git@<host> to test connection (verbose for diagnostics)
+	cmd := exec.Command("ssh", "-v", "-T",
+		"-i", keyFile.Path,
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "ConnectTimeout=10",
 		fmt.Sprintf("git@%s", req.Host),
 	)
 
-	output, err := cmd.CombinedOutput()
-	outputStr := strings.TrimSpace(string(output))
-
-	// ssh -T to GitHub returns exit code 1 even on success, with message like
-	// "Hi user! You've successfully authenticated..."
-	// So we check the output for success indicators
+	// Track success by inspecting output lines
 	success := false
-	if err == nil {
-		success = true
-	} else if strings.Contains(outputStr, "successfully authenticated") ||
-		strings.Contains(outputStr, "Welcome to") ||
-		strings.Contains(outputStr, "Hi ") {
-		success = true
+	err = sw.StreamCmdFunc(cmd, func(line string) bool {
+		if strings.Contains(line, "successfully authenticated") ||
+			strings.Contains(line, "Welcome to") ||
+			strings.Contains(line, "Hi ") {
+			success = true
+		}
+		return true // always send as log
+	})
+
+	// ssh -T to GitHub returns exit code 1 even on success
+	if err != nil && !success {
+		sw.SendDone(map[string]string{"message": "SSH connection failed", "success": "false"})
+		return
 	}
 
-	writeJSON(w, http.StatusOK, SSHTestResponse{
-		Success: success,
-		Output:  outputStr,
-	})
+	sw.SendDone(map[string]string{"message": "SSH connection successful", "success": "true"})
 }
 
 // decryptSSHKey attempts to decrypt an SSH key that was encrypted with the server's public key.
@@ -580,6 +515,78 @@ func decryptSSHKey(keyData string) (string, error) {
 		return "", err
 	}
 	return decrypted, nil
+}
+
+// SSHKeyFile holds information about a prepared SSH key temp file.
+type SSHKeyFile struct {
+	Path    string // path to the temp file
+	KeyType string // e.g. "ssh-rsa", "ssh-ed25519"
+	Size    int    // key content size in bytes
+}
+
+// Cleanup removes the temp key file.
+func (f *SSHKeyFile) Cleanup() {
+	if f != nil && f.Path != "" {
+		os.Remove(f.Path)
+	}
+}
+
+// PrepareSSHKeyFile decrypts, normalizes, validates, and writes an SSH key to a temp file.
+// Returns the prepared file info, or an error if any step fails.
+func PrepareSSHKeyFile(encryptedKey string) (*SSHKeyFile, error) {
+	// Decrypt
+	plainKey, err := decryptSSHKey(encryptedKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt SSH key: %v", err)
+	}
+
+	// Normalize line endings and ensure trailing newline
+	keyContent := strings.ReplaceAll(plainKey, "\r\n", "\n")
+	keyContent = strings.ReplaceAll(keyContent, "\r", "\n")
+	keyContent = strings.TrimRight(keyContent, " \t\n") + "\n"
+
+	// Validate key format using Go's SSH library
+	signer, parseErr := gossh.ParsePrivateKey([]byte(keyContent))
+	if parseErr != nil {
+		return nil, fmt.Errorf("invalid SSH key: %v", parseErr)
+	}
+
+	// Write to temp file
+	tmpFile, err := os.CreateTemp("", "ai-critic-ssh-key-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %v", err)
+	}
+	if _, err := tmpFile.WriteString(keyContent); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		return nil, fmt.Errorf("failed to write SSH key: %v", err)
+	}
+	tmpFile.Close()
+	os.Chmod(tmpFile.Name(), 0600)
+
+	return &SSHKeyFile{
+		Path:    tmpFile.Name(),
+		KeyType: signer.PublicKey().Type(),
+		Size:    len(keyContent),
+	}, nil
+}
+
+// convertToSSHURL converts an HTTPS git URL to its SSH equivalent.
+// e.g. https://github.com/user/repo.git -> git@github.com:user/repo.git
+// Non-HTTPS URLs are returned unchanged.
+func convertToSSHURL(repoURL string) string {
+	parsed, err := url.Parse(repoURL)
+	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+		return repoURL
+	}
+
+	host := parsed.Hostname()
+	path := strings.TrimPrefix(parsed.Path, "/")
+	if path == "" {
+		return repoURL
+	}
+
+	return fmt.Sprintf("git@%s:%s", host, path)
 }
 
 func extractRepoName(repoURL string) string {

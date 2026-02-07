@@ -1,0 +1,179 @@
+/* Security Section Styles */
+
+/* Security Card */
+.diagnose-security-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.diagnose-security-card + .diagnose-security-card {
+    margin-top: 12px;
+}
+
+.diagnose-security-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.diagnose-security-status {
+    font-size: 20px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.diagnose-security-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.diagnose-security-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+.diagnose-security-desc {
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.4;
+}
+
+.diagnose-security-error {
+    padding: 8px 12px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 6px;
+    color: #f87171;
+    font-size: 12px;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.diagnose-security-paths {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.diagnose-security-path-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.diagnose-security-path-label {
+    font-size: 11px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.diagnose-security-path-value {
+    font-size: 12px;
+    color: #94a3b8;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 4px 8px;
+    border-radius: 4px;
+    word-break: break-all;
+}
+
+.diagnose-security-credentials {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.diagnose-security-credential-row {
+    padding: 6px 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+}
+
+.diagnose-security-credential-value {
+    font-size: 13px;
+    color: #94a3b8;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    letter-spacing: 0.5px;
+    word-break: break-all;
+    overflow-wrap: break-word;
+}
+
+.diagnose-security-add-token {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.diagnose-security-token-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #f1f5f9;
+    font-size: 13px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    box-sizing: border-box;
+}
+
+.diagnose-security-token-input:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.diagnose-security-token-input::placeholder {
+    color: #64748b;
+    font-family: inherit;
+}
+
+.diagnose-security-token-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.diagnose-security-btn {
+    padding: 10px 16px;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    align-self: flex-start;
+}
+
+.diagnose-security-btn:hover:not(:disabled) {
+    background: #2563eb;
+}
+
+.diagnose-security-btn:active:not(:disabled) {
+    background: #1d4ed8;
+}
+
+.diagnose-security-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.diagnose-security-btn--secondary {
+    background: #334155;
+    border: 1px solid #475569;
+}
+
+.diagnose-security-btn--secondary:hover:not(:disabled) {
+    background: #475569;
+}
+
+.diagnose-security-btn--secondary:active:not(:disabled) {
+    background: #1e293b;
+}

@@ -22,6 +22,9 @@ import (
 	"github.com/xhd2015/kool/pkgs/web"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
+	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/fileupload"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/checkpoint"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
@@ -30,6 +33,7 @@ import (
 	pfcloudflare "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/cloudflare"
 	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/localtunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tools"
 )
@@ -93,8 +97,8 @@ func EnsureFrontendDevServer(ctx context.Context) (chan struct{}, error) {
 func Serve(port int, dev bool) error {
 	mux := http.NewServeMux()
 
-	// Wrap with auth middleware - skip login, ping, and public key endpoints
-	handler := auth.Middleware(mux, []string{"/api/login", "/ping", "/api/encrypt/public-key"})
+	// Wrap with auth middleware - skip login, auth check, setup, ping, and public key endpoints
+	handler := auth.Middleware(mux, []string{"/api/login", "/api/auth/check", "/api/auth/setup", "/ping", "/api/encrypt/public-key"})
 
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
@@ -151,6 +155,7 @@ func Serve(port int, dev bool) error {
 	}
 
 	fmt.Printf("Serving directory preview at http://localhost:%d\n", port)
+	printTunnelHints(port)
 
 	go func() {
 		time.Sleep(1 * time.Second)
@@ -286,7 +291,42 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Tools diagnostics API
 	tools.RegisterAPI(mux)
 
+	// Cloudflare settings API
+	cloudflareSettings.RegisterAPI(mux)
+
+	// File upload API
+	fileupload.RegisterAPI(mux)
+
+	// Domains API
+	domains.RegisterAPI(mux)
+
+	// Settings export/import API
+	settings.RegisterAPI(mux)
+
 	return nil
+}
+
+// printTunnelHints prints commands to expose the server via temporary tunnels.
+func printTunnelHints(port int) {
+	fmt.Println()
+	fmt.Println("To expose this server to the internet via a temporary tunnel:")
+	fmt.Println()
+
+	// Option 1: Cloudflare
+	fmt.Println("  # Option 1: Cloudflare Quick Tunnel")
+	if hint := tools.GetInstallHint("cloudflared"); hint != "" {
+		fmt.Printf("  # Install: %s\n", hint)
+	}
+	fmt.Printf("  cloudflared tunnel --url http://localhost:%d\n", port)
+	fmt.Println()
+
+	// Option 2: localtunnel
+	fmt.Println("  # Option 2: localtunnel")
+	if hint := tools.GetInstallHint("node"); hint != "" {
+		fmt.Printf("  # Install Node.js: %s\n", hint)
+	}
+	fmt.Printf("  npx localtunnel --port %d\n", port)
+	fmt.Println()
 }
 
 func handlePing(w http.ResponseWriter, r *http.Request) {

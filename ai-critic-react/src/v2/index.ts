@@ -1,9 +1,16 @@
 export { MobileCodingConnector } from './MobileCodingConnector';
 export { LoginPage } from './LoginPage';
+export { SetupPage } from './SetupPage';
 export { V2Provider } from './V2Context';
 export { HomeView, WorkspaceListView } from './mcc/home/HomeView';
 export { DiagnoseView } from './mcc/home/DiagnoseView';
-export { GitSettings, CloneRepoView } from './mcc/home/GitSettings';
+export { SettingsView } from './mcc/home/SettingsView';
+export { ExportPage } from './mcc/home/settings/ExportPage';
+export { ImportPage } from './mcc/home/settings/ImportPage';
+export { CloudflareSettingsView, CloudflareSettingsContent } from './mcc/home/settings/CloudflareSettingsView';
+export { GitSettings, GitSettingsContent } from './mcc/home/settings/GitSettings';
+export { CloneRepoView } from './mcc/home/settings/CloneRepoView';
+export { UploadFileView } from './mcc/home/UploadFileView';
 export { TerminalView } from './mcc/terminal/TerminalView';
 export { AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute } from './mcc/agent';
 export { PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute } from './mcc';

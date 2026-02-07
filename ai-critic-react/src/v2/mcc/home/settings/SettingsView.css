@@ -1,0 +1,26 @@
+.settings-export-import {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+    padding: 0 2px;
+}
+
+.settings-export-import-btn {
+    width: 100%;
+    padding: 14px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    color: #e2e8f0;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s ease;
+}
+
+.settings-export-import-btn:hover {
+    background: #334155;
+    border-color: #475569;
+}

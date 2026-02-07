@@ -9,11 +9,11 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-    { path: '/', label: 'Code Review' },
-    { path: '/home', label: 'Home' },
-    { path: '/gen', label: 'Generator' },
+    { path: '/v1', label: 'Code Review' },
+    { path: '/v1/home', label: 'Home' },
+    { path: '/v1/gen', label: 'Generator' },
     // Mockups page only in dev mode
-    ...(import.meta.env.DEV ? [{ path: '/mockups', label: 'Mockups' }] : []),
+    ...(import.meta.env.DEV ? [{ path: '/v1/mockups', label: 'Mockups' }] : []),
 ];
 
 export function TopNavBar() {
@@ -38,7 +38,7 @@ export function TopNavBar() {
         <>
             <nav className="top-nav">
                 <div className="nav-brand">
-                    <Link to="/" className="brand-link">
+                    <Link to="/v1" className="brand-link">
                         <img src="/ai-critic.svg" alt="AI Critic" className="brand-logo" />
                         <span className="brand-text">AI Critic</span>
                     </Link>

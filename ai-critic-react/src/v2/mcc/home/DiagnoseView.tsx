@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchTools } from '../../../api/tools';
+import { fetchTools, installTool } from '../../../api/tools';
 import type { ToolInfo, ToolsResponse } from '../../../api/tools';
+import { consumeSSEStream } from '../../../api/sse';
+import { LogViewer } from '../../LogViewer';
+import type { LogLine } from '../../LogViewer';
 import './DiagnoseView.css';
 
 export function DiagnoseView() {
@@ -10,8 +13,10 @@ export function DiagnoseView() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const loadTools = () => {
-        setLoading(true);
+    const loadTools = (showLoading = true) => {
+        if (showLoading) {
+            setLoading(true);
+        }
         setError(null);
         fetchTools()
             .then(d => { setData(d); setLoading(false); })
@@ -53,11 +58,11 @@ export function DiagnoseView() {
 
                     <div className="diagnose-tools-list">
                         {data.tools.map(tool => (
-                            <ToolCard key={tool.name} tool={tool} os={data.os} />
+                            <ToolCard key={tool.name} tool={tool} os={data.os} onInstalled={() => loadTools(false)} />
                         ))}
                     </div>
 
-                    <button className="diagnose-refresh-btn" onClick={loadTools}>
+                    <button className="diagnose-refresh-btn" onClick={() => loadTools()}>
                         Refresh
                     </button>
                 </>
@@ -69,10 +74,16 @@ export function DiagnoseView() {
 interface ToolCardProps {
     tool: ToolInfo;
     os: string;
+    onInstalled: () => void;
 }
 
-function ToolCard({ tool, os }: ToolCardProps) {
+function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
+    const navigate = useNavigate();
     const [expanded, setExpanded] = useState(false);
+    const [installing, setInstalling] = useState(false);
+    const [installLogs, setInstallLogs] = useState<LogLine[]>([]);
+    const [installDone, setInstallDone] = useState(false);
+    const [installError, setInstallError] = useState(false);
 
     const getInstallCommand = () => {
         switch (os) {
@@ -87,15 +98,63 @@ function ToolCard({ tool, os }: ToolCardProps) {
         }
     };
 
+    const handleInstall = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setInstalling(true);
+        setInstallLogs([]);
+        setInstallDone(false);
+        setInstallError(false);
+        setExpanded(true);
+
+        try {
+            const resp = await installTool(tool.name);
+            await consumeSSEStream(resp, {
+                onLog: (line) => setInstallLogs(prev => [...prev, line]),
+                onError: (line) => {
+                    setInstallLogs(prev => [...prev, line]);
+                    setInstallError(true);
+                },
+                onDone: (message) => {
+                    setInstallLogs(prev => [...prev, { text: message }]);
+                    setInstallDone(true);
+                    onInstalled();
+                },
+            });
+        } catch (err) {
+            setInstallLogs(prev => [...prev, { text: String(err), error: true }]);
+            setInstallError(true);
+        }
+        setInstalling(false);
+    };
+
+    const showLogs = installLogs.length > 0;
+
     return (
         <div className={`diagnose-tool-card ${tool.installed ? 'installed' : 'not-installed'}`}>
             <div className="diagnose-tool-header" onClick={() => setExpanded(!expanded)}>
                 <span className="diagnose-tool-status">
-                    {tool.installed ? '✅' : '❌'}
+                    {tool.installed ? '✅' : installing ? <span className="diagnose-tool-spinner" /> : '❌'}
                 </span>
                 <span className="diagnose-tool-name">{tool.name}</span>
                 {tool.installed && tool.version && (
                     <span className="diagnose-tool-version">{tool.version}</span>
+                )}
+                {!tool.installed && tool.auto_install_cmd && (
+                    <button
+                        className="diagnose-tool-install-btn"
+                        onClick={handleInstall}
+                        disabled={installing}
+                    >
+                        {installing ? 'Installing...' : 'Install'}
+                    </button>
+                )}
+                {tool.installed && tool.settings_path && (
+                    <button
+                        className="diagnose-tool-settings-btn"
+                        onClick={(e) => { e.stopPropagation(); navigate(tool.settings_path!); }}
+                    >
+                        Settings
+                    </button>
                 )}
                 <span className={`diagnose-tool-chevron ${expanded ? 'expanded' : ''}`}>›</span>
             </div>
@@ -116,10 +175,23 @@ function ToolCard({ tool, os }: ToolCardProps) {
                             <code className="diagnose-tool-path">{tool.path}</code>
                         </div>
                     )}
-                    {!tool.installed && (
+                    {!tool.installed && !showLogs && (
                         <div className="diagnose-tool-install">
                             <span className="diagnose-tool-install-label">Install ({os === 'darwin' ? 'macOS' : os === 'linux' ? 'Linux' : 'Windows'}):</span>
                             <code className="diagnose-tool-install-cmd">{getInstallCommand()}</code>
+                        </div>
+                    )}
+                    {showLogs && (
+                        <div className="diagnose-tool-install-logs">
+                            <span className="diagnose-tool-install-logs-label">
+                                {installing ? 'Installing...' : installDone ? 'Installed successfully' : installError ? 'Installation failed' : ''}
+                            </span>
+                            <LogViewer
+                                lines={installLogs}
+                                pending={installing}
+                                pendingMessage="Installing..."
+                                maxHeight={200}
+                            />
                         </div>
                     )}
                     {tool.installed && (

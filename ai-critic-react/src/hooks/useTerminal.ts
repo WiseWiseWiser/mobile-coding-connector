@@ -64,52 +64,41 @@ export function useTerminal(
     const fitAddonRef = useRef<FitAddon | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
-    const {
-        theme = defaultTheme,
-        fontSize = 14,
-        fontFamily = 'Monaco, Menlo, "Ubuntu Mono", Consolas, monospace',
-        cwd,
-        name,
-        initialCommand,
-        sessionId,
-    } = options;
+    // Store options in a ref so the effect reads them imperatively
+    // without adding reactive dependencies.
+    const optionsRef = useCurrent(options);
 
-    const onSessionIdRef = useCurrent(options.onSessionId);
-
+    // Single mount/unmount effect — reads options imperatively from ref.
     useEffect(() => {
-        if (!isActive || !terminalRef.current) {
-            return;
-        }
+        if (!isActive || !terminalRef.current) return;
 
-        // Initialize xterm
-        const xterm = new XTerm({
-            cursorBlink: true,
-            fontSize,
-            fontFamily,
-            theme,
-        });
+        let disposed = false;
+        const {
+            theme = defaultTheme,
+            fontSize = 14,
+            fontFamily = 'Monaco, Menlo, "Ubuntu Mono", Consolas, monospace',
+            cwd,
+            name,
+            initialCommand,
+            sessionId,
+        } = optionsRef.current;
 
+        // ---- xterm setup ----
+        const xterm = new XTerm({ cursorBlink: true, fontSize, fontFamily, theme });
         const fitAddon = new FitAddon();
         xterm.loadAddon(fitAddon);
-
         xterm.open(terminalRef.current);
         fitAddon.fit();
 
         xtermRef.current = xterm;
         fitAddonRef.current = fitAddon;
 
-        // Build WebSocket URL with query params
+        // ---- WebSocket setup ----
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const params = new URLSearchParams();
-        if (sessionId) {
-            params.set('session_id', sessionId);
-        }
-        if (cwd) {
-            params.set('cwd', cwd);
-        }
-        if (name) {
-            params.set('name', name);
-        }
+        if (sessionId) params.set('session_id', sessionId);
+        if (cwd) params.set('cwd', cwd);
+        if (name) params.set('name', name);
         const queryString = params.toString();
         const wsUrl = `${protocol}//${window.location.host}/api/terminal${queryString ? '?' + queryString : ''}`;
         const ws = new WebSocket(wsUrl);
@@ -118,29 +107,24 @@ export function useTerminal(
 
         const isReconnecting = !!sessionId;
 
-        // Send resize message to backend
         const sendResize = () => {
-            if (ws.readyState === WebSocket.OPEN) {
-                const dimensions = fitAddon.proposeDimensions();
-                if (dimensions) {
-                    ws.send(JSON.stringify({
-                        type: 'resize',
-                        cols: dimensions.cols,
-                        rows: dimensions.rows,
-                    }));
-                }
+            if (ws.readyState !== WebSocket.OPEN) return;
+            const dimensions = fitAddon.proposeDimensions();
+            if (dimensions) {
+                ws.send(JSON.stringify({ type: 'resize', cols: dimensions.cols, rows: dimensions.rows }));
             }
         };
 
         ws.onopen = () => {
+            if (disposed) return;
             setConnected(true);
-            // Send initial size after connection
             setTimeout(() => {
+                if (disposed) return;
                 fitAddon.fit();
                 sendResize();
-                // Run initial command only for new sessions (not reconnects)
                 if (!isReconnecting && initialCommand) {
                     setTimeout(() => {
+                        if (disposed) return;
                         ws.send(initialCommand + '\n');
                     }, 300);
                 }
@@ -148,76 +132,68 @@ export function useTerminal(
         };
 
         ws.onmessage = (event) => {
+            if (disposed) return;
             if (event.data instanceof ArrayBuffer) {
-                const decoder = new TextDecoder();
-                xterm.write(decoder.decode(event.data));
+                xterm.write(new TextDecoder().decode(event.data));
             } else {
-                // Text message - could be a control message (JSON) or plain text
                 const text = event.data as string;
                 try {
                     const msg = JSON.parse(text);
                     if (msg.type === 'session_id' && msg.session_id) {
-                        onSessionIdRef.current?.(msg.session_id);
+                        optionsRef.current.onSessionId?.(msg.session_id);
                         return;
                     }
                 } catch {
-                    // Not JSON, write as terminal output
+                    // Not JSON — write as terminal output
                 }
                 xterm.write(text);
             }
         };
 
         ws.onerror = () => {
+            if (disposed) return;
             xterm.writeln('\r\n\x1b[31mConnection error\x1b[0m');
             setConnected(false);
         };
 
         ws.onclose = () => {
+            if (disposed) return;
             xterm.writeln('\r\n\x1b[33mConnection closed\x1b[0m');
             setConnected(false);
         };
 
-        // Handle user input
         xterm.onData((data) => {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(data);
-            }
+            if (ws.readyState === WebSocket.OPEN) ws.send(data);
         });
 
-        // Handle resize
+        // ---- Resize handler ----
         const handleResize = () => {
-            if (fitAddonRef.current) {
-                fitAddonRef.current.fit();
-                sendResize();
-            }
+            fitAddonRef.current?.fit();
+            sendResize();
         };
         window.addEventListener('resize', handleResize);
 
-        // Focus terminal
         xterm.focus();
 
+        // ---- Cleanup ----
         return () => {
+            disposed = true;
             window.removeEventListener('resize', handleResize);
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.close();
-            }
+            if (ws.readyState === WebSocket.OPEN) ws.close();
             wsRef.current = null;
             xterm.dispose();
             xtermRef.current = null;
             fitAddonRef.current = null;
         };
+    // Only depends on isActive — all options are read imperatively from optionsRef.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isActive, theme, fontSize, fontFamily, cwd, name, initialCommand, sessionId]);
+    }, [isActive]);
 
-    // Fit terminal when container size changes
+    // Re-fit terminal when visibility changes
     useEffect(() => {
-        if (isActive && fitAddonRef.current) {
-            // Small delay to ensure container is rendered
-            const timer = setTimeout(() => {
-                fitAddonRef.current?.fit();
-            }, 100);
-            return () => clearTimeout(timer);
-        }
+        if (!isActive || !fitAddonRef.current) return;
+        const timer = setTimeout(() => fitAddonRef.current?.fit(), 100);
+        return () => clearTimeout(timer);
     }, [isActive]);
 
     const sendKey = (key: string) => {
@@ -231,10 +207,5 @@ export function useTerminal(
         xtermRef.current?.focus();
     };
 
-    return {
-        terminalRef,
-        connected,
-        sendKey,
-        focus,
-    };
+    return { terminalRef, connected, sendKey, focus };
 }

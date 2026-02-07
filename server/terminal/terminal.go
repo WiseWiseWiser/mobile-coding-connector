@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tools"
 )
 
 var upgrader = websocket.Upgrader{
@@ -71,6 +73,7 @@ var manager = &sessionManager{
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/terminal", handleTerminalWebSocket)
 	mux.HandleFunc("/api/terminal/sessions", handleSessions)
+	mux.HandleFunc("/api/terminal/config", handleConfig)
 }
 
 // ------ Session Manager ------
@@ -92,9 +95,30 @@ func (m *sessionManager) create(name, cwd string) (*session, error) {
 	id := fmt.Sprintf("session-%d", m.counter)
 	m.mu.Unlock()
 
-	cmd := exec.Command("bash", "--login", "-i")
+	// Load terminal config for shell, flags, and extra paths
+	termCfg, _ := LoadConfig()
+
+	shellPath := "bash"
+	shellFlags := []string{"--login", "-i"}
+	if termCfg != nil {
+		if termCfg.Shell != "" {
+			shellPath = termCfg.Shell
+		}
+		if len(termCfg.ShellFlags) > 0 {
+			shellFlags = termCfg.ShellFlags
+		}
+	}
+
+	cmd := exec.Command(shellPath, shellFlags...)
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	// Ensure common tool install paths are in PATH so that
+	// tools installed via the diagnose page are accessible.
+	cmd.Env = tools.AppendExtraPaths(cmd.Env)
+	// Also append user-configured extra paths from terminal config
+	if termCfg != nil && len(termCfg.ExtraPaths) > 0 {
+		cmd.Env = appendUserPaths(cmd.Env, termCfg.ExtraPaths)
+	}
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -334,4 +358,35 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// appendUserPaths appends the given user-configured paths to the PATH
+// variable in the environment slice.
+func appendUserPaths(env []string, paths []string) []string {
+	for i, e := range env {
+		if len(e) > 5 && e[:5] == "PATH=" {
+			currentPath := e[5:]
+			for _, p := range paths {
+				p = strings.TrimSpace(p)
+				if p == "" {
+					continue
+				}
+				if !pathContains(currentPath, p) {
+					currentPath = currentPath + ":" + p
+				}
+			}
+			env[i] = "PATH=" + currentPath
+			return env
+		}
+	}
+	return env
+}
+
+func pathContains(pathVal, dir string) bool {
+	for _, p := range strings.Split(pathVal, ":") {
+		if p == dir {
+			return true
+		}
+	}
+	return false
 }

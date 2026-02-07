@@ -9,8 +9,8 @@ import type { NavTab } from '../v2/mcc/types';
  *
  * Usage:
  *   const navigateToView = useTabNavigate(NavTabs.Agent);
- *   navigateToView('opencode');        // → /v2/project/{name}/agent/opencode
- *   navigateToView('');                // → /v2/project/{name}/agent
+ *   navigateToView('opencode');        // → /project/{name}/agent/opencode
+ *   navigateToView('');                // → /project/{name}/agent
  */
 export function useTabNavigate(tab: NavTab) {
     const navigate = useNavigate();
@@ -19,10 +19,9 @@ export function useTabNavigate(tab: NavTab) {
 
     return (view?: string) => {
         const proj = currentProjectRef.current;
-        const base = '/v2';
         const tabBase = proj
-            ? `${base}/project/${encodeURIComponent(proj.name)}/${tab}`
-            : `${base}/${tab}`;
+            ? `/project/${encodeURIComponent(proj.name)}/${tab}`
+            : `/${tab}`;
 
         navigate(view ? `${tabBase}/${view}` : tabBase, { replace: true });
     };

@@ -1,0 +1,460 @@
+/* Web Access Section Styles */
+
+.diagnose-section-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.diagnose-section-title-row .diagnose-section-title {
+    margin: 0;
+}
+
+.diagnose-webaccess-edit-btn {
+    background: none;
+    border: none;
+    color: #64748b;
+    padding: 4px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.diagnose-webaccess-edit-btn:hover {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.1);
+}
+
+/* Web Access Card */
+.diagnose-webaccess-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.diagnose-webaccess-empty {
+    font-size: 13px;
+    color: #64748b;
+    text-align: center;
+    padding: 8px 0;
+}
+
+.diagnose-webaccess-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Each domain is a standalone row/card */
+.diagnose-webaccess-row {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.diagnose-webaccess-row-domain {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.diagnose-webaccess-row--editing {
+    background: rgba(59, 130, 246, 0.05);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.diagnose-webaccess-domain-link {
+    font-size: 14px;
+    font-weight: 600;
+    color: #60a5fa;
+    text-decoration: none;
+    word-break: break-all;
+}
+
+.diagnose-webaccess-domain-link:hover {
+    text-decoration: underline;
+    color: #93bbfc;
+}
+
+.diagnose-webaccess-row-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.diagnose-webaccess-provider-badge {
+    font-size: 10px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: rgba(100, 116, 139, 0.2);
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid rgba(100, 116, 139, 0.3);
+    white-space: nowrap;
+}
+
+.diagnose-webaccess-remove-btn {
+    padding: 4px 10px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 6px;
+    color: #f87171;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.diagnose-webaccess-remove-btn:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.25);
+}
+
+.diagnose-webaccess-remove-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Status line within each domain row */
+.diagnose-webaccess-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #94a3b8;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.diagnose-webaccess-status--active {
+    background: rgba(34, 197, 94, 0.1);
+    color: #4ade80;
+}
+
+.diagnose-webaccess-status--connecting {
+    background: rgba(59, 130, 246, 0.1);
+    color: #60a5fa;
+}
+
+.diagnose-webaccess-status--warning {
+    background: rgba(245, 158, 11, 0.1);
+    color: #fbbf24;
+}
+
+.diagnose-webaccess-status--error {
+    background: rgba(239, 68, 68, 0.1);
+    color: #f87171;
+}
+
+.diagnose-webaccess-status--stopped {
+    background: rgba(100, 116, 139, 0.1);
+    color: #94a3b8;
+}
+
+.diagnose-webaccess-status-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+}
+
+.diagnose-webaccess-tunnel-url {
+    flex: 1;
+    min-width: 0;
+    color: #60a5fa;
+    text-decoration: none;
+    word-break: break-all;
+    font-size: 13px;
+}
+
+.diagnose-webaccess-tunnel-url:hover {
+    text-decoration: underline;
+}
+
+.diagnose-webaccess-start-btn,
+.diagnose-webaccess-stop-btn {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border: none;
+}
+
+.diagnose-webaccess-start-btn {
+    background: #22c55e;
+    color: white;
+}
+
+.diagnose-webaccess-start-btn:hover {
+    background: #16a34a;
+}
+
+.diagnose-webaccess-stop-btn {
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+}
+
+.diagnose-webaccess-stop-btn:hover {
+    background: rgba(239, 68, 68, 0.35);
+}
+
+.diagnose-webaccess-link-btn {
+    padding: 2px 8px;
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 4px;
+    color: #60a5fa;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.diagnose-webaccess-link-btn:hover {
+    background: rgba(59, 130, 246, 0.35);
+}
+
+.diagnose-webaccess-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(96, 165, 250, 0.3);
+    border-top-color: #60a5fa;
+    border-radius: 50%;
+    animation: diagnose-spin 0.8s linear infinite;
+}
+
+.diagnose-webaccess-add-toggle {
+    width: 100%;
+    padding: 10px 16px;
+    background: transparent;
+    border: 1px dashed #475569;
+    border-radius: 8px;
+    color: #60a5fa;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.diagnose-webaccess-add-toggle:hover {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: #60a5fa;
+}
+
+/* Add form */
+.diagnose-webaccess-add {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.diagnose-webaccess-add-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.diagnose-webaccess-add-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #94a3b8;
+    letter-spacing: 0.3px;
+}
+
+.diagnose-webaccess-input-with-btn {
+    display: flex;
+    gap: 8px;
+}
+
+.diagnose-webaccess-input-with-btn .diagnose-webaccess-input {
+    flex: 1;
+}
+
+.diagnose-webaccess-generate-btn {
+    padding: 8px 14px;
+    background: #475569;
+    border: 1px solid #64748b;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    align-self: flex-start;
+}
+
+.diagnose-webaccess-generate-btn:hover {
+    background: #64748b;
+}
+
+.diagnose-webaccess-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #f1f5f9;
+    font-size: 13px;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+.diagnose-webaccess-input:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.diagnose-webaccess-input::placeholder {
+    color: #64748b;
+}
+
+.diagnose-webaccess-select {
+    width: 100%;
+    padding: 10px 12px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #f1f5f9;
+    font-size: 13px;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+    cursor: pointer;
+    appearance: auto;
+}
+
+.diagnose-webaccess-select:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.diagnose-webaccess-add-btn {
+    padding: 10px 16px;
+    background: #3b82f6;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    white-space: nowrap;
+}
+
+.diagnose-webaccess-add-btn:hover:not(:disabled) {
+    background: #2563eb;
+}
+
+.diagnose-webaccess-add-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.diagnose-webaccess-add-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.diagnose-webaccess-cancel-btn {
+    padding: 10px 16px;
+    background: transparent;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.diagnose-webaccess-cancel-btn:hover {
+    background: rgba(100, 116, 139, 0.15);
+    color: #e2e8f0;
+}
+
+/* Tunnel Name */
+.diagnose-webaccess-tunnel-name {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+    margin-bottom: 4px;
+}
+
+.diagnose-webaccess-tunnel-name-hint {
+    font-size: 11px;
+    color: #64748b;
+    line-height: 1.4;
+}
+
+/* Tunnel Name View Mode */
+.diagnose-webaccess-tunnel-name-view {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.diagnose-webaccess-tunnel-name-value {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.diagnose-webaccess-domain-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e2e8f0;
+    word-break: break-all;
+}
+
+/* Row actions (Remove button aligned right) */
+.diagnose-webaccess-row-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* Edit Actions (Save/Cancel at bottom of edit mode) */
+.diagnose-webaccess-edit-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+/* Tunnel Start Logs */
+.diagnose-webaccess-tunnel-logs {
+    padding: 8px 0 0;
+    border-top: 1px solid rgba(51, 65, 85, 0.3);
+}
+
+.diagnose-webaccess-tunnel-logs-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #94a3b8;
+}

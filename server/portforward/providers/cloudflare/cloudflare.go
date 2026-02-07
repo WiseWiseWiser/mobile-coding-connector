@@ -2,44 +2,18 @@ package cloudflare
 
 import (
 	"bufio"
-	"crypto/rand"
 	"fmt"
-	"math/big"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
-	"strings"
 	"sync"
 	"time"
 
+	cfutils "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/domains/pick"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
-	"gopkg.in/yaml.v3"
 )
-
-// Word lists for random subdomain generation
-var adjectives = []string{
-	"brave", "calm", "dark", "eager", "fair", "glad", "happy", "idle", "keen", "lush",
-	"mild", "neat", "open", "pure", "quick", "rich", "safe", "tall", "vast", "warm",
-	"able", "bold", "cool", "deep", "even", "fast", "gold", "high", "just", "kind",
-	"lean", "main", "nice", "pale", "rare", "slim", "true", "used", "wide", "wise",
-}
-
-var nouns = []string{
-	"apex", "beam", "cave", "dawn", "edge", "fern", "gate", "haze", "iris", "jade",
-	"kite", "lake", "mesa", "node", "onyx", "pine", "quay", "reef", "star", "tide",
-	"vale", "wave", "yard", "zinc", "arch", "bark", "cove", "dune", "flux", "glen",
-	"hive", "isle", "jazz", "knot", "loom", "moss", "nest", "opal", "peak", "rift",
-}
-
-func generateRandomSubdomain() string {
-	pickRandom := func(words []string) string {
-		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(words))))
-		return words[n.Int64()]
-	}
-	return fmt.Sprintf("%s-%s-%s", pickRandom(adjectives), pickRandom(nouns), pickRandom(nouns))
-}
 
 // --- Quick Tunnel Provider ---
 
@@ -58,7 +32,7 @@ func (p *QuickProvider) Available() bool { return portforward.IsCommandAvailable
 func (p *QuickProvider) Start(port int) (*portforward.TunnelHandle, error) {
 	logs := portforward.NewLogBuffer()
 
-	cmd := exec.Command("cloudflared", "tunnel", "--url", fmt.Sprintf("http://127.0.0.1:%d", port))
+	cmd := exec.Command("cloudflared", "tunnel", "--url", fmt.Sprintf("http://localhost:%d", port))
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -113,18 +87,6 @@ func (p *QuickProvider) Start(port int) (*portforward.TunnelHandle, error) {
 
 // --- Named Tunnel Provider ---
 
-// cloudflaredConfig represents a cloudflared config.yml structure
-type cloudflaredConfig struct {
-	Tunnel          string        `yaml:"tunnel"`
-	CredentialsFile string        `yaml:"credentials-file"`
-	Ingress         []ingressRule `yaml:"ingress"`
-}
-
-type ingressRule struct {
-	Hostname string `yaml:"hostname,omitempty"`
-	Service  string `yaml:"service"`
-}
-
 // TunnelProvider implements portforward.Provider using a DEDICATED named
 // Cloudflare tunnel (separate from the main app tunnel).
 //
@@ -138,7 +100,7 @@ type TunnelProvider struct {
 	// The dedicated port-forwarding tunnel process
 	pfCmd *exec.Cmd
 	// Track port-forwarding ingress rules (hostname -> rule)
-	pfIngress map[string]ingressRule
+	pfIngress map[string]cfutils.IngressRule
 }
 
 var _ portforward.Provider = (*TunnelProvider)(nil)
@@ -146,7 +108,7 @@ var _ portforward.Provider = (*TunnelProvider)(nil)
 func NewTunnelProvider(cfg config.CloudflareTunnelConfig) *TunnelProvider {
 	return &TunnelProvider{
 		cfg:       cfg,
-		pfIngress: make(map[string]ingressRule),
+		pfIngress: make(map[string]cfutils.IngressRule),
 	}
 }
 
@@ -182,36 +144,28 @@ func (p *TunnelProvider) Start(port int) (*portforward.TunnelHandle, error) {
 		tunnelRef = p.cfg.TunnelID
 	}
 
-	hostname := fmt.Sprintf("%s.%s", generateRandomSubdomain(), p.cfg.BaseDomain)
+	hostname := fmt.Sprintf("%s.%s", pick.RandomSubdomain(), p.cfg.BaseDomain)
 	localURL := fmt.Sprintf("http://localhost:%d", port)
 
-	configPath := p.cfg.ConfigPath
-	if configPath == ""{
-		// default to ~/.cloudflared
-		homeDir, err := os.UserHomeDir()
+	configDir := p.cfg.ConfigPath
+	if configDir == "" {
+		var err error
+		configDir, err = cfutils.DefaultConfigDir()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get home directory: %v", err)
+			return nil, err
 		}
-		configPath = filepath.Join(homeDir, ".cloudflared")
 	}
-	pfConfigFile := fmt.Sprintf("%s/config-portforward.yml", configPath)
+	pfConfigFile := configDir + "/config-portforward.yml"
 
-	// Step 1: Create DNS route pointing to our dedicated tunnel
+	// Step 1: Create DNS route
 	fmt.Fprintf(logs, "[setup] Creating DNS route: %s -> tunnel %s\n", hostname, tunnelRef)
-	dnsArgs := []string{"tunnel", "route", "dns", "--overwrite-dns", tunnelRef, hostname}
-	dnsCmd := exec.Command("cloudflared", dnsArgs...)
-	dnsOutput, err := dnsCmd.CombinedOutput()
-	fmt.Fprintf(logs, "[setup] DNS: %s\n", strings.TrimSpace(string(dnsOutput)))
-	if err != nil {
-		outputStr := strings.TrimSpace(string(dnsOutput))
-		if !strings.Contains(outputStr, "already exists") && !strings.Contains(outputStr, "Added CNAME") {
-			fmt.Fprintf(logs, "[setup] Warning: DNS route error: %v\n", err)
-		}
+	if err := cfutils.CreateDNSRoute(tunnelRef, hostname); err != nil {
+		fmt.Fprintf(logs, "[setup] Warning: DNS route error: %v\n", err)
 	}
 
 	// Step 2: Add ingress rule and restart the dedicated tunnel
 	p.mu.Lock()
-	p.pfIngress[hostname] = ingressRule{Hostname: hostname, Service: localURL}
+	p.pfIngress[hostname] = cfutils.IngressRule{Hostname: hostname, Service: localURL}
 	fmt.Fprintf(logs, "[setup] Adding ingress rule: %s -> %s\n", hostname, localURL)
 
 	if err := p.writeConfigAndRestart(pfConfigFile, tunnelRef, logs); err != nil {
@@ -239,7 +193,6 @@ func (p *TunnelProvider) Start(port int) (*portforward.TunnelHandle, error) {
 			fmt.Fprintf(logs, "[cleanup] Removed ingress rule for %s\n", hostname)
 
 			if len(p.pfIngress) == 0 {
-				// No more port forwards - stop the tunnel process
 				if p.pfCmd != nil && p.pfCmd.Process != nil {
 					fmt.Fprintf(logs, "[cleanup] Stopping dedicated tunnel (no more rules)\n")
 					p.pfCmd.Process.Kill()
@@ -247,7 +200,6 @@ func (p *TunnelProvider) Start(port int) (*portforward.TunnelHandle, error) {
 					p.pfCmd = nil
 				}
 			} else {
-				// Restart with remaining rules
 				p.writeConfigAndRestart(pfConfigFile, tunnelRef, logs)
 			}
 			p.mu.Unlock()
@@ -255,95 +207,10 @@ func (p *TunnelProvider) Start(port int) (*portforward.TunnelHandle, error) {
 	}, nil
 }
 
-// ensureTunnelExists checks if the named tunnel exists, and creates it if not.
-// Returns the tunnel ID and credentials file path.
-func (p *TunnelProvider) ensureTunnelExists(tunnelRef string, logs *portforward.LogBuffer) (tunnelID string, credFile string, err error) {
-	tunnelID = p.cfg.TunnelID
-	credFile = p.cfg.CredentialsFile
-
-	// If we already have a tunnel ID and credentials file, just verify they exist
-	if tunnelID != "" && credFile != "" {
-		if _, statErr := os.Stat(credFile); statErr == nil {
-			return tunnelID, credFile, nil
-		}
-		// Credentials file missing, try to find it in default locations
-	}
-
-	// Check if tunnel exists by trying `cloudflared tunnel info`
-	fmt.Fprintf(logs, "[setup] Checking if tunnel '%s' exists...\n", tunnelRef)
-	infoCmd := exec.Command("cloudflared", "tunnel", "info", tunnelRef)
-	infoOutput, infoErr := infoCmd.CombinedOutput()
-	infoStr := strings.TrimSpace(string(infoOutput))
-
-	if infoErr != nil {
-		// Tunnel doesn't exist - create it
-		fmt.Fprintf(logs, "[setup] Tunnel not found, creating '%s'...\n", tunnelRef)
-		createCmd := exec.Command("cloudflared", "tunnel", "create", tunnelRef)
-		createOutput, createErr := createCmd.CombinedOutput()
-		createStr := strings.TrimSpace(string(createOutput))
-		fmt.Fprintf(logs, "[setup] Create: %s\n", createStr)
-		if createErr != nil {
-			return "", "", fmt.Errorf("failed to create tunnel: %s", createStr)
-		}
-
-		// Parse tunnel ID from output: "Created tunnel <name> with id <uuid>"
-		idRegex := regexp.MustCompile(`with id ([a-f0-9-]+)`)
-		if match := idRegex.FindStringSubmatch(createStr); len(match) > 1 {
-			tunnelID = match[1]
-		}
-
-		// Parse credentials file path from output
-		credRegex := regexp.MustCompile(`credentials written to (.+\.json)`)
-		if match := credRegex.FindStringSubmatch(createStr); len(match) > 1 {
-			credFile = match[1]
-		}
-
-		// If we still don't have a credentials file, try default location
-		if credFile == "" && tunnelID != "" {
-			homeDir, _ := os.UserHomeDir()
-			defaultCred := filepath.Join(homeDir, ".cloudflared", tunnelID+".json")
-			if _, err := os.Stat(defaultCred); err == nil {
-				credFile = defaultCred
-			}
-		}
-
-		fmt.Fprintf(logs, "[setup] Created tunnel: id=%s, credentials=%s\n", tunnelID, credFile)
-	} else {
-		fmt.Fprintf(logs, "[setup] Tunnel exists: %s\n", infoStr)
-
-		// Parse tunnel ID from info output if we don't have it
-		if tunnelID == "" {
-			idRegex := regexp.MustCompile(`([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})`)
-			if match := idRegex.FindString(infoStr); match != "" {
-				tunnelID = match
-			}
-		}
-
-		// Find credentials file if we don't have it
-		if credFile == "" && tunnelID != "" {
-			homeDir, _ := os.UserHomeDir()
-			defaultCred := filepath.Join(homeDir, ".cloudflared", tunnelID+".json")
-			if _, err := os.Stat(defaultCred); err == nil {
-				credFile = defaultCred
-			}
-		}
-	}
-
-	if tunnelID == "" {
-		return "", "", fmt.Errorf("could not determine tunnel ID for '%s'", tunnelRef)
-	}
-	if credFile == "" {
-		return "", "", fmt.Errorf("could not find credentials file for tunnel '%s' (id: %s)", tunnelRef, tunnelID)
-	}
-
-	return tunnelID, credFile, nil
-}
-
 // writeConfigAndRestart writes config-portforward.yml with current ingress rules
 // and (re)starts the dedicated tunnel process. Must be called with p.mu held.
 func (p *TunnelProvider) writeConfigAndRestart(pfConfigFile, tunnelRef string, logs *portforward.LogBuffer) error {
-	// Ensure tunnel exists (create if needed)
-	tunnelID, credentialsFile, err := p.ensureTunnelExists(tunnelRef, logs)
+	tunnelID, credentialsFile, err := p.resolveTunnelCreds(tunnelRef, logs)
 	if err != nil {
 		return err
 	}
@@ -358,32 +225,20 @@ func (p *TunnelProvider) writeConfigAndRestart(pfConfigFile, tunnelRef string, l
 	}
 
 	// Build ingress rules
-	var rules []ingressRule
+	var rules []cfutils.IngressRule
 	for _, rule := range p.pfIngress {
 		rules = append(rules, rule)
 	}
-	// Catch-all at the end
-	rules = append(rules, ingressRule{Service: "http_status:404"})
+	rules = append(rules, cfutils.IngressRule{Service: "http_status:404"})
 
-	// Ensure config directory exists
-	cfgDir := filepath.Dir(pfConfigFile)
-	if err := os.MkdirAll(cfgDir, 0755); err != nil {
-		return fmt.Errorf("failed to create config directory %s: %v", cfgDir, err)
-	}
-
-	// Write config file
-	pfCfg := cloudflaredConfig{
+	// Write config
+	cfg := &cfutils.CloudflaredConfig{
 		Tunnel:          tunnelID,
 		CredentialsFile: credentialsFile,
 		Ingress:         rules,
 	}
-
-	cfgData, err := yaml.Marshal(&pfCfg)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %v", err)
-	}
-	if err := os.WriteFile(pfConfigFile, cfgData, 0644); err != nil {
-		return fmt.Errorf("failed to write config: %v", err)
+	if err := cfutils.WriteCloudflaredConfig(pfConfigFile, cfg); err != nil {
+		return err
 	}
 	fmt.Fprintf(logs, "[tunnel] Wrote %s (%d ingress rules)\n", pfConfigFile, len(rules)-1)
 
@@ -399,7 +254,6 @@ func (p *TunnelProvider) writeConfigAndRestart(pfConfigFile, tunnelRef string, l
 	p.pfCmd = cmd
 	fmt.Fprintf(logs, "[tunnel] Started dedicated tunnel (PID %d)\n", cmd.Process.Pid)
 
-	// Clean up in background
 	go func() {
 		cmd.Wait()
 		fmt.Fprintf(logs, "[tunnel] Dedicated tunnel process exited\n")
@@ -407,3 +261,28 @@ func (p *TunnelProvider) writeConfigAndRestart(pfConfigFile, tunnelRef string, l
 
 	return nil
 }
+
+// resolveTunnelCreds resolves tunnel ID and credentials file.
+// Uses config values if available, otherwise falls back to EnsureTunnelExists.
+func (p *TunnelProvider) resolveTunnelCreds(tunnelRef string, logs *portforward.LogBuffer) (string, string, error) {
+	tunnelID := p.cfg.TunnelID
+	credFile := p.cfg.CredentialsFile
+
+	// If we have both from config and the file exists, use them directly
+	if tunnelID != "" && credFile != "" {
+		if _, err := os.Stat(credFile); err == nil {
+			return tunnelID, credFile, nil
+		}
+	}
+
+	// Fall back to auto-discovery/creation
+	fmt.Fprintf(logs, "[setup] Resolving tunnel credentials for '%s'...\n", tunnelRef)
+	id, cred, err := cfutils.EnsureTunnelExists(tunnelRef)
+	if err != nil {
+		return "", "", err
+	}
+
+	fmt.Fprintf(logs, "[setup] Resolved tunnel: id=%s, credentials=%s\n", id, cred)
+	return id, cred, nil
+}
+

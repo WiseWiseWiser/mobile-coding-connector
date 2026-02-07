@@ -3,12 +3,16 @@ node_modules
 dist
 *.bin
 
+.DS_Store
+
 .opencode
 
 /cloudflared
 /rules
+/ai-critic-server-linux-amd64
 
 .server-credentials
+.server-domains.json
 .ai-critic-enc-key
 .ai-critic-enc-key.pub
 .ai-critic-github-oauth.json

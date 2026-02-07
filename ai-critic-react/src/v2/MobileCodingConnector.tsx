@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useCurrent } from '../hooks/useCurrent';
 import type { ProjectInfo } from '../api/projects';
@@ -17,8 +17,8 @@ export function MobileCodingConnector() {
     // Derive active tab and view from URL pathname (child route params propagate to layout)
     const projectNameFromUrl = params.projectName || '';
     const pathPrefix = projectNameFromUrl
-        ? `/v2/project/${encodeURIComponent(projectNameFromUrl)}/`
-        : '/v2/';
+        ? `/project/${encodeURIComponent(projectNameFromUrl)}/`
+        : '/';
     const pathRest = location.pathname.startsWith(pathPrefix)
         ? location.pathname.slice(pathPrefix.length)
         : '';
@@ -46,18 +46,17 @@ export function MobileCodingConnector() {
     const currentProjectRef = useCurrent(currentProject);
     const buildPath = (tab: NavTab, view?: string): string => {
         const proj = currentProjectRef.current;
-        const base = '/v2';
         if (proj) {
-            const projBase = `${base}/project/${encodeURIComponent(proj.name)}`;
+            const projBase = `/project/${encodeURIComponent(proj.name)}`;
             // Home tab with a project and no view shows the project list (no /tab suffix)
             if (tab === NavTabs.Home && !view) return projBase;
             if (view) return `${projBase}/${tab}/${view}`;
             return `${projBase}/${tab}`;
         }
         // No project selected
-        if (tab === NavTabs.Home && !view) return base;
-        if (view) return `${base}/${tab}/${view}`;
-        return `${base}/${tab}`;
+        if (tab === NavTabs.Home && !view) return '/';
+        if (view) return `/${tab}/${view}`;
+        return `/${tab}`;
     };
 
     // Preserve route history per tab
@@ -74,7 +73,7 @@ export function MobileCodingConnector() {
 
     const handleSelectProject = (project: ProjectInfo) => {
         setCurrentProject(project);
-        navigate(`/v2/project/${encodeURIComponent(project.name)}/${NavTabs.Agent}`);
+        navigate(`/project/${encodeURIComponent(project.name)}/${NavTabs.Agent}`);
     };
 
     const handleTabChange = (tab: NavTab) => {
@@ -88,22 +87,45 @@ export function MobileCodingConnector() {
         navigate(buildPath(tab, savedView || undefined));
     };
 
+    const [menuOpen, setMenuOpen] = useState(false);
+
+    const handleMenuNavigate = (path: string) => {
+        setMenuOpen(false);
+        navigate(path);
+    };
+
     return (
         <div className="mcc">
             {/* Top Bar */}
             <div className="mcc-topbar">
-                <button className="mcc-menu-btn">
+                <button className="mcc-menu-btn" onClick={() => setMenuOpen(!menuOpen)}>
                     <MenuIcon />
                 </button>
                 <div className="mcc-title">
                     {currentProject ? currentProject.name : 'Mobile Coding Connector'}
                 </div>
-                <button className="mcc-settings-btn">
-                    <SettingsIcon />
-                </button>
                 <button className="mcc-profile-btn">
                     <ProfileIcon />
                 </button>
+            </div>
+
+            {/* Sidebar Drawer */}
+            <div className={`mcc-drawer-overlay${menuOpen ? ' mcc-drawer-overlay--open' : ''}`} onClick={() => setMenuOpen(false)} />
+            <div className={`mcc-drawer${menuOpen ? ' mcc-drawer--open' : ''}`}>
+                <div className="mcc-drawer-header">
+                    <span className="mcc-drawer-title">Menu</span>
+                    <button className="mcc-drawer-close" onClick={() => setMenuOpen(false)}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                    </button>
+                </div>
+                <nav className="mcc-drawer-nav">
+                    <button className="mcc-drawer-item" onClick={() => handleMenuNavigate(buildPath(NavTabs.Home, 'settings'))}>
+                        <SettingsIcon />
+                        <span>Settings</span>
+                    </button>
+                </nav>
             </div>
 
             {/* Main Content */}

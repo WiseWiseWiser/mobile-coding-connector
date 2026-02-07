@@ -1,0 +1,180 @@
+.import-page-card {
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: 12px;
+}
+
+.import-page-description {
+    color: #94a3b8;
+    font-size: 14px;
+    margin: 0 0 12px 0;
+    line-height: 1.5;
+}
+
+.import-page-file-input {
+    display: none;
+}
+
+.import-page-choose-btn {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    background: #0f172a;
+    border: 2px dashed #475569;
+    border-radius: 10px;
+    color: #94a3b8;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s ease;
+    margin-bottom: 16px;
+}
+
+.import-page-choose-btn:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.05);
+}
+
+.import-page-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.import-page-section-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #0f172a;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.import-page-section-item:hover {
+    background: #1a2744;
+}
+
+.import-page-section-item--disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.import-page-section-item--disabled:hover {
+    background: #0f172a;
+}
+
+.import-page-section-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #3b82f6;
+    cursor: pointer;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.import-page-section-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.import-page-section-label {
+    color: #e2e8f0;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.import-page-section-summary {
+    color: #64748b;
+    font-size: 12px;
+}
+
+.import-page-section-existing {
+    color: #94a3b8;
+    font-size: 11px;
+}
+
+.import-page-section-note {
+    color: #475569;
+    font-size: 11px;
+    font-style: italic;
+}
+
+.import-page-section-summary--missing {
+    color: #475569;
+    font-style: italic;
+}
+
+.import-page-error {
+    color: #ef4444;
+    font-size: 13px;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: 6px;
+}
+
+.import-page-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.import-page-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: none;
+}
+
+.import-page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.import-page-btn--primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.import-page-btn--primary:hover:not(:disabled) {
+    background: #2563eb;
+}
+
+.import-page-btn--secondary {
+    background: #334155;
+    color: #e2e8f0;
+    border: 1px solid #475569;
+}
+
+.import-page-btn--secondary:hover:not(:disabled) {
+    background: #475569;
+}
+
+.import-page-success {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px;
+    background: rgba(34, 197, 94, 0.1);
+    border-radius: 8px;
+    color: #22c55e;
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+.import-page-success-icon {
+    font-size: 24px;
+    line-height: 1;
+}

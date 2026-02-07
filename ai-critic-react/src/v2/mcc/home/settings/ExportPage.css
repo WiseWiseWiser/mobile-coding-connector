@@ -1,0 +1,116 @@
+.export-page-card {
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: 12px;
+}
+
+.export-page-description {
+    color: #94a3b8;
+    font-size: 14px;
+    margin: 0 0 16px 0;
+    line-height: 1.5;
+}
+
+.export-page-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.export-page-section-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #0f172a;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.export-page-section-item:hover {
+    background: #1a2744;
+}
+
+.export-page-section-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #3b82f6;
+    cursor: pointer;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.export-page-section-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.export-page-section-label {
+    color: #e2e8f0;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.export-page-section-stat {
+    color: #64748b;
+    font-size: 12px;
+}
+
+.export-page-section-note {
+    color: #475569;
+    font-size: 11px;
+    font-style: italic;
+}
+
+.export-page-error {
+    color: #ef4444;
+    font-size: 13px;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: 6px;
+}
+
+.export-page-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.export-page-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: none;
+}
+
+.export-page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.export-page-btn--primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.export-page-btn--primary:hover:not(:disabled) {
+    background: #2563eb;
+}
+
+.export-page-btn--secondary {
+    background: #334155;
+    color: #e2e8f0;
+    border: 1px solid #475569;
+}
+
+.export-page-btn--secondary:hover:not(:disabled) {
+    background: #475569;
+}

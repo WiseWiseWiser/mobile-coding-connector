@@ -454,3 +454,16 @@
     border-radius: 4px;
 }
 
+.mcc-ssh-upload-btn {
+    align-self: flex-start;
+    margin-top: 6px;
+}
+
+.mcc-ssh-test-logs {
+    margin-top: 8px;
+}
+
+.mcc-ssh-key-extra-actions {
+    margin-top: 8px;
+}
+
