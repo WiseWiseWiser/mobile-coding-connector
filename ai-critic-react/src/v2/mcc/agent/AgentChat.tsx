@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useCurrent } from '../../hooks/useCurrent';
-import { useAutoScroll } from '../../hooks/useAutoScroll';
+import { useCurrent } from '../../../hooks/useCurrent';
+import { useAutoScroll } from '../../../hooks/useAutoScroll';
 import {
     fetchAgentSessions, fetchMessages, sendPromptAsync, agentEventUrl,
     fetchOpencodeConfig, fetchOpencodeProviders,
     AgentSessionStatuses,
-} from '../../api/agents';
-import type { AgentSessionInfo, AgentMessage, OpencodeConfig } from '../../api/agents';
+} from '../../../api/agents';
+import type { AgentSessionInfo, AgentMessage, OpencodeConfig } from '../../../api/agents';
 import { AgentChatHeader } from './AgentChatHeader';
 import { ChatMessageGroup, groupMessagesByRole } from './ChatMessage';
 

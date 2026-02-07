@@ -1,4 +1,4 @@
-import { BackIcon } from '../icons';
+import { BackIcon } from '../../icons';
 
 export interface AgentChatHeaderProps {
     agentName: string;

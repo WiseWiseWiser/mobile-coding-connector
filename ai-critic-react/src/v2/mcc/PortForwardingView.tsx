@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import type { PortForward, TunnelProvider, ProviderInfo } from '../../hooks/usePortForwards';
 import { PortStatuses } from '../../hooks/usePortForwards';
-import { fetchDiagnostics as apiFetchDiagnostics, fetchPortLogs as apiFetchPortLogs } from '../../api/ports';
-import type { DiagnosticsData } from '../../api/ports';
+import { fetchPortLogs as apiFetchPortLogs } from '../../api/ports';
+import { useV2Context } from '../V2Context';
 import { LogViewer } from '../LogViewer';
 import { PlusIcon } from '../icons';
 
@@ -194,13 +194,7 @@ function PortForwardingHelp() {
 // ---- Cloudflare Diagnostics ----
 
 function CloudflareStatusBanner({ onClick }: { onClick: () => void }) {
-    const [data, setData] = useState<DiagnosticsData | null>(null);
-
-    useEffect(() => {
-        apiFetchDiagnostics()
-            .then(d => setData(d))
-            .catch(() => {});
-    }, []);
+    const { diagnostics: data } = useV2Context();
 
     const statusIcon = !data ? '⏳' : data.overall === 'ok' ? '✅' : data.overall === 'warning' ? '⚠️' : '❌';
     const statusText = !data ? 'Checking...' : data.overall === 'ok' ? 'Cloudflare: Ready' : data.overall === 'warning' ? 'Cloudflare: Warning' : 'Cloudflare: Issues Found';
@@ -215,15 +209,7 @@ function CloudflareStatusBanner({ onClick }: { onClick: () => void }) {
 }
 
 export function CloudflareDiagnosticsView({ onBack }: { onBack: () => void }) {
-    const [data, setData] = useState<DiagnosticsData | null>(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        setLoading(true);
-        apiFetchDiagnostics()
-            .then(d => { setData(d); setLoading(false); })
-            .catch(() => setLoading(false));
-    }, []);
+    const { diagnostics: data, diagnosticsLoading: loading, refreshDiagnostics } = useV2Context();
 
     const statusColors: Record<string, string> = {
         ok: '#22c55e',
@@ -270,12 +256,7 @@ export function CloudflareDiagnosticsView({ onBack }: { onBack: () => void }) {
                             </div>
                         ))}
                     </div>
-                    <button className="mcc-diag-refresh" onClick={() => {
-                        setLoading(true);
-                        apiFetchDiagnostics()
-                            .then(d => { setData(d); setLoading(false); })
-                            .catch(() => setLoading(false));
-                    }}>
+                    <button className="mcc-diag-refresh" onClick={refreshDiagnostics}>
                         Refresh
                     </button>
                 </>

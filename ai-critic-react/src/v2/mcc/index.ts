@@ -7,3 +7,7 @@ export type { PortsOutletContext } from './PortsLayout';
 export { PortListRoute } from './PortListRoute';
 export { CloudflareDiagnosticsRoute } from './CloudflareDiagnosticsRoute';
 export { PortDiagnoseRoute } from './PortDiagnoseRoute';
+export { TerminalView, TerminalManager } from './terminal';
+export type { TerminalManagerHandle } from './terminal';
+export { AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute } from './agent';
+export type { AgentOutletContext } from './agent';

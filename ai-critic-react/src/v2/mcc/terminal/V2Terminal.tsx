@@ -1,5 +1,5 @@
 import '@xterm/xterm/css/xterm.css';
-import { useTerminal } from '../hooks/useTerminal';
+import { useTerminal } from '../../../hooks/useTerminal';
 import './V2Terminal.css';
 
 // Mobile-friendly dark theme

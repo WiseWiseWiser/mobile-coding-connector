@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchTools } from '../api/tools';
-import type { ToolInfo, ToolsResponse } from '../api/tools';
+import { fetchTools } from '../../../api/tools';
+import type { ToolInfo, ToolsResponse } from '../../../api/tools';
 import './DiagnoseView.css';
 
 export function DiagnoseView() {

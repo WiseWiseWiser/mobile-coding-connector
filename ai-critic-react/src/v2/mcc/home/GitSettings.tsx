@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCurrent } from '../hooks/useCurrent';
+import { useCurrent } from '../../../hooks/useCurrent';
 import { encryptWithServerKey, EncryptionNotAvailableError } from './crypto';
 import {
     testSshKey, fetchOAuthConfig, setOAuthConfig, exchangeOAuthToken,
     fetchGithubRepos, cloneRepo,
-} from '../api/auth';
-import type { GithubRepo, OAuthConfigStatus } from '../api/auth';
-import { LogViewer } from './LogViewer';
+} from '../../../api/auth';
+import type { GithubRepo, OAuthConfigStatus } from '../../../api/auth';
+import { LogViewer } from '../../LogViewer';
 import './GitSettings.css';
 
 // ---- Constants ----

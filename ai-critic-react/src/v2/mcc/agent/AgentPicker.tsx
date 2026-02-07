@@ -1,5 +1,5 @@
-import type { AgentDef, AgentSessionInfo } from '../../api/agents';
-import { FolderIcon } from '../icons';
+import type { AgentDef, AgentSessionInfo } from '../../../api/agents';
+import { FolderIcon } from '../../icons';
 
 export interface AgentPickerProps {
     agents: AgentDef[];

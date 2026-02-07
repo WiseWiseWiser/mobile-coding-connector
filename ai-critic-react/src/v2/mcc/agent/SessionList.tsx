@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useCurrent } from '../../hooks/useCurrent';
+import { useCurrent } from '../../../hooks/useCurrent';
 import {
     fetchAgentSessions, listOpencodeSessions, createOpencodeSession,
     fetchMessages, AgentSessionStatuses,
-} from '../../api/agents';
-import type { AgentSessionInfo } from '../../api/agents';
+} from '../../../api/agents';
+import type { AgentSessionInfo } from '../../../api/agents';
 import { AgentChatHeader } from './AgentChatHeader';
 import { truncate } from './utils';
 

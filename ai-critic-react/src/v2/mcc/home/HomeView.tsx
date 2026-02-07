@@ -1,7 +1,7 @@
 import { Outlet, useNavigate, useOutletContext } from 'react-router-dom';
-import { deleteProject as apiDeleteProject } from '../api/projects';
-import type { ProjectInfo } from '../api/projects';
-import { useV2Context } from './V2Context';
+import { deleteProject as apiDeleteProject } from '../../../api/projects';
+import type { ProjectInfo } from '../../../api/projects';
+import { useV2Context } from '../../V2Context';
 
 // Re-export sub-views for route registration
 export { DiagnoseView } from './DiagnoseView';

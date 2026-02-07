@@ -1,10 +1,10 @@
 export { MobileCodingConnector } from './MobileCodingConnector';
 export { LoginPage } from './LoginPage';
 export { V2Provider } from './V2Context';
-export { HomeView, WorkspaceListView } from './HomeView';
-export { DiagnoseView } from './DiagnoseView';
-export { GitSettings, CloneRepoView } from './GitSettings';
-export { TerminalView } from './TerminalView';
-export { AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute } from './agent';
+export { HomeView, WorkspaceListView } from './mcc/home/HomeView';
+export { DiagnoseView } from './mcc/home/DiagnoseView';
+export { GitSettings, CloneRepoView } from './mcc/home/GitSettings';
+export { TerminalView } from './mcc/terminal/TerminalView';
+export { AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute } from './mcc/agent';
 export { PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute } from './mcc';
 export { FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute } from './mcc/files';

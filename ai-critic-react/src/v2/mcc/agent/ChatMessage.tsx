@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AgentMessage, MessagePart } from '../../api/agents';
+import type { AgentMessage, MessagePart } from '../../../api/agents';
 import { truncate } from './utils';
 
 // ---- Message Grouping ----

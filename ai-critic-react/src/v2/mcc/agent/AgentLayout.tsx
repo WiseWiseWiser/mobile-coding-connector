@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
-import { useCurrent } from '../../hooks/useCurrent';
-import { useTabNavigate } from '../../hooks/useTabNavigate';
-import { NavTabs } from '../mcc/types';
+import { useCurrent } from '../../../hooks/useCurrent';
+import { useTabNavigate } from '../../../hooks/useTabNavigate';
+import { NavTabs } from '../types';
 import {
     fetchAgents, fetchAgentSessions, launchAgentSession, stopAgentSession,
     AgentSessionStatuses,
-} from '../../api/agents';
-import type { AgentDef, AgentSessionInfo } from '../../api/agents';
-import { useV2Context } from '../V2Context';
-import { AgentEmptyIcon } from '../icons';
+} from '../../../api/agents';
+import type { AgentDef, AgentSessionInfo } from '../../../api/agents';
+import { useV2Context } from '../../V2Context';
+import { AgentEmptyIcon } from '../../icons';
 import './AgentView.css';
 
 // ---- Outlet Context ----

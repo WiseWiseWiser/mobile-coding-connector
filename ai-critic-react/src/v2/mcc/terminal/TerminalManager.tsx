@@ -1,10 +1,10 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import '@xterm/xterm/css/xterm.css';
-import { useTerminal } from '../hooks/useTerminal';
-import type { TerminalTheme } from '../hooks/useTerminal';
-import { useCurrent } from '../hooks/useCurrent';
-import { fetchTerminalSessions, deleteTerminalSession } from '../api/terminal';
-import type { TerminalSessionInfo } from '../api/terminal';
+import { useTerminal } from '../../../hooks/useTerminal';
+import type { TerminalTheme } from '../../../hooks/useTerminal';
+import { useCurrent } from '../../../hooks/useCurrent';
+import { fetchTerminalSessions, deleteTerminalSession } from '../../../api/terminal';
+import type { TerminalSessionInfo } from '../../../api/terminal';
 import './TerminalManager.css';
 
 // Mobile-friendly dark theme
@@ -43,6 +43,16 @@ interface TerminalTab {
 
 interface TerminalManagerProps {
     isVisible: boolean;
+}
+
+/** Return the next unique "Terminal N" name that doesn't collide with existing names. */
+function getNextTerminalName(existingNames: string[]): string {
+    const nameSet = new Set(existingNames);
+    let num = 1;
+    while (nameSet.has(`Terminal ${num}`)) {
+        num++;
+    }
+    return `Terminal ${num}`;
 }
 
 // Individual terminal instance component
@@ -120,13 +130,17 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
     const [sessionsLoaded, setSessionsLoaded] = useState(false);
     const tabsRef = useCurrent(tabs);
 
-    // Fetch existing sessions from backend on mount
+    // Fetch existing sessions from backend on mount.
+    // The `ignore` flag prevents stale async results from applying after cleanup
+    // (e.g. React StrictMode double-mount or rapid tab switches).
     useEffect(() => {
-        const defaultTab: TerminalTab = { id: 'term-1', name: 'Terminal 1' };
+        let ignore = false;
 
         fetchTerminalSessions()
             .then((sessions: TerminalSessionInfo[]) => {
+                if (ignore) return;
                 if (sessions.length === 0) {
+                    const defaultTab: TerminalTab = { id: 'term-1', name: 'Terminal 1' };
                     setTabs([defaultTab]);
                     setActiveTabId(defaultTab.id);
                     setSessionsLoaded(true);
@@ -143,16 +157,20 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
                 setSessionsLoaded(true);
             })
             .catch(() => {
+                if (ignore) return;
+                const defaultTab: TerminalTab = { id: 'term-1', name: 'Terminal 1' };
                 setTabs([defaultTab]);
                 setActiveTabId(defaultTab.id);
                 setSessionsLoaded(true);
             });
+
+        return () => { ignore = true; };
     }, []);
 
     const handleAddTab = () => {
         const newId = `term-${Date.now()}`;
-        const newTabNum = tabsRef.current.length + 1;
-        setTabs(prev => [...prev, { id: newId, name: `Terminal ${newTabNum}` }]);
+        const newName = getNextTerminalName(tabsRef.current.map(t => t.name));
+        setTabs(prev => [...prev, { id: newId, name: newName }]);
         setActiveTabId(newId);
     };
 
