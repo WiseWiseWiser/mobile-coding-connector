@@ -2,6 +2,9 @@ import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { checkServerFile, uploadFile } from '../../../api/fileupload';
 import type { ServerFileInfo } from '../../../api/fileupload';
+import { ServerFileBrowser } from './ServerFileBrowser';
+import { TransferProgress } from './TransferProgress';
+import type { TransferProgressData } from './TransferProgress';
 import './UploadFileView.css';
 
 function formatFileSize(bytes: number): string {
@@ -21,8 +24,10 @@ export function UploadFileView() {
     const [serverFileInfo, setServerFileInfo] = useState<ServerFileInfo | null>(null);
     const [checking, setChecking] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState<TransferProgressData | null>(null);
     const [uploadSuccess, setUploadSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showBrowser, setShowBrowser] = useState(false);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0] ?? null;
@@ -65,8 +70,9 @@ export function UploadFileView() {
         setUploading(true);
         setError(null);
         setUploadSuccess(false);
+        setUploadProgress(null);
         try {
-            await uploadFile(selectedFile, serverPath.trim());
+            await uploadFile(selectedFile, serverPath.trim(), setUploadProgress);
             setUploadSuccess(true);
             // Re-check file info after upload
             const info = await checkServerFile(serverPath.trim());
@@ -75,6 +81,24 @@ export function UploadFileView() {
             setError(err instanceof Error ? err.message : String(err));
         }
         setUploading(false);
+    };
+
+    const handleBrowserSelect = (path: string | null) => {
+        if (!path) return;
+        setServerPath(path);
+        setServerFileInfo(null);
+        setUploadSuccess(false);
+        setShowBrowser(false);
+    };
+
+    const handleBrowserDirChange = (dirPath: string) => {
+        // When the user navigates to a directory and the selected file is known,
+        // auto-compose path: dir + filename
+        if (selectedFile) {
+            setServerPath(dirPath.replace(/\/$/, '') + '/' + selectedFile.name);
+            setServerFileInfo(null);
+            setUploadSuccess(false);
+        }
     };
 
     const showOverwriteWarning = serverFileInfo?.exists && !serverFileInfo.is_dir && !uploadSuccess;
@@ -134,6 +158,12 @@ export function UploadFileView() {
                         />
                         <button
                             className="upload-check-btn"
+                            onClick={() => setShowBrowser(!showBrowser)}
+                        >
+                            Browse
+                        </button>
+                        <button
+                            className="upload-check-btn"
                             onClick={handleCheckPath}
                             disabled={checking || !serverPath.trim()}
                         >
@@ -141,6 +171,17 @@ export function UploadFileView() {
                         </button>
                     </div>
                 </div>
+
+                {/* Server File Browser (toggle) */}
+                {showBrowser && (
+                    <div className="upload-section">
+                        <ServerFileBrowser
+                            selectMode="file_or_dir"
+                            onSelect={handleBrowserSelect}
+                            onDirectoryChange={handleBrowserDirChange}
+                        />
+                    </div>
+                )}
 
                 {/* Server File Info */}
                 {serverFileInfo && (
@@ -199,6 +240,9 @@ export function UploadFileView() {
 
                 {/* Error */}
                 {error && <div className="upload-error">{error}</div>}
+
+                {/* Upload Progress */}
+                {uploading && <TransferProgress progress={uploadProgress} label="Upload" />}
 
                 {/* Success */}
                 {uploadSuccess && <div className="upload-success">File uploaded successfully!</div>}

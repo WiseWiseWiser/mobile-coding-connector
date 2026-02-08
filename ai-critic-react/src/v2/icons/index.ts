@@ -13,6 +13,7 @@ export { FolderIcon } from './FolderIcon';
 export { GitIcon } from './GitIcon';
 export { DiagnoseIcon } from './DiagnoseIcon';
 export { UploadIcon } from './UploadIcon';
+export { DownloadIcon } from './DownloadIcon';
 export { EditIcon } from './EditIcon';
 export { KeyIcon } from './KeyIcon';
 export { GitHubIcon } from './GitHubIcon';

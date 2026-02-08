@@ -11,6 +11,7 @@ export { CloudflareSettingsView, CloudflareSettingsContent } from './mcc/home/se
 export { GitSettings, GitSettingsContent } from './mcc/home/settings/GitSettings';
 export { CloneRepoView } from './mcc/home/settings/CloneRepoView';
 export { UploadFileView } from './mcc/home/UploadFileView';
+export { DownloadFileView } from './mcc/home/DownloadFileView';
 export { TerminalView } from './mcc/terminal/TerminalView';
 export { AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute } from './mcc/agent';
 export { PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute } from './mcc';

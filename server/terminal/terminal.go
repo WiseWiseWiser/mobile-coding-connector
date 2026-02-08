@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -109,18 +111,36 @@ func (m *sessionManager) create(name, cwd string) (*session, error) {
 		}
 	}
 
-	// Patch shell RC files so that --login shells pick up extra paths and PS1
+	// Build custom RC patch options
 	patchOpts := rcPatchOptions{
 		ExtraPaths: tool_resolve.AllExtraPaths(),
 	}
 	if termCfg != nil {
 		patchOpts.PS1 = termCfg.PS1
 	}
-	patchRCFiles(patchOpts)
+
+	// Instead of patching user's RC files, create a dedicated RC file
+	// and tell the shell to use it, so the user's environment stays clean.
+	var extraEnv []string
+	shellBase := filepath.Base(shellPath)
+	switch {
+	case strings.Contains(shellBase, "zsh"):
+		if zdotdir, err := writeCustomZshRC(patchOpts); err == nil {
+			extraEnv = append(extraEnv, "ZDOTDIR="+zdotdir)
+		}
+	default:
+		// bash or other sh-compatible shells: use --rcfile
+		if rcFile, err := writeCustomBashRC(patchOpts); err == nil {
+			// Replace --login with --rcfile so bash reads our custom rc
+			// instead of the standard login sequence
+			shellFlags = replaceLoginWithRCFile(shellFlags, rcFile)
+		}
+	}
 
 	cmd := exec.Command(shellPath, shellFlags...)
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = append(cmd.Env, extraEnv...)
 	// Ensure common tool install paths and user-configured paths are in PATH
 	cmd.Env = tool_resolve.AppendExtraPaths(cmd.Env)
 	// Set custom PS1 prompt if configured
@@ -269,6 +289,25 @@ func (s *session) close() {
 	s.ptmx.Close()
 	s.cmd.Process.Kill()
 	s.cmd.Wait()
+}
+
+// replaceLoginWithRCFile replaces --login in shell flags with --rcfile <path>.
+// If --login is not found, --rcfile is prepended.
+func replaceLoginWithRCFile(flags []string, rcFile string) []string {
+	var result []string
+	replaced := false
+	for _, f := range flags {
+		if f == "--login" || f == "-l" {
+			result = append(result, "--rcfile", rcFile)
+			replaced = true
+			continue
+		}
+		result = append(result, f)
+	}
+	if !replaced {
+		result = append([]string{"--rcfile", rcFile}, result...)
+	}
+	return result
 }
 
 // ------ HTTP Handlers ------

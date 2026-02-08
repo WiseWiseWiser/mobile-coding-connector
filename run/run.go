@@ -16,13 +16,14 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
 
-	"github.com/xhd2015/kool/pkgs/web"
 	"github.com/xhd2015/less-gen/flags"
 )
 
 var help = fmt.Sprintf(`
 Usage: ai-critic [options]
-       ai-critic keep-alive-script [options]  Output a shell script that auto-restarts the server
+       ai-critic keep-alive [options]            Auto-restart server with health checking
+       ai-critic rebuild --repo-dir DIR [opts]   Rebuild from source and restart
+       ai-critic check-port --port PORT          Check if a port is accessible
 
 Options:
   --dev                   Run in development mode
@@ -41,8 +42,18 @@ func Run(args []string) error {
 	// Handle subcommands before flag parsing
 	if len(args) > 0 {
 		switch args[0] {
+		case "keep-alive":
+			return runKeepAlive(args[1:])
 		case "keep-alive-script":
-			return runKeepAliveScript(args[1:])
+			// Backward-compatible alias: same as "keep-alive --script"
+			return runKeepAlive(append([]string{"--script"}, args[1:]...))
+		case "rebuild":
+			return runRebuild(args[1:])
+		case "rebuild-script":
+			// Backward-compatible alias: same as "rebuild --script"
+			return runRebuild(append([]string{"--script"}, args[1:]...))
+		case "check-port":
+			return runCheckPort(args[1:])
 		}
 	}
 
@@ -122,23 +133,17 @@ func Run(args []string) error {
 	}
 
 	// Determine port to use
-	var port int
-	if portFlag > 0 {
-		port = portFlag
-		// Check if port is already in use
-		if isPortInUse(port) {
-			pid := findPortPID(port)
-			if pid != "" {
-				return fmt.Errorf("port %d is already in use by process %s", port, pid)
-			}
-			return fmt.Errorf("port %d is already in use", port)
+	port := portFlag
+	if port <= 0 {
+		port = lib.DefaultServerPort
+	}
+	// Check if port is already in use
+	if isPortInUse(port) {
+		pid := findPortPID(port)
+		if pid != "" {
+			return fmt.Errorf("port %d is already in use by process %s", port, pid)
 		}
-	} else {
-		// Auto-find available port starting from DefaultServerPort
-		port, err = web.FindAvailablePort(lib.DefaultServerPort, 100)
-		if err != nil {
-			return err
-		}
+		return fmt.Errorf("port %d is already in use", port)
 	}
 
 	// Set server port for domains tunnel management
@@ -184,31 +189,31 @@ func isPortInUse(port int) bool {
 	return true
 }
 
-// findPortPID attempts to find the PID of the process listening on the given port.
+// findPortPID attempts to find the PID of the process LISTENING on the given port.
 func findPortPID(port int) string {
-	var cmd *exec.Cmd
 	portStr := fmt.Sprintf("%d", port)
 
 	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("lsof", "-ti", fmt.Sprintf("tcp:%s", portStr))
-	case "linux":
-		// Try lsof first, fall back to ss
-		cmd = exec.Command("lsof", "-ti", fmt.Sprintf("tcp:%s", portStr))
-	default:
-		return ""
-	}
-
-	out, err := cmd.Output()
-	if err != nil {
-		// lsof not available on Linux, try ss
+	case "darwin", "linux":
+		// Try lsof with -sTCP:LISTEN to find only the listening socket
+		cmd := exec.Command("lsof", "-ti", fmt.Sprintf("tcp:%s", portStr), "-sTCP:LISTEN")
+		out, err := cmd.Output()
+		if err == nil {
+			pid := strings.TrimSpace(string(out))
+			if idx := strings.IndexByte(pid, '\n'); idx > 0 {
+				pid = pid[:idx]
+			}
+			if pid != "" {
+				return pid
+			}
+		}
+		// Fallback on Linux: try ss
 		if runtime.GOOS == "linux" {
 			cmd = exec.Command("ss", "-tlnp", fmt.Sprintf("sport = :%s", portStr))
 			out, err = cmd.Output()
 			if err != nil {
 				return ""
 			}
-			// Parse ss output for pid
 			for _, line := range strings.Split(string(out), "\n") {
 				if idx := strings.Index(line, "pid="); idx >= 0 {
 					rest := line[idx+4:]
@@ -217,15 +222,9 @@ func findPortPID(port int) string {
 					}
 				}
 			}
-			return ""
 		}
 		return ""
+	default:
+		return ""
 	}
-
-	pid := strings.TrimSpace(string(out))
-	// lsof may return multiple PIDs (one per line), take the first
-	if idx := strings.IndexByte(pid, '\n'); idx > 0 {
-		pid = pid[:idx]
-	}
-	return pid
 }

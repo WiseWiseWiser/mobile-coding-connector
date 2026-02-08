@@ -1,0 +1,46 @@
+/* Transfer Progress */
+.transfer-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.transfer-progress-bar-bg {
+    height: 8px;
+    background: #1e293b;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #334155;
+}
+
+.transfer-progress-bar {
+    height: 100%;
+    background: #3b82f6;
+    border-radius: 4px;
+    transition: width 0.2s ease;
+}
+
+.transfer-progress-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.transfer-progress-percent {
+    font-size: 13px;
+    color: #e2e8f0;
+    font-weight: 500;
+}
+
+.transfer-progress-size {
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.transfer-progress-speed {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: #64748b;
+}
