@@ -19,12 +19,13 @@ Usage: go run ./script/server/run [options]
 Builds and runs the Go server only, proxying frontend requests to http://localhost:%d/
 
 Options:
+  --port PORT   Server port to listen on (default: %d)
   --dir DIR     Set the initial directory for code review (defaults to current working directory)
   -h, --help    Show this help message
 
 Note: Make sure to start the frontend dev server separately:
   cd ai-critic-react && npm run dev
-`, lib.ViteDevPort)
+`, lib.ViteDevPort, lib.DefaultServerPort)
 
 func main() {
 	err := Handle(os.Args[1:])
@@ -37,13 +38,20 @@ func main() {
 func Handle(args []string) error {
 	var dirFlag string
 	var debugFlag bool
+	var portFlag int
 	args, err := flags.
 		String("--dir", &dirFlag).
 		Bool("--debug", &debugFlag).
+		Int("--port", &portFlag).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
 		return err
+	}
+
+	// Use default port if not specified
+	if portFlag == 0 {
+		portFlag = lib.DefaultServerPort
 	}
 
 	// Create context for managing subprocesses
@@ -61,8 +69,8 @@ func Handle(args []string) error {
 
 	// Build the Go server
 	fmt.Println("Building Go server...")
-	binary := "/tmp/ai-critic"	
-	buildArgs := []string{ "build", "-o", binary}
+	binary := "/tmp/ai-critic"
+	buildArgs := []string{"build", "-o", binary}
 	if debugFlag {
 		buildArgs = append(buildArgs, "-gcflags=all=-N -l")
 	}
@@ -82,7 +90,7 @@ func Handle(args []string) error {
 	}
 
 	// Build command args - use --dev to enable proxy to frontend
-	serverArgs := []string{"--dev", "--dir", targetDir}
+	serverArgs := []string{"--dev", "--port", fmt.Sprintf("%d", portFlag), "--dir", targetDir}
 
 	// Check for .config.local.json in the current directory (ai-critic)
 	configFile := ".config.local.json"
@@ -100,19 +108,19 @@ func Handle(args []string) error {
 
 	// Start the Go server in dev mode (proxies to localhost:ViteDevPort)
 	fmt.Println("Starting Go server in dev mode...")
+	fmt.Printf("Server port: %d\n", portFlag)
 	fmt.Printf("Initial directory: %s\n", targetDir)
 	fmt.Printf("Frontend requests will be proxied to http://localhost:%d/\n", lib.ViteDevPort)
 	fmt.Println("Make sure the frontend dev server is running: cd ai-critic-react && npm run dev")
-
 
 	runBianry := binary
 	runArgs := serverArgs
 	if debugFlag {
 		runBianry = "kool"
-		runArgs = []string{ "debug", binary}
+		runArgs = []string{"debug", binary}
 		runArgs = append(runArgs, serverArgs...)
 	}
-	
+
 	goServerCmd := exec.CommandContext(ctx, runBianry, runArgs...)
 	goServerCmd.Stdout = os.Stdout
 	goServerCmd.Stderr = os.Stderr

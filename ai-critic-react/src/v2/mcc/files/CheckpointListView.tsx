@@ -7,8 +7,11 @@ import {
 } from '../../../api/checkpoints';
 import type { CheckpointSummary, ChangedFile, FileDiff } from '../../../api/checkpoints';
 import { gitFetch } from '../../../api/review';
+import { encryptWithServerKey, EncryptionNotAvailableError } from '../home/crypto';
 import { DiffViewer } from '../../DiffViewer';
 import { statusBadge } from './utils';
+import { loadSSHKeys } from '../home/settings/gitStorage';
+import { fetchProjects } from '../../../api/projects';
 import './FilesView.css';
 
 export interface CheckpointListViewProps {
@@ -28,6 +31,7 @@ export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint
     const [loadingDiffs, setLoadingDiffs] = useState(false);
     const [fetching, setFetching] = useState(false);
     const [fetchResult, setFetchResult] = useState<{ ok: boolean; message: string } | null>(null);
+    const [deletingCheckpointId, setDeletingCheckpointId] = useState<number | null>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -56,16 +60,52 @@ export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint
         try {
             await deleteCheckpoint(projectName, id);
             setCheckpoints(prev => prev.filter(cp => cp.id !== id));
+            setDeletingCheckpointId(null);
         } catch {
             // ignore
         }
+    };
+
+    const handleDeleteClick = (e: React.MouseEvent, id: number) => {
+        e.stopPropagation();
+        setDeletingCheckpointId(id);
+    };
+
+    const handleCancelDelete = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setDeletingCheckpointId(null);
     };
 
     const handleGitFetch = async () => {
         setFetching(true);
         setFetchResult(null);
         try {
-            const result = await gitFetch(projectDir);
+            // Find the project to get its SSH key ID
+            const projects = await fetchProjects();
+            const project = projects.find(p => p.name === projectName || p.dir === projectDir);
+            
+            let encryptedSshKey: string | undefined;
+            
+            if (project?.ssh_key_id) {
+                // Load SSH keys from localStorage
+                const sshKeys = loadSSHKeys();
+                const key = sshKeys.find(k => k.id === project.ssh_key_id);
+                
+                if (key) {
+                    try {
+                        encryptedSshKey = await encryptWithServerKey(key.privateKey);
+                    } catch (err) {
+                        if (err instanceof EncryptionNotAvailableError) {
+                            setFetchResult({ ok: false, message: 'Server encryption keys not configured. Ask the server admin to run: go run ./script/crypto/gen' });
+                            setFetching(false);
+                            return;
+                        }
+                        throw err;
+                    }
+                }
+            }
+            
+            const result = await gitFetch(projectDir, encryptedSshKey);
             setFetchResult({ ok: true, message: result.output || 'Fetch complete' });
         } catch (err: any) {
             setFetchResult({ ok: false, message: err.message || 'Fetch failed' });
@@ -140,7 +180,15 @@ export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint
                                         </div>
                                         <div className="mcc-checkpoint-card-meta">
                                             <span>{new Date(cp.timestamp).toLocaleString()}</span>
-                                            <button className="mcc-checkpoint-delete-btn" onClick={e => { e.stopPropagation(); handleDelete(cp.id); }}>Delete</button>
+                                            {deletingCheckpointId === cp.id ? (
+                                                <div className="mcc-checkpoint-delete-confirm" onClick={e => e.stopPropagation()}>
+                                                    <span className="mcc-checkpoint-delete-confirm-text">Delete?</span>
+                                                    <button className="mcc-checkpoint-delete-confirm-btn mcc-checkpoint-delete-confirm-yes" onClick={e => { e.stopPropagation(); handleDelete(cp.id); }}>Yes</button>
+                                                    <button className="mcc-checkpoint-delete-confirm-btn mcc-checkpoint-delete-confirm-no" onClick={handleCancelDelete}>No</button>
+                                                </div>
+                                            ) : (
+                                                <button className="mcc-checkpoint-delete-btn" onClick={e => handleDeleteClick(e, cp.id)}>Delete</button>
+                                            )}
                                         </div>
                                     </div>
                                 ))}

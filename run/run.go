@@ -36,6 +36,10 @@ Options:
   --rules-dir DIR         Directory containing REVIEW_RULES.md (defaults to "rules")
   --component             Serve a specific component
   -h, --help              Show this help message
+
+Keep-Alive Options:
+  --script                Output shell script instead of running Go code
+  --forever               Skip port-in-use check and start keep-alive anyway
 `, lib.DefaultServerPort)
 
 func Run(args []string) error {

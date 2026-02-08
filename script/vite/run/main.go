@@ -79,6 +79,11 @@ func Handle(args []string) error {
 		fmt.Printf("Port: %d (default)\n", lib.ViteDevPort)
 	}
 
+	// Ensure node_modules exists
+	if err := lib.EnsureNodeModules("ai-critic-react"); err != nil {
+		return err
+	}
+
 	// Use bash to ensure nvm is loaded if available
 	shellCmd := lib.WithNodejs20(fmt.Sprintf("npm %s", strings.Join(viteArgs, " ")))
 	cmd := exec.CommandContext(ctx, "bash", "-c", shellCmd)

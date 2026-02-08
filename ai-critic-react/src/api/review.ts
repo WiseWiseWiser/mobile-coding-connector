@@ -114,11 +114,15 @@ export async function getGitBranches(dir?: string): Promise<GitBranch[]> {
 }
 
 // Fetch from origin
-export async function gitFetch(dir?: string): Promise<GitCommitResult> {
+export async function gitFetch(dir?: string, sshKey?: string): Promise<GitCommitResult> {
+    const body: Record<string, string | undefined> = { dir };
+    if (sshKey) {
+        body.ssh_key = sshKey;
+    }
     const response = await fetch('/api/review/fetch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dir }),
+        body: JSON.stringify(body),
     });
     if (!response.ok) {
         const error = await response.json();

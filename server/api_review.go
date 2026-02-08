@@ -12,6 +12,7 @@ import (
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/ai"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
 )
 
 // initialDir stores the initial directory set via --dir flag
@@ -45,6 +46,7 @@ type CodeReviewRequest struct {
 	Dir      string `json:"dir"`      // Directory to run git diff in, defaults to initial dir
 	Provider string `json:"provider"` // AI provider to use (optional)
 	Model    string `json:"model"`    // AI model to use (optional)
+	SSHKey   string `json:"ssh_key"`  // Encrypted SSH private key for git operations (optional)
 }
 
 // GitDiffResult holds the result of git diff commands
@@ -347,6 +349,20 @@ func handleGitFetch(w http.ResponseWriter, r *http.Request) {
 
 	cmd := exec.Command("git", "fetch", "origin")
 	cmd.Dir = dir
+
+	// Use SSH key if provided
+	if req.SSHKey != "" {
+		keyFile, err := github.PrepareSSHKeyFile(req.SSHKey)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("Failed to prepare SSH key: %v", err)})
+			return
+		}
+		defer keyFile.Cleanup()
+
+		sshCmd := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", keyFile.Path)
+		cmd.Env = append(os.Environ(), fmt.Sprintf("GIT_SSH_COMMAND=%s", sshCmd))
+	}
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to fetch: %s", string(output))})
@@ -449,7 +465,7 @@ func getGitStatus(dir string) (*GitStatusResult, error) {
 			continue
 		}
 
-		indexStatus := line[0]  // staged status
+		indexStatus := line[0]    // staged status
 		workTreeStatus := line[1] // unstaged status
 		filePath := strings.TrimSpace(line[3:])
 

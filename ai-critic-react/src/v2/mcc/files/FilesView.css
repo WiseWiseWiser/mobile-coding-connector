@@ -70,6 +70,47 @@
     background: rgba(239, 68, 68, 0.1);
 }
 
+/* In-place delete confirmation */
+.mcc-checkpoint-delete-confirm {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mcc-checkpoint-delete-confirm-text {
+    color: #f87171;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.mcc-checkpoint-delete-confirm-btn {
+    padding: 2px 8px;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.mcc-checkpoint-delete-confirm-yes {
+    background: #ef4444;
+    color: #fff;
+}
+
+.mcc-checkpoint-delete-confirm-yes:hover {
+    background: #dc2626;
+}
+
+.mcc-checkpoint-delete-confirm-no {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+.mcc-checkpoint-delete-confirm-no:hover {
+    background: #475569;
+}
+
 /* Create Checkpoint Button */
 .mcc-create-checkpoint-btn {
     display: flex;

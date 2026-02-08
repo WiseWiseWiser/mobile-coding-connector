@@ -5,6 +5,8 @@ import { fetchProjects as apiFetchProjects } from '../api/projects';
 import type { ProjectInfo } from '../api/projects';
 import { fetchDiagnostics as apiFetchDiagnostics } from '../api/ports';
 import type { DiagnosticsData } from '../api/ports';
+import { fetchAgents } from '../api/agents';
+import type { AgentDef, AgentSessionInfo } from '../api/agents';
 
 interface V2ContextValue {
     // Projects
@@ -20,6 +22,13 @@ interface V2ContextValue {
     diagnostics: DiagnosticsData | null;
     diagnosticsLoading: boolean;
     refreshDiagnostics: () => void;
+    // Agent session state (lifted up to persist across tab switches)
+    agents: AgentDef[];
+    agentsLoading: boolean;
+    agentSession: AgentSessionInfo | null;
+    setAgentSession: (session: AgentSessionInfo | null) => void;
+    agentLaunchError: string;
+    setAgentLaunchError: (error: string) => void;
 }
 
 const V2Ctx = createContext<V2ContextValue | null>(null);
@@ -66,6 +75,18 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
         refreshDiagnostics();
     }, []);
 
+    // Agent state (lifted up to persist across tab switches)
+    const [agents, setAgents] = useState<AgentDef[]>([]);
+    const [agentsLoading, setAgentsLoading] = useState(true);
+    const [agentSession, setAgentSession] = useState<AgentSessionInfo | null>(null);
+    const [agentLaunchError, setAgentLaunchError] = useState('');
+
+    useEffect(() => {
+        fetchAgents()
+            .then(data => { setAgents(data); setAgentsLoading(false); })
+            .catch(() => setAgentsLoading(false));
+    }, []);
+
     return (
         <V2Ctx.Provider value={{
             projectsList,
@@ -77,6 +98,12 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
             diagnostics,
             diagnosticsLoading,
             refreshDiagnostics,
+            agents,
+            agentsLoading,
+            agentSession,
+            setAgentSession,
+            agentLaunchError,
+            setAgentLaunchError,
         }}>
             {children}
         </V2Ctx.Provider>

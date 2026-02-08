@@ -46,6 +46,11 @@ func Handle(args []string) error {
 	// Build the frontend using Vite
 	fmt.Println("Building frontend with Vite...")
 
+	// Ensure node_modules exists
+	if err := lib.EnsureNodeModules("ai-critic-react"); err != nil {
+		return err
+	}
+
 	// Run npm run build in the ai-critic-react directory
 	buildArgs := []string{"run", "build"}
 	if outDir != "ai-critic-react/dist" {

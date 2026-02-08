@@ -59,14 +59,14 @@ var agentDefs = []AgentDef{
 
 // AgentSessionInfo is returned to the frontend
 type AgentSessionInfo struct {
-	ID        string `json:"id"`
-	AgentID   string `json:"agent_id"`
-	AgentName string `json:"agent_name"`
+	ID         string `json:"id"`
+	AgentID    string `json:"agent_id"`
+	AgentName  string `json:"agent_name"`
 	ProjectDir string `json:"project_dir"`
-	Port      int    `json:"port"`
-	CreatedAt string `json:"created_at"`
-	Status    string `json:"status"` // "starting", "running", "stopped", "error"
-	Error     string `json:"error,omitempty"`
+	Port       int    `json:"port"`
+	CreatedAt  string `json:"created_at"`
+	Status     string `json:"status"` // "starting", "running", "stopped", "error"
+	Error      string `json:"error,omitempty"`
 }
 
 // agentSession holds state for a running headless agent process
@@ -132,8 +132,9 @@ func (m *agentSessionManager) launch(agentID, projectDir string) (*agentSession,
 		return nil, fmt.Errorf("agent %s does not support headless mode", agentID)
 	}
 
-	// Check command is installed
-	if _, err := tool_resolve.LookPath(agentDef.Command); err != nil {
+	// Check command is installed and get full path
+	cmdPath, err := tool_resolve.LookPath(agentDef.Command)
+	if err != nil {
 		return nil, fmt.Errorf("agent %s is not installed (%s not found)", agentDef.Name, agentDef.Command)
 	}
 
@@ -153,8 +154,8 @@ func (m *agentSessionManager) launch(agentID, projectDir string) (*agentSession,
 	id := fmt.Sprintf("agent-session-%d", m.counter)
 	m.mu.Unlock()
 
-	// Build the opencode serve command
-	cmd := exec.Command(agentDef.Command, "serve", "--port", fmt.Sprintf("%d", port))
+	// Build the opencode serve command using the full path
+	cmd := exec.Command(cmdPath, "serve", "--port", fmt.Sprintf("%d", port))
 	cmd.Dir = projectDir
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	cmd.Env = tool_resolve.AppendExtraPaths(cmd.Env)
@@ -439,4 +440,3 @@ func proxySSE(w http.ResponseWriter, r *http.Request, port int) {
 		}
 	}
 }
-

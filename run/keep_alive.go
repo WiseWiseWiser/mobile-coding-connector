@@ -16,18 +16,20 @@ import (
 )
 
 const (
-	startupTimeout       = 10 * time.Second
-	healthCheckInterval  = 10 * time.Second
-	restartDelay         = 3 * time.Second
-	portCheckTimeout     = 2 * time.Second
+	startupTimeout      = 10 * time.Second
+	healthCheckInterval = 10 * time.Second
+	restartDelay        = 3 * time.Second
+	portCheckTimeout    = 2 * time.Second
 )
 
 func runKeepAlive(args []string) error {
 	var scriptFlag bool
 	var portFlag int
+	var foreverFlag bool
 	args, err := flags.
 		Bool("--script", &scriptFlag).
 		Int("--port", &portFlag).
+		Bool("--forever", &foreverFlag).
 		Parse(args)
 	if err != nil {
 		return err
@@ -41,11 +43,21 @@ func runKeepAlive(args []string) error {
 	if scriptFlag {
 		return outputKeepAliveScript(port, args)
 	}
-	return runKeepAliveLoop(port, args)
+	return runKeepAliveLoop(port, foreverFlag, args)
 }
 
 // runKeepAliveLoop implements the keep-alive logic in Go.
-func runKeepAliveLoop(port int, serverArgs []string) error {
+func runKeepAliveLoop(port int, forever bool, serverArgs []string) error {
+	// Check if port is already in use - another keep-alive is likely running
+	// Skip this check if --forever flag is set
+	if !forever && isPortReachable(port) {
+		pid := findPortPID(port)
+		if pid != "" {
+			return fmt.Errorf("port %d is already in use by PID %s - another keep-alive instance may be running", port, pid)
+		}
+		return fmt.Errorf("port %d is already in use - another keep-alive instance may be running", port)
+	}
+
 	binPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve executable path: %w", err)
