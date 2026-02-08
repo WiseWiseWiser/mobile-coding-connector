@@ -700,6 +700,8 @@ func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		a.handleGetSettings(w, r)
 	case path == "/settings" && r.Method == http.MethodPut:
 		a.handleUpdateSettings(w, r)
+	case path == "/templates" && r.Method == http.MethodGet:
+		a.handleListTemplates(w, r)
 	default:
 		http.NotFound(w, r)
 	}

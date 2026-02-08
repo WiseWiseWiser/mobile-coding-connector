@@ -225,3 +225,17 @@ export async function updateAgentSettings(sessionId: string, settings: AgentSett
     });
     return resp.json();
 }
+
+// ---- Agent Templates ----
+
+export interface AgentTemplate {
+    id: string;
+    name: string;
+    content: string;
+}
+
+export async function fetchAgentTemplates(sessionId: string): Promise<AgentTemplate[]> {
+    const resp = await fetch(`${agentProxyBase(sessionId)}/templates`);
+    const data = await resp.json();
+    return Array.isArray(data) ? data : [];
+}

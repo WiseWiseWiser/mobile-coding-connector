@@ -152,6 +152,12 @@
     .terminal-instance-content .xterm-viewport {
         overscroll-behavior: contain;
     }
+
+    /* Enable long-press text selection on mobile */
+    .terminal-instance-content .xterm-screen {
+        -webkit-user-select: text;
+        user-select: text;
+    }
 }
 
 .terminal-instance-content .xterm-screen {

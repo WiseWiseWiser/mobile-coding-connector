@@ -116,6 +116,40 @@ export function useTerminal(
         xtermRef.current = xterm;
         fitAddonRef.current = fitAddon;
 
+        // ---- Mobile touch scroll support ----
+        // xterm.js captures touch events, preventing native scroll on mobile.
+        // We add our own touch handlers on the viewport to enable vertical scrolling.
+        const viewport = terminalRef.current.querySelector('.xterm-viewport') as HTMLElement | null;
+        let touchStartY = 0;
+        let touchScrollTop = 0;
+        let isTouchScrolling = false;
+
+        const handleTouchStart = (e: TouchEvent) => {
+            if (e.touches.length !== 1) return;
+            touchStartY = e.touches[0].clientY;
+            touchScrollTop = viewport?.scrollTop ?? 0;
+            isTouchScrolling = false;
+        };
+        const handleTouchMove = (e: TouchEvent) => {
+            if (e.touches.length !== 1 || !viewport) return;
+            const deltaY = touchStartY - e.touches[0].clientY;
+            if (!isTouchScrolling && Math.abs(deltaY) > 5) {
+                isTouchScrolling = true;
+            }
+            if (isTouchScrolling) {
+                viewport.scrollTop = touchScrollTop + deltaY;
+            }
+        };
+        const handleTouchEnd = () => {
+            isTouchScrolling = false;
+        };
+
+        if (viewport) {
+            viewport.addEventListener('touchstart', handleTouchStart, { passive: true });
+            viewport.addEventListener('touchmove', handleTouchMove, { passive: true });
+            viewport.addEventListener('touchend', handleTouchEnd, { passive: true });
+        }
+
         // ---- WebSocket setup ----
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const params = new URLSearchParams();
@@ -233,6 +267,11 @@ export function useTerminal(
         cleanupRef.current = () => {
             disposed = true;
             window.removeEventListener('resize', handleResize);
+            if (viewport) {
+                viewport.removeEventListener('touchstart', handleTouchStart);
+                viewport.removeEventListener('touchmove', handleTouchMove);
+                viewport.removeEventListener('touchend', handleTouchEnd);
+            }
             if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
                 ws.close();
             }

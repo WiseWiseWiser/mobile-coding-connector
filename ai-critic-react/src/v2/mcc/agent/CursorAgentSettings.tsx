@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { fetchAgentSettings, updateAgentSettings } from '../../../api/agents';
-import type { AgentSessionInfo, AgentSettings } from '../../../api/agents';
+import { fetchAgentSettings, updateAgentSettings, fetchAgentTemplates } from '../../../api/agents';
+import type { AgentSessionInfo, AgentSettings, AgentTemplate } from '../../../api/agents';
 import { AgentChatHeader } from './AgentChatHeader';
 
 export interface CursorAgentSettingsProps {
@@ -14,18 +14,21 @@ export function CursorAgentSettings({ session, projectName, onBack }: CursorAgen
         prompt_append_message: '',
         followup_append_message: '',
     });
+    const [templates, setTemplates] = useState<AgentTemplate[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState('');
     const [error, setError] = useState('');
 
     useEffect(() => {
-        fetchAgentSettings(session.id)
-            .then(s => {
-                setSettings(s);
-                setLoading(false);
-            })
-            .catch(() => setLoading(false));
+        Promise.all([
+            fetchAgentSettings(session.id),
+            fetchAgentTemplates(session.id),
+        ]).then(([s, t]) => {
+            setSettings(s);
+            setTemplates(t);
+            setLoading(false);
+        }).catch(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session.id]);
 
@@ -69,6 +72,25 @@ export function CursorAgentSettings({ session, projectName, onBack }: CursorAgen
                             rows={5}
                             placeholder="e.g. Always explain your reasoning step by step."
                         />
+                        {templates.length > 0 && (
+                            <div className="mcc-agent-settings-templates">
+                                {templates.map(t => (
+                                    <button
+                                        key={t.id}
+                                        className="mcc-agent-settings-template-btn"
+                                        onClick={() => setSettings(prev => ({
+                                            ...prev,
+                                            prompt_append_message: prev.prompt_append_message
+                                                ? prev.prompt_append_message + '\n' + t.content
+                                                : t.content,
+                                        }))}
+                                        title={`Append "${t.name}" template`}
+                                    >
+                                        + {t.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="mcc-agent-settings-field">
@@ -85,6 +107,25 @@ export function CursorAgentSettings({ session, projectName, onBack }: CursorAgen
                             rows={5}
                             placeholder="e.g. After completing the task, summarize what was done."
                         />
+                        {templates.length > 0 && (
+                            <div className="mcc-agent-settings-templates">
+                                {templates.map(t => (
+                                    <button
+                                        key={t.id}
+                                        className="mcc-agent-settings-template-btn"
+                                        onClick={() => setSettings(prev => ({
+                                            ...prev,
+                                            followup_append_message: prev.followup_append_message
+                                                ? prev.followup_append_message + '\n' + t.content
+                                                : t.content,
+                                        }))}
+                                        title={`Append "${t.name}" template`}
+                                    >
+                                        + {t.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="mcc-agent-settings-actions">

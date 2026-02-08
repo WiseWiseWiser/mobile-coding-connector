@@ -263,6 +263,45 @@ var requiredTools = []toolDef{
 		installWindows: "Download from https://github.com/junegunn/fzf/releases",
 	},
 	{
+		name:        "agent",
+		description: "Cursor Agent CLI for AI-powered coding",
+		purpose:     "Run cursor agent for code generation and editing from the terminal",
+		versionCmd:  []string{"agent", "--version"},
+		installMacOS: []string{
+			"curl https://cursor.com/install -fsS | bash",
+		},
+		installLinux: []string{
+			"curl https://cursor.com/install -fsS | bash",
+		},
+		installWindows: "Download from https://cursor.com/en/cli",
+	},
+	{
+		name:        "codex",
+		description: "OpenAI Codex CLI for AI-powered coding",
+		purpose:     "Run OpenAI Codex agent for code generation and editing",
+		versionCmd:  []string{"codex", "--version"},
+		installMacOS: []string{
+			"npm install -g @openai/codex",
+		},
+		installLinux: []string{
+			"npm install -g @openai/codex",
+		},
+		installWindows: "npm install -g @openai/codex",
+	},
+	{
+		name:        "claude",
+		description: "Claude Code CLI by Anthropic",
+		purpose:     "Run Claude Code agent for code generation and editing",
+		versionCmd:  []string{"claude", "--version"},
+		installMacOS: []string{
+			"npm install -g @anthropic-ai/claude-code",
+		},
+		installLinux: []string{
+			"npm install -g @anthropic-ai/claude-code",
+		},
+		installWindows: "npm install -g @anthropic-ai/claude-code",
+	},
+	{
 		name:        "whats_next",
 		description: "Task tracking and planning CLI tool",
 		purpose:     "Track tasks and plan next steps",
@@ -391,8 +430,13 @@ func CheckTools() *ToolsResponse {
 			SettingsPath:   tool.settingsPath,
 		}
 
-		// Check if tool is installed
-		path, err := tool_resolve.LookPath(tool.name)
+		// Check if tool is installed — use the version command's binary name
+		// when available, since the display name may differ (e.g. "cursor-agent" → "cursor")
+		lookupName := tool.name
+		if len(tool.versionCmd) > 0 {
+			lookupName = tool.versionCmd[0]
+		}
+		path, err := tool_resolve.LookPath(lookupName)
 		if err == nil {
 			info.Installed = true
 			info.Path = path

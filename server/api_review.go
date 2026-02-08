@@ -418,7 +418,7 @@ func handleGitFetch(w http.ResponseWriter, r *http.Request) {
 	acceptHeader := r.Header.Get("Accept")
 	wantStream := acceptHeader == "text/event-stream"
 
-	cmd := exec.Command("git", "fetch", "origin")
+	cmd := exec.Command("git", "pull", "--ff-only")
 	cmd.Dir = dir
 
 	// Use SSH key if provided
@@ -449,21 +449,21 @@ func handleGitFetch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		sseWriter.SendLog("Starting git fetch...")
+		sseWriter.SendLog("Starting git pull --ff-only...")
 		err := sseWriter.StreamCmd(cmd)
 		if err != nil {
-			sseWriter.SendError(fmt.Sprintf("Fetch failed: %v", err))
+			sseWriter.SendError(fmt.Sprintf("Pull failed: %v", err))
 			sseWriter.SendDone(map[string]string{"success": "false"})
 			return
 		}
-		sseWriter.SendDone(map[string]string{"success": "true", "message": "Fetch completed successfully"})
+		sseWriter.SendDone(map[string]string{"success": "true", "message": "Pull completed successfully"})
 		return
 	}
 
 	// Non-streaming fallback
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to fetch: %s", string(output))})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to pull: %s", string(output))})
 		return
 	}
 

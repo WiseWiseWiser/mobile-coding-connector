@@ -80,7 +80,7 @@ export function CheckpointListView({ projectName, projectDir, sshKeyId, onCreate
         setDeletingCheckpointId(null);
     };
 
-    const handleGitFetch = async () => {
+    const handleGitPull = async () => {
         setFetching(true);
         setFetchResult(null);
         setFetchLogs([]);
@@ -105,14 +105,14 @@ export function CheckpointListView({ projectName, projectDir, sshKeyId, onCreate
                 onError: (logLine) => setFetchLogs(prev => [...prev, logLine]),
                 onDone: (message, data) => {
                     if (data.success === 'true') {
-                        setFetchResult({ ok: true, message: message || 'Fetch completed successfully' });
+                        setFetchResult({ ok: true, message: message || 'Pull completed successfully' });
                     } else {
-                        setFetchResult({ ok: false, message: message || 'Fetch failed' });
+                        setFetchResult({ ok: false, message: message || 'Pull failed' });
                     }
                 },
             });
         } catch (err: any) {
-            setFetchResult({ ok: false, message: err.message || 'Fetch failed' });
+            setFetchResult({ ok: false, message: err.message || 'Pull failed' });
         } finally {
             setFetching(false);
         }
@@ -210,10 +210,10 @@ export function CheckpointListView({ projectName, projectDir, sshKeyId, onCreate
                         </button>
                         <button
                             className="mcc-git-commit-nav-btn mcc-git-fetch-btn"
-                            onClick={handleGitFetch}
+                            onClick={handleGitPull}
                             disabled={fetching}
                         >
-                            {fetching ? 'Fetching...' : 'Git Fetch'}
+                            {fetching ? 'Pulling...' : 'Git Pull'}
                         </button>
                     </div>
                     {showFetchLogs && fetchLogs.length > 0 && (

@@ -10,6 +10,7 @@ package tool_resolve
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -27,7 +28,15 @@ func init() {
 		ExtraPaths = append(ExtraPaths,
 			home+"/.local/bin",
 			home+"/.opencode/bin",
+			home+"/go/bin",
 		)
+	}
+	// Dynamically resolve npm's global bin directory (varies by nvm, system install, etc.)
+	if out, err := exec.Command("npm", "bin", "-g").Output(); err == nil {
+		npmBin := strings.TrimSpace(string(out))
+		if npmBin != "" {
+			ExtraPaths = append(ExtraPaths, npmBin)
+		}
 	}
 }
 
