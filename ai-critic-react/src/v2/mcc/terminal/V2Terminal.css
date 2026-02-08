@@ -66,6 +66,29 @@
 
 .v2-terminal-content .xterm-viewport {
     overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+}
+
+/* Enable touch scrolling by allowing events to pass through text spans */
+.v2-terminal-content .xterm-rows span {
+    pointer-events: none !important;
+}
+
+/* Enable text selection on mobile */
+.v2-terminal-content .xterm-selection div {
+    pointer-events: auto !important;
+}
+
+/* Mobile touch improvements */
+@media (max-width: 640px) {
+    .v2-terminal-content .xterm {
+        touch-action: pan-y pinch-zoom;
+    }
+    
+    .v2-terminal-content .xterm-viewport {
+        overscroll-behavior: contain;
+    }
 }
 
 .v2-terminal-content .xterm-screen {
@@ -103,6 +126,12 @@
 }
 
 .v2-shortcut-btn:active {
+    background: #60a5fa;
+    color: white;
+    border-color: #60a5fa;
+}
+
+.v2-shortcut-btn.active {
     background: #60a5fa;
     color: white;
     border-color: #60a5fa;

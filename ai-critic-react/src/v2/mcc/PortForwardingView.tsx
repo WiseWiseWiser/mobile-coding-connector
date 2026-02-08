@@ -5,6 +5,8 @@ import { fetchPortLogs as apiFetchPortLogs } from '../../api/ports';
 import { useV2Context } from '../V2Context';
 import { LogViewer } from '../LogViewer';
 import { PlusIcon } from '../icons';
+import { LocalPortsTable } from './LocalPortsTable';
+import type { LocalPortInfo } from '../../api/ports';
 
 // ---- Port Forwarding View ----
 
@@ -25,6 +27,11 @@ export interface PortForwardingViewProps {
     onAddPort: () => void;
     onRemovePort: (port: number) => void;
     onNavigateToView: (view: string) => void;
+    // Local ports
+    localPorts: LocalPortInfo[];
+    localPortsLoading: boolean;
+    localPortsError: string | null;
+    onForwardLocalPort: (port: number) => void;
 }
 
 export function PortForwardingView({
@@ -44,6 +51,10 @@ export function PortForwardingView({
     onAddPort,
     onRemovePort,
     onNavigateToView,
+    localPorts,
+    localPortsLoading,
+    localPortsError,
+    onForwardLocalPort,
 }: PortForwardingViewProps) {
     return (
         <div className="mcc-ports">
@@ -57,6 +68,16 @@ export function PortForwardingView({
             {actionError && (
                 <div className="mcc-ports-error">{actionError}</div>
             )}
+            
+            {/* Local Listening Ports Table */}
+            <LocalPortsTable
+                ports={localPorts}
+                loading={localPortsLoading}
+                error={localPortsError}
+                forwardedPorts={new Set(ports.map(p => p.localPort))}
+                onForwardPort={onForwardLocalPort}
+            />
+            
             <div className="mcc-ports-subtitle">
                 {loading ? 'Loading...' : `Active Forwards (${ports.length})`}
             </div>

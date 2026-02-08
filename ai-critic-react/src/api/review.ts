@@ -78,12 +78,23 @@ export interface GitCommitResult {
     output: string;
 }
 
+// Git user info for commits
+export interface GitUserInfo {
+    name: string;
+    email: string;
+}
+
 // Commit staged changes
-export async function gitCommit(message: string, dir?: string): Promise<GitCommitResult> {
+export async function gitCommit(message: string, dir?: string, userInfo?: GitUserInfo): Promise<GitCommitResult> {
+    const body: Record<string, string | undefined> = { message, dir };
+    if (userInfo) {
+        body.user_name = userInfo.name;
+        body.user_email = userInfo.email;
+    }
     const response = await fetch('/api/review/commit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, dir }),
+        body: JSON.stringify(body),
     });
     if (!response.ok) {
         const error = await response.json();
@@ -132,11 +143,15 @@ export async function gitFetch(dir?: string, sshKey?: string): Promise<GitCommit
 }
 
 // Push to remote
-export async function gitPush(dir?: string): Promise<GitCommitResult> {
+export async function gitPush(dir?: string, sshKey?: string): Promise<GitCommitResult> {
+    const body: Record<string, string | undefined> = { dir };
+    if (sshKey) {
+        body.ssh_key = sshKey;
+    }
     const response = await fetch('/api/review/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dir }),
+        body: JSON.stringify(body),
     });
     if (!response.ok) {
         const error = await response.json();

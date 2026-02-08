@@ -94,6 +94,18 @@ function MessagePartView({ part }: { part: MessagePart }) {
         const hasError = toolState?.status === 'error';
         const output = toolState?.output || part.output;
         const error = toolState?.error;
+        
+        // Extract filename from tool input
+        const toolInput = toolState?.input || part.input;
+        let fileName = '';
+        if (toolInput && typeof toolInput === 'object') {
+            // Check for common file path fields
+            fileName = (toolInput as { filePath?: string; path?: string; file?: string }).filePath 
+                || (toolInput as { filePath?: string; path?: string; file?: string }).path 
+                || (toolInput as { filePath?: string; path?: string; file?: string }).file 
+                || '';
+        }
+        
         return (
             <div className={`mcc-agent-msg-tool ${isRunning ? 'running' : ''} ${hasError ? 'error' : ''}`}>
                 <div className="mcc-agent-msg-tool-header">
@@ -101,6 +113,15 @@ function MessagePartView({ part }: { part: MessagePart }) {
                         {isRunning ? '⏳' : hasError ? '❌' : '⚙️'}
                     </span>
                     <span className="mcc-agent-msg-tool-name">{toolName}</span>
+                    {fileName && (
+                        <span className="mcc-agent-msg-tool-file" style={{ 
+                            marginLeft: '8px', 
+                            color: 'var(--mcc-text-secondary)',
+                            fontSize: '0.9em'
+                        }}>
+                            {fileName}
+                        </span>
+                    )}
                 </div>
                 {output && (
                     <pre className="mcc-agent-msg-tool-output">{truncate(output, 500)}</pre>

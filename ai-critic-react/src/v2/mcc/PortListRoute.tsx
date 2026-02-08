@@ -1,9 +1,19 @@
 import { useOutletContext } from 'react-router-dom';
 import type { PortsOutletContext } from './PortsLayout';
 import { PortForwardingView } from './PortForwardingView';
+import { useLocalPorts } from '../../hooks/useLocalPorts';
 
 export function PortListRoute() {
     const ctx = useOutletContext<PortsOutletContext>();
+    const { ports: localPorts, loading: localPortsLoading, error: localPortsError } = useLocalPorts();
+
+    const handleForwardLocalPort = (port: number) => {
+        ctx.onPortNumberChange(port.toString());
+        ctx.onPortLabelChange(`Port ${port}`);
+        if (!ctx.showNewForm) {
+            ctx.onToggleNewForm();
+        }
+    };
 
     return (
         <PortForwardingView
@@ -23,6 +33,10 @@ export function PortListRoute() {
             onAddPort={ctx.onAddPort}
             onRemovePort={ctx.onRemovePort}
             onNavigateToView={ctx.navigateToView}
+            localPorts={localPorts}
+            localPortsLoading={localPortsLoading}
+            localPortsError={localPortsError}
+            onForwardLocalPort={handleForwardLocalPort}
         />
     );
 }

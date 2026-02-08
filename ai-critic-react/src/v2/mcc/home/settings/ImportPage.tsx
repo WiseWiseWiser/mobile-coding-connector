@@ -6,7 +6,7 @@ import { fetchEncryptKeyStatus } from '../../../../api/encrypt';
 import { fetchDomains } from '../../../../api/domains';
 import { fetchCloudflareStatus } from '../../../../api/cloudflare';
 import { fetchTerminalConfig } from '../../../../api/terminalConfig';
-import { loadSSHKeys, loadGitHubToken } from './gitStorage';
+import { loadSSHKeys, loadGitHubToken, loadGitUserConfig } from './gitStorage';
 import './ImportPage.css';
 
 type ImportStep = 'choose' | 'preview' | 'done';
@@ -55,9 +55,13 @@ export function ImportPage() {
 
         const sshKeys = loadSSHKeys();
         const token = loadGitHubToken();
+        const gitUserConfig = loadGitUserConfig();
         const parts: string[] = [];
         parts.push(`${sshKeys.length} SSH key(s)`);
         if (token) parts.push('GitHub token');
+        if (gitUserConfig.name || gitUserConfig.email) {
+            parts.push(`Git user configured`);
+        }
         setSystemStats(prev => ({ ...prev, git_configs: parts.join(', ') }));
 
         fetchTerminalConfig()
@@ -144,6 +148,9 @@ export function ImportPage() {
                 const parts: string[] = [];
                 if (gc.ssh_keys?.length) parts.push(`${gc.ssh_keys.length} SSH key(s)`);
                 if (gc.github_token) parts.push('GitHub token');
+                if (gc.git_user_config?.name || gc.git_user_config?.email) {
+                    parts.push('Git user config');
+                }
                 return parts.join(', ') || 'Empty';
             }
             case 'terminal_config': {

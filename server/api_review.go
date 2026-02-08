@@ -260,8 +260,10 @@ func handleUnstageFile(w http.ResponseWriter, r *http.Request) {
 
 // GitCommitRequest represents a request to commit changes
 type GitCommitRequest struct {
-	Dir     string `json:"dir"`
-	Message string `json:"message"`
+	Dir       string `json:"dir"`
+	Message   string `json:"message"`
+	UserName  string `json:"user_name"`
+	UserEmail string `json:"user_email"`
 }
 
 // handleGitCommit handles requests to commit staged changes
@@ -286,6 +288,24 @@ func handleGitCommit(w http.ResponseWriter, r *http.Request) {
 	if req.Message == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Commit message is required"})
 		return
+	}
+
+	// Set git user config if provided
+	if req.UserName != "" {
+		cmd := exec.Command("git", "config", "user.name", req.UserName)
+		cmd.Dir = dir
+		if output, err := cmd.CombinedOutput(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to set git user.name: %s", string(output))})
+			return
+		}
+	}
+	if req.UserEmail != "" {
+		cmd := exec.Command("git", "config", "user.email", req.UserEmail)
+		cmd.Dir = dir
+		if output, err := cmd.CombinedOutput(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to set git user.email: %s", string(output))})
+			return
+		}
 	}
 
 	cmd := exec.Command("git", "commit", "-m", req.Message)
@@ -320,6 +340,20 @@ func handleGitPush(w http.ResponseWriter, r *http.Request) {
 
 	cmd := exec.Command("git", "push")
 	cmd.Dir = dir
+
+	// Use SSH key if provided
+	if req.SSHKey != "" {
+		keyFile, err := github.PrepareSSHKeyFile(req.SSHKey)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("Failed to prepare SSH key: %v", err)})
+			return
+		}
+		defer keyFile.Cleanup()
+
+		sshCmd := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", keyFile.Path)
+		cmd.Env = append(os.Environ(), fmt.Sprintf("GIT_SSH_COMMAND=%s", sshCmd))
+	}
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to push: %s", string(output))})

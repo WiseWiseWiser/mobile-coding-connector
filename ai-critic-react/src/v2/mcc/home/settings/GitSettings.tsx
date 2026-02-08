@@ -10,8 +10,8 @@ import type { LogLine } from '../../../LogViewer';
 import { LogViewer } from '../../../LogViewer';
 import type { OAuthConfigStatus } from '../../../../api/auth';
 import { KeyIcon, PlusIcon, GitHubIcon } from '../../../icons';
-import { loadSSHKeys, saveSSHKeys, loadGitHubToken, saveGitHubToken } from './gitStorage';
-import type { SSHKey } from './gitStorage';
+import { loadSSHKeys, saveSSHKeys, loadGitHubToken, saveGitHubToken, loadGitUserConfig, saveGitUserConfig } from './gitStorage';
+import type { SSHKey, GitUserConfig } from './gitStorage';
 import './GitSettings.css';
 
 // ---- Constants ----
@@ -19,6 +19,7 @@ import './GitSettings.css';
 const GitSettingsTabs = {
     SSHKeys: 'ssh-keys',
     GitHub: 'github',
+    GitConfig: 'git-config',
 } as const;
 
 type GitSettingsTab = typeof GitSettingsTabs[keyof typeof GitSettingsTabs];
@@ -59,10 +60,17 @@ export function GitSettingsContent() {
                 >
                     GitHub
                 </button>
+                <button
+                    className={`mcc-git-tab ${activeTab === GitSettingsTabs.GitConfig ? 'active' : ''}`}
+                    onClick={() => setActiveTab(GitSettingsTabs.GitConfig)}
+                >
+                    Git Config
+                </button>
             </div>
             <div className="mcc-git-tab-content">
                 {activeTab === GitSettingsTabs.SSHKeys && <SSHKeysPanel />}
                 {activeTab === GitSettingsTabs.GitHub && <GitHubOAuthPanel />}
+                {activeTab === GitSettingsTabs.GitConfig && <GitConfigPanel />}
             </div>
         </>
     );
@@ -496,6 +504,74 @@ function GitHubOAuthPanel() {
                         )}
                     </div>
                 )}
+            </div>
+        </div>
+    );
+}
+
+// ---- Git Config Panel ----
+
+function GitConfigPanel() {
+    const [config, setConfig] = useState<GitUserConfig>(() => loadGitUserConfig());
+    const [name, setName] = useState(config.name);
+    const [email, setEmail] = useState(config.email);
+    const [saved, setSaved] = useState(false);
+
+    const handleSave = () => {
+        const newConfig: GitUserConfig = {
+            name: name.trim(),
+            email: email.trim(),
+        };
+        saveGitUserConfig(newConfig);
+        setConfig(newConfig);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+    };
+
+    const isValid = name.trim() && email.trim();
+
+    return (
+        <div className="mcc-git-config-panel">
+            <p className="mcc-git-desc">
+                Configure your Git user name and email. These will be used for all Git commits.
+            </p>
+
+            <div className="mcc-add-port-form">
+                <div className="mcc-git-form-fields">
+                    <div className="mcc-form-field">
+                        <label>User Name *</label>
+                        <input
+                            type="text"
+                            placeholder="John Doe"
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                        />
+                    </div>
+                    <div className="mcc-form-field">
+                        <label>Email *</label>
+                        <input
+                            type="email"
+                            placeholder="john@example.com"
+                            value={email}
+                            onChange={e => setEmail(e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                {saved && (
+                    <div className="mcc-git-success" style={{ marginTop: '12px' }}>
+                        Configuration saved successfully!
+                    </div>
+                )}
+
+                <button
+                    className="mcc-forward-btn"
+                    onClick={handleSave}
+                    disabled={!isValid}
+                    style={{ marginTop: '16px' }}
+                >
+                    Save Configuration
+                </button>
             </div>
         </div>
     );

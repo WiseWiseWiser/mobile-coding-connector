@@ -37,3 +37,25 @@ export function saveGitHubToken(token: string) {
         localStorage.removeItem(GITHUB_TOKEN_STORAGE_KEY);
     }
 }
+
+// Git user configuration
+export interface GitUserConfig {
+    name: string;
+    email: string;
+}
+
+const GIT_USER_CONFIG_KEY = 'ai-critic-git-user-config';
+
+export function loadGitUserConfig(): GitUserConfig {
+    try {
+        const data = localStorage.getItem(GIT_USER_CONFIG_KEY);
+        if (!data) return { name: '', email: '' };
+        return JSON.parse(data) as GitUserConfig;
+    } catch {
+        return { name: '', email: '' };
+    }
+}
+
+export function saveGitUserConfig(config: GitUserConfig) {
+    localStorage.setItem(GIT_USER_CONFIG_KEY, JSON.stringify(config));
+}

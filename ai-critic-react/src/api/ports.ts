@@ -73,3 +73,18 @@ export async function removePort(port: number): Promise<void> {
         throw new Error(text);
     }
 }
+
+export interface LocalPortInfo {
+    port: number;
+    pid: number;
+    command: string;
+}
+
+export async function fetchLocalPorts(): Promise<LocalPortInfo[]> {
+    const resp = await fetch('/api/ports/local');
+    if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    }
+    const data = await resp.json();
+    return data ?? [];
+}

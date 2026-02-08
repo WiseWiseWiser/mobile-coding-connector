@@ -430,6 +430,7 @@
 
 .mcc-filebrowser-list {
     padding: 0;
+    width: 100%;
 }
 
 .mcc-filebrowser-entry {

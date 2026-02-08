@@ -171,6 +171,20 @@ body:has(.mcc) {
 
 .mcc-content-inner {
     height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.mcc-terminal-wrapper {
+    flex: 1;
+    height: 100%;
+    overflow: hidden;
+}
+
+.mcc-tab-content {
+    flex: 1;
+    height: 100%;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
 }
@@ -1426,6 +1440,9 @@ body:has(.mcc) {
 
 .mcc-files {
     padding-bottom: 24px;
+    width: 100%;
+    min-width: 100%;
+    box-sizing: border-box;
 }
 
 .mcc-files-tree {

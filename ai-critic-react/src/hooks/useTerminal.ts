@@ -84,7 +84,14 @@ export function useTerminal(
         } = optionsRef.current;
 
         // ---- xterm setup ----
-        const xterm = new XTerm({ cursorBlink: true, fontSize, fontFamily, theme });
+        const xterm = new XTerm({
+            cursorBlink: true,
+            fontSize,
+            fontFamily,
+            theme,
+            allowProposedApi: true,
+            scrollback: 10000,
+        });
         const fitAddon = new FitAddon();
         xterm.loadAddon(fitAddon);
         xterm.open(terminalRef.current);

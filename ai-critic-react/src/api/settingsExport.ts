@@ -1,6 +1,6 @@
 // Settings export/import API client and types
 
-import { loadSSHKeys, loadGitHubToken, saveSSHKeys, saveGitHubToken, type SSHKey } from '../v2/mcc/home/settings/gitStorage';
+import { loadSSHKeys, loadGitHubToken, saveSSHKeys, saveGitHubToken, loadGitUserConfig, saveGitUserConfig, type SSHKey, type GitUserConfig } from '../v2/mcc/home/settings/gitStorage';
 
 /** The top-level export JSON structure */
 export interface SettingsExportData {
@@ -46,6 +46,7 @@ export interface CredentialsExport {
 export interface GitConfigsExport {
     ssh_keys: SSHKey[];
     github_token: string;
+    git_user_config?: GitUserConfig;
 }
 
 /** Available section identifiers */
@@ -106,6 +107,7 @@ export async function buildExportData(selectedSections: ExportSectionKey[]): Pro
         sections.git_configs = {
             ssh_keys: loadSSHKeys(),
             github_token: loadGitHubToken(),
+            git_user_config: loadGitUserConfig(),
         };
     }
 
@@ -145,6 +147,9 @@ export async function applyImportData(data: SettingsExportData, selectedSections
         }
         if (gc.github_token) {
             saveGitHubToken(gc.github_token);
+        }
+        if (gc.git_user_config) {
+            saveGitUserConfig(gc.git_user_config);
         }
     }
 }

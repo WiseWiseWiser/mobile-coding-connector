@@ -8,6 +8,14 @@ import type { DiagnosticsData } from '../api/ports';
 import { fetchAgents } from '../api/agents';
 import type { AgentDef, AgentSessionInfo } from '../api/agents';
 
+interface TerminalTab {
+    id: string;
+    name: string;
+    cwd?: string;
+    initialCommand?: string;
+    sessionId?: string;
+}
+
 interface V2ContextValue {
     // Projects
     projectsList: ProjectInfo[];
@@ -29,6 +37,13 @@ interface V2ContextValue {
     setAgentSession: (session: AgentSessionInfo | null) => void;
     agentLaunchError: string;
     setAgentLaunchError: (error: string) => void;
+    // Terminal state (lifted up to persist across tab switches)
+    terminalTabs: TerminalTab[];
+    setTerminalTabs: (tabs: TerminalTab[]) => void;
+    activeTerminalTabId: string;
+    setActiveTerminalTabId: (id: string) => void;
+    terminalSessionsLoaded: boolean;
+    setTerminalSessionsLoaded: (loaded: boolean) => void;
 }
 
 const V2Ctx = createContext<V2ContextValue | null>(null);
@@ -87,6 +102,11 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
             .catch(() => setAgentsLoading(false));
     }, []);
 
+    // Terminal state (lifted up to persist across tab switches)
+    const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([]);
+    const [activeTerminalTabId, setActiveTerminalTabId] = useState('');
+    const [terminalSessionsLoaded, setTerminalSessionsLoaded] = useState(false);
+
     return (
         <V2Ctx.Provider value={{
             projectsList,
@@ -104,6 +124,12 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
             setAgentSession,
             agentLaunchError,
             setAgentLaunchError,
+            terminalTabs,
+            setTerminalTabs,
+            activeTerminalTabId,
+            setActiveTerminalTabId,
+            terminalSessionsLoaded,
+            setTerminalSessionsLoaded,
         }}>
             {children}
         </V2Ctx.Provider>

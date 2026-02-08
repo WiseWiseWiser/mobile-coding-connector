@@ -6,7 +6,7 @@ import { fetchEncryptKeyStatus } from '../../../../api/encrypt';
 import { fetchDomains } from '../../../../api/domains';
 import { fetchCloudflareStatus } from '../../../../api/cloudflare';
 import { fetchTerminalConfig } from '../../../../api/terminalConfig';
-import { loadSSHKeys, loadGitHubToken } from './gitStorage';
+import { loadSSHKeys, loadGitHubToken, loadGitUserConfig } from './gitStorage';
 import './ExportPage.css';
 
 interface SectionStats {
@@ -51,9 +51,13 @@ export function ExportPage() {
         // Git configs from local storage
         const sshKeys = loadSSHKeys();
         const token = loadGitHubToken();
+        const gitUserConfig = loadGitUserConfig();
         const parts: string[] = [];
         parts.push(`${sshKeys.length} SSH key(s)`);
         if (token) parts.push('GitHub token');
+        if (gitUserConfig.name || gitUserConfig.email) {
+            parts.push(`Git user: ${gitUserConfig.name || '(no name)'} <${gitUserConfig.email || '(no email)'}>`);
+        }
         setStats(prev => ({ ...prev, git_configs: parts.join(', ') }));
 
         fetchTerminalConfig()

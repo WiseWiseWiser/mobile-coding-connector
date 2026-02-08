@@ -1,10 +1,10 @@
-import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import { useTerminal } from '../../../hooks/useTerminal';
 import type { TerminalTheme } from '../../../hooks/useTerminal';
 import { useCurrent } from '../../../hooks/useCurrent';
-import { fetchTerminalSessions, deleteTerminalSession } from '../../../api/terminal';
-import type { TerminalSessionInfo } from '../../../api/terminal';
+import { deleteTerminalSession } from '../../../api/terminal';
+import { useV2Context } from '../../V2Context';
 import './TerminalManager.css';
 
 // Mobile-friendly dark theme
@@ -32,7 +32,7 @@ const v2Theme: TerminalTheme = {
     brightWhite: '#ffffff',
 };
 
-interface TerminalTab {
+export interface TerminalTab {
     id: string;
     name: string;
     cwd?: string;
@@ -93,18 +93,43 @@ function TerminalInstance({
         }
     }, [isActive, connected, onConnectionChangeRef]);
 
+    const [ctrlPressed, setCtrlPressed] = useState(false);
+
+    const handleSendKey = useCallback((key: string) => {
+        if (ctrlPressed) {
+            // Convert to control character when ctrl is pressed
+            // Ctrl+A = 0x01, Ctrl+B = 0x02, etc.
+            const charCode = key.charCodeAt(0);
+            if (charCode >= 97 && charCode <= 122) {
+                // lowercase a-z
+                sendKey(String.fromCharCode(charCode - 96));
+            } else if (charCode >= 65 && charCode <= 90) {
+                // uppercase A-Z
+                sendKey(String.fromCharCode(charCode - 64));
+            } else {
+                sendKey(key);
+            }
+            setCtrlPressed(false);
+        } else {
+            sendKey(key);
+        }
+    }, [ctrlPressed, sendKey]);
+
+    const handleCtrl = () => setCtrlPressed(true);
     const handleCtrlC = () => sendKey('\x03');
-    const handleCtrlD = () => sendKey('\x04');
+    const handleCtrlA = () => sendKey('\x01');
     const handleCtrlR = () => sendKey('\x12');
     const handleCtrlL = () => sendKey('\x0c');
-    const handleTab = () => sendKey('\t');
+    const handleTab = () => handleSendKey('\t');
     const handleArrowUp = () => sendKey('\x1b[A');
     const handleArrowDown = () => sendKey('\x1b[B');
+    const handleArrowLeft = () => sendKey('\x1b[D');
+    const handleArrowRight = () => sendKey('\x1b[C');
     const handlePaste = async () => {
         try {
             const text = await navigator.clipboard.readText();
             if (text) {
-                sendKey(text);
+                handleSendKey(text);
             }
         } catch (err) {
             console.error('Failed to paste from clipboard:', err);
@@ -118,11 +143,14 @@ function TerminalInstance({
         >
             <div className="terminal-instance-content" ref={terminalRef} />
             <div className="terminal-instance-shortcuts">
+                <button className={`term-shortcut-btn ${ctrlPressed ? 'active' : ''}`} onClick={handleCtrl}>Ctrl</button>
                 <button className="term-shortcut-btn" onClick={handleTab}>Tab</button>
+                <button className="term-shortcut-btn" onClick={handleArrowLeft}>←</button>
+                <button className="term-shortcut-btn" onClick={handleArrowRight}>→</button>
                 <button className="term-shortcut-btn" onClick={handleArrowUp}>↑</button>
                 <button className="term-shortcut-btn" onClick={handleArrowDown}>↓</button>
                 <button className="term-shortcut-btn" onClick={handleCtrlC}>Ctrl+C</button>
-                <button className="term-shortcut-btn" onClick={handleCtrlD}>Ctrl+D</button>
+                <button className="term-shortcut-btn" onClick={handleCtrlA}>Ctrl+A</button>
                 <button className="term-shortcut-btn" onClick={handleCtrlR}>Ctrl+R</button>
                 <button className="term-shortcut-btn" onClick={handleCtrlL}>Ctrl+L</button>
                 <button className="term-shortcut-btn" onClick={handlePaste}>Paste</button>
@@ -137,60 +165,27 @@ export interface TerminalManagerHandle {
 }
 
 export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManagerProps>(function TerminalManager(_props, ref) {
-    const [tabs, setTabs] = useState<TerminalTab[]>([]);
-    const [activeTabId, setActiveTabId] = useState('');
+    const {
+        terminalTabs,
+        setTerminalTabs,
+        activeTerminalTabId,
+        setActiveTerminalTabId,
+        terminalSessionsLoaded,
+    } = useV2Context();
+    
     const [activeConnected, setActiveConnected] = useState(false);
-    const [sessionsLoaded, setSessionsLoaded] = useState(false);
-    const tabsRef = useCurrent(tabs);
-
-    // Fetch existing sessions from backend on mount.
-    // The `ignore` flag prevents stale async results from applying after cleanup
-    // (e.g. React StrictMode double-mount or rapid tab switches).
-    useEffect(() => {
-        let ignore = false;
-
-        fetchTerminalSessions()
-            .then((sessions: TerminalSessionInfo[]) => {
-                if (ignore) return;
-                if (sessions.length === 0) {
-                    const defaultTab: TerminalTab = { id: 'term-1', name: 'Terminal 1' };
-                    setTabs([defaultTab]);
-                    setActiveTabId(defaultTab.id);
-                    setSessionsLoaded(true);
-                    return;
-                }
-                const restoredTabs: TerminalTab[] = sessions.map(s => ({
-                    id: `term-${s.id}`,
-                    name: s.name,
-                    cwd: s.cwd,
-                    sessionId: s.id,
-                }));
-                setTabs(restoredTabs);
-                setActiveTabId(restoredTabs[0].id);
-                setSessionsLoaded(true);
-            })
-            .catch(() => {
-                if (ignore) return;
-                const defaultTab: TerminalTab = { id: 'term-1', name: 'Terminal 1' };
-                setTabs([defaultTab]);
-                setActiveTabId(defaultTab.id);
-                setSessionsLoaded(true);
-            });
-
-        return () => { ignore = true; };
-    }, []);
 
     const handleAddTab = () => {
         const newId = `term-${Date.now()}`;
-        const newName = getNextTerminalName(tabsRef.current.map(t => t.name));
-        setTabs(prev => [...prev, { id: newId, name: newName }]);
-        setActiveTabId(newId);
+        const newName = getNextTerminalName(terminalTabs.map(t => t.name));
+        setTerminalTabs([...terminalTabs, { id: newId, name: newName }]);
+        setActiveTerminalTabId(newId);
     };
 
     const handleOpenTab = (name: string, cwd?: string, initialCommand?: string) => {
         const newId = `term-${Date.now()}`;
-        setTabs(prev => [...prev, { id: newId, name, cwd, initialCommand }]);
-        setActiveTabId(newId);
+        setTerminalTabs([...terminalTabs, { id: newId, name, cwd, initialCommand }]);
+        setActiveTerminalTabId(newId);
     };
 
     useImperativeHandle(ref, () => ({
@@ -198,31 +193,31 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
     }));
 
     const handleCloseTab = (tabId: string) => {
-        if (tabs.length <= 1) return; // Don't close last tab
+        if (terminalTabs.length <= 1) return; // Don't close last tab
 
         // Find the tab to get its session ID for cleanup
-        const tab = tabs.find(t => t.id === tabId);
+        const tab = terminalTabs.find(t => t.id === tabId);
         if (tab?.sessionId) {
             deleteTerminalSession(tab.sessionId).catch(() => {});
         }
         
-        const tabIndex = tabs.findIndex(t => t.id === tabId);
-        const newTabs = tabs.filter(t => t.id !== tabId);
-        setTabs(newTabs);
+        const tabIndex = terminalTabs.findIndex(t => t.id === tabId);
+        const newTabs = terminalTabs.filter(t => t.id !== tabId);
+        setTerminalTabs(newTabs);
         
         // If closing active tab, switch to adjacent tab
-        if (activeTabId === tabId) {
+        if (activeTerminalTabId === tabId) {
             const newActiveIndex = Math.min(tabIndex, newTabs.length - 1);
-            setActiveTabId(newTabs[newActiveIndex].id);
+            setActiveTerminalTabId(newTabs[newActiveIndex].id);
         }
     };
 
     const handleSessionId = (tabId: string, sessionId: string) => {
-        setTabs(prev => prev.map(t => t.id === tabId ? { ...t, sessionId } : t));
+        setTerminalTabs(terminalTabs.map(t => t.id === tabId ? { ...t, sessionId } : t));
     };
 
     // Don't render terminals until sessions are loaded to avoid creating duplicate sessions
-    if (!sessionsLoaded) {
+    if (!terminalSessionsLoaded) {
         return (
             <div className="terminal-manager">
                 <div className="terminal-manager-header">
@@ -244,14 +239,14 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
         <div className="terminal-manager">
             <div className="terminal-manager-header">
                 <div className="terminal-tabs-container">
-                    {tabs.map(tab => (
+                    {terminalTabs.map(tab => (
                         <div 
                             key={tab.id}
-                            className={`terminal-tab-item ${activeTabId === tab.id ? 'active' : ''}`}
-                            onClick={() => setActiveTabId(tab.id)}
+                            className={`terminal-tab-item ${activeTerminalTabId === tab.id ? 'active' : ''}`}
+                            onClick={() => setActiveTerminalTabId(tab.id)}
                         >
                             <span className="terminal-tab-name">{tab.name}</span>
-                            {tabs.length > 1 && (
+                            {terminalTabs.length > 1 && (
                                 <button 
                                     className="terminal-tab-close"
                                     onClick={(e) => {
@@ -274,11 +269,11 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
                 </div>
             </div>
             <div className="terminal-instances-container">
-                {tabs.map(tab => (
+                {terminalTabs.map(tab => (
                     <TerminalInstance
                         key={tab.id}
                         id={tab.id}
-                        isActive={activeTabId === tab.id}
+                        isActive={activeTerminalTabId === tab.id}
                         cwd={tab.cwd}
                         name={tab.name}
                         initialCommand={tab.initialCommand}

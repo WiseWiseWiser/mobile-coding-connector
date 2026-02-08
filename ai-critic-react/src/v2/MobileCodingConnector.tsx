@@ -7,6 +7,9 @@ import { NavTabs } from './mcc/types';
 import type { NavTab } from './mcc/types';
 import { MenuIcon, SettingsIcon, ProfileIcon, HomeIcon, AgentIcon, TerminalIcon, PortsIcon, FilesIcon } from './icons';
 import { NavButton } from './buttons';
+import { TerminalManager } from './mcc/terminal/TerminalManager';
+import type { TerminalManagerHandle } from './mcc/terminal/TerminalManager';
+import { fetchTerminalSessions } from '../api/terminal';
 import './MobileCodingConnector.css';
 
 export function MobileCodingConnector() {
@@ -30,7 +33,47 @@ export function MobileCodingConnector() {
     const {
         projectsList, projectsLoading,
         currentProject, setCurrentProject,
+        setTerminalTabs,
+        setActiveTerminalTabId,
+        setTerminalSessionsLoaded,
     } = useV2Context();
+
+    const terminalManagerRef = useRef<TerminalManagerHandle>(null);
+
+    // Fetch terminal sessions on mount (only once)
+    useEffect(() => {
+        let ignore = false;
+
+        fetchTerminalSessions()
+            .then((sessions) => {
+                if (ignore) return;
+                if (sessions.length === 0) {
+                    const defaultTab = { id: 'term-1', name: 'Terminal 1' };
+                    setTerminalTabs([defaultTab]);
+                    setActiveTerminalTabId(defaultTab.id);
+                    setTerminalSessionsLoaded(true);
+                    return;
+                }
+                const restoredTabs = sessions.map(s => ({
+                    id: `term-${s.id}`,
+                    name: s.name,
+                    cwd: s.cwd,
+                    sessionId: s.id,
+                }));
+                setTerminalTabs(restoredTabs);
+                setActiveTerminalTabId(restoredTabs[0].id);
+                setTerminalSessionsLoaded(true);
+            })
+            .catch(() => {
+                if (ignore) return;
+                const defaultTab = { id: 'term-1', name: 'Terminal 1' };
+                setTerminalTabs([defaultTab]);
+                setActiveTerminalTabId(defaultTab.id);
+                setTerminalSessionsLoaded(true);
+            });
+
+        return () => { ignore = true; };
+    }, []);
 
     // Restore project from URL on mount
     useEffect(() => {
@@ -131,7 +174,33 @@ export function MobileCodingConnector() {
             {/* Main Content */}
             <div className="mcc-content">
                 <div className="mcc-content-inner">
-                    <Outlet context={{ onSelectProject: handleSelectProject }} />
+                    {/* Terminal - rendered persistently but hidden when not active */}
+                    <div 
+                        className="mcc-terminal-wrapper" 
+                        style={{ 
+                            display: activeTab === NavTabs.Terminal ? 'flex' : 'none',
+                            flex: 1,
+                            height: '100%',
+                            overflow: 'hidden'
+                        }}
+                    >
+                        <TerminalManager 
+                            ref={terminalManagerRef} 
+                            isVisible={activeTab === NavTabs.Terminal}
+                        />
+                    </div>
+                    {/* Other tab content */}
+                    <div 
+                        className="mcc-tab-content"
+                        style={{ 
+                            display: activeTab === NavTabs.Terminal ? 'none' : 'flex',
+                            flex: 1,
+                            height: '100%',
+                            overflow: 'auto'
+                        }}
+                    >
+                        <Outlet context={{ onSelectProject: handleSelectProject }} />
+                    </div>
                 </div>
             </div>
 

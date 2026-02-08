@@ -24,7 +24,7 @@ const (
 
 // Provider names
 const (
-	ProviderLocaltunnel    = "localtunnel"
+	ProviderLocaltunnel      = "localtunnel"
 	ProviderCloudflareQuick  = "cloudflare_quick"
 	ProviderCloudflareTunnel = "cloudflare_tunnel"
 )
@@ -85,7 +85,7 @@ type tunnel struct {
 // Manager manages port forwards using registered providers
 type Manager struct {
 	mu          sync.Mutex
-	tunnels     map[int]*tunnel    // keyed by local port
+	tunnels     map[int]*tunnel     // keyed by local port
 	providers   map[string]Provider // keyed by provider name
 	subscribers map[int]chan []PortForward
 	nextSubID   int
@@ -304,6 +304,69 @@ func (m *Manager) GetLogs(port int) ([]string, error) {
 	return t.logs.Lines(), nil
 }
 
+// LocalPortInfo represents a locally listening port
+// LocalPortInfo represents a locally listening port
+type LocalPortInfo struct {
+	Port    int    `json:"port"`
+	PID     int    `json:"pid"`
+	Command string `json:"command"`
+}
+
+// getListeningPorts returns all TCP listening ports with their PIDs and process names
+func getListeningPorts() ([]LocalPortInfo, error) {
+	// Use lsof to get listening TCP ports
+	cmd := exec.Command("lsof", "-iTCP", "-sTCP:LISTEN", "-n", "-P")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run lsof: %w", err)
+	}
+
+	var ports []LocalPortInfo
+	lines := strings.Split(string(output), "\n")
+
+	// Parse lsof output (skip header line)
+	for i, line := range lines {
+		if i == 0 || strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		// lsof columns: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+		fields := strings.Fields(line)
+		if len(fields) < 9 {
+			continue
+		}
+
+		command := fields[0]
+		pid, err := strconv.Atoi(fields[1])
+		if err != nil {
+			continue
+		}
+
+		// Parse NAME column which contains IP:PORT
+		nameField := fields[8]
+		port := 0
+		if idx := strings.LastIndex(nameField, ":"); idx != -1 {
+			portStr := nameField[idx+1:]
+			port, _ = strconv.Atoi(portStr)
+		}
+
+		if port > 0 {
+			ports = append(ports, LocalPortInfo{
+				Port:    port,
+				PID:     pid,
+				Command: command,
+			})
+		}
+	}
+
+	// Sort by port number
+	sort.Slice(ports, func(i, j int) bool {
+		return ports[i].Port < ports[j].Port
+	})
+
+	return ports, nil
+}
+
 // --- HTTP API ---
 
 // RegisterAPI registers the port forwarding API endpoints
@@ -313,6 +376,18 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ports/providers", handleProviders)
 	mux.HandleFunc("/api/ports/logs", handlePortLogs)
 	mux.HandleFunc("/api/ports/diagnostics", handleDiagnostics)
+	mux.HandleFunc("/api/ports/local", handleLocalPorts)
+}
+
+func handleLocalPorts(w http.ResponseWriter, r *http.Request) {
+	ports, err := getListeningPorts()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ports)
 }
 
 func handlePorts(w http.ResponseWriter, r *http.Request) {
@@ -658,4 +733,3 @@ func handleDiagnostics(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
-

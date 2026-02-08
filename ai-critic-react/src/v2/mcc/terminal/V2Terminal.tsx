@@ -1,4 +1,5 @@
 import '@xterm/xterm/css/xterm.css';
+import { useState, useCallback } from 'react';
 import { useTerminal } from '../../../hooks/useTerminal';
 import './V2Terminal.css';
 
@@ -33,13 +34,37 @@ interface V2TerminalProps {
 
 export function V2Terminal({ className }: V2TerminalProps) {
     const { terminalRef, connected, sendKey } = useTerminal(true, { theme: v2Theme });
+    const [ctrlPressed, setCtrlPressed] = useState(false);
 
+    const handleSendKey = useCallback((key: string) => {
+        if (ctrlPressed) {
+            // Convert to control character when ctrl is pressed
+            // Ctrl+A = 0x01, Ctrl+B = 0x02, etc.
+            const charCode = key.charCodeAt(0);
+            if (charCode >= 97 && charCode <= 122) {
+                // lowercase a-z
+                sendKey(String.fromCharCode(charCode - 96));
+            } else if (charCode >= 65 && charCode <= 90) {
+                // uppercase A-Z
+                sendKey(String.fromCharCode(charCode - 64));
+            } else {
+                sendKey(key);
+            }
+            setCtrlPressed(false);
+        } else {
+            sendKey(key);
+        }
+    }, [ctrlPressed, sendKey]);
+
+    const handleCtrl = () => setCtrlPressed(true);
     const handleCtrlC = () => sendKey('\x03');
-    const handleCtrlD = () => sendKey('\x04');
+    const handleCtrlA = () => sendKey('\x01');
     const handleCtrlL = () => sendKey('\x0c');
-    const handleTab = () => sendKey('\t');
+    const handleTab = () => handleSendKey('\t');
     const handleArrowUp = () => sendKey('\x1b[A');
     const handleArrowDown = () => sendKey('\x1b[B');
+    const handleArrowLeft = () => sendKey('\x1b[D');
+    const handleArrowRight = () => sendKey('\x1b[C');
 
     return (
         <div className={`v2-terminal ${className || ''}`}>
@@ -53,11 +78,14 @@ export function V2Terminal({ className }: V2TerminalProps) {
             </div>
             <div className="v2-terminal-content" ref={terminalRef} />
             <div className="v2-terminal-shortcuts">
+                <button className={`v2-shortcut-btn ${ctrlPressed ? 'active' : ''}`} onClick={handleCtrl}>Ctrl</button>
                 <button className="v2-shortcut-btn" onClick={handleTab}>Tab</button>
+                <button className="v2-shortcut-btn" onClick={handleArrowLeft}>←</button>
+                <button className="v2-shortcut-btn" onClick={handleArrowRight}>→</button>
                 <button className="v2-shortcut-btn" onClick={handleArrowUp}>↑</button>
                 <button className="v2-shortcut-btn" onClick={handleArrowDown}>↓</button>
                 <button className="v2-shortcut-btn" onClick={handleCtrlC}>Ctrl+C</button>
-                <button className="v2-shortcut-btn" onClick={handleCtrlD}>Ctrl+D</button>
+                <button className="v2-shortcut-btn" onClick={handleCtrlA}>Ctrl+A</button>
                 <button className="v2-shortcut-btn" onClick={handleCtrlL}>Ctrl+L</button>
             </div>
         </div>
