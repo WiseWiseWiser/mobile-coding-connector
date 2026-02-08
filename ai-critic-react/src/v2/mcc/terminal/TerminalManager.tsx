@@ -95,10 +95,21 @@ function TerminalInstance({
 
     const handleCtrlC = () => sendKey('\x03');
     const handleCtrlD = () => sendKey('\x04');
+    const handleCtrlR = () => sendKey('\x12');
     const handleCtrlL = () => sendKey('\x0c');
     const handleTab = () => sendKey('\t');
     const handleArrowUp = () => sendKey('\x1b[A');
     const handleArrowDown = () => sendKey('\x1b[B');
+    const handlePaste = async () => {
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text) {
+                sendKey(text);
+            }
+        } catch (err) {
+            console.error('Failed to paste from clipboard:', err);
+        }
+    };
 
     return (
         <div 
@@ -112,7 +123,9 @@ function TerminalInstance({
                 <button className="term-shortcut-btn" onClick={handleArrowDown}>↓</button>
                 <button className="term-shortcut-btn" onClick={handleCtrlC}>Ctrl+C</button>
                 <button className="term-shortcut-btn" onClick={handleCtrlD}>Ctrl+D</button>
+                <button className="term-shortcut-btn" onClick={handleCtrlR}>Ctrl+R</button>
                 <button className="term-shortcut-btn" onClick={handleCtrlL}>Ctrl+L</button>
+                <button className="term-shortcut-btn" onClick={handlePaste}>Paste</button>
             </div>
         </div>
     );

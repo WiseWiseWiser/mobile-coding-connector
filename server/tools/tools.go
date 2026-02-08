@@ -247,6 +247,20 @@ var requiredTools = []toolDef{
 		},
 		installWindows: "Download from https://podman.io/getting-started/installation",
 	},
+	{
+		name:        "fzf",
+		description: "Command-line fuzzy finder",
+		purpose:     "Interactive fuzzy search for files, history, and more",
+		versionCmd:  []string{"fzf", "--version"},
+		installMacOS: []string{
+			"brew install fzf",
+		},
+		installLinux: []string{
+			"apt-get update",
+			"apt-get install -y fzf",
+		},
+		installWindows: "Download from https://github.com/junegunn/fzf/releases",
+	},
 }
 
 // getInstallStepsForOS returns the install steps for the current OS.

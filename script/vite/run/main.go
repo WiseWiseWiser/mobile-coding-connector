@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/xhd2015/less-gen/flags"
@@ -78,7 +79,9 @@ func Handle(args []string) error {
 		fmt.Printf("Port: %d (default)\n", lib.ViteDevPort)
 	}
 
-	cmd := exec.CommandContext(ctx, "npm", viteArgs...)
+	// Use bash to ensure nvm is loaded if available
+	shellCmd := lib.WithNodejs20(fmt.Sprintf("npm %s", strings.Join(viteArgs, " ")))
+	cmd := exec.CommandContext(ctx, "bash", "-c", shellCmd)
 	cmd.Dir = "ai-critic-react"
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

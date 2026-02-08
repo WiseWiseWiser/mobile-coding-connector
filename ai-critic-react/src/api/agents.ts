@@ -154,11 +154,26 @@ export interface MessagePart {
     content?: string;
     text?: string;
     tool?: string;
+    callID?: string;
     input?: unknown;
     output?: string;
-    state?: string;
+    state?: string | ToolState;
+    title?: string;
     thinking?: string;
     reasoning?: string;
+}
+
+/** Tool state from OpenCode SDK */
+export interface ToolState {
+    status: 'pending' | 'running' | 'completed' | 'error';
+    input?: unknown;
+    output?: string;
+    title?: string;
+    error?: string;
+    time?: {
+        start?: number;
+        end?: number;
+    };
 }
 
 export async function fetchMessages(sessionId: string, opencodeSID: string): Promise<AgentMessage[]> {

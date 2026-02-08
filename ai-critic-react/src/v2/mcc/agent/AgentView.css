@@ -545,6 +545,29 @@
     overflow-y: auto;
 }
 
+.mcc-agent-msg-tool.error {
+    border-color: #ef4444;
+}
+
+.mcc-agent-msg-tool.error .mcc-agent-msg-tool-name {
+    color: #ef4444;
+}
+
+.mcc-agent-msg-tool-error {
+    margin: 4px 0 0;
+    padding: 8px;
+    background: #450a0a;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 11px;
+    color: #fca5a5;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
 /* ---- Input Area ---- */
 
 .mcc-agent-input-area {

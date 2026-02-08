@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/xgo/support/cmd"
+	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 )
 
 var help = `
@@ -51,8 +53,14 @@ func Handle(args []string) error {
 		buildArgs = append(buildArgs, "--", "--outDir", outDir)
 	}
 
-	err = cmd.Dir("ai-critic-react").Debug().Run("npm", buildArgs...)
-	if err != nil {
+	// Use bash to ensure nvm is loaded if available
+	shellCmd := lib.WithNodejs20(fmt.Sprintf("npm %s", strings.Join(buildArgs, " ")))
+	cmd := exec.Command("bash", "-c", shellCmd)
+	cmd.Dir = "ai-critic-react"
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to build frontend: %v", err)
 	}
 

@@ -86,17 +86,27 @@ function MessagePartView({ part }: { part: MessagePart }) {
         return <div className="mcc-agent-msg-text">{text}</div>;
     }
 
-    if (part.type === 'tool-invocation' || part.type === 'tool_use' || part.type === 'tool-result') {
-        const toolName = part.tool || 'tool';
-        const isRunning = part.state === 'running' || part.state === 'partial-call';
+    if (part.type === 'tool') {
+        // OpenCode tool part structure
+        const toolState = typeof part.state === 'object' ? part.state : undefined;
+        const toolName = part.tool || (toolState?.title) || 'tool';
+        const isRunning = toolState?.status === 'running' || toolState?.status === 'pending';
+        const hasError = toolState?.status === 'error';
+        const output = toolState?.output || part.output;
+        const error = toolState?.error;
         return (
-            <div className={`mcc-agent-msg-tool ${isRunning ? 'running' : ''}`}>
+            <div className={`mcc-agent-msg-tool ${isRunning ? 'running' : ''} ${hasError ? 'error' : ''}`}>
                 <div className="mcc-agent-msg-tool-header">
-                    <span className="mcc-agent-msg-tool-icon">{isRunning ? '⏳' : '⚙️'}</span>
+                    <span className="mcc-agent-msg-tool-icon">
+                        {isRunning ? '⏳' : hasError ? '❌' : '⚙️'}
+                    </span>
                     <span className="mcc-agent-msg-tool-name">{toolName}</span>
                 </div>
-                {part.output && (
-                    <pre className="mcc-agent-msg-tool-output">{truncate(part.output, 500)}</pre>
+                {output && (
+                    <pre className="mcc-agent-msg-tool-output">{truncate(output, 500)}</pre>
+                )}
+                {error && (
+                    <pre className="mcc-agent-msg-tool-error">{truncate(error, 500)}</pre>
                 )}
             </div>
         );
