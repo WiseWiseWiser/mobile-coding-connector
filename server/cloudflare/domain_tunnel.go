@@ -8,6 +8,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
 const defaultDomainTunnelName = "ai-agent-tunnel"
@@ -30,7 +32,7 @@ type DomainTunnelStatus struct {
 func CheckStatus() StatusResponse {
 	resp := StatusResponse{}
 
-	if _, err := exec.LookPath("cloudflared"); err != nil {
+	if !tool_resolve.IsAvailable("cloudflared") {
 		resp.Error = "cloudflared is not installed"
 		return resp
 	}

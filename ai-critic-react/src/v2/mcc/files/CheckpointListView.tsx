@@ -15,9 +15,10 @@ export interface CheckpointListViewProps {
     projectDir: string;
     onCreateCheckpoint: () => void;
     onSelectCheckpoint: (id: number) => void;
+    onGitCommit: () => void;
 }
 
-export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint, onSelectCheckpoint }: CheckpointListViewProps) {
+export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint, onSelectCheckpoint, onGitCommit }: CheckpointListViewProps) {
     const [checkpoints, setCheckpoints] = useState<CheckpointSummary[]>([]);
     const [currentChanges, setCurrentChanges] = useState<ChangedFile[]>([]);
     const [currentDiffs, setCurrentDiffs] = useState<FileDiff[]>([]);
@@ -130,6 +131,14 @@ export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint
                             </div>
                         </>
                     )}
+
+                    {/* Git Commit button */}
+                    <button
+                        className="mcc-git-commit-nav-btn"
+                        onClick={onGitCommit}
+                    >
+                        Git Commit
+                    </button>
                 </>
             )}
         </>

@@ -5,3 +5,4 @@ export { CreateCheckpointRoute } from './CreateCheckpointRoute';
 export { CheckpointDetailRoute } from './CheckpointDetailRoute';
 export { FileBrowserRoute } from './FileBrowserRoute';
 export { FileContentRoute } from './FileContentRoute';
+export { GitCommitRoute } from './GitCommitRoute';

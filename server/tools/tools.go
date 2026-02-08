@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
 // ToolInfo describes a required tool and its status.
@@ -315,7 +316,7 @@ func getAutoInstallScript(steps []string) string {
 // GetInstallHint returns the install command for a tool on the current OS.
 // Returns empty string if the tool is already installed or not found.
 func GetInstallHint(name string) string {
-	if _, err := exec.LookPath(name); err == nil {
+	if tool_resolve.IsAvailable(name) {
 		return "" // already installed
 	}
 	for _, tool := range requiredTools {
@@ -333,7 +334,6 @@ func GetInstallHint(name string) string {
 
 // CheckTools checks all required tools and returns their status.
 func CheckTools() *ToolsResponse {
-	EnsurePATH()
 	resp := &ToolsResponse{
 		OS:    runtime.GOOS,
 		Tools: make([]ToolInfo, 0, len(requiredTools)),
@@ -351,7 +351,7 @@ func CheckTools() *ToolsResponse {
 		}
 
 		// Check if tool is installed
-		path, err := exec.LookPath(tool.name)
+		path, err := tool_resolve.LookPath(tool.name)
 		if err == nil {
 			info.Installed = true
 			info.Path = path

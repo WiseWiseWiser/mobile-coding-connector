@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useLocation, Outlet, useOutletContext } from 'react-router-dom';
 import type { FilesOutletContext } from './FilesLayout';
+import './FilesView.css';
 
 const FilesSubTabs = {
     Checkpoints: 'checkpoints',

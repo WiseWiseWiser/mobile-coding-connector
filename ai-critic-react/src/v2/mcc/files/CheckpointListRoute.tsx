@@ -11,6 +11,7 @@ export function CheckpointListRoute() {
             projectDir={projectDir}
             onCreateCheckpoint={() => navigateToView('create-checkpoint')}
             onSelectCheckpoint={(id) => navigateToView(`checkpoint/${id}`)}
+            onGitCommit={() => navigateToView('git-commit')}
         />
     );
 }

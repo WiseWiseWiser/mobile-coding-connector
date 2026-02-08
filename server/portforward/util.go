@@ -1,9 +1,8 @@
 package portforward
 
-import "os/exec"
+import "github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 
 // IsCommandAvailable checks if a command is available on PATH
 func IsCommandAvailable(name string) bool {
-	_, err := exec.LookPath(name)
-	return err == nil
+	return tool_resolve.IsAvailable(name)
 }

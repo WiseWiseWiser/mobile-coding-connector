@@ -6,6 +6,7 @@ export function TerminalSection() {
     const [paths, setPaths] = useState<string[]>([]);
     const [shell, setShell] = useState('');
     const [shellFlags, setShellFlags] = useState('');
+    const [ps1, setPs1] = useState('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -18,6 +19,7 @@ export function TerminalSection() {
                 setPaths(cfg.extra_paths || []);
                 setShell(cfg.shell || '');
                 setShellFlags(cfg.shell_flags?.join(' ') ?? '');
+                setPs1(cfg.ps1 || '');
                 setLoading(false);
             })
             .catch(err => {
@@ -54,6 +56,7 @@ export function TerminalSection() {
                 extra_paths: paths,
                 shell: shell.trim() || undefined,
                 shell_flags: flags ? flags.split(/\s+/) : undefined,
+                ps1: ps1 || undefined,
             });
             setSuccess(true);
         } catch (err) {
@@ -103,6 +106,48 @@ export function TerminalSection() {
                             onChange={e => { setShellFlags(e.target.value); setSuccess(false); }}
                             placeholder="--login -i"
                         />
+                    </div>
+
+                    {/* PS1 Prompt */}
+                    <div className="terminal-section-group">
+                        <label className="terminal-section-label">PS1 Prompt</label>
+                        <p className="terminal-section-desc">
+                            Custom shell prompt. Use <code>\n</code> for newline. Leave empty for shell default.
+                        </p>
+                        <textarea
+                            className="terminal-section-input terminal-section-textarea"
+                            value={ps1}
+                            onChange={e => { setPs1(e.target.value); setSuccess(false); }}
+                            placeholder="\\W $ "
+                            rows={2}
+                        />
+                        <div className="terminal-section-examples">
+                            <span className="terminal-section-examples-label">Examples:</span>
+                            <button
+                                className="terminal-section-example-btn"
+                                onClick={() => { setPs1('\\W $ '); setSuccess(false); }}
+                            >
+                                Dir name only
+                            </button>
+                            <button
+                                className="terminal-section-example-btn"
+                                onClick={() => { setPs1('\\u@\\h:\\w\\n$ '); setSuccess(false); }}
+                            >
+                                user@host:path (newline)
+                            </button>
+                            <button
+                                className="terminal-section-example-btn"
+                                onClick={() => { setPs1('\\w\\n$ '); setSuccess(false); }}
+                            >
+                                Full path (newline)
+                            </button>
+                            <button
+                                className="terminal-section-example-btn"
+                                onClick={() => { setPs1('$ '); setSuccess(false); }}
+                            >
+                                Minimal
+                            </button>
+                        </div>
                     </div>
 
                     {/* Extra PATHs */}

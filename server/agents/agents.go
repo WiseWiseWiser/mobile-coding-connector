@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
 // AgentDef defines a supported coding agent
@@ -131,7 +133,7 @@ func (m *agentSessionManager) launch(agentID, projectDir string) (*agentSession,
 	}
 
 	// Check command is installed
-	if _, err := exec.LookPath(agentDef.Command); err != nil {
+	if _, err := tool_resolve.LookPath(agentDef.Command); err != nil {
 		return nil, fmt.Errorf("agent %s is not installed (%s not found)", agentDef.Name, agentDef.Command)
 	}
 
@@ -155,6 +157,7 @@ func (m *agentSessionManager) launch(agentID, projectDir string) (*agentSession,
 	cmd := exec.Command(agentDef.Command, "serve", "--port", fmt.Sprintf("%d", port))
 	cmd.Dir = projectDir
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = tool_resolve.AppendExtraPaths(cmd.Env)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -307,8 +310,7 @@ func handleListAgents(w http.ResponseWriter, r *http.Request) {
 	copy(agents, agentDefs)
 
 	for i := range agents {
-		_, err := exec.LookPath(agents[i].Command)
-		agents[i].Installed = err == nil
+		agents[i].Installed = tool_resolve.IsAvailable(agents[i].Command)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

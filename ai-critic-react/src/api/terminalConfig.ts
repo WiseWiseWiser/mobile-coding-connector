@@ -4,6 +4,7 @@ export interface TerminalConfig {
     extra_paths: string[];
     shell?: string;       // shell path or name (default: "bash")
     shell_flags?: string[]; // shell flags (default: ["-i"])
+    ps1?: string;         // custom PS1 prompt string
 }
 
 export async function fetchTerminalConfig(): Promise<TerminalConfig> {

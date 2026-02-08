@@ -35,6 +35,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tools"
 )
 
@@ -241,6 +242,12 @@ func Static(mux *http.ServeMux, opts StaticOptions) error {
 }
 
 func RegisterAPI(mux *http.ServeMux) error {
+	// Initialize tool resolution: load user extra paths from terminal config
+	// so that all subsequent LookPath calls respect them.
+	if termCfg, err := terminal.LoadConfig(); err == nil && len(termCfg.ExtraPaths) > 0 {
+		tool_resolve.SetUserExtraPaths(termCfg.ExtraPaths)
+	}
+
 	// ping
 	mux.HandleFunc("/ping", handlePing)
 

@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tools"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
 var upgrader = websocket.Upgrader{
@@ -109,15 +109,18 @@ func (m *sessionManager) create(name, cwd string) (*session, error) {
 		}
 	}
 
+	// Patch shell RC files so that --login shells pick up extra paths
+	extraPaths := tool_resolve.AllExtraPaths()
+	patchRCFiles(extraPaths)
+
 	cmd := exec.Command(shellPath, shellFlags...)
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
-	// Ensure common tool install paths are in PATH so that
-	// tools installed via the diagnose page are accessible.
-	cmd.Env = tools.AppendExtraPaths(cmd.Env)
-	// Also append user-configured extra paths from terminal config
-	if termCfg != nil && len(termCfg.ExtraPaths) > 0 {
-		cmd.Env = appendUserPaths(cmd.Env, termCfg.ExtraPaths)
+	// Ensure common tool install paths and user-configured paths are in PATH
+	cmd.Env = tool_resolve.AppendExtraPaths(cmd.Env)
+	// Set custom PS1 prompt if configured
+	if termCfg != nil && termCfg.PS1 != "" {
+		cmd.Env = append(cmd.Env, "PS1="+termCfg.PS1)
 	}
 
 	ptmx, err := pty.Start(cmd)
@@ -360,33 +363,3 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// appendUserPaths appends the given user-configured paths to the PATH
-// variable in the environment slice.
-func appendUserPaths(env []string, paths []string) []string {
-	for i, e := range env {
-		if len(e) > 5 && e[:5] == "PATH=" {
-			currentPath := e[5:]
-			for _, p := range paths {
-				p = strings.TrimSpace(p)
-				if p == "" {
-					continue
-				}
-				if !pathContains(currentPath, p) {
-					currentPath = currentPath + ":" + p
-				}
-			}
-			env[i] = "PATH=" + currentPath
-			return env
-		}
-	}
-	return env
-}
-
-func pathContains(pathVal, dir string) bool {
-	for _, p := range strings.Split(pathVal, ":") {
-		if p == dir {
-			return true
-		}
-	}
-	return false
-}

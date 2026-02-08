@@ -3,7 +3,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './App.css';
 
@@ -186,6 +186,7 @@ function App() {
                             <Route path="create-checkpoint" element={<CreateCheckpointRoute />} />
                             <Route path="checkpoint/:checkpointId" element={<CheckpointDetailRoute />} />
                             <Route path="file/*" element={<FileContentRoute />} />
+                            <Route path="git-commit" element={<GitCommitRoute />} />
                         </Route>
                     </Route>
                     {/* Project-specific routes: MobileCodingConnector as layout */}
@@ -222,6 +223,7 @@ function App() {
                             <Route path="create-checkpoint" element={<CreateCheckpointRoute />} />
                             <Route path="checkpoint/:checkpointId" element={<CheckpointDetailRoute />} />
                             <Route path="file/*" element={<FileContentRoute />} />
+                            <Route path="git-commit" element={<GitCommitRoute />} />
                         </Route>
                     </Route>
                 </Route>

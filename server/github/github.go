@@ -17,6 +17,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
 // OAuthConfig holds the GitHub OAuth configuration
@@ -466,7 +467,7 @@ func handleTestSSHKey(w http.ResponseWriter, r *http.Request) {
 	sw.SendLog(fmt.Sprintf("SSH key validated: %s (%d bytes)", keyFile.KeyType, keyFile.Size))
 
 	// Check if ssh is installed
-	if _, lookErr := exec.LookPath("ssh"); lookErr != nil {
+	if !tool_resolve.IsAvailable("ssh") {
 		sw.SendError("ssh is not installed. Please install openssh-client first (e.g. apt-get install -y openssh-client).")
 		sw.SendDone(map[string]string{"message": "SSH connection failed: ssh not installed", "success": "false"})
 		return

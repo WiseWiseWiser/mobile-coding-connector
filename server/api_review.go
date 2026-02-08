@@ -83,6 +83,11 @@ func registerReviewAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/review/diff", handleGetDiff)
 	mux.HandleFunc("/api/review/chat", handleChat)
 	mux.HandleFunc("/api/review/stage", handleStageFile)
+	mux.HandleFunc("/api/review/unstage", handleUnstageFile)
+	mux.HandleFunc("/api/review/commit", handleGitCommit)
+	mux.HandleFunc("/api/review/push", handleGitPush)
+	mux.HandleFunc("/api/review/status", handleGitStatus)
+	mux.HandleFunc("/api/review/branches", handleGitBranches)
 }
 
 // ProviderInfo represents a provider for the frontend
@@ -213,6 +218,330 @@ func handleStageFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleUnstageFile handles requests to unstage a file using git reset HEAD
+func handleUnstageFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var req StageFileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	dir := resolveDir(req.Dir)
+	if dir == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
+		return
+	}
+
+	if req.Path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "File path is required"})
+		return
+	}
+
+	cmd := exec.Command("git", "reset", "HEAD", req.Path)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to unstage file: %s", string(output))})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// GitCommitRequest represents a request to commit changes
+type GitCommitRequest struct {
+	Dir     string `json:"dir"`
+	Message string `json:"message"`
+}
+
+// handleGitCommit handles requests to commit staged changes
+func handleGitCommit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var req GitCommitRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	dir := resolveDir(req.Dir)
+	if dir == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
+		return
+	}
+
+	if req.Message == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Commit message is required"})
+		return
+	}
+
+	cmd := exec.Command("git", "commit", "-m", req.Message)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to commit: %s", string(output))})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "output": string(output)})
+}
+
+// handleGitPush handles requests to push to remote
+func handleGitPush(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var req CodeReviewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	dir := resolveDir(req.Dir)
+	if dir == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
+		return
+	}
+
+	cmd := exec.Command("git", "push")
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to push: %s", string(output))})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "output": string(output)})
+}
+
+// GitStatusFile represents a single file in git status output
+type GitStatusFile struct {
+	Path     string `json:"path"`
+	Status   string `json:"status"`   // "added", "modified", "deleted", "renamed", "untracked"
+	IsStaged bool   `json:"isStaged"` // Whether the change is staged
+}
+
+// GitStatusResult represents the result of git status
+type GitStatusResult struct {
+	Branch string          `json:"branch"`
+	Files  []GitStatusFile `json:"files"`
+}
+
+// handleGitStatus returns the git status with separated staged/unstaged files
+func handleGitStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var req CodeReviewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	dir := resolveDir(req.Dir)
+	if dir == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
+		return
+	}
+
+	result, err := getGitStatus(dir)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// resolveDir resolves the git directory from the request, falling back to initialDir or cwd
+func resolveDir(dir string) string {
+	if dir != "" {
+		return dir
+	}
+	if initialDir != "" {
+		return initialDir
+	}
+	d, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return d
+}
+
+// getGitStatus runs git status --porcelain=v1 -b and parses the output
+func getGitStatus(dir string) (*GitStatusResult, error) {
+	// Check if directory is a git repository
+	cmd := exec.Command("git", "rev-parse", "--git-dir")
+	cmd.Dir = dir
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("not a git repository: %s", dir)
+	}
+
+	// Get branch name
+	cmd = exec.Command("git", "branch", "--show-current")
+	cmd.Dir = dir
+	branchOutput, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get branch: %v", err)
+	}
+	branch := strings.TrimSpace(string(branchOutput))
+
+	// Get status with porcelain format
+	cmd = exec.Command("git", "status", "--porcelain=v1")
+	cmd.Dir = dir
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get git status: %v", err)
+	}
+
+	result := &GitStatusResult{
+		Branch: branch,
+		Files:  []GitStatusFile{},
+	}
+
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if len(line) < 3 {
+			continue
+		}
+
+		indexStatus := line[0]  // staged status
+		workTreeStatus := line[1] // unstaged status
+		filePath := strings.TrimSpace(line[3:])
+
+		// Handle renamed files - format is "old -> new"
+		if idx := strings.Index(filePath, " -> "); idx >= 0 {
+			filePath = filePath[idx+4:]
+		}
+
+		// Staged change
+		if indexStatus != ' ' && indexStatus != '?' {
+			status := parseStatusChar(indexStatus)
+			result.Files = append(result.Files, GitStatusFile{
+				Path:     filePath,
+				Status:   status,
+				IsStaged: true,
+			})
+		}
+
+		// Unstaged change
+		if workTreeStatus != ' ' {
+			status := parseStatusChar(workTreeStatus)
+			if workTreeStatus == '?' {
+				status = "untracked"
+			}
+			result.Files = append(result.Files, GitStatusFile{
+				Path:     filePath,
+				Status:   status,
+				IsStaged: false,
+			})
+		}
+	}
+
+	return result, nil
+}
+
+// parseStatusChar converts a git status character to a human-readable status
+func parseStatusChar(c byte) string {
+	switch c {
+	case 'A':
+		return "added"
+	case 'M':
+		return "modified"
+	case 'D':
+		return "deleted"
+	case 'R':
+		return "renamed"
+	case 'C':
+		return "copied"
+	case '?':
+		return "untracked"
+	default:
+		return "modified"
+	}
+}
+
+// GitBranch represents a git branch
+type GitBranch struct {
+	Name      string `json:"name"`
+	IsCurrent bool   `json:"isCurrent"`
+	Date      string `json:"date"` // ISO date of last commit
+}
+
+// handleGitBranches returns branches sorted by recent commit date
+func handleGitBranches(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var req CodeReviewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	dir := resolveDir(req.Dir)
+	if dir == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
+		return
+	}
+
+	branches, err := getGitBranches(dir)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, branches)
+}
+
+// getGitBranches returns local branches sorted by most recent commit date
+func getGitBranches(dir string) ([]GitBranch, error) {
+	// Use git for-each-ref to list branches sorted by -committerdate (most recent first)
+	cmd := exec.Command("git", "for-each-ref",
+		"--sort=-committerdate",
+		"--format=%(refname:short)\t%(committerdate:iso8601)\t%(HEAD)",
+		"refs/heads/",
+	)
+	cmd.Dir = dir
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list branches: %v", err)
+	}
+
+	var branches []GitBranch
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		branches = append(branches, GitBranch{
+			Name:      parts[0],
+			Date:      strings.TrimSpace(parts[1]),
+			IsCurrent: strings.TrimSpace(parts[2]) == "*",
+		})
+	}
+
+	return branches, nil
 }
 
 // getGitDiff runs git diff commands and returns the results

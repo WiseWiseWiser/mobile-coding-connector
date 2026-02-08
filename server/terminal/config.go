@@ -33,6 +33,7 @@ type TerminalConfig struct {
 	ExtraPaths []string `json:"extra_paths"`
 	Shell      string   `json:"shell,omitempty"`       // shell path or name (default: "bash")
 	ShellFlags []string `json:"shell_flags,omitempty"` // shell flags (default: ["-i"])
+	PS1        string   `json:"ps1,omitempty"`         // custom PS1 prompt string
 }
 
 // LoadConfig reads the terminal config from disk.
