@@ -3,11 +3,14 @@ import { useCurrent } from '../../../hooks/useCurrent';
 import { useAutoScroll } from '../../../hooks/useAutoScroll';
 import {
     fetchAgentSessions, fetchMessages, sendPromptAsync, agentEventUrl,
-    fetchOpencodeConfig, fetchOpencodeProviders,
+    fetchOpencodeConfig, fetchOpencodeProviders, updateAgentConfig,
     AgentSessionStatuses,
 } from '../../../api/agents';
-import type { AgentSessionInfo, AgentMessage, OpencodeConfig } from '../../../api/agents';
+import type { AgentSessionInfo, OpencodeConfig } from '../../../api/agents';
+import type { ACPMessage } from '../../../api/acp';
+import { parseSSEEvent, convertMessages } from '../../../api/acp_adapter';
 import { AgentChatHeader } from './AgentChatHeader';
+import type { ModelOption } from './AgentChatHeader';
 import { ChatMessageGroup, groupMessagesByRole } from './ChatMessage';
 
 export interface AgentChatProps {
@@ -20,11 +23,12 @@ export interface AgentChatProps {
 }
 
 export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, onSessionUpdate }: AgentChatProps) {
-    const [messages, setMessages] = useState<AgentMessage[]>([]);
+    const [messages, setMessages] = useState<ACPMessage[]>([]);
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
     const [agentConfig, setAgentConfig] = useState<OpencodeConfig | null>(null);
     const [contextLimit, setContextLimit] = useState<number>(0);
+    const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
     const messagesContainerRef = useAutoScroll([messages]);
     const sessionRef = useCurrent(session);
 
@@ -50,27 +54,37 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
     useEffect(() => {
         if (session.status !== AgentSessionStatuses.Running) return;
 
-        // Fetch config and providers in parallel to determine model and context limit
         Promise.all([
             fetchOpencodeConfig(session.id),
             fetchOpencodeProviders(session.id),
         ]).then(([cfg, providersData]) => {
             setAgentConfig(cfg);
 
-            // Determine the model: explicit config or default from providers
             let modelID = cfg.model?.modelID;
             let providerID = cfg.model?.providerID;
 
-            // If no explicit model, use the default from providers
             if (!modelID && providersData.default) {
                 const defaults = providersData.default;
-                // Pick the first default entry
                 const firstKey = Object.keys(defaults)[0];
                 if (firstKey) {
                     providerID = firstKey;
                     modelID = defaults[firstKey];
                 }
             }
+
+            // Build available models list from all providers
+            const models: ModelOption[] = [];
+            for (const provider of (providersData.providers || [])) {
+                for (const [, modelInfo] of Object.entries(provider.models || {})) {
+                    models.push({
+                        id: modelInfo.id,
+                        name: modelInfo.name,
+                        is_default: (modelInfo as Record<string, unknown>).is_default as boolean | undefined,
+                        is_current: (modelInfo as Record<string, unknown>).is_current as boolean | undefined,
+                    });
+                }
+            }
+            setAvailableModels(models);
 
             if (!providerID || !modelID) return;
 
@@ -79,7 +93,6 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
             if (model?.limit?.context) {
                 setContextLimit(model.limit.context);
             }
-            // Store resolved model name
             if (modelID) {
                 setAgentConfig(prev => prev ? { ...prev, model: { modelID: modelID!, providerID: providerID! } } : prev);
             }
@@ -87,79 +100,26 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session.id, session.status]);
 
-    // Initial message load (one-time HTTP fetch for existing messages)
+    // Initial message load
     useEffect(() => {
         if (!opencodeSID || session.status !== AgentSessionStatuses.Running) return;
         fetchMessages(session.id, opencodeSID)
-            .then(msgs => setMessages(msgs))
+            .then(msgs => setMessages(convertMessages(msgs)))
             .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [opencodeSID, session.status]);
 
-    // SSE-driven incremental message updates
+    // SSE-driven incremental message updates (standard ACP events)
     useEffect(() => {
         if (session.status !== AgentSessionStatuses.Running) return;
 
         const eventSource = new EventSource(agentEventUrl(session.id));
 
         eventSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                const evt = data.payload || data;
-                const eventType: string = evt.type || '';
-                const props = evt.properties;
-                if (!props) return;
-
-                if (eventType === 'message.updated' && props.info) {
-                    const msgInfo = props.info;
-                    setMessages(prev => {
-                        const idx = prev.findIndex(m => m.info.id === msgInfo.id);
-                        if (idx >= 0) {
-                            const updated = [...prev];
-                            updated[idx] = { ...updated[idx], info: msgInfo };
-                            return updated;
-                        }
-                        return [...prev, { info: msgInfo, parts: [] }];
-                    });
-                }
-
-                if (eventType === 'message.part.updated' && props.part) {
-                    const part = props.part;
-                    const messageID: string = part.messageID;
-                    setMessages(prev => {
-                        const msgIdx = prev.findIndex(m => m.info.id === messageID);
-                        if (msgIdx < 0) {
-                            return [...prev, {
-                                info: { id: messageID, role: 'assistant', time: '' },
-                                parts: [part],
-                            }];
-                        }
-                        const msg = prev[msgIdx];
-                        const partIdx = msg.parts.findIndex(p => p.id === part.id);
-                        const newParts = [...msg.parts];
-                        if (partIdx >= 0) {
-                            newParts[partIdx] = part;
-                        } else {
-                            newParts.push(part);
-                        }
-                        const updated = [...prev];
-                        updated[msgIdx] = { ...msg, parts: newParts };
-                        return updated;
-                    });
-                }
-
-                if (eventType === 'message.removed' && props.messageID) {
-                    setMessages(prev => prev.filter(m => m.info.id !== props.messageID));
-                }
-
-                if (eventType === 'message.part.removed' && props.partID) {
-                    setMessages(prev => prev.map(m => ({
-                        ...m,
-                        parts: m.parts.filter(p => p.id !== props.partID),
-                    })));
-                }
-
-            } catch { /* ignore non-JSON events */ }
+            const updater = parseSSEEvent(event.data);
+            if (updater) {
+                setMessages(updater);
+            }
         };
 
         return () => eventSource.close();
@@ -175,6 +135,13 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
             await sendPromptAsync(session.id, opencodeSID, text);
         } catch { /* SSE will show updates */ }
         setSending(false);
+    };
+
+    const handleModelChange = async (modelId: string) => {
+        try {
+            await updateAgentConfig(session.id, { model: { modelID: modelId } });
+            setAgentConfig(prev => prev ? { ...prev, model: { modelID: modelId, providerID: 'cursor' } } : prev);
+        } catch { /* ignore */ }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -209,13 +176,8 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
         );
     }
 
-    // Compute model name and context usage from messages
-    const lastAssistantMsg = [...messages].reverse().find(m => m.info.role === 'assistant' && m.info.tokens);
-    const modelName = agentConfig?.model?.modelID || lastAssistantMsg?.info.modelID || undefined;
-    const lastInputTokens = lastAssistantMsg?.info.tokens?.input || 0;
-    const contextPercent = contextLimit > 0 && lastInputTokens > 0
-        ? Math.round((lastInputTokens / contextLimit) * 100)
-        : undefined;
+    const modelName = agentConfig?.model?.modelID || undefined;
+    const contextPercent = contextLimit > 0 ? undefined : undefined; // TODO: compute from token usage
 
     return (
         <div className="mcc-agent-view mcc-agent-view-chat">
@@ -225,6 +187,8 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
                 onBack={onBack}
                 modelName={modelName}
                 contextPercent={contextPercent}
+                availableModels={availableModels}
+                onModelChange={handleModelChange}
             />
 
             <div className="mcc-agent-messages" ref={messagesContainerRef}>
@@ -238,7 +202,7 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
                 </div>
 
                 {groupMessagesByRole(messages).map((group, idx) => (
-                    <ChatMessageGroup key={group[0].info.id || idx} messages={group} />
+                    <ChatMessageGroup key={group[0].id || idx} messages={group} />
                 ))}
             </div>
 

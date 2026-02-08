@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import type { AgentMessage, MessagePart } from '../../../api/agents';
+import type { ACPMessage, ACPMessagePart } from '../../../api/acp';
+import { ACPContentTypes, ACPRoles } from '../../../api/acp';
 import { truncate } from './utils';
 
 // ---- Message Grouping ----
 
-export function groupMessagesByRole(messages: AgentMessage[]): AgentMessage[][] {
-    const groups: AgentMessage[][] = [];
+export function groupMessagesByRole(messages: ACPMessage[]): ACPMessage[][] {
+    const groups: ACPMessage[][] = [];
     for (const msg of messages) {
         const lastGroup = groups[groups.length - 1];
-        if (lastGroup && lastGroup[0].info.role === msg.info.role) {
+        if (lastGroup && lastGroup[0].role === msg.role) {
             lastGroup.push(msg);
         } else {
             groups.push([msg]);
@@ -17,14 +18,14 @@ export function groupMessagesByRole(messages: AgentMessage[]): AgentMessage[][] 
     return groups;
 }
 
-export function ChatMessageGroup({ messages }: { messages: AgentMessage[] }) {
-    const isUser = messages[0].info.role === 'user';
+export function ChatMessageGroup({ messages }: { messages: ACPMessage[] }) {
+    const isUser = messages[0].role === ACPRoles.User;
 
-    const thinkingParts: MessagePart[] = [];
-    const contentParts: MessagePart[] = [];
+    const thinkingParts: ACPMessagePart[] = [];
+    const contentParts: ACPMessagePart[] = [];
     for (const msg of messages) {
         for (const part of msg.parts) {
-            if (part.type === 'reasoning' || part.type === 'thinking' || part.thinking || part.reasoning) {
+            if (part.content_type === ACPContentTypes.Thinking) {
                 thinkingParts.push(part);
             } else {
                 contentParts.push(part);
@@ -42,7 +43,7 @@ export function ChatMessageGroup({ messages }: { messages: AgentMessage[] }) {
                     <ThinkingBlock parts={thinkingParts} />
                 )}
                 {contentParts.map((part, idx) => (
-                    <MessagePartView key={part.id || idx} part={part} />
+                    <ACPMessagePartView key={part.id || idx} part={part} />
                 ))}
             </div>
         </div>
@@ -51,10 +52,10 @@ export function ChatMessageGroup({ messages }: { messages: AgentMessage[] }) {
 
 // ---- Thinking Block ----
 
-function ThinkingBlock({ parts }: { parts: MessagePart[] }) {
+function ThinkingBlock({ parts }: { parts: ACPMessagePart[] }) {
     const [expanded, setExpanded] = useState(false);
 
-    const thinkingText = parts.map(p => p.thinking || p.reasoning || p.text || p.content || '').join('\n').trim();
+    const thinkingText = parts.map(p => p.content || '').join('\n').trim();
     if (!thinkingText) return null;
 
     const lines = thinkingText.split('\n');
@@ -79,43 +80,41 @@ function ThinkingBlock({ parts }: { parts: MessagePart[] }) {
     );
 }
 
-function MessagePartView({ part }: { part: MessagePart }) {
-    if (part.type === 'text') {
-        const text = part.text || part.content || '';
-        if (!text) return null;
-        return <div className="mcc-agent-msg-text">{text}</div>;
+// ---- ACP Message Part View ----
+
+function ACPMessagePartView({ part }: { part: ACPMessagePart }) {
+    if (part.content_type === ACPContentTypes.TextPlain) {
+        if (!part.content) return null;
+        return <div className="mcc-agent-msg-text">{part.content}</div>;
     }
 
-    if (part.type === 'tool') {
-        // OpenCode tool part structure
-        const toolState = typeof part.state === 'object' ? part.state : undefined;
-        const toolName = part.tool || (toolState?.title) || 'tool';
-        const isRunning = toolState?.status === 'running' || toolState?.status === 'pending';
-        const hasError = toolState?.status === 'error';
-        const output = toolState?.output || part.output;
-        const error = toolState?.error;
-        
-        // Extract filename from tool input
-        const toolInput = toolState?.input || part.input;
+    if (part.content_type === ACPContentTypes.ToolCall) {
+        const toolName = part.name || 'tool';
+        const status = part.metadata?.status as string | undefined;
+        const isRunning = status === 'running' || status === 'pending';
+        const hasError = status === 'error';
+        const output = part.metadata?.output as string | undefined;
+        const error = part.metadata?.error as string | undefined;
+        const title = part.metadata?.title as string | undefined;
+
+        // Try to extract filename from tool input
         let fileName = '';
+        const toolInput = part.metadata?.input || tryParseJSON(part.content);
         if (toolInput && typeof toolInput === 'object') {
-            // Check for common file path fields
-            fileName = (toolInput as { filePath?: string; path?: string; file?: string }).filePath 
-                || (toolInput as { filePath?: string; path?: string; file?: string }).path 
-                || (toolInput as { filePath?: string; path?: string; file?: string }).file 
-                || '';
+            const inp = toolInput as Record<string, unknown>;
+            fileName = (inp.filePath || inp.path || inp.file || '') as string;
         }
-        
+
         return (
             <div className={`mcc-agent-msg-tool ${isRunning ? 'running' : ''} ${hasError ? 'error' : ''}`}>
                 <div className="mcc-agent-msg-tool-header">
                     <span className="mcc-agent-msg-tool-icon">
                         {isRunning ? '⏳' : hasError ? '❌' : '⚙️'}
                     </span>
-                    <span className="mcc-agent-msg-tool-name">{toolName}</span>
+                    <span className="mcc-agent-msg-tool-name">{title || toolName}</span>
                     {fileName && (
-                        <span className="mcc-agent-msg-tool-file" style={{ 
-                            marginLeft: '8px', 
+                        <span className="mcc-agent-msg-tool-file" style={{
+                            marginLeft: '8px',
                             color: 'var(--mcc-text-secondary)',
                             fontSize: '0.9em'
                         }}>
@@ -133,10 +132,18 @@ function MessagePartView({ part }: { part: MessagePart }) {
         );
     }
 
-    const text = part.text || part.content;
-    if (text) {
-        return <div className="mcc-agent-msg-text">{text}</div>;
+    // Fallback: render content as text
+    if (part.content) {
+        return <div className="mcc-agent-msg-text">{part.content}</div>;
     }
 
     return null;
+}
+
+function tryParseJSON(s: string): unknown {
+    try {
+        return JSON.parse(s);
+    } catch {
+        return null;
+    }
 }

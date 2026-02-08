@@ -104,6 +104,14 @@ export async function fetchOpencodeConfig(sessionId: string): Promise<OpencodeCo
     return resp.json();
 }
 
+export async function updateAgentConfig(sessionId: string, config: { model: { modelID: string } }): Promise<void> {
+    await fetch(`${agentProxyBase(sessionId)}/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+    });
+}
+
 /** OpenCode provider model info */
 export interface OpencodeModelInfo {
     id: string;
@@ -195,4 +203,25 @@ export async function sendPromptAsync(sessionId: string, opencodeSID: string, te
 /** Build the SSE event URL for a given agent session */
 export function agentEventUrl(sessionId: string): string {
     return `${agentProxyBase(sessionId)}/event`;
+}
+
+// ---- Agent Settings ----
+
+export interface AgentSettings {
+    prompt_append_message: string;
+    followup_append_message: string;
+}
+
+export async function fetchAgentSettings(sessionId: string): Promise<AgentSettings> {
+    const resp = await fetch(`${agentProxyBase(sessionId)}/settings`);
+    return resp.json();
+}
+
+export async function updateAgentSettings(sessionId: string, settings: AgentSettings): Promise<AgentSettings> {
+    const resp = await fetch(`${agentProxyBase(sessionId)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+    });
+    return resp.json();
 }

@@ -7,7 +7,7 @@ import {
     fetchAgentSessions, launchAgentSession, stopAgentSession,
     AgentSessionStatuses,
 } from '../../../api/agents';
-import type { AgentDef } from '../../../api/agents';
+import type { AgentDef, AgentSessionInfo } from '../../../api/agents';
 import { useV2Context } from '../../V2Context';
 import { AgentEmptyIcon } from '../../icons';
 import './AgentView.css';
@@ -18,11 +18,11 @@ export interface AgentOutletContext {
     projectName: string | null;
     agents: AgentDef[];
     agentsLoading: boolean;
-    session: import('../../../api/agents').AgentSessionInfo | null;
-    setSession: (session: import('../../../api/agents').AgentSessionInfo | null) => void;
+    sessions: Record<string, AgentSessionInfo>;
+    setSession: (agentId: string, session: AgentSessionInfo | null) => void;
     launchError: string;
     onLaunchHeadless: (agent: AgentDef) => void;
-    onStopSession: () => void;
+    onStopAgent: (agentId: string) => void;
     navigateToView: (view: string) => void;
 }
 
@@ -31,7 +31,7 @@ export function AgentLayout() {
         currentProject,
         agents,
         agentsLoading,
-        agentSession: session,
+        agentSessions: sessions,
         setAgentSession: setSession,
         agentLaunchError: launchError,
         setAgentLaunchError: setLaunchError,
@@ -42,40 +42,42 @@ export function AgentLayout() {
 
     // Check for existing sessions matching this project
     const projectDirRef = useCurrent(projectDir);
+    const setSessionRef = useCurrent(setSession);
     useEffect(() => {
         if (!projectDir) return;
         fetchAgentSessions()
-            .then(sessions => {
-                const existing = sessions.find(
+            .then(allSessions => {
+                const active = allSessions.filter(
                     s => s.project_dir === projectDirRef.current &&
                         (s.status === AgentSessionStatuses.Running || s.status === AgentSessionStatuses.Starting)
                 );
-                if (existing) {
-                    setSession(existing);
+                for (const s of active) {
+                    setSessionRef.current(s.agent_id, s);
                 }
             })
             .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectDir]);
 
-    const handleLaunchHeadless = async (agent: import('../../../api/agents').AgentDef) => {
+    const handleLaunchHeadless = async (agent: AgentDef) => {
         if (!projectDir) return;
         setLaunchError('');
         try {
             const sessionInfo = await launchAgentSession(agent.id, projectDir);
-            setSession(sessionInfo);
+            setSession(agent.id, sessionInfo);
             navigateToView(agent.id);
         } catch (err) {
             setLaunchError(err instanceof Error ? err.message : String(err));
         }
     };
 
-    const handleStopSession = async () => {
+    const handleStopAgent = async (agentId: string) => {
+        const session = sessions[agentId];
         if (!session) return;
         try {
             await stopAgentSession(session.id);
         } catch { /* ignore */ }
-        setSession(null);
+        setSession(agentId, null);
         navigateToView('');
     };
 
@@ -96,11 +98,11 @@ export function AgentLayout() {
         projectName,
         agents,
         agentsLoading,
-        session,
+        sessions,
         setSession,
         launchError,
         onLaunchHeadless: handleLaunchHeadless,
-        onStopSession: handleStopSession,
+        onStopAgent: handleStopAgent,
         navigateToView,
     };
 

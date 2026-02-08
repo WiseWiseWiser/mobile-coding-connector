@@ -11,10 +11,10 @@ export function AgentPickerRoute() {
             loading={ctx.agentsLoading}
             projectName={ctx.projectName}
             launchError={ctx.launchError}
-            activeSession={ctx.session}
+            sessions={ctx.sessions}
             onLaunchHeadless={ctx.onLaunchHeadless}
-            onResumeChat={() => ctx.navigateToView(ctx.session?.agent_id || '')}
-            onStopSession={ctx.onStopSession}
+            onOpenSessions={(agentId) => ctx.navigateToView(agentId)}
+            onStopAgent={ctx.onStopAgent}
         />
     );
 }

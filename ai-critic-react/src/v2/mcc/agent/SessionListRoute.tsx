@@ -8,30 +8,33 @@ export function SessionListRoute() {
     const params = useParams<{ agentId?: string }>();
     const agentId = params.agentId || '';
 
-    // If no active session, fall back to agent picker
-    if (!ctx.session) {
+    const session = ctx.sessions[agentId];
+
+    // If no session for this agent, fall back to agent picker
+    if (!session) {
         return (
             <AgentPicker
                 agents={ctx.agents}
                 loading={ctx.agentsLoading}
                 projectName={ctx.projectName}
                 launchError={ctx.launchError}
-                activeSession={ctx.session}
+                sessions={ctx.sessions}
                 onLaunchHeadless={ctx.onLaunchHeadless}
-                onResumeChat={() => ctx.navigateToView(ctx.session?.agent_id || '')}
-                onStopSession={ctx.onStopSession}
+                onOpenSessions={(aid) => ctx.navigateToView(aid)}
+                onStopAgent={ctx.onStopAgent}
             />
         );
     }
 
     return (
         <SessionList
-            session={ctx.session}
+            session={session}
             projectName={ctx.projectName}
             onBack={() => ctx.navigateToView('')}
-            onStop={ctx.onStopSession}
+            onStop={() => ctx.onStopAgent(agentId)}
             onSelectSession={(sid) => ctx.navigateToView(`${agentId}/${sid}`)}
-            onSessionUpdate={ctx.setSession}
+            onSessionUpdate={(updated) => ctx.setSession(agentId, updated)}
+            onSettings={() => ctx.navigateToView(`${agentId}/settings`)}
         />
     );
 }

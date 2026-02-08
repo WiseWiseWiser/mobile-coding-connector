@@ -5,7 +5,10 @@ import {
     fetchMessages, AgentSessionStatuses,
 } from '../../../api/agents';
 import type { AgentSessionInfo } from '../../../api/agents';
+import { ACPRoles } from '../../../api/acp';
+import { convertMessages } from '../../../api/acp_adapter';
 import { AgentChatHeader } from './AgentChatHeader';
+import { SettingsIcon } from '../../icons';
 import { truncate } from './utils';
 
 export interface SessionListProps {
@@ -15,6 +18,7 @@ export interface SessionListProps {
     onStop: () => void;
     onSelectSession: (opencodeSID: string) => void;
     onSessionUpdate: (session: AgentSessionInfo) => void;
+    onSettings?: () => void;
 }
 
 interface SessionPreview {
@@ -22,7 +26,7 @@ interface SessionPreview {
     firstMessage: string;
 }
 
-export function SessionList({ session, projectName, onBack, onStop, onSelectSession, onSessionUpdate }: SessionListProps) {
+export function SessionList({ session, projectName, onBack, onStop, onSelectSession, onSessionUpdate, onSettings }: SessionListProps) {
     const [sessions, setSessions] = useState<SessionPreview[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
@@ -71,10 +75,11 @@ export function SessionList({ session, projectName, onBack, onStop, onSelectSess
                 const previews = await Promise.all(
                     list.map(async (s) => {
                         try {
-                            const msgs = await fetchMessages(session.id, s.id);
-                            const firstUserMsg = msgs.find(m => m.info.role === 'user');
+                            const rawMsgs = await fetchMessages(session.id, s.id);
+                            const msgs = convertMessages(rawMsgs);
+                            const firstUserMsg = msgs.find(m => m.role === ACPRoles.User);
                             const text = firstUserMsg?.parts
-                                .map(p => p.text || p.content || '')
+                                .map(p => p.content || '')
                                 .join(' ')
                                 .trim() || '';
                             return { id: s.id, firstMessage: text };
@@ -123,6 +128,11 @@ export function SessionList({ session, projectName, onBack, onStop, onSelectSess
             <AgentChatHeader agentName={session.agent_name} projectName={projectName} onBack={onBack} />
             <div className="mcc-agent-header" style={{ paddingTop: 4 }}>
                 <h2>Sessions</h2>
+                {onSettings && (
+                    <button className="mcc-agent-settings-icon-btn" onClick={onSettings} title="Agent Settings">
+                        <SettingsIcon />
+                    </button>
+                )}
             </div>
             <div className="mcc-agent-new-chat-row">
                 <button className="mcc-forward-btn mcc-agent-new-chat-btn" onClick={handleNewChat} disabled={creating}>

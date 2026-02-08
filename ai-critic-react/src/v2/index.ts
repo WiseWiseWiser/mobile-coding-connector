@@ -14,6 +14,6 @@ export { CloneRepoView } from './mcc/home/settings/CloneRepoView';
 export { UploadFileView } from './mcc/home/UploadFileView';
 export { DownloadFileView } from './mcc/home/DownloadFileView';
 export { TerminalView } from './mcc/terminal/TerminalView';
-export { AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute } from './mcc/agent';
+export { AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, CursorAgentSettingsRoute } from './mcc/agent';
 export { PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute } from './mcc';
 export { FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute } from './mcc/files';

@@ -13,6 +13,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/cursor"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
@@ -52,8 +55,9 @@ var agentDefs = []AgentDef{
 	{
 		ID:          "cursor-agent",
 		Name:        "Cursor Agent",
-		Description: "Cursor's AI coding agent",
-		Command:     "cursor",
+		Description: "Cursor's AI coding agent (chat mode via stream-json adapter)",
+		Command:     "cursor-agent",
+		Headless:    true,
 	},
 }
 
@@ -80,6 +84,9 @@ type agentSession struct {
 	cmd        *exec.Cmd
 	proxy      *httputil.ReverseProxy
 
+	// For cursor-agent adapter mode (no external HTTP server, handled in-process)
+	cursorAdapter *cursor.Adapter
+
 	mu     sync.Mutex
 	status string // "starting", "running", "stopped", "error"
 	err    string
@@ -87,13 +94,20 @@ type agentSession struct {
 }
 
 type agentSessionManager struct {
-	mu       sync.Mutex
-	sessions map[string]*agentSession
-	counter  int
+	mu            sync.Mutex
+	sessions      map[string]*agentSession
+	counter       int
+	settingsStore *settings.Store
 }
 
-var sessionMgr = &agentSessionManager{
-	sessions: make(map[string]*agentSession),
+var sessionMgr = newSessionManager()
+
+func newSessionManager() *agentSessionManager {
+	store, _ := settings.NewStore(".settings")
+	return &agentSessionManager{
+		sessions:      make(map[string]*agentSession),
+		settingsStore: store,
+	}
 }
 
 // RegisterAPI registers agent-related API endpoints
@@ -132,15 +146,25 @@ func (m *agentSessionManager) launch(agentID, projectDir string) (*agentSession,
 		return nil, fmt.Errorf("agent %s does not support headless mode", agentID)
 	}
 
+	// Validate project dir
+	if info, err := os.Stat(projectDir); err != nil || !info.IsDir() {
+		return nil, fmt.Errorf("invalid project directory: %s", projectDir)
+	}
+
+	m.mu.Lock()
+	m.counter++
+	id := fmt.Sprintf("agent-session-%d", m.counter)
+	m.mu.Unlock()
+
+	// For cursor-agent, use the in-process adapter instead of an external HTTP server
+	if agentDef.ID == "cursor-agent" {
+		return m.launchCursorAdapter(id, agentDef, projectDir)
+	}
+
 	// Check command is installed and get full path
 	cmdPath, err := tool_resolve.LookPath(agentDef.Command)
 	if err != nil {
 		return nil, fmt.Errorf("agent %s is not installed (%s not found)", agentDef.Name, agentDef.Command)
-	}
-
-	// Validate project dir
-	if info, err := os.Stat(projectDir); err != nil || !info.IsDir() {
-		return nil, fmt.Errorf("invalid project directory: %s", projectDir)
 	}
 
 	// Find a free port
@@ -148,11 +172,6 @@ func (m *agentSessionManager) launch(agentID, projectDir string) (*agentSession,
 	if err != nil {
 		return nil, fmt.Errorf("find free port: %w", err)
 	}
-
-	m.mu.Lock()
-	m.counter++
-	id := fmt.Sprintf("agent-session-%d", m.counter)
-	m.mu.Unlock()
 
 	// Build the opencode serve command using the full path
 	cmd := exec.Command(cmdPath, "serve", "--port", fmt.Sprintf("%d", port))
@@ -205,6 +224,31 @@ func (m *agentSessionManager) launch(agentID, projectDir string) (*agentSession,
 		s.mu.Unlock()
 		close(s.done)
 	}()
+
+	return s, nil
+}
+
+// launchCursorAdapter creates a cursor adapter session (no external process, in-process HTTP handler).
+func (m *agentSessionManager) launchCursorAdapter(id string, agentDef *AgentDef, projectDir string) (*agentSession, error) {
+	adapter, err := cursor.NewAdapter(projectDir, m.settingsStore)
+	if err != nil {
+		return nil, err
+	}
+
+	s := &agentSession{
+		id:            id,
+		agentID:       agentDef.ID,
+		agentName:     agentDef.Name,
+		projectDir:    projectDir,
+		createdAt:     time.Now(),
+		cursorAdapter: adapter,
+		status:        "running",
+		done:          make(chan struct{}),
+	}
+
+	m.mu.Lock()
+	m.sessions[id] = s
+	m.mu.Unlock()
 
 	return s, nil
 }
@@ -279,7 +323,7 @@ func (m *agentSessionManager) stop(id string) {
 	s.status = "stopped"
 	s.mu.Unlock()
 
-	if s.cmd.Process != nil {
+	if s.cmd != nil && s.cmd.Process != nil {
 		s.cmd.Process.Kill()
 	}
 }
@@ -385,58 +429,23 @@ func handleAgentSessionProxy(w http.ResponseWriter, r *http.Request) {
 	r.URL.Path = restPath
 	r.URL.RawPath = ""
 
-	// For SSE endpoints, we need to handle streaming properly
+	// If this session uses the cursor adapter, route to it
+	if s.cursorAdapter != nil {
+		s.cursorAdapter.ServeHTTP(w, r)
+		return
+	}
+
+	// For SSE endpoints, convert OpenCode events to ACP
 	if restPath == "/event" || restPath == "/global/event" {
-		proxySSE(w, r, s.port)
+		opencode.ProxySSE(w, r, s.port)
+		return
+	}
+
+	// For message endpoints, convert response to ACP format
+	if strings.Contains(restPath, "/message") && r.Method == http.MethodGet {
+		opencode.ProxyMessages(w, r, s.port)
 		return
 	}
 
 	s.proxy.ServeHTTP(w, r)
-}
-
-// proxySSE streams SSE from the opencode server to the client
-func proxySSE(w http.ResponseWriter, r *http.Request, port int) {
-	targetURL := fmt.Sprintf("http://127.0.0.1:%d%s", port, r.URL.Path)
-	if r.URL.RawQuery != "" {
-		targetURL += "?" + r.URL.RawQuery
-	}
-
-	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
-	if err != nil {
-		http.Error(w, "failed to create request", http.StatusInternalServerError)
-		return
-	}
-	req.Header.Set("Accept", "text/event-stream")
-
-	client := &http.Client{Timeout: 0}
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, "failed to connect to agent server", http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(resp.StatusCode)
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-
-	buf := make([]byte, 4096)
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			w.Write(buf[:n])
-			flusher.Flush()
-		}
-		if err != nil {
-			return
-		}
-	}
 }

@@ -262,6 +262,32 @@ var requiredTools = []toolDef{
 		},
 		installWindows: "Download from https://github.com/junegunn/fzf/releases",
 	},
+	{
+		name:        "whats_next",
+		description: "Task tracking and planning CLI tool",
+		purpose:     "Track tasks and plan next steps",
+		versionCmd:  []string{"whats_next", "version"},
+		installMacOS: []string{
+			"go install github.com/xhd2015/whats_next@latest",
+		},
+		installLinux: []string{
+			"go install github.com/xhd2015/whats_next@latest",
+		},
+		installWindows: "go install github.com/xhd2015/whats_next@latest",
+	},
+	{
+		name:        "kool",
+		description: "Developer toolchain manager",
+		purpose:     "Manage development toolchains and environments",
+		versionCmd:  []string{"kool", "version"},
+		installMacOS: []string{
+			"go install github.com/xhd2015/kool@latest",
+		},
+		installLinux: []string{
+			"go install github.com/xhd2015/kool@latest",
+		},
+		installWindows: "go install github.com/xhd2015/kool@latest",
+	},
 }
 
 // getInstallStepsForOS returns the install steps for the current OS.

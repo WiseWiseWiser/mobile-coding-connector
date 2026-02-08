@@ -37,8 +37,8 @@ interface V2ContextValue {
     // Agent session state (lifted up to persist across tab switches)
     agents: AgentDef[];
     agentsLoading: boolean;
-    agentSession: AgentSessionInfo | null;
-    setAgentSession: (session: AgentSessionInfo | null) => void;
+    agentSessions: Record<string, AgentSessionInfo>;
+    setAgentSession: (agentId: string, session: AgentSessionInfo | null) => void;
     agentLaunchError: string;
     setAgentLaunchError: (error: string) => void;
     // Terminal state (lifted up to persist across tab switches)
@@ -100,8 +100,20 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
     // Agent state (lifted up to persist across tab switches)
     const [agents, setAgents] = useState<AgentDef[]>([]);
     const [agentsLoading, setAgentsLoading] = useState(true);
-    const [agentSession, setAgentSession] = useState<AgentSessionInfo | null>(null);
+    const [agentSessions, setAgentSessions] = useState<Record<string, AgentSessionInfo>>({});
     const [agentLaunchError, setAgentLaunchError] = useState('');
+
+    const setAgentSession = (agentId: string, session: AgentSessionInfo | null) => {
+        setAgentSessions(prev => {
+            const next = { ...prev };
+            if (session) {
+                next[agentId] = session;
+            } else {
+                delete next[agentId];
+            }
+            return next;
+        });
+    };
 
     useEffect(() => {
         fetchAgents()
@@ -128,7 +140,7 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
             refreshDiagnostics,
             agents,
             agentsLoading,
-            agentSession,
+            agentSessions,
             setAgentSession,
             agentLaunchError,
             setAgentLaunchError,

@@ -9,30 +9,32 @@ export function AgentChatRoute() {
     const agentId = params.agentId || '';
     const sessionId = params.sessionId || '';
 
-    // If no active session, fall back to agent picker
-    if (!ctx.session) {
+    const session = ctx.sessions[agentId];
+
+    // If no session for this agent, fall back to agent picker
+    if (!session) {
         return (
             <AgentPicker
                 agents={ctx.agents}
                 loading={ctx.agentsLoading}
                 projectName={ctx.projectName}
                 launchError={ctx.launchError}
-                activeSession={ctx.session}
+                sessions={ctx.sessions}
                 onLaunchHeadless={ctx.onLaunchHeadless}
-                onResumeChat={() => ctx.navigateToView(ctx.session?.agent_id || '')}
-                onStopSession={ctx.onStopSession}
+                onOpenSessions={(aid) => ctx.navigateToView(aid)}
+                onStopAgent={ctx.onStopAgent}
             />
         );
     }
 
     return (
         <AgentChat
-            session={ctx.session}
+            session={session}
             projectName={ctx.projectName}
             opencodeSID={sessionId}
-            onStop={ctx.onStopSession}
+            onStop={() => ctx.onStopAgent(agentId)}
             onBack={() => ctx.navigateToView(agentId)}
-            onSessionUpdate={ctx.setSession}
+            onSessionUpdate={(updated) => ctx.setSession(agentId, updated)}
         />
     );
 }

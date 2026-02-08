@@ -3,7 +3,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ProjectConfigView } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, CursorAgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ProjectConfigView } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './App.css';
 
@@ -171,6 +171,7 @@ function App() {
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
                             <Route path=":agentId" element={<SessionListRoute />} />
+                            <Route path=":agentId/settings" element={<CursorAgentSettingsRoute />} />
                             <Route path=":agentId/:sessionId" element={<AgentChatRoute />} />
                         </Route>
                         <Route path="terminal" element={<TerminalView />} />
@@ -210,6 +211,7 @@ function App() {
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
                             <Route path=":agentId" element={<SessionListRoute />} />
+                            <Route path=":agentId/settings" element={<CursorAgentSettingsRoute />} />
                             <Route path=":agentId/:sessionId" element={<AgentChatRoute />} />
                         </Route>
                         <Route path="terminal" element={<TerminalView />} />
