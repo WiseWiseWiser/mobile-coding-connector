@@ -1,0 +1,217 @@
+/* ==================== Local Listening Ports ==================== */
+
+.mcc-lp-section {
+    margin: 0 16px 16px;
+}
+
+.mcc-lp-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.mcc-lp-title {
+    font-size: 13px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+    font-weight: 600;
+}
+
+.mcc-lp-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 6px;
+    background: rgba(96, 165, 250, 0.15);
+    color: #60a5fa;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
+/* Sort bar */
+.mcc-lp-sort-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.mcc-lp-sort-btn {
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.mcc-lp-sort-btn:hover {
+    background: rgba(51, 65, 85, 0.5);
+    color: #94a3b8;
+}
+
+.mcc-lp-sort-btn.active {
+    background: rgba(96, 165, 250, 0.1);
+    border-color: rgba(96, 165, 250, 0.3);
+    color: #60a5fa;
+}
+
+/* Port list */
+.mcc-lp-list {
+    display: flex;
+    flex-direction: column;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* Port row */
+.mcc-lp-row {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+    transition: background 0.15s ease;
+}
+
+.mcc-lp-row:last-child {
+    border-bottom: none;
+}
+
+.mcc-lp-row:hover {
+    background: rgba(51, 65, 85, 0.3);
+}
+
+.mcc-lp-row-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.mcc-lp-port-num {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: #60a5fa;
+    min-width: 52px;
+    background: none;
+    padding: 0;
+}
+
+.mcc-lp-command {
+    flex: 1;
+    font-size: 13px;
+    color: #e2e8f0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mcc-lp-row-meta {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+    padding-left: 0;
+}
+
+.mcc-lp-pid,
+.mcc-lp-ppid {
+    font-size: 11px;
+    color: #475569;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
+.mcc-lp-cmdline {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #64748b;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    line-height: 1.4;
+    word-break: break-all;
+    background: rgba(0, 0, 0, 0.15);
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+
+/* Forward button */
+.mcc-lp-forward-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: rgba(96, 165, 250, 0.1);
+    border: 1px solid rgba(96, 165, 250, 0.25);
+    border-radius: 6px;
+    color: #60a5fa;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.mcc-lp-forward-btn:hover {
+    background: rgba(96, 165, 250, 0.2);
+    border-color: rgba(96, 165, 250, 0.4);
+}
+
+.mcc-lp-forward-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Forwarded badge */
+.mcc-lp-forwarded-badge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.12);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    padding: 3px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Loading state */
+.mcc-lp-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px 16px;
+    color: #64748b;
+    font-size: 13px;
+    margin: 0 16px;
+}
+
+/* Error state */
+.mcc-lp-error {
+    margin: 0 16px 12px;
+    padding: 10px 14px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 8px;
+    color: #f87171;
+    font-size: 13px;
+}
+
+/* Empty state */
+.mcc-lp-empty {
+    padding: 24px 16px;
+    text-align: center;
+    color: #475569;
+    font-size: 13px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+}

@@ -1,11 +1,11 @@
 import { useOutletContext } from 'react-router-dom';
 import type { PortsOutletContext } from './PortsLayout';
 import { PortForwardingView } from './PortForwardingView';
-import { useLocalPorts } from '../../hooks/useLocalPorts';
+import { useV2Context } from '../V2Context';
 
 export function PortListRoute() {
     const ctx = useOutletContext<PortsOutletContext>();
-    const { ports: localPorts, loading: localPortsLoading, error: localPortsError } = useLocalPorts();
+    const { localPorts: { ports: localPorts, loading: localPortsLoading, error: localPortsError } } = useV2Context();
 
     const handleForwardLocalPort = (port: number) => {
         ctx.onPortNumberChange(port.toString());

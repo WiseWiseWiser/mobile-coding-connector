@@ -253,11 +253,12 @@ var requiredTools = []toolDef{
 		purpose:     "Interactive fuzzy search for files, history, and more",
 		versionCmd:  []string{"fzf", "--version"},
 		installMacOS: []string{
-			"brew install fzf",
+			"git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf",
+			"~/.fzf/install --all",
 		},
 		installLinux: []string{
-			"apt-get update",
-			"apt-get install -y fzf",
+			"git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf",
+			"~/.fzf/install --all",
 		},
 		installWindows: "Download from https://github.com/junegunn/fzf/releases",
 	},
@@ -375,12 +376,17 @@ func CheckTools() *ToolsResponse {
 				cmd := exec.Command(tool.versionCmd[0], tool.versionCmd[1:]...)
 				out, err := cmd.Output()
 				if err == nil {
-					version := strings.TrimSpace(string(out))
-					// Take first line only
-					if idx := strings.Index(version, "\n"); idx > 0 {
-						version = version[:idx]
-					}
-					info.Version = version
+			version := strings.TrimSpace(string(out))
+				// Take first line only
+				if idx := strings.Index(version, "\n"); idx > 0 {
+					version = version[:idx]
+				}
+				// Limit length to avoid overflow in UI
+				const maxVersionLen = 60
+				if len(version) > maxVersionLen {
+					version = version[:maxVersionLen] + "..."
+				}
+				info.Version = version
 				}
 			}
 		} else {

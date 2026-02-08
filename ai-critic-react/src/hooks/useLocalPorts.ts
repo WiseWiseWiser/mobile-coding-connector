@@ -1,42 +1,50 @@
-import { useState, useEffect, useCallback } from 'react';
-import { fetchLocalPorts, type LocalPortInfo } from '../api/ports';
+import { useState, useEffect, useRef } from 'react';
+import type { LocalPortInfo } from '../api/ports';
 
 export interface UseLocalPortsReturn {
     ports: LocalPortInfo[];
     loading: boolean;
     error: string | null;
-    refresh: () => Promise<void>;
 }
 
 export function useLocalPorts(): UseLocalPortsReturn {
     const [ports, setPorts] = useState<LocalPortInfo[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-
-    const refresh = useCallback(async () => {
-        try {
-            setLoading(true);
-            setError(null);
-            const data = await fetchLocalPorts();
-            setPorts(data);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to fetch local ports');
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+    const eventSourceRef = useRef<EventSource | null>(null);
 
     useEffect(() => {
-        refresh();
-        // Refresh every 5 seconds
-        const timer = setInterval(refresh, 5000);
-        return () => clearInterval(timer);
-    }, [refresh]);
+        const es = new EventSource('/api/ports/local/events');
+        eventSourceRef.current = es;
 
-    return {
-        ports,
-        loading,
-        error,
-        refresh,
-    };
+        es.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.error) {
+                    setError(data.error);
+                    setLoading(false);
+                    return;
+                }
+                setPorts(data ?? []);
+                setError(null);
+                setLoading(false);
+            } catch {
+                // skip malformed data
+            }
+        };
+
+        es.onerror = () => {
+            // EventSource auto-reconnects; just mark error if we have no data
+            if (loading) {
+                setError('Connection lost, retrying...');
+            }
+        };
+
+        return () => {
+            es.close();
+            eventSourceRef.current = null;
+        };
+    }, []);
+
+    return { ports, loading, error };
 }

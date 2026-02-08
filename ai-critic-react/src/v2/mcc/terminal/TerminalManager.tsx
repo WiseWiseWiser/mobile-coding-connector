@@ -1,8 +1,8 @@
-import { useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useCurrent } from '../../../hooks/useCurrent';
 import '@xterm/xterm/css/xterm.css';
 import { useTerminal } from '../../../hooks/useTerminal';
 import type { TerminalTheme } from '../../../hooks/useTerminal';
-import { useCurrent } from '../../../hooks/useCurrent';
 import { deleteTerminalSession } from '../../../api/terminal';
 import { useV2Context } from '../../V2Context';
 import './TerminalManager.css';
@@ -56,71 +56,71 @@ function getNextTerminalName(existingNames: string[]): string {
 }
 
 // Individual terminal instance component
-function TerminalInstance({ 
-    id, 
+function TerminalInstance({
+    id,
     isActive,
     cwd,
     name,
     initialCommand,
     sessionId,
     onConnectionChange,
+    onReconnectRef,
     onSessionId,
-}: { 
-    id: string; 
+    onCloseTab,
+}: {
+    id: string;
     isActive: boolean;
     cwd?: string;
     name?: string;
     initialCommand?: string;
     sessionId?: string;
     onConnectionChange: (connected: boolean) => void;
+    onReconnectRef: (reconnect: (() => void) | null) => void;
     onSessionId: (sessionId: string) => void;
+    onCloseTab: () => void;
 }) {
+    const [ctrlActive, setCtrlActive] = useState(false);
+
     // Terminal is always active since parent keeps us mounted
-    const { terminalRef, connected, sendKey } = useTerminal(true, {
+    const { terminalRef, connected, sendKey, reconnect, ctrlModeRef } = useTerminal(true, {
         theme: v2Theme,
         cwd,
         name,
         initialCommand,
         sessionId,
         onSessionId,
+        onCloseRequest: onCloseTab,
+        onCtrlModeConsumed: () => setCtrlActive(false),
     });
+    // Report connection status to parent
     const onConnectionChangeRef = useCurrent(onConnectionChange);
-
-    // Report connection status to parent when this instance is active
+    const prevConnectedRef = useRef<boolean | null>(null);
     useEffect(() => {
-        if (isActive) {
+        if (!isActive) return;
+        if (prevConnectedRef.current !== connected) {
+            prevConnectedRef.current = connected;
             onConnectionChangeRef.current(connected);
         }
-    }, [isActive, connected, onConnectionChangeRef]);
+    });
 
-    const [ctrlPressed, setCtrlPressed] = useState(false);
+    // Report reconnect function to parent
+    const onReconnectRefCb = useCurrent(onReconnectRef);
+    const reconnectRef = useCurrent(reconnect);
+    useEffect(() => {
+        if (!isActive) return;
+        onReconnectRefCb.current(reconnectRef.current);
+    });
 
-    const handleSendKey = useCallback((key: string) => {
-        if (ctrlPressed) {
-            // Convert to control character when ctrl is pressed
-            // Ctrl+A = 0x01, Ctrl+B = 0x02, etc.
-            const charCode = key.charCodeAt(0);
-            if (charCode >= 97 && charCode <= 122) {
-                // lowercase a-z
-                sendKey(String.fromCharCode(charCode - 96));
-            } else if (charCode >= 65 && charCode <= 90) {
-                // uppercase A-Z
-                sendKey(String.fromCharCode(charCode - 64));
-            } else {
-                sendKey(key);
-            }
-            setCtrlPressed(false);
-        } else {
-            sendKey(key);
-        }
-    }, [ctrlPressed, sendKey]);
-
-    const handleCtrl = () => setCtrlPressed(true);
+    const handleCtrl = () => {
+        const next = !ctrlModeRef.current;
+        ctrlModeRef.current = next;
+        setCtrlActive(next);
+    };
     const handleCtrlC = () => sendKey('\x03');
     const handleCtrlA = () => sendKey('\x01');
     const handleCtrlR = () => sendKey('\x12');
     const handleCtrlL = () => sendKey('\x0c');
-    const handleTab = () => handleSendKey('\t');
+    const handleTab = () => sendKey('\t');
     const handleArrowUp = () => sendKey('\x1b[A');
     const handleArrowDown = () => sendKey('\x1b[B');
     const handleArrowLeft = () => sendKey('\x1b[D');
@@ -128,31 +128,29 @@ function TerminalInstance({
     const handlePaste = async () => {
         try {
             const text = await navigator.clipboard.readText();
-            if (text) {
-                handleSendKey(text);
-            }
+            if (text) sendKey(text);
         } catch (err) {
             console.error('Failed to paste from clipboard:', err);
         }
     };
 
     return (
-        <div 
+        <div
             className={`terminal-instance ${isActive ? 'active' : ''}`}
             data-terminal-id={id}
         >
             <div className="terminal-instance-content" ref={terminalRef} />
             <div className="terminal-instance-shortcuts">
-                <button className={`term-shortcut-btn ${ctrlPressed ? 'active' : ''}`} onClick={handleCtrl}>Ctrl</button>
                 <button className="term-shortcut-btn" onClick={handleTab}>Tab</button>
                 <button className="term-shortcut-btn" onClick={handleArrowLeft}>←</button>
                 <button className="term-shortcut-btn" onClick={handleArrowRight}>→</button>
                 <button className="term-shortcut-btn" onClick={handleArrowUp}>↑</button>
                 <button className="term-shortcut-btn" onClick={handleArrowDown}>↓</button>
-                <button className="term-shortcut-btn" onClick={handleCtrlC}>Ctrl+C</button>
-                <button className="term-shortcut-btn" onClick={handleCtrlA}>Ctrl+A</button>
-                <button className="term-shortcut-btn" onClick={handleCtrlR}>Ctrl+R</button>
-                <button className="term-shortcut-btn" onClick={handleCtrlL}>Ctrl+L</button>
+                <button className={`term-shortcut-btn ${ctrlActive ? 'active' : ''}`} onClick={handleCtrl}>Ctrl</button>
+                <button className="term-shortcut-btn" onClick={handleCtrlC}>^C</button>
+                <button className="term-shortcut-btn" onClick={handleCtrlA}>^A</button>
+                <button className="term-shortcut-btn" onClick={handleCtrlR}>^R</button>
+                <button className="term-shortcut-btn" onClick={handleCtrlL}>^L</button>
                 <button className="term-shortcut-btn" onClick={handlePaste}>Paste</button>
             </div>
         </div>
@@ -172,8 +170,9 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
         setActiveTerminalTabId,
         terminalSessionsLoaded,
     } = useV2Context();
-    
+
     const [activeConnected, setActiveConnected] = useState(false);
+    const activeReconnectRef = useRef<(() => void) | null>(null);
 
     const handleAddTab = () => {
         const newId = `term-${Date.now()}`;
@@ -193,18 +192,25 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
     }));
 
     const handleCloseTab = (tabId: string) => {
-        if (terminalTabs.length <= 1) return; // Don't close last tab
-
         // Find the tab to get its session ID for cleanup
         const tab = terminalTabs.find(t => t.id === tabId);
         if (tab?.sessionId) {
-            deleteTerminalSession(tab.sessionId).catch(() => {});
+            deleteTerminalSession(tab.sessionId).catch(() => { });
         }
-        
+
+        // If it's the last tab, replace it with a fresh one
+        if (terminalTabs.length <= 1) {
+            const newId = `term-${Date.now()}`;
+            const newName = getNextTerminalName([]);
+            setTerminalTabs([{ id: newId, name: newName }]);
+            setActiveTerminalTabId(newId);
+            return;
+        }
+
         const tabIndex = terminalTabs.findIndex(t => t.id === tabId);
         const newTabs = terminalTabs.filter(t => t.id !== tabId);
         setTerminalTabs(newTabs);
-        
+
         // If closing active tab, switch to adjacent tab
         if (activeTerminalTabId === tabId) {
             const newActiveIndex = Math.min(tabIndex, newTabs.length - 1);
@@ -240,14 +246,14 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
             <div className="terminal-manager-header">
                 <div className="terminal-tabs-container">
                     {terminalTabs.map(tab => (
-                        <div 
+                        <div
                             key={tab.id}
                             className={`terminal-tab-item ${activeTerminalTabId === tab.id ? 'active' : ''}`}
                             onClick={() => setActiveTerminalTabId(tab.id)}
                         >
                             <span className="terminal-tab-name">{tab.name}</span>
                             {terminalTabs.length > 1 && (
-                                <button 
+                                <button
                                     className="terminal-tab-close"
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -263,10 +269,21 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
                         +
                     </button>
                 </div>
-                <div className={`terminal-connection-status ${activeConnected ? 'connected' : 'disconnected'}`}>
-                    <span className="status-dot">{activeConnected ? '●' : '○'}</span>
-                    <span className="status-text">{activeConnected ? 'Connected' : 'Disconnected'}</span>
-                </div>
+                {activeConnected ? (
+                    <div className="terminal-connection-status connected">
+                        <span className="status-dot">●</span>
+                        <span className="status-text">Connected</span>
+                    </div>
+                ) : (
+                    <button
+                        className="terminal-connection-status disconnected clickable"
+                        onClick={() => activeReconnectRef.current?.()}
+                        title="Click to reconnect"
+                    >
+                        <span className="status-dot">○</span>
+                        <span className="status-text">Reconnect</span>
+                    </button>
+                )}
             </div>
             <div className="terminal-instances-container">
                 {terminalTabs.map(tab => (
@@ -279,7 +296,9 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
                         initialCommand={tab.initialCommand}
                         sessionId={tab.sessionId}
                         onConnectionChange={setActiveConnected}
+                        onReconnectRef={(fn) => { if (activeTerminalTabId === tab.id) activeReconnectRef.current = fn; }}
                         onSessionId={(sid) => handleSessionId(tab.id, sid)}
+                        onCloseTab={() => handleCloseTab(tab.id)}
                     />
                 ))}
             </div>

@@ -171,12 +171,12 @@
 }
 
 .term-shortcut-btn {
-    padding: 10px 14px;
+    padding: 5px 8px;
     background: #334155;
     border: 1px solid #475569;
-    border-radius: 6px;
+    border-radius: 4px;
     color: #94a3b8;
-    font-size: 12px;
+    font-size: 11px;
     font-family: 'Monaco', 'Menlo', monospace;
     cursor: pointer;
     white-space: nowrap;
@@ -231,6 +231,17 @@
     background: rgba(239, 68, 68, 0.15);
 }
 
+.terminal-connection-status.disconnected.clickable {
+    cursor: pointer;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    transition: all 0.15s ease;
+}
+
+.terminal-connection-status.disconnected.clickable:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
 /* Mobile responsive */
 @media (max-width: 640px) {
     .terminal-instance-content {
@@ -238,7 +249,7 @@
     }
 
     .term-shortcut-btn {
-        padding: 12px 16px;
-        font-size: 14px;
+        padding: 6px 10px;
+        font-size: 12px;
     }
 }

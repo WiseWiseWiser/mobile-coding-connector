@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
@@ -305,14 +306,15 @@ func (m *Manager) GetLogs(port int) ([]string, error) {
 }
 
 // LocalPortInfo represents a locally listening port
-// LocalPortInfo represents a locally listening port
 type LocalPortInfo struct {
 	Port    int    `json:"port"`
 	PID     int    `json:"pid"`
+	PPID    int    `json:"ppid"`
 	Command string `json:"command"`
+	Cmdline string `json:"cmdline"`
 }
 
-// getListeningPorts returns all TCP listening ports with their PIDs and process names
+// getListeningPorts returns all TCP listening ports with their PIDs, PPIDs and full command lines
 func getListeningPorts() ([]LocalPortInfo, error) {
 	// Use lsof to get listening TCP ports
 	cmd := exec.Command("lsof", "-iTCP", "-sTCP:LISTEN", "-n", "-P")
@@ -321,10 +323,16 @@ func getListeningPorts() ([]LocalPortInfo, error) {
 		return nil, fmt.Errorf("failed to run lsof: %w", err)
 	}
 
-	var ports []LocalPortInfo
-	lines := strings.Split(string(output), "\n")
+	// Collect unique PIDs and basic info from lsof
+	type lsofEntry struct {
+		port    int
+		pid     int
+		command string
+	}
+	var entries []lsofEntry
+	pidSet := make(map[int]struct{})
 
-	// Parse lsof output (skip header line)
+	lines := strings.Split(string(output), "\n")
 	for i, line := range lines {
 		if i == 0 || strings.TrimSpace(line) == "" {
 			continue
@@ -351,20 +359,81 @@ func getListeningPorts() ([]LocalPortInfo, error) {
 		}
 
 		if port > 0 {
-			ports = append(ports, LocalPortInfo{
-				Port:    port,
-				PID:     pid,
-				Command: command,
-			})
+			entries = append(entries, lsofEntry{port: port, pid: pid, command: command})
+			pidSet[pid] = struct{}{}
 		}
 	}
 
-	// Sort by port number
+	// Batch-fetch ppid and full cmdline for all PIDs via ps
+	ppidMap, cmdlineMap := fetchProcessDetails(pidSet)
+
+	// Build result
+	ports := make([]LocalPortInfo, 0, len(entries))
+	for _, e := range entries {
+		ports = append(ports, LocalPortInfo{
+			Port:    e.port,
+			PID:     e.pid,
+			PPID:    ppidMap[e.pid],
+			Command: e.command,
+			Cmdline: cmdlineMap[e.pid],
+		})
+	}
+
 	sort.Slice(ports, func(i, j int) bool {
 		return ports[i].Port < ports[j].Port
 	})
 
 	return ports, nil
+}
+
+// fetchProcessDetails uses ps to get ppid and full command line for a set of PIDs.
+func fetchProcessDetails(pidSet map[int]struct{}) (ppidMap map[int]int, cmdlineMap map[int]string) {
+	ppidMap = make(map[int]int, len(pidSet))
+	cmdlineMap = make(map[int]string, len(pidSet))
+
+	if len(pidSet) == 0 {
+		return
+	}
+
+	// Build comma-separated PID list
+	pidStrs := make([]string, 0, len(pidSet))
+	for pid := range pidSet {
+		pidStrs = append(pidStrs, strconv.Itoa(pid))
+	}
+
+	// ps -o pid=,ppid=,command= -p <pids>
+	cmd := exec.Command("ps", "-o", "pid=,ppid=,command=", "-p", strings.Join(pidStrs, ","))
+	output, err := cmd.Output()
+	if err != nil {
+		return
+	}
+
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Format: "  PID  PPID COMMAND..."
+		// Fields are space-separated, but command may contain spaces
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil {
+			continue
+		}
+		ppid, err := strconv.Atoi(fields[1])
+		if err != nil {
+			continue
+		}
+		// Rejoin remaining fields as the full command line
+		cmdline := strings.Join(fields[2:], " ")
+		ppidMap[pid] = ppid
+		cmdlineMap[pid] = cmdline
+	}
+
+	return
 }
 
 // --- HTTP API ---
@@ -377,6 +446,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ports/logs", handlePortLogs)
 	mux.HandleFunc("/api/ports/diagnostics", handleDiagnostics)
 	mux.HandleFunc("/api/ports/local", handleLocalPorts)
+	mux.HandleFunc("/api/ports/local/events", handleLocalPortEvents)
 }
 
 func handleLocalPorts(w http.ResponseWriter, r *http.Request) {
@@ -388,6 +458,56 @@ func handleLocalPorts(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ports)
+}
+
+// handleLocalPortEvents streams local listening ports via SSE, polling every 3 seconds.
+func handleLocalPortEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Send initial state
+	ports, err := getListeningPorts()
+	if err != nil {
+		fmt.Fprintf(w, "data: {\"error\":%q}\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+	data, _ := json.Marshal(ports)
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	flusher.Flush()
+
+	// Poll and send updates every 3 seconds until client disconnects
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	prevJSON := string(data)
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			ports, err := getListeningPorts()
+			if err != nil {
+				continue
+			}
+			newData, _ := json.Marshal(ports)
+			newJSON := string(newData)
+			// Only send if data changed
+			if newJSON == prevJSON {
+				continue
+			}
+			prevJSON = newJSON
+			fmt.Fprintf(w, "data: %s\n\n", newData)
+			flusher.Flush()
+		}
+	}
 }
 
 func handlePorts(w http.ResponseWriter, r *http.Request) {

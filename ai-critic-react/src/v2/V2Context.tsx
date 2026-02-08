@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { usePortForwards } from '../hooks/usePortForwards';
 import type { UsePortForwardsReturn } from '../hooks/usePortForwards';
+import { useLocalPorts } from '../hooks/useLocalPorts';
+import type { UseLocalPortsReturn } from '../hooks/useLocalPorts';
 import { fetchProjects as apiFetchProjects } from '../api/projects';
 import type { ProjectInfo } from '../api/projects';
 import { fetchDiagnostics as apiFetchDiagnostics } from '../api/ports';
@@ -26,6 +28,8 @@ interface V2ContextValue {
     setCurrentProject: (project: ProjectInfo | null) => void;
     // Port forwarding
     portForwards: UsePortForwardsReturn;
+    // Local listening ports (SSE stream, persists across tab switches)
+    localPorts: UseLocalPortsReturn;
     // Cloudflare diagnostics (fetched once, survives tab switches)
     diagnostics: DiagnosticsData | null;
     diagnosticsLoading: boolean;
@@ -75,6 +79,9 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
     // Port forwarding
     const portForwards = usePortForwards();
 
+    // Local listening ports (SSE stream, persists across tab switches)
+    const localPortsState = useLocalPorts();
+
     // Cloudflare diagnostics (fetched once, persists across tab switches)
     const [diagnostics, setDiagnostics] = useState<DiagnosticsData | null>(null);
     const [diagnosticsLoading, setDiagnosticsLoading] = useState(true);
@@ -115,6 +122,7 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
             currentProject,
             setCurrentProject,
             portForwards,
+            localPorts: localPortsState,
             diagnostics,
             diagnosticsLoading,
             refreshDiagnostics,
