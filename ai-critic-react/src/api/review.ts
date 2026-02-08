@@ -113,6 +113,20 @@ export async function getGitBranches(dir?: string): Promise<GitBranch[]> {
     return response.json();
 }
 
+// Fetch from origin
+export async function gitFetch(dir?: string): Promise<GitCommitResult> {
+    const response = await fetch('/api/review/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dir }),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to fetch');
+    }
+    return response.json();
+}
+
 // Push to remote
 export async function gitPush(dir?: string): Promise<GitCommitResult> {
     const response = await fetch('/api/review/push', {

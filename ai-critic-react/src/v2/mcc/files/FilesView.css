@@ -449,6 +449,54 @@
     background: #1e293b;
 }
 
+.mcc-git-commit-nav-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.mcc-git-actions {
+    display: flex;
+    gap: 8px;
+    margin: 0 16px;
+}
+
+.mcc-git-actions .mcc-git-commit-nav-btn {
+    margin: 0;
+    flex: 1;
+}
+
+.mcc-git-fetch-btn {
+    border-color: #4ade80;
+    color: #4ade80;
+}
+
+.mcc-git-fetch-btn:hover {
+    border-color: #4ade80;
+    color: #fff;
+    background: #166534;
+}
+
+.mcc-git-fetch-result {
+    margin: 8px 16px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.mcc-git-fetch-result.success {
+    background: #052e16;
+    color: #4ade80;
+    border: 1px solid #166534;
+}
+
+.mcc-git-fetch-result.error {
+    background: #450a0a;
+    color: #f87171;
+    border: 1px solid #7f1d1d;
+}
+
 /* ==================== File Content Viewer ==================== */
 
 .mcc-file-viewer-title {

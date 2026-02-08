@@ -86,6 +86,7 @@ func registerReviewAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/review/unstage", handleUnstageFile)
 	mux.HandleFunc("/api/review/commit", handleGitCommit)
 	mux.HandleFunc("/api/review/push", handleGitPush)
+	mux.HandleFunc("/api/review/fetch", handleGitFetch)
 	mux.HandleFunc("/api/review/status", handleGitStatus)
 	mux.HandleFunc("/api/review/branches", handleGitBranches)
 }
@@ -320,6 +321,35 @@ func handleGitPush(w http.ResponseWriter, r *http.Request) {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to push: %s", string(output))})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "output": string(output)})
+}
+
+func handleGitFetch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var req CodeReviewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	dir := resolveDir(req.Dir)
+	if dir == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
+		return
+	}
+
+	cmd := exec.Command("git", "fetch", "origin")
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to fetch: %s", string(output))})
 		return
 	}
 

@@ -6,6 +6,7 @@ import {
     fetchCurrentDiff,
 } from '../../../api/checkpoints';
 import type { CheckpointSummary, ChangedFile, FileDiff } from '../../../api/checkpoints';
+import { gitFetch } from '../../../api/review';
 import { DiffViewer } from '../../DiffViewer';
 import { statusBadge } from './utils';
 import './FilesView.css';
@@ -25,6 +26,8 @@ export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint
     const [loading, setLoading] = useState(true);
     const [showDiffs, setShowDiffs] = useState(false);
     const [loadingDiffs, setLoadingDiffs] = useState(false);
+    const [fetching, setFetching] = useState(false);
+    const [fetchResult, setFetchResult] = useState<{ ok: boolean; message: string } | null>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -55,6 +58,19 @@ export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint
             setCheckpoints(prev => prev.filter(cp => cp.id !== id));
         } catch {
             // ignore
+        }
+    };
+
+    const handleGitFetch = async () => {
+        setFetching(true);
+        setFetchResult(null);
+        try {
+            const result = await gitFetch(projectDir);
+            setFetchResult({ ok: true, message: result.output || 'Fetch complete' });
+        } catch (err: any) {
+            setFetchResult({ ok: false, message: err.message || 'Fetch failed' });
+        } finally {
+            setFetching(false);
         }
     };
 
@@ -132,13 +148,27 @@ export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint
                         </>
                     )}
 
-                    {/* Git Commit button */}
-                    <button
-                        className="mcc-git-commit-nav-btn"
-                        onClick={onGitCommit}
-                    >
-                        Git Commit
-                    </button>
+                    {/* Git action buttons */}
+                    <div className="mcc-git-actions">
+                        <button
+                            className="mcc-git-commit-nav-btn"
+                            onClick={onGitCommit}
+                        >
+                            Git Commit
+                        </button>
+                        <button
+                            className="mcc-git-commit-nav-btn mcc-git-fetch-btn"
+                            onClick={handleGitFetch}
+                            disabled={fetching}
+                        >
+                            {fetching ? 'Fetching...' : 'Git Fetch'}
+                        </button>
+                    </div>
+                    {fetchResult && (
+                        <div className={`mcc-git-fetch-result ${fetchResult.ok ? 'success' : 'error'}`}>
+                            {fetchResult.message || 'Fetch completed successfully'}
+                        </div>
+                    )}
                 </>
             )}
         </>
