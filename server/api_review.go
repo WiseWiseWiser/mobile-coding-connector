@@ -414,6 +414,10 @@ func handleGitFetch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if client wants SSE streaming
+	acceptHeader := r.Header.Get("Accept")
+	wantStream := acceptHeader == "text/event-stream"
+
 	cmd := exec.Command("git", "fetch", "origin")
 	cmd.Dir = dir
 
@@ -421,6 +425,14 @@ func handleGitFetch(w http.ResponseWriter, r *http.Request) {
 	if req.SSHKey != "" {
 		keyFile, err := github.PrepareSSHKeyFile(req.SSHKey)
 		if err != nil {
+			if wantStream {
+				sseWriter := sse.NewWriter(w)
+				if sseWriter != nil {
+					sseWriter.SendError(fmt.Sprintf("Failed to prepare SSH key: %v", err))
+					sseWriter.SendDone(map[string]string{"success": "false"})
+				}
+				return
+			}
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("Failed to prepare SSH key: %v", err)})
 			return
 		}
@@ -430,6 +442,25 @@ func handleGitFetch(w http.ResponseWriter, r *http.Request) {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("GIT_SSH_COMMAND=%s", sshCmd))
 	}
 
+	if wantStream {
+		sseWriter := sse.NewWriter(w)
+		if sseWriter == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Streaming not supported"})
+			return
+		}
+
+		sseWriter.SendLog("Starting git fetch...")
+		err := sseWriter.StreamCmd(cmd)
+		if err != nil {
+			sseWriter.SendError(fmt.Sprintf("Fetch failed: %v", err))
+			sseWriter.SendDone(map[string]string{"success": "false"})
+			return
+		}
+		sseWriter.SendDone(map[string]string{"success": "true", "message": "Fetch completed successfully"})
+		return
+	}
+
+	// Non-streaming fallback
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to fetch: %s", string(output))})

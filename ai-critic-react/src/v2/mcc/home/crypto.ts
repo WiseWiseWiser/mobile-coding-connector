@@ -103,3 +103,20 @@ export async function isEncryptionAvailable(): Promise<boolean> {
 export function getCachedPublicKeyPEM(): string | null {
     return cachedPublicKeyPEM;
 }
+
+/**
+ * Encrypts the SSH private key associated with the given sshKeyId from localStorage.
+ * Returns the encrypted key string, or undefined if no key is found or sshKeyId is empty.
+ * Throws EncryptionNotAvailableError if the server has no encryption keys configured.
+ */
+export async function encryptProjectSSHKey(sshKeyId: string | undefined): Promise<string | undefined> {
+    if (!sshKeyId) return undefined;
+
+    // Lazy import to avoid circular dependencies
+    const { loadSSHKeys } = await import('./settings/gitStorage');
+    const sshKeys = loadSSHKeys();
+    const key = sshKeys.find(k => k.id === sshKeyId);
+    if (!key) return undefined;
+
+    return encryptWithServerKey(key.privateKey);
+}

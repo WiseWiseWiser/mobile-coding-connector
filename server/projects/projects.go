@@ -99,6 +99,38 @@ func Remove(id string) error {
 	return saveAll(filtered)
 }
 
+// ProjectUpdate contains the fields that can be updated.
+// Pointer fields: nil means "no change", non-nil means "set to this value" (empty string means "unset").
+type ProjectUpdate struct {
+	SSHKeyID *string `json:"ssh_key_id"`
+	UseSSH   *bool   `json:"use_ssh"`
+}
+
+func Update(id string, updates ProjectUpdate) (*Project, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	list, err := loadAll()
+	if err != nil {
+		return nil, err
+	}
+	for i, p := range list {
+		if p.ID != id {
+			continue
+		}
+		if updates.SSHKeyID != nil {
+			list[i].SSHKeyID = *updates.SSHKeyID
+		}
+		if updates.UseSSH != nil {
+			list[i].UseSSH = *updates.UseSSH
+		}
+		if err := saveAll(list); err != nil {
+			return nil, err
+		}
+		return &list[i], nil
+	}
+	return nil, fmt.Errorf("project not found: %s", id)
+}
+
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/projects", handleProjects)
 }
@@ -123,6 +155,23 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	case http.MethodPatch:
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			respondErr(w, http.StatusBadRequest, "id is required")
+			return
+		}
+		var updates ProjectUpdate
+		if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+			respondErr(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		project, err := Update(id, updates)
+		if err != nil {
+			respondErr(w, http.StatusNotFound, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusOK, project)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}

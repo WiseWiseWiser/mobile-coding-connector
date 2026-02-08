@@ -52,6 +52,7 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
                             project={project}
                             isActive={project.name === currentProject?.name}
                             onSelect={() => onSelectProject(project)}
+                            onConfigure={() => navigate(`project-config/${project.id}`)}
                             onRemove={() => handleRemoveProject(project.id)}
                         />
                     ))}
@@ -86,10 +87,11 @@ interface ProjectCardProps {
     project: ProjectInfo;
     isActive: boolean;
     onSelect: () => void;
+    onConfigure: () => void;
     onRemove: () => void;
 }
 
-function ProjectCard({ project, isActive, onSelect, onRemove }: ProjectCardProps) {
+function ProjectCard({ project, isActive, onSelect, onConfigure, onRemove }: ProjectCardProps) {
     const createdDate = new Date(project.created_at).toLocaleDateString();
 
     return (
@@ -107,6 +109,7 @@ function ProjectCard({ project, isActive, onSelect, onRemove }: ProjectCardProps
             </div>
             <div className="mcc-port-actions" style={{ marginTop: 8 }}>
                 <button className="mcc-port-action-btn" onClick={e => { e.stopPropagation(); onSelect(); }}>Open</button>
+                <button className="mcc-port-action-btn" onClick={e => { e.stopPropagation(); onConfigure(); }}>Configure</button>
                 <button className="mcc-port-action-btn mcc-port-stop" onClick={e => { e.stopPropagation(); onRemove(); }}>Remove</button>
             </div>
         </div>

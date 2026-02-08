@@ -142,6 +142,27 @@ export async function gitFetch(dir?: string, sshKey?: string): Promise<GitCommit
     return response.json();
 }
 
+// Fetch from remote with streaming (returns Response for SSE consumption)
+export async function gitFetchStream(dir?: string, sshKey?: string): Promise<Response> {
+    const body: Record<string, string | undefined> = { dir };
+    if (sshKey) {
+        body.ssh_key = sshKey;
+    }
+    const response = await fetch('/api/review/fetch', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream',
+        },
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to fetch');
+    }
+    return response;
+}
+
 // Push to remote
 export async function gitPush(dir?: string, sshKey?: string): Promise<GitCommitResult> {
     const body: Record<string, string | undefined> = { dir };

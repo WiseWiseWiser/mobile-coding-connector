@@ -5,9 +5,8 @@ import type { DiffFile } from '../../../components/code-review/types';
 import { DiffViewer } from '../../DiffViewer';
 import type { FileDiff, DiffHunk, DiffLine } from '../../../api/checkpoints';
 import { statusBadge } from './utils';
-import { loadGitUserConfig, loadSSHKeys } from '../home/settings/gitStorage';
-import type { SSHKey } from '../home/settings/gitStorage';
-import { encryptWithServerKey, EncryptionNotAvailableError } from '../home/crypto';
+import { loadGitUserConfig } from '../home/settings/gitStorage';
+import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypto';
 import { consumeSSEStream } from '../../../api/sse';
 import { LogViewer } from '../../LogViewer';
 import type { LogLine } from '../../LogViewer';
@@ -16,6 +15,7 @@ import './GitCommitView.css';
 
 export interface GitCommitViewProps {
     projectDir: string;
+    sshKeyId?: string;
     onBack: () => void;
 }
 
@@ -72,7 +72,7 @@ function parseDiffToFileDiff(file: DiffFile): FileDiff {
     };
 }
 
-export function GitCommitView({ projectDir, onBack }: GitCommitViewProps) {
+export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewProps) {
     const [stagedFiles, setStagedFiles] = useState<GitStatusFile[]>([]);
     const [unstagedFiles, setUnstagedFiles] = useState<GitStatusFile[]>([]);
     const [branch, setBranch] = useState('');
@@ -91,29 +91,13 @@ export function GitCommitView({ projectDir, onBack }: GitCommitViewProps) {
     const [branches, setBranches] = useState<GitBranch[]>([]);
     const [pushBranch, setPushBranch] = useState('');
     const [gitUserConfig, setGitUserConfig] = useState<{ name: string; email: string }>({ name: '', email: '' });
-    const [sshKeys, setSshKeys] = useState<SSHKey[]>([]);
-    const [selectedKeyId, setSelectedKeyId] = useState('');
-    const [useSSH, setUseSSH] = useState(false);
 
     const messageRef = useRef<HTMLTextAreaElement>(null);
 
-    // Load git user config and SSH keys on mount
+    // Load git user config on mount
     useEffect(() => {
         const config = loadGitUserConfig();
         setGitUserConfig(config);
-        
-        const keys = loadSSHKeys();
-        setSshKeys(keys);
-        
-        // Auto-select SSH key if available
-        if (keys.length > 0) {
-            const ghKey = keys.find(k => k.host === 'github.com');
-            if (ghKey) {
-                setSelectedKeyId(ghKey.id);
-            } else {
-                setSelectedKeyId(keys[0].id);
-            }
-        }
     }, []);
 
     const refresh = async () => {
@@ -253,23 +237,17 @@ export function GitCommitView({ projectDir, onBack }: GitCommitViewProps) {
         
         try {
             let encryptedKey: string | undefined;
-            
-            // Encrypt SSH key if using SSH
-            if (useSSH && selectedKeyId) {
-                const key = sshKeys.find(k => k.id === selectedKeyId);
-                if (key) {
-                    try {
-                        encryptedKey = await encryptWithServerKey(key.privateKey);
-                    } catch (err) {
-                        if (err instanceof EncryptionNotAvailableError) {
-                            setError('Server encryption keys not configured. Ask the server admin to run: go run ./script/crypto/gen');
-                        } else {
-                            setError(`Failed to encrypt SSH key: ${String(err)}`);
-                        }
-                        setPushing(false);
-                        return;
-                    }
+            try {
+                encryptedKey = await encryptProjectSSHKey(sshKeyId);
+            } catch (err) {
+                if (err instanceof EncryptionNotAvailableError) {
+                    setError('Server encryption keys not configured. Ask the server admin to run: go run ./script/crypto/gen');
+                    setPushing(false);
+                    return;
                 }
+                setError(`Failed to encrypt SSH key: ${String(err)}`);
+                setPushing(false);
+                return;
             }
             
             const response = await gitPushStream(projectDir, encryptedKey);
@@ -449,32 +427,6 @@ export function GitCommitView({ projectDir, onBack }: GitCommitViewProps) {
                             >
                                 {committing ? 'Committing...' : 'Commit'}
                             </button>
-                            {/* SSH Key selector */}
-                            {sshKeys.length > 0 && (
-                                <div className="mcc-git-ssh-section" style={{ marginTop: '12px', padding: '8px', background: 'var(--mcc-bg-secondary)', borderRadius: '4px' }}>
-                                    <label className="mcc-git-ssh-toggle" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={useSSH}
-                                            onChange={e => setUseSSH(e.target.checked)}
-                                        />
-                                        <span>Use SSH key for push</span>
-                                    </label>
-                                    {useSSH && (
-                                        <select
-                                            className="mcc-git-ssh-select"
-                                            value={selectedKeyId}
-                                            onChange={e => setSelectedKeyId(e.target.value)}
-                                            style={{ marginTop: '8px', width: '100%' }}
-                                        >
-                                            {sshKeys.map(k => (
-                                                <option key={k.id} value={k.id}>{k.name} ({k.host})</option>
-                                            ))}
-                                        </select>
-                                    )}
-                                </div>
-                            )}
-                            
                             {/* Push row - push button + branch selector */}
                             <div className="mcc-git-push-row" style={{ marginTop: '12px' }}>
                                 <button

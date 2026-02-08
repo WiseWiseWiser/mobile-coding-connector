@@ -7,6 +7,7 @@ import './FilesView.css';
 export interface FilesOutletContext {
     projectName: string;
     projectDir: string;
+    sshKeyId?: string;
     navigateToView: (view?: string) => void;
 }
 
@@ -28,8 +29,13 @@ export function FilesLayout() {
     const ctx: FilesOutletContext = {
         projectName: currentProject.name,
         projectDir: currentProject.dir,
+        sshKeyId: currentProject.ssh_key_id,
         navigateToView,
     };
 
-    return <Outlet context={ctx} />;
+    return (
+        <div className="mcc-files">
+            <Outlet context={ctx} />
+        </div>
+    );
 }

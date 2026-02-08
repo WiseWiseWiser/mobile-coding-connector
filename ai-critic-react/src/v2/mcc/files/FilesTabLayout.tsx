@@ -28,7 +28,7 @@ export function FilesTabLayout() {
     }
 
     return (
-        <div className="mcc-files">
+        <>
             {/* Sub-tab bar */}
             <div className="mcc-files-subtabs">
                 <button
@@ -46,6 +46,6 @@ export function FilesTabLayout() {
             </div>
 
             <Outlet context={ctx} />
-        </div>
+        </>
     );
 }

@@ -3,6 +3,7 @@ export { LoginPage } from './LoginPage';
 export { SetupPage } from './SetupPage';
 export { V2Provider } from './V2Context';
 export { HomeView, WorkspaceListView } from './mcc/home/HomeView';
+export { ProjectConfigView } from './mcc/home/ProjectConfigView';
 export { DiagnoseView } from './mcc/home/DiagnoseView';
 export { SettingsView } from './mcc/home/SettingsView';
 export { ExportPage } from './mcc/home/settings/ExportPage';

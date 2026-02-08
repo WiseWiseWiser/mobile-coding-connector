@@ -6,23 +6,25 @@ import {
     fetchCurrentDiff,
 } from '../../../api/checkpoints';
 import type { CheckpointSummary, ChangedFile, FileDiff } from '../../../api/checkpoints';
-import { gitFetch } from '../../../api/review';
-import { encryptWithServerKey, EncryptionNotAvailableError } from '../home/crypto';
+import { gitFetchStream } from '../../../api/review';
+import { consumeSSEStream } from '../../../api/sse';
+import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypto';
 import { DiffViewer } from '../../DiffViewer';
+import { LogViewer } from '../../LogViewer';
+import type { LogLine } from '../../LogViewer';
 import { statusBadge } from './utils';
-import { loadSSHKeys } from '../home/settings/gitStorage';
-import { fetchProjects } from '../../../api/projects';
 import './FilesView.css';
 
 export interface CheckpointListViewProps {
     projectName: string;
     projectDir: string;
+    sshKeyId?: string;
     onCreateCheckpoint: () => void;
     onSelectCheckpoint: (id: number) => void;
     onGitCommit: () => void;
 }
 
-export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint, onSelectCheckpoint, onGitCommit }: CheckpointListViewProps) {
+export function CheckpointListView({ projectName, projectDir, sshKeyId, onCreateCheckpoint, onSelectCheckpoint, onGitCommit }: CheckpointListViewProps) {
     const [checkpoints, setCheckpoints] = useState<CheckpointSummary[]>([]);
     const [currentChanges, setCurrentChanges] = useState<ChangedFile[]>([]);
     const [currentDiffs, setCurrentDiffs] = useState<FileDiff[]>([]);
@@ -31,6 +33,8 @@ export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint
     const [loadingDiffs, setLoadingDiffs] = useState(false);
     const [fetching, setFetching] = useState(false);
     const [fetchResult, setFetchResult] = useState<{ ok: boolean; message: string } | null>(null);
+    const [fetchLogs, setFetchLogs] = useState<LogLine[]>([]);
+    const [showFetchLogs, setShowFetchLogs] = useState(false);
     const [deletingCheckpointId, setDeletingCheckpointId] = useState<number | null>(null);
 
     useEffect(() => {
@@ -79,34 +83,34 @@ export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint
     const handleGitFetch = async () => {
         setFetching(true);
         setFetchResult(null);
+        setFetchLogs([]);
+        setShowFetchLogs(true);
         try {
-            // Find the project to get its SSH key ID
-            const projects = await fetchProjects();
-            const project = projects.find(p => p.name === projectName || p.dir === projectDir);
-            
             let encryptedSshKey: string | undefined;
-            
-            if (project?.ssh_key_id) {
-                // Load SSH keys from localStorage
-                const sshKeys = loadSSHKeys();
-                const key = sshKeys.find(k => k.id === project.ssh_key_id);
-                
-                if (key) {
-                    try {
-                        encryptedSshKey = await encryptWithServerKey(key.privateKey);
-                    } catch (err) {
-                        if (err instanceof EncryptionNotAvailableError) {
-                            setFetchResult({ ok: false, message: 'Server encryption keys not configured. Ask the server admin to run: go run ./script/crypto/gen' });
-                            setFetching(false);
-                            return;
-                        }
-                        throw err;
-                    }
+            try {
+                encryptedSshKey = await encryptProjectSSHKey(sshKeyId);
+            } catch (err) {
+                if (err instanceof EncryptionNotAvailableError) {
+                    setFetchResult({ ok: false, message: 'Server encryption keys not configured. Ask the server admin to run: go run ./script/crypto/gen' });
+                    setFetching(false);
+                    return;
                 }
+                throw err;
             }
-            
-            const result = await gitFetch(projectDir, encryptedSshKey);
-            setFetchResult({ ok: true, message: result.output || 'Fetch complete' });
+
+            const response = await gitFetchStream(projectDir, encryptedSshKey);
+
+            await consumeSSEStream(response, {
+                onLog: (logLine) => setFetchLogs(prev => [...prev, logLine]),
+                onError: (logLine) => setFetchLogs(prev => [...prev, logLine]),
+                onDone: (message, data) => {
+                    if (data.success === 'true') {
+                        setFetchResult({ ok: true, message: message || 'Fetch completed successfully' });
+                    } else {
+                        setFetchResult({ ok: false, message: message || 'Fetch failed' });
+                    }
+                },
+            });
         } catch (err: any) {
             setFetchResult({ ok: false, message: err.message || 'Fetch failed' });
         } finally {
@@ -212,6 +216,11 @@ export function CheckpointListView({ projectName, projectDir, onCreateCheckpoint
                             {fetching ? 'Fetching...' : 'Git Fetch'}
                         </button>
                     </div>
+                    {showFetchLogs && fetchLogs.length > 0 && (
+                        <div style={{ margin: '8px 0' }}>
+                            <LogViewer lines={fetchLogs} maxHeight={150} />
+                        </div>
+                    )}
                     {fetchResult && (
                         <div className={`mcc-git-fetch-result ${fetchResult.ok ? 'success' : 'error'}`}>
                             {fetchResult.message || 'Fetch completed successfully'}
