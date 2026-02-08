@@ -179,3 +179,11 @@
     background: #1e293b;
     color: #e2e8f0;
 }
+
+/* Push logs section */
+.mcc-git-push-logs {
+    margin-top: 12px;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    overflow: hidden;
+}

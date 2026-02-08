@@ -159,3 +159,24 @@ export async function gitPush(dir?: string, sshKey?: string): Promise<GitCommitR
     }
     return response.json();
 }
+
+// Push to remote with streaming (returns Response for SSE consumption)
+export async function gitPushStream(dir?: string, sshKey?: string): Promise<Response> {
+    const body: Record<string, string | undefined> = { dir };
+    if (sshKey) {
+        body.ssh_key = sshKey;
+    }
+    const response = await fetch('/api/review/push', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream',
+        },
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to push');
+    }
+    return response;
+}

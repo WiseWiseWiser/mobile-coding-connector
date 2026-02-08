@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getGitStatus, getDiff, stageFile, unstageFile, gitCommit, gitPush, getGitBranches } from '../../../api/review';
+import { getGitStatus, getDiff, stageFile, unstageFile, gitCommit, gitPushStream, getGitBranches } from '../../../api/review';
 import type { GitStatusFile, GitBranch } from '../../../api/review';
 import type { DiffFile } from '../../../components/code-review/types';
 import { DiffViewer } from '../../DiffViewer';
@@ -8,6 +8,9 @@ import { statusBadge } from './utils';
 import { loadGitUserConfig, loadSSHKeys } from '../home/settings/gitStorage';
 import type { SSHKey } from '../home/settings/gitStorage';
 import { encryptWithServerKey, EncryptionNotAvailableError } from '../home/crypto';
+import { consumeSSEStream } from '../../../api/sse';
+import { LogViewer } from '../../LogViewer';
+import type { LogLine } from '../../LogViewer';
 import './FilesView.css';
 import './GitCommitView.css';
 
@@ -79,6 +82,8 @@ export function GitCommitView({ projectDir, onBack }: GitCommitViewProps) {
     const [pushing, setPushing] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [pushLogs, setPushLogs] = useState<LogLine[]>([]);
+    const [showPushLogs, setShowPushLogs] = useState(false);
     const [showDiffs, setShowDiffs] = useState(false);
     const [diffs, setDiffs] = useState<FileDiff[]>([]);
     const [loadingDiffs, setLoadingDiffs] = useState(false);
@@ -243,6 +248,9 @@ export function GitCommitView({ projectDir, onBack }: GitCommitViewProps) {
         setPushing(true);
         setError('');
         setSuccess('');
+        setPushLogs([]);
+        setShowPushLogs(true);
+        
         try {
             let encryptedKey: string | undefined;
             
@@ -264,8 +272,19 @@ export function GitCommitView({ projectDir, onBack }: GitCommitViewProps) {
                 }
             }
             
-            const result = await gitPush(projectDir, encryptedKey);
-            setSuccess(result.output || 'Pushed successfully');
+            const response = await gitPushStream(projectDir, encryptedKey);
+            
+            await consumeSSEStream(response, {
+                onLog: (line) => setPushLogs(prev => [...prev, line]),
+                onError: (line) => setPushLogs(prev => [...prev, line]),
+                onDone: (message, data) => {
+                    if (data.success === 'true') {
+                        setSuccess(message || 'Pushed successfully');
+                    } else {
+                        setError(message || 'Push failed');
+                    }
+                },
+            });
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Failed to push');
         } finally {
@@ -477,6 +496,18 @@ export function GitCommitView({ projectDir, onBack }: GitCommitViewProps) {
                                     ))}
                                 </select>
                             </div>
+                            
+                            {/* Push Logs */}
+                            {showPushLogs && pushLogs.length > 0 && (
+                                <div className="mcc-git-push-logs">
+                                    <LogViewer
+                                        lines={pushLogs}
+                                        pending={pushing}
+                                        pendingMessage="Pushing..."
+                                        maxHeight={200}
+                                    />
+                                </div>
+                            )}
                         </div>
                     </div>
                 </>

@@ -5,6 +5,8 @@ import type { CloudflareStatus, TunnelInfo } from '../../../../api/cloudflare';
 import { consumeSSEStream } from '../../../../api/sse';
 import { LogViewer } from '../../../LogViewer';
 import type { LogLine } from '../../../LogViewer';
+import { fetchDomains, saveDomains, fetchRandomDomain } from '../../../../api/domains';
+import type { DomainEntry } from '../../../../api/domains';
 import './CloudflareSettingsView.css';
 
 /** Embeddable Cloudflare settings content (no page header) */
@@ -32,6 +34,13 @@ export function CloudflareSettingsContent() {
     const [uploadMessage, setUploadMessage] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // My Own Domains state
+    const [userDomains, setUserDomains] = useState<string[]>([]);
+    const [newDomain, setNewDomain] = useState('');
+    const [addingDomain, setAddingDomain] = useState(false);
+    const [domainsError, setDomainsError] = useState<string | null>(null);
+    const [domainsLoading, setDomainsLoading] = useState(false);
+
     const loadStatus = async () => {
         try {
             const s = await fetchCloudflareStatus();
@@ -46,8 +55,24 @@ export function CloudflareSettingsContent() {
         setLoading(false);
     };
 
+    const loadUserDomains = async () => {
+        setDomainsLoading(true);
+        try {
+            const data = await fetchDomains();
+            // Extract only the user's custom domains (filter out auto-generated ones)
+            const domains = data.domains
+                .filter(d => !d.domain.includes('trycloudflare.com') && !d.domain.includes('loca.lt'))
+                .map(d => d.domain);
+            setUserDomains(domains);
+        } catch (err) {
+            setDomainsError(String(err));
+        }
+        setDomainsLoading(false);
+    };
+
     useEffect(() => {
         loadStatus();
+        loadUserDomains();
     }, []);
 
     const handleLogin = async () => {
@@ -130,6 +155,51 @@ export function CloudflareSettingsContent() {
             setError(String(err));
         }
         setDeleting(null);
+    };
+
+    const handleAddDomain = async () => {
+        if (!newDomain.trim()) return;
+        const domain = newDomain.trim();
+        if (userDomains.includes(domain)) {
+            setDomainsError('Domain already exists');
+            return;
+        }
+        
+        setAddingDomain(true);
+        setDomainsError(null);
+        
+        try {
+            const updatedDomains = [...userDomains, domain];
+            const domainEntries: DomainEntry[] = updatedDomains.map(d => ({ domain: d, provider: 'cloudflare' }));
+            await saveDomains({ domains: domainEntries });
+            setUserDomains(updatedDomains);
+            setNewDomain('');
+        } catch (err) {
+            setDomainsError(err instanceof Error ? err.message : String(err));
+        }
+        setAddingDomain(false);
+    };
+
+    const handleRemoveDomain = async (domain: string) => {
+        if (!confirm(`Remove domain "${domain}"?`)) return;
+        
+        try {
+            const updatedDomains = userDomains.filter(d => d !== domain);
+            const domainEntries: DomainEntry[] = updatedDomains.map(d => ({ domain: d, provider: 'cloudflare' }));
+            await saveDomains({ domains: domainEntries });
+            setUserDomains(updatedDomains);
+        } catch (err) {
+            setDomainsError(err instanceof Error ? err.message : String(err));
+        }
+    };
+
+    const handleGenerateRandomDomain = async () => {
+        try {
+            const randomDomain = await fetchRandomDomain();
+            setNewDomain(randomDomain);
+        } catch (err) {
+            setDomainsError(err instanceof Error ? err.message : String(err));
+        }
     };
 
     if (loading) {
@@ -234,6 +304,76 @@ export function CloudflareSettingsContent() {
                             </div>
                         ))}
                     </div>
+                </div>
+            )}
+
+            {/* My Own Domains */}
+            {status.authenticated && (
+                <div className="cf-section">
+                    <div className="cf-section-header">
+                        <div className="cf-section-title">My Own Domains</div>
+                        <span className="cf-section-subtitle">
+                            Configure domains to use for port forwarding
+                        </span>
+                    </div>
+                    <p className="cf-section-desc">
+                        When Cloudflare is authenticated, these domains will be preferred for port forwarding instead of random subdomains.
+                    </p>
+                    
+                    {/* Add Domain Form */}
+                    <div className="cf-domain-add-form">
+                        <input
+                            className="cf-input"
+                            type="text"
+                            placeholder="e.g., app.example.com"
+                            value={newDomain}
+                            onChange={(e) => setNewDomain(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAddDomain()}
+                            disabled={addingDomain}
+                        />
+                        <button
+                            className="cf-generate-btn"
+                            onClick={handleGenerateRandomDomain}
+                            disabled={addingDomain}
+                            title="Generate random subdomain"
+                        >
+                            🎲 Random
+                        </button>
+                        <button
+                            className="cf-add-domain-btn"
+                            onClick={handleAddDomain}
+                            disabled={addingDomain || !newDomain.trim()}
+                        >
+                            {addingDomain ? 'Adding...' : 'Add Domain'}
+                        </button>
+                    </div>
+                    
+                    {domainsError && (
+                        <div className="cf-error-message">{domainsError}</div>
+                    )}
+                    
+                    {/* Domain List */}
+                    {domainsLoading ? (
+                        <div className="cf-empty">Loading domains...</div>
+                    ) : userDomains.length === 0 ? (
+                        <div className="cf-empty">No custom domains configured.</div>
+                    ) : (
+                        <div className="cf-domains-list">
+                            {userDomains.map(domain => (
+                                <div key={domain} className="cf-domain-card">
+                                    <div className="cf-domain-info">
+                                        <span className="cf-domain-name">{domain}</span>
+                                    </div>
+                                    <button
+                                        className="cf-remove-btn"
+                                        onClick={() => handleRemoveDomain(domain)}
+                                    >
+                                        Remove
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
 

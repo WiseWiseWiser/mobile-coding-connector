@@ -771,6 +771,9 @@ body:has(.mcc) {
 
 .mcc-ports {
     padding-bottom: 24px;
+    width: 100%;
+    min-width: 100%;
+    box-sizing: border-box;
 }
 
 /* Cloudflare Status Banner */

@@ -13,6 +13,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/ai"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
 
 // initialDir stores the initial directory set via --dir flag
@@ -319,7 +320,7 @@ func handleGitCommit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "output": string(output)})
 }
 
-// handleGitPush handles requests to push to remote
+// handleGitPush handles requests to push to remote with SSE streaming
 func handleGitPush(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
@@ -338,6 +339,10 @@ func handleGitPush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if client wants SSE streaming
+	acceptHeader := r.Header.Get("Accept")
+	wantStream := acceptHeader == "text/event-stream"
+
 	cmd := exec.Command("git", "push")
 	cmd.Dir = dir
 
@@ -345,6 +350,14 @@ func handleGitPush(w http.ResponseWriter, r *http.Request) {
 	if req.SSHKey != "" {
 		keyFile, err := github.PrepareSSHKeyFile(req.SSHKey)
 		if err != nil {
+			if wantStream {
+				sseWriter := sse.NewWriter(w)
+				if sseWriter != nil {
+					sseWriter.SendError(fmt.Sprintf("Failed to prepare SSH key: %v", err))
+					sseWriter.SendDone(map[string]string{"success": "false"})
+				}
+				return
+			}
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("Failed to prepare SSH key: %v", err)})
 			return
 		}
@@ -354,6 +367,26 @@ func handleGitPush(w http.ResponseWriter, r *http.Request) {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("GIT_SSH_COMMAND=%s", sshCmd))
 	}
 
+	if wantStream {
+		// Use SSE streaming
+		sseWriter := sse.NewWriter(w)
+		if sseWriter == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Streaming not supported"})
+			return
+		}
+
+		sseWriter.SendLog("Starting git push...")
+		err := sseWriter.StreamCmd(cmd)
+		if err != nil {
+			sseWriter.SendError(fmt.Sprintf("Push failed: %v", err))
+			sseWriter.SendDone(map[string]string{"success": "false"})
+			return
+		}
+		sseWriter.SendDone(map[string]string{"success": "true", "message": "Push completed successfully"})
+		return
+	}
+
+	// Non-streaming fallback
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to push: %s", string(output))})

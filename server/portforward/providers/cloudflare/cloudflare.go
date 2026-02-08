@@ -6,11 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
 	cfutils "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains/pick"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
 )
@@ -22,7 +24,7 @@ type QuickProvider struct{}
 
 var _ portforward.Provider = (*QuickProvider)(nil)
 
-func (p *QuickProvider) Name() string       { return portforward.ProviderCloudflareQuick }
+func (p *QuickProvider) Name() string        { return portforward.ProviderCloudflareQuick }
 func (p *QuickProvider) DisplayName() string { return "Cloudflare Quick Tunnel" }
 func (p *QuickProvider) Description() string {
 	return "Free tunneling via trycloudflare.com (cloudflared). No account required."
@@ -132,6 +134,29 @@ func (p *TunnelProvider) Available() bool {
 	return p.cfg.BaseDomain != "" && (p.cfg.TunnelName != "" || p.cfg.TunnelID != "")
 }
 
+// getUserDomains returns the list of user-configured domains from domains.json
+func getUserDomains() []string {
+	cfg, err := domains.LoadDomains()
+	if err != nil {
+		return nil
+	}
+
+	var userDomains []string
+	for _, d := range cfg.Domains {
+		// Filter out temporary domains
+		if !strings.Contains(d.Domain, "trycloudflare.com") && !strings.Contains(d.Domain, "loca.lt") {
+			userDomains = append(userDomains, d.Domain)
+		}
+	}
+	return userDomains
+}
+
+// isCloudflareAuthenticated checks if cloudflared is authenticated
+func isCloudflareAuthenticated() bool {
+	status := cfutils.CheckStatus()
+	return status.Authenticated
+}
+
 func (p *TunnelProvider) Start(port int) (*portforward.TunnelHandle, error) {
 	logs := portforward.NewLogBuffer()
 
@@ -144,7 +169,19 @@ func (p *TunnelProvider) Start(port int) (*portforward.TunnelHandle, error) {
 		tunnelRef = p.cfg.TunnelID
 	}
 
-	hostname := fmt.Sprintf("%s.%s", pick.RandomSubdomain(), p.cfg.BaseDomain)
+	// Try to use user-configured domain if Cloudflare is authenticated
+	hostname := ""
+	userDomains := getUserDomains()
+	if len(userDomains) > 0 && isCloudflareAuthenticated() {
+		// Use the first available user domain
+		hostname = userDomains[0]
+		fmt.Fprintf(logs, "[setup] Using user-configured domain: %s\n", hostname)
+	} else {
+		// Fall back to random subdomain
+		hostname = fmt.Sprintf("%s.%s", pick.RandomSubdomain(), p.cfg.BaseDomain)
+		fmt.Fprintf(logs, "[setup] Using generated subdomain: %s\n", hostname)
+	}
+
 	localURL := fmt.Sprintf("http://localhost:%d", port)
 
 	configDir := p.cfg.ConfigPath
@@ -285,4 +322,3 @@ func (p *TunnelProvider) resolveTunnelCreds(tunnelRef string, logs *portforward.
 	fmt.Fprintf(logs, "[setup] Resolved tunnel: id=%s, credentials=%s\n", id, cred)
 	return id, cred, nil
 }
-
