@@ -22,6 +22,7 @@ import (
 
 var help = fmt.Sprintf(`
 Usage: ai-critic [options]
+       ai-critic keep-alive-script [options]  Output a shell script that auto-restarts the server
 
 Options:
   --dev                   Run in development mode
@@ -37,6 +38,14 @@ Options:
 `, lib.DefaultServerPort)
 
 func Run(args []string) error {
+	// Handle subcommands before flag parsing
+	if len(args) > 0 {
+		switch args[0] {
+		case "keep-alive-script":
+			return runKeepAliveScript(args[1:])
+		}
+	}
+
 	var devFlag bool
 	var component string
 	var dirFlag string

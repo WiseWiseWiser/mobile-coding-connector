@@ -34,14 +34,27 @@ func rcFiles() []string {
 	return found
 }
 
-// buildPatchBlock builds the PATH patch block for the given extra paths.
-func buildPatchBlock(extraPaths []string) string {
-	if len(extraPaths) == 0 {
+// rcPatchOptions holds the options for patching shell RC files.
+type rcPatchOptions struct {
+	ExtraPaths []string
+	PS1        string
+}
+
+// buildPatchBlock builds the patch block for the given options.
+func buildPatchBlock(opts rcPatchOptions) string {
+	var lines []string
+	if len(opts.ExtraPaths) > 0 {
+		lines = append(lines, fmt.Sprintf("export PATH=$PATH:%s", strings.Join(opts.ExtraPaths, ":")))
+	}
+	if opts.PS1 != "" {
+		lines = append(lines, fmt.Sprintf("export PS1=%s", ShellQuote(opts.PS1)))
+	}
+	if len(lines) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%s\nexport PATH=$PATH:%s\n%s\n",
+	return fmt.Sprintf("%s\n%s\n%s\n",
 		patchBeginMarker,
-		strings.Join(extraPaths, ":"),
+		strings.Join(lines, "\n"),
 		patchEndMarker,
 	)
 }
@@ -65,16 +78,16 @@ func removePatch(content string) string {
 }
 
 // patchRCFiles ensures that all existing shell RC files contain the
-// ai-critic PATH patch with exactly the given extra paths.
+// ai-critic patch with exactly the given options (extra paths, PS1, etc.).
 // It first removes any existing patch, then appends the new one.
-// If extraPaths is empty, it only removes the existing patch.
-func patchRCFiles(extraPaths []string) error {
+// If opts produces no patch lines, it only removes the existing patch.
+func patchRCFiles(opts rcPatchOptions) error {
 	files := rcFiles()
 	if len(files) == 0 {
 		return nil
 	}
 
-	patchBlock := buildPatchBlock(extraPaths)
+	patchBlock := buildPatchBlock(opts)
 
 	for _, f := range files {
 		data, err := os.ReadFile(f)

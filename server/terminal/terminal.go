@@ -109,9 +109,14 @@ func (m *sessionManager) create(name, cwd string) (*session, error) {
 		}
 	}
 
-	// Patch shell RC files so that --login shells pick up extra paths
-	extraPaths := tool_resolve.AllExtraPaths()
-	patchRCFiles(extraPaths)
+	// Patch shell RC files so that --login shells pick up extra paths and PS1
+	patchOpts := rcPatchOptions{
+		ExtraPaths: tool_resolve.AllExtraPaths(),
+	}
+	if termCfg != nil {
+		patchOpts.PS1 = termCfg.PS1
+	}
+	patchRCFiles(patchOpts)
 
 	cmd := exec.Command(shellPath, shellFlags...)
 	cmd.Dir = cwd
