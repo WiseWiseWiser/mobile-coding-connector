@@ -194,8 +194,9 @@ export function MobileCodingConnector() {
                         className="mcc-tab-content"
                         style={{ 
                             display: activeTab === NavTabs.Terminal ? 'none' : 'flex',
+                            flexDirection: 'column',
                             flex: 1,
-                            height: '100%',
+                            minHeight: 0,
                             overflow: 'auto'
                         }}
                     >

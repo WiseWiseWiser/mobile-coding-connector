@@ -98,6 +98,9 @@ func runKeepAliveLoop(port int, forever bool, serverArgs []string) error {
 		cmd := exec.Command(binPath, cmdArgs...)
 		cmd.Dir, _ = os.Getwd()
 
+		// Create a new process group so we can kill all child processes
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
 		// Tee stdout/stderr to both console and log file
 		if logFile != nil {
 			cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
@@ -121,7 +124,7 @@ func runKeepAliveLoop(port int, forever bool, serverArgs []string) error {
 		ready := waitForPort(port, startupTimeout, cmd)
 		if !ready {
 			fmt.Printf("[%s] ERROR: Server failed to become ready within %v\n", timestamp(), startupTimeout)
-			killProcess(cmd)
+			killProcessGroup(cmd)
 			fmt.Printf("[%s] Restarting in %v...\n", timestamp(), restartDelay)
 			time.Sleep(restartDelay)
 			continue
@@ -170,10 +173,13 @@ func waitForPort(port int, timeout time.Duration, cmd *exec.Cmd) bool {
 // healthCheckLoop periodically checks port accessibility and for binary upgrades.
 // Returns the reason the loop ended.
 func healthCheckLoop(port int, cmd *exec.Cmd, currentBinPath string) exitReasonType {
-	// Channel to receive process exit
-	done := make(chan error, 1)
+	// Channel to receive process exit.
+	// We use cmd.Process.Wait() instead of cmd.Wait() to avoid blocking
+	// on stdout/stderr pipe closure from child processes.
+	done := make(chan struct{}, 1)
 	go func() {
-		done <- cmd.Wait()
+		cmd.Process.Wait()
+		done <- struct{}{}
 	}()
 
 	healthTicker := time.NewTicker(healthCheckInterval)
@@ -199,8 +205,8 @@ func healthCheckLoop(port int, cmd *exec.Cmd, currentBinPath string) exitReasonT
 				if consecutiveFailures >= maxConsecutiveFailures {
 					fmt.Printf("[%s] Port %d is not accessible after %d checks, killing server (PID=%d)...\n",
 						timestamp(), port, consecutiveFailures, cmd.Process.Pid)
-					killProcess(cmd)
-					<-done // Wait for process goroutine to finish
+					killProcessGroup(cmd)
+					waitForDone(done, 5*time.Second)
 					return exitReasonPortDead
 				}
 			} else {
@@ -212,40 +218,44 @@ func healthCheckLoop(port int, cmd *exec.Cmd, currentBinPath string) exitReasonT
 			if newerBin != "" {
 				fmt.Printf("[%s] Detected newer binary: %s, stopping current server for upgrade...\n",
 					timestamp(), filepath.Base(newerBin))
-				gracefulStop(cmd)
-				<-done // Wait for process goroutine to finish
+				gracefulStopGroup(cmd)
+				waitForDone(done, 5*time.Second)
 				return exitReasonUpgrade
 			}
 		}
 	}
 }
 
-// gracefulStop sends SIGTERM first, waits briefly, then SIGKILL.
-func gracefulStop(cmd *exec.Cmd) {
+// waitForDone waits for the done signal with a timeout.
+func waitForDone(done <-chan struct{}, timeout time.Duration) {
+	select {
+	case <-done:
+	case <-time.After(timeout):
+	}
+}
+
+// gracefulStopGroup sends SIGTERM to the process group first, waits briefly, then SIGKILL.
+func gracefulStopGroup(cmd *exec.Cmd) {
 	if cmd.Process == nil {
 		return
 	}
-	// Try graceful shutdown first
-	cmd.Process.Signal(syscall.SIGTERM)
+	pgid, err := syscall.Getpgid(cmd.Process.Pid)
+	if err != nil {
+		// Fallback: kill just the process
+		cmd.Process.Signal(syscall.SIGTERM)
+		time.Sleep(3 * time.Second)
+		cmd.Process.Signal(syscall.SIGKILL)
+		return
+	}
+
+	// Send SIGTERM to the entire process group
+	syscall.Kill(-pgid, syscall.SIGTERM)
 
 	// Wait up to 5 seconds for graceful shutdown
-	timer := time.NewTimer(5 * time.Second)
-	defer timer.Stop()
+	time.Sleep(5 * time.Second)
 
-	exitCh := make(chan struct{})
-	go func() {
-		cmd.Process.Wait()
-		close(exitCh)
-	}()
-
-	select {
-	case <-exitCh:
-		return
-	case <-timer.C:
-		// Force kill
-		cmd.Process.Signal(syscall.SIGKILL)
-		<-exitCh
-	}
+	// Force kill the entire process group
+	syscall.Kill(-pgid, syscall.SIGKILL)
 }
 
 func isPortReachable(port int) bool {
@@ -261,6 +271,20 @@ func killProcess(cmd *exec.Cmd) {
 	if cmd.Process != nil {
 		cmd.Process.Signal(syscall.SIGKILL)
 	}
+}
+
+// killProcessGroup kills the entire process group.
+func killProcessGroup(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+	pgid, err := syscall.Getpgid(cmd.Process.Pid)
+	if err != nil {
+		// Fallback: kill just the process
+		cmd.Process.Signal(syscall.SIGKILL)
+		return
+	}
+	syscall.Kill(-pgid, syscall.SIGKILL)
 }
 
 func timestamp() string {
