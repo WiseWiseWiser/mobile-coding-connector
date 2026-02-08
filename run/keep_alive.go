@@ -6,6 +6,10 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -16,10 +20,11 @@ import (
 )
 
 const (
-	startupTimeout      = 10 * time.Second
-	healthCheckInterval = 10 * time.Second
-	restartDelay        = 3 * time.Second
-	portCheckTimeout    = 2 * time.Second
+	startupTimeout        = 10 * time.Second
+	healthCheckInterval   = 10 * time.Second
+	restartDelay          = 3 * time.Second
+	portCheckTimeout      = 2 * time.Second
+	upgradeCheckInterval  = 30 * time.Second
 )
 
 func runKeepAlive(args []string) error {
@@ -75,7 +80,14 @@ func runKeepAliveLoop(port int, forever bool, serverArgs []string) error {
 	}()
 
 	for {
-		fmt.Printf("[%s] Starting ai-critic server on port %d...\n", timestamp(), port)
+		// Before starting, check if there's a newer versioned binary
+		newerBin := findNewerBinary(binPath)
+		if newerBin != "" {
+			fmt.Printf("[%s] Found newer binary: %s (upgrading from %s)\n", timestamp(), newerBin, filepath.Base(binPath))
+			binPath = newerBin
+		}
+
+		fmt.Printf("[%s] Starting ai-critic server on port %d (binary: %s)...\n", timestamp(), port, filepath.Base(binPath))
 
 		// Build server args: include --port if it was specified
 		cmdArgs := append([]string{}, serverArgs...)
@@ -117,13 +129,26 @@ func runKeepAliveLoop(port int, forever bool, serverArgs []string) error {
 
 		fmt.Printf("[%s] Server is ready (PID=%d, port=%d)\n", timestamp(), pid, port)
 
-		// Health check loop
-		exitCode := healthCheckLoop(port, cmd)
+		// Health check loop (also checks for binary upgrades)
+		exitReason := healthCheckLoop(port, cmd, binPath)
 
-		fmt.Printf("[%s] Server exited with code %d, restarting in %v...\n", timestamp(), exitCode, restartDelay)
-		time.Sleep(restartDelay)
+		switch exitReason {
+		case exitReasonUpgrade:
+			fmt.Printf("[%s] Upgrading binary, restarting immediately...\n", timestamp())
+		default:
+			fmt.Printf("[%s] Server exited (%s), restarting in %v...\n", timestamp(), exitReason, restartDelay)
+			time.Sleep(restartDelay)
+		}
 	}
 }
+
+type exitReasonType string
+
+const (
+	exitReasonProcessExit  exitReasonType = "process exited"
+	exitReasonPortDead     exitReasonType = "port unreachable"
+	exitReasonUpgrade      exitReasonType = "binary upgrade"
+)
 
 // waitForPort waits for the port to become accessible within the timeout.
 // Returns false if the process exits or the timeout is reached.
@@ -142,38 +167,84 @@ func waitForPort(port int, timeout time.Duration, cmd *exec.Cmd) bool {
 	return false
 }
 
-// healthCheckLoop periodically checks port accessibility.
-// Returns the exit code when the server exits or needs to be killed.
-func healthCheckLoop(port int, cmd *exec.Cmd) int {
+// healthCheckLoop periodically checks port accessibility and for binary upgrades.
+// Returns the reason the loop ended.
+func healthCheckLoop(port int, cmd *exec.Cmd, currentBinPath string) exitReasonType {
 	// Channel to receive process exit
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.Wait()
 	}()
 
-	ticker := time.NewTicker(healthCheckInterval)
-	defer ticker.Stop()
+	healthTicker := time.NewTicker(healthCheckInterval)
+	defer healthTicker.Stop()
+
+	upgradeTicker := time.NewTicker(upgradeCheckInterval)
+	defer upgradeTicker.Stop()
+
+	consecutiveFailures := 0
+	const maxConsecutiveFailures = 2
 
 	for {
 		select {
-		case err := <-done:
+		case <-done:
 			// Process exited on its own
-			if err != nil {
-				if exitErr, ok := err.(*exec.ExitError); ok {
-					return exitErr.ExitCode()
-				}
-				return 1
-			}
-			return 0
-		case <-ticker.C:
+			return exitReasonProcessExit
+
+		case <-healthTicker.C:
 			if !isPortReachable(port) {
-				fmt.Printf("[%s] Port %d is not accessible, killing server (PID=%d)...\n", timestamp(), port, cmd.Process.Pid)
-				killProcess(cmd)
-				// Wait for the process to finish
-				<-done
-				return 1
+				consecutiveFailures++
+				fmt.Printf("[%s] Port %d health check failed (%d/%d)\n", timestamp(), port, consecutiveFailures, maxConsecutiveFailures)
+
+				if consecutiveFailures >= maxConsecutiveFailures {
+					fmt.Printf("[%s] Port %d is not accessible after %d checks, killing server (PID=%d)...\n",
+						timestamp(), port, consecutiveFailures, cmd.Process.Pid)
+					killProcess(cmd)
+					<-done // Wait for process goroutine to finish
+					return exitReasonPortDead
+				}
+			} else {
+				consecutiveFailures = 0
+			}
+
+		case <-upgradeTicker.C:
+			newerBin := findNewerBinary(currentBinPath)
+			if newerBin != "" {
+				fmt.Printf("[%s] Detected newer binary: %s, stopping current server for upgrade...\n",
+					timestamp(), filepath.Base(newerBin))
+				gracefulStop(cmd)
+				<-done // Wait for process goroutine to finish
+				return exitReasonUpgrade
 			}
 		}
+	}
+}
+
+// gracefulStop sends SIGTERM first, waits briefly, then SIGKILL.
+func gracefulStop(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+	// Try graceful shutdown first
+	cmd.Process.Signal(syscall.SIGTERM)
+
+	// Wait up to 5 seconds for graceful shutdown
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+
+	exitCh := make(chan struct{})
+	go func() {
+		cmd.Process.Wait()
+		close(exitCh)
+	}()
+
+	select {
+	case <-exitCh:
+		return
+	case <-timer.C:
+		// Force kill
+		cmd.Process.Signal(syscall.SIGKILL)
+		<-exitCh
 	}
 }
 
@@ -189,12 +260,101 @@ func isPortReachable(port int) bool {
 func killProcess(cmd *exec.Cmd) {
 	if cmd.Process != nil {
 		cmd.Process.Signal(syscall.SIGKILL)
-		cmd.Process.Wait()
 	}
 }
 
 func timestamp() string {
 	return time.Now().Format("2006-01-02T15:04:05")
+}
+
+// ---- Binary Version Upgrade ----
+
+// versionRegex matches -vN at the end of a binary name (before any extension).
+// e.g. "ai-critic-server-linux-amd64-v4" -> version 4
+var versionRegex = regexp.MustCompile(`-v(\d+)$`)
+
+// parseBinVersion extracts the base name and version from a binary path.
+// Returns (baseName, version). If no -vN suffix, version is 0.
+// e.g. "ai-critic-server-linux-amd64"     -> ("ai-critic-server-linux-amd64", 0)
+// e.g. "ai-critic-server-linux-amd64-v4"  -> ("ai-critic-server-linux-amd64", 4)
+func parseBinVersion(binPath string) (baseName string, version int) {
+	name := filepath.Base(binPath)
+
+	match := versionRegex.FindStringSubmatch(name)
+	if match == nil {
+		return name, 0
+	}
+
+	v, err := strconv.Atoi(match[1])
+	if err != nil {
+		return name, 0
+	}
+
+	baseName = name[:len(name)-len(match[0])]
+	return baseName, v
+}
+
+// findNewerBinary looks for a newer versioned binary in the same directory.
+// Returns the full path to the newer binary, or empty string if none found.
+func findNewerBinary(currentBinPath string) string {
+	dir := filepath.Dir(currentBinPath)
+	currentBase, currentVersion := parseBinVersion(currentBinPath)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+
+	type candidate struct {
+		path    string
+		version int
+	}
+
+	var candidates []candidate
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+
+		// Must start with the same base name
+		if !strings.HasPrefix(name, currentBase) {
+			continue
+		}
+
+		// Parse version
+		entryBase, entryVersion := parseBinVersion(filepath.Join(dir, name))
+		if entryBase != currentBase {
+			continue
+		}
+
+		// Must be strictly newer
+		if entryVersion <= currentVersion {
+			continue
+		}
+
+		// Must be executable (non-zero size)
+		info, err := entry.Info()
+		if err != nil || info.Size() == 0 {
+			continue
+		}
+
+		candidates = append(candidates, candidate{
+			path:    filepath.Join(dir, name),
+			version: entryVersion,
+		})
+	}
+
+	if len(candidates) == 0 {
+		return ""
+	}
+
+	// Sort by version descending, pick the highest
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].version > candidates[j].version
+	})
+
+	return candidates[0].path
 }
 
 // outputKeepAliveScript outputs a shell script for keep-alive.
