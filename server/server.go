@@ -209,7 +209,7 @@ func Static(mux *http.ServeMux, opts StaticOptions) error {
 	})
 
 	mux.Handle("/assets/", http.StripPrefix("/assets/", &mimeTypeHandler{http.FileServer(http.FS(assetsFileSystem))}))
-	// Serve React static files like vite.svg from root
+	// Serve React static files from root
 	mux.Handle("/ai-critic.svg", &mimeTypeHandler{http.FileServer(http.FS(reactFileSystem))})
 	// Serve PWA manifest.json
 	mux.Handle("/manifest.json", &mimeTypeHandler{http.FileServer(http.FS(reactFileSystem))})
