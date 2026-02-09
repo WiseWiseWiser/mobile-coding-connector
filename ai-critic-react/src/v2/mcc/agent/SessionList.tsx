@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useCurrent } from '../../../hooks/useCurrent';
 import {
-    fetchAgentSessions, listOpencodeSessions, createOpencodeSession,
-    fetchMessages, AgentSessionStatuses, listOpencodeSessionsPaginated, type OpencodeSessionsResponse,
+    fetchAgentSessions, createOpencodeSession,
+    fetchMessages, AgentSessionStatuses, listOpencodeSessionsPaginated,
 } from '../../../api/agents';
 import type { AgentSessionInfo } from '../../../api/agents';
 import { ACPRoles } from '../../../api/acp';
