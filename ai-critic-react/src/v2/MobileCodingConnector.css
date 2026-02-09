@@ -1512,6 +1512,47 @@ body:has(.mcc) {
     color: #f1f5f9;
 }
 
+/* Owned domains hint in Add Port Forward */
+.mcc-owned-domains-hint {
+    margin-top: 4px;
+}
+
+.mcc-owned-domains-hint > label {
+    display: block;
+    font-size: 12px;
+    color: #94a3b8;
+    margin-bottom: 6px;
+}
+
+.mcc-owned-domains-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.mcc-owned-domain-btn {
+    padding: 6px 12px;
+    background: #1e3a5f;
+    border: 1px solid #2563eb;
+    border-radius: 6px;
+    color: #93c5fd;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    word-break: break-all;
+}
+
+.mcc-owned-domain-btn:hover {
+    background: #1e40af;
+    color: #bfdbfe;
+}
+
+.mcc-owned-domains-note {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #64748b;
+}
+
 /* Port provider badge */
 .mcc-port-provider-badge {
     margin-left: auto;

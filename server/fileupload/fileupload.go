@@ -26,6 +26,11 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/files/upload", handleUpload)
 	mux.HandleFunc("/api/files/download", handleDownload)
 	mux.HandleFunc("/api/files/browse", handleBrowse)
+
+	// Chunked upload endpoints
+	mux.HandleFunc("/api/files/upload/init", handleUploadInit)
+	mux.HandleFunc("/api/files/upload/chunk", handleUploadChunk)
+	mux.HandleFunc("/api/files/upload/complete", handleUploadComplete)
 }
 
 func handleCheck(w http.ResponseWriter, r *http.Request) {

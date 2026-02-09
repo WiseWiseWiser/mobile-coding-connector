@@ -6,13 +6,11 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"strings"
 	"sync"
 	"time"
 
 	cfutils "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains/pick"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
 )
@@ -134,21 +132,9 @@ func (p *TunnelProvider) Available() bool {
 	return p.cfg.BaseDomain != "" && (p.cfg.TunnelName != "" || p.cfg.TunnelID != "")
 }
 
-// getUserDomains returns the list of user-configured domains from domains.json
+// getUserDomains returns the list of user-configured owned domains from cloudflare config.
 func getUserDomains() []string {
-	cfg, err := domains.LoadDomains()
-	if err != nil {
-		return nil
-	}
-
-	var userDomains []string
-	for _, d := range cfg.Domains {
-		// Filter out temporary domains
-		if !strings.Contains(d.Domain, "trycloudflare.com") && !strings.Contains(d.Domain, "loca.lt") {
-			userDomains = append(userDomains, d.Domain)
-		}
-	}
-	return userDomains
+	return cfutils.GetOwnedDomains()
 }
 
 // isCloudflareAuthenticated checks if cloudflared is authenticated

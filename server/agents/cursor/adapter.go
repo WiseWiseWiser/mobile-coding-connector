@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -47,6 +48,7 @@ type ChatSession struct {
 	CommandPath   string   `json:"-"`
 	ResumeID      string   `json:"-"` // For multi-turn: cursor's session_id to resume
 	Model         string   `json:"-"` // model to use for cursor-agent
+	APIKey        string   `json:"-"` // optional API key for cursor-agent
 	adapter       *Adapter // parent adapter for global broadcast
 
 	mu       sync.Mutex
@@ -97,6 +99,7 @@ type Adapter struct {
 	projectDir    string
 	cmdPath       string
 	model         string // selected model ID, empty means default
+	apiKey        string // optional API key for cursor-agent
 	settings      AdapterSettings
 	settingsStore *settings.Store
 	globalSubs    map[chan SSEEvent]struct{}
@@ -104,7 +107,8 @@ type Adapter struct {
 
 // NewAdapter creates a new cursor adapter for the given project directory.
 // The settingsStore is used to persist adapter settings (prompt append, followup append, etc.).
-func NewAdapter(projectDir string, settingsStore *settings.Store) (*Adapter, error) {
+// The apiKey is optional and will be passed to cursor-agent via environment variable if set.
+func NewAdapter(projectDir string, settingsStore *settings.Store, apiKey string) (*Adapter, error) {
 	cmdPath, err := tool_resolve.LookPath("cursor-agent")
 	if err != nil {
 		// Fall back to "cursor" command
@@ -117,6 +121,7 @@ func NewAdapter(projectDir string, settingsStore *settings.Store) (*Adapter, err
 		sessions:      make(map[string]*ChatSession),
 		projectDir:    projectDir,
 		cmdPath:       cmdPath,
+		apiKey:        apiKey,
 		settingsStore: settingsStore,
 		globalSubs:    make(map[chan SSEEvent]struct{}),
 	}
@@ -240,6 +245,7 @@ func (a *Adapter) CreateSession() *ChatSession {
 		ProjectDir:  a.projectDir,
 		CommandPath: a.cmdPath,
 		Model:       a.model,
+		APIKey:      a.apiKey,
 		adapter:     a,
 		messages:    []ChatMessage{},
 		subscribers: make(map[chan SSEEvent]struct{}),
@@ -377,6 +383,11 @@ func (s *ChatSession) SendPrompt(prompt string) error {
 
 	cmd := exec.Command(s.CommandPath, args...)
 	cmd.Dir = s.ProjectDir
+
+	// Pass API key via environment variable if set
+	if s.APIKey != "" {
+		cmd.Env = append(os.Environ(), "CURSOR_API_KEY="+s.APIKey)
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

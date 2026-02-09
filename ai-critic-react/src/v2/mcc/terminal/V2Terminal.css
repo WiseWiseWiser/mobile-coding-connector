@@ -70,14 +70,11 @@
     touch-action: pan-y !important;
 }
 
-/* Enable touch scrolling by allowing events to pass through text spans */
-.v2-terminal-content .xterm-rows span {
-    pointer-events: none !important;
-}
-
-/* Enable text selection on mobile */
-.v2-terminal-content .xterm-selection div {
-    pointer-events: auto !important;
+/* Enable text selection on the terminal */
+.v2-terminal-content .xterm-screen {
+    -webkit-user-select: text;
+    user-select: text;
+    padding-bottom: 8px;
 }
 
 /* Mobile touch improvements */
@@ -89,10 +86,6 @@
     .v2-terminal-content .xterm-viewport {
         overscroll-behavior: contain;
     }
-}
-
-.v2-terminal-content .xterm-screen {
-    padding-bottom: 8px;
 }
 
 .v2-terminal-shortcuts {

@@ -3,7 +3,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, CursorAgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ProjectConfigView } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ProjectConfigView } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './App.css';
 
@@ -166,12 +166,11 @@ function App() {
                             <Route path="clone-repo" element={<CloneRepoView />} />
                             <Route path="upload-file" element={<UploadFileView />} />
                             <Route path="download-file" element={<DownloadFileView />} />
-                            <Route path="project-config/:projectId" element={<ProjectConfigView />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
                             <Route path=":agentId" element={<SessionListRoute />} />
-                            <Route path=":agentId/settings" element={<CursorAgentSettingsRoute />} />
+                            <Route path=":agentId/settings" element={<AgentSettingsRoute />} />
                             <Route path=":agentId/:sessionId" element={<AgentChatRoute />} />
                         </Route>
                         <Route path="terminal" element={<TerminalView />} />
@@ -194,7 +193,7 @@ function App() {
                     </Route>
                     {/* Project-specific routes: MobileCodingConnector as layout */}
                     <Route path="project/:projectName" element={<MobileCodingConnector />}>
-                        <Route index element={<Navigate to="home" replace />} />
+                        <Route index element={<ProjectConfigView />} />
                         <Route path="home">
                             <Route index element={<WorkspaceListView />} />
                             <Route path="diagnose" element={<DiagnoseView />} />
@@ -206,12 +205,11 @@ function App() {
                             <Route path="clone-repo" element={<CloneRepoView />} />
                             <Route path="upload-file" element={<UploadFileView />} />
                             <Route path="download-file" element={<DownloadFileView />} />
-                            <Route path="project-config/:projectId" element={<ProjectConfigView />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
                             <Route path=":agentId" element={<SessionListRoute />} />
-                            <Route path=":agentId/settings" element={<CursorAgentSettingsRoute />} />
+                            <Route path=":agentId/settings" element={<AgentSettingsRoute />} />
                             <Route path=":agentId/:sessionId" element={<AgentChatRoute />} />
                         </Route>
                         <Route path="terminal" element={<TerminalView />} />

@@ -1,0 +1,58 @@
+.streaming-action-button-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.streaming-action-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 16px;
+    background: #1e293b;
+    color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.streaming-action-button:hover:not(:disabled) {
+    background: #334155;
+    border-color: #475569;
+}
+
+.streaming-action-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.streaming-action-button-icon {
+    display: inline-flex;
+    align-items: center;
+}
+
+.streaming-action-logs {
+    margin-top: 4px;
+}
+
+.streaming-action-result {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+.streaming-action-result.success {
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #86efac;
+}
+
+.streaming-action-result.error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+}

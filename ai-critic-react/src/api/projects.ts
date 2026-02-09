@@ -36,3 +36,46 @@ export async function updateProject(id: string, updates: ProjectUpdate): Promise
     }
     return resp.json();
 }
+
+// ---- Git Operations (SSE streaming) ----
+
+const GitOps = {
+    Fetch: 'fetch',
+    Pull: 'pull',
+    Push: 'push',
+} as const;
+
+type GitOp = typeof GitOps[keyof typeof GitOps];
+
+export { GitOps };
+export type { GitOp };
+
+export interface GitOpRequest {
+    project_id: string;
+    ssh_key?: string;
+}
+
+/** Execute a git operation (fetch/pull) with SSE streaming. Returns the raw Response for SSE parsing. */
+export async function runGitOp(op: GitOp, body: GitOpRequest): Promise<Response> {
+    return fetch(`/api/git/${op}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+}
+
+/** Execute a git operation (fetch/pull/push) with SSE streaming using project dir. */
+export async function runGitOpByDir(op: GitOp, dir: string, sshKey?: string): Promise<Response> {
+    const body: Record<string, string | undefined> = { dir };
+    if (sshKey) {
+        body.ssh_key = sshKey;
+    }
+    return fetch(`/api/review/${op}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream',
+        },
+        body: JSON.stringify(body),
+    });
+}

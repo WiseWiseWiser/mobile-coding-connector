@@ -117,6 +117,9 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/github/repos", handleListRepos)
 	mux.HandleFunc("/api/github/clone", handleClone)
 	mux.HandleFunc("/api/ssh-keys/test", handleTestSSHKey)
+
+	// Git operations (fetch, pull)
+	registerGitOpsAPI(mux)
 }
 
 // handleOAuthConfig handles GET (retrieve) and POST (save) OAuth config

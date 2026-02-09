@@ -9,12 +9,12 @@ export function AgentPickerRoute() {
         <AgentPicker
             agents={ctx.agents}
             loading={ctx.agentsLoading}
-            projectName={ctx.projectName}
             launchError={ctx.launchError}
             sessions={ctx.sessions}
             onLaunchHeadless={ctx.onLaunchHeadless}
             onOpenSessions={(agentId) => ctx.navigateToView(agentId)}
             onStopAgent={ctx.onStopAgent}
+            onConfigureAgent={(agentId) => ctx.navigateToView(`${agentId}/settings`)}
         />
     );
 }

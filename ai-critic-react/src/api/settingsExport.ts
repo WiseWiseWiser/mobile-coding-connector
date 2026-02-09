@@ -1,6 +1,7 @@
 // Settings export/import API client and types
 
 import { loadSSHKeys, loadGitHubToken, saveSSHKeys, saveGitHubToken, loadGitUserConfig, saveGitUserConfig, type SSHKey, type GitUserConfig } from '../v2/mcc/home/settings/gitStorage';
+import { loadCursorAPIKey, saveCursorAPIKey } from '../v2/mcc/agent/cursorStorage';
 
 /** The top-level export JSON structure */
 export interface SettingsExportData {
@@ -47,6 +48,7 @@ export interface GitConfigsExport {
     ssh_keys: SSHKey[];
     github_token: string;
     git_user_config?: GitUserConfig;
+    cursor_api_key?: string;
 }
 
 /** Available section identifiers */
@@ -108,6 +110,7 @@ export async function buildExportData(selectedSections: ExportSectionKey[]): Pro
             ssh_keys: loadSSHKeys(),
             github_token: loadGitHubToken(),
             git_user_config: loadGitUserConfig(),
+            cursor_api_key: loadCursorAPIKey() || undefined,
         };
     }
 
@@ -151,6 +154,9 @@ export async function applyImportData(data: SettingsExportData, selectedSections
         if (gc.git_user_config) {
             saveGitUserConfig(gc.git_user_config);
         }
+        if (gc.cursor_api_key) {
+            saveCursorAPIKey(gc.cursor_api_key);
+        }
     }
 }
 
@@ -165,4 +171,135 @@ export function downloadJSON(data: SettingsExportData, filename: string) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+// ---- Zip-based export/import ----
+
+/** Browser-side data included in zip export */
+export interface BrowserExportData {
+    git_configs?: GitConfigsExport;
+}
+
+/** Export settings as a zip file download. Optionally includes browser-data. */
+export async function exportSettingsZip(includeBrowserData: boolean): Promise<void> {
+    let browserData: BrowserExportData | undefined;
+    if (includeBrowserData) {
+        browserData = {
+            git_configs: {
+                ssh_keys: loadSSHKeys(),
+                github_token: loadGitHubToken(),
+                git_user_config: loadGitUserConfig(),
+                cursor_api_key: loadCursorAPIKey() || undefined,
+            },
+        };
+    }
+
+    const resp = browserData
+        ? await fetch('/api/settings/export-zip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(browserData),
+        })
+        : await fetch('/api/settings/export-zip');
+
+    if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to export settings');
+    }
+
+    const blob = await resp.blob();
+    const disposition = resp.headers.get('Content-Disposition');
+    let filename = 'ai-critic-settings.zip';
+    if (disposition) {
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        if (match) {
+            filename = match[1];
+        }
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+/** Preview what files will be created/overwritten/merged on import */
+export interface ImportFilePreview {
+    path: string;
+    action: 'create' | 'overwrite' | 'merge';
+    size: number;
+}
+
+export interface ImportZipPreviewResult {
+    files: ImportFilePreview[];
+}
+
+/** Upload a zip file and get a preview of what will happen */
+export async function previewImportZip(file: File): Promise<ImportZipPreviewResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const resp = await fetch('/api/settings/import-zip/preview', {
+        method: 'POST',
+        body: formData,
+    });
+    if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to preview zip');
+    }
+    return resp.json();
+}
+
+/** Confirm importing a zip file (apply all changes) */
+export async function confirmImportZip(file: File): Promise<void> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const resp = await fetch('/api/settings/import-zip/confirm', {
+        method: 'POST',
+        body: formData,
+    });
+    if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to import zip');
+    }
+}
+
+/** Extract browser-data.json from a zip file (for client-side import) */
+export async function extractBrowserDataFromZip(file: File): Promise<BrowserExportData> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const resp = await fetch('/api/settings/import-zip/browser-data', {
+        method: 'POST',
+        body: formData,
+    });
+    if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to extract browser data');
+    }
+    return resp.json();
+}
+
+/** Apply browser data from zip import to localStorage */
+export function applyBrowserData(data: BrowserExportData): void {
+    if (data.git_configs) {
+        const gc = data.git_configs;
+        if (gc.ssh_keys && gc.ssh_keys.length > 0) {
+            saveSSHKeys(gc.ssh_keys);
+        }
+        if (gc.github_token) {
+            saveGitHubToken(gc.github_token);
+        }
+        if (gc.git_user_config) {
+            saveGitUserConfig(gc.git_user_config);
+        }
+        if (gc.cursor_api_key) {
+            saveCursorAPIKey(gc.cursor_api_key);
+        }
+    }
 }

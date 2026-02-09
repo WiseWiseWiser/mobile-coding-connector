@@ -20,6 +20,12 @@ import (
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/settings/export", handleExport)
 	mux.HandleFunc("/api/settings/import", handleImport)
+
+	// Zip-based export/import
+	mux.HandleFunc("/api/settings/export-zip", handleExportZip)
+	mux.HandleFunc("/api/settings/import-zip/preview", handleImportZipPreview)
+	mux.HandleFunc("/api/settings/import-zip/confirm", handleImportZipConfirm)
+	mux.HandleFunc("/api/settings/import-zip/browser-data", handleImportZipBrowserData)
 }
 
 // ---- Export Types ----

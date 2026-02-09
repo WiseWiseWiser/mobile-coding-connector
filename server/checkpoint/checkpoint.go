@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
 // FileSnapshot stores the state of a single file at a checkpoint (metadata only).
@@ -57,7 +59,7 @@ type ChangedFile struct {
 //   - checkpoint.json: metadata
 //   - files/: directory containing file contents (not for deleted files)
 
-const baseDir = ".ai-critic/projects"
+var baseDir = config.ProjectsDir
 
 var mu sync.RWMutex
 

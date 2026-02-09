@@ -83,22 +83,16 @@ export function UploadFileView() {
         setUploading(false);
     };
 
-    const handleBrowserSelect = (path: string | null) => {
-        if (!path) return;
-        setServerPath(path);
+    const handleBrowserDirChange = (dirPath: string) => {
+        // Auto-compose path: dir + filename
+        const dir = dirPath.replace(/\/$/, '');
+        if (selectedFile) {
+            setServerPath(dir + '/' + selectedFile.name);
+        } else {
+            setServerPath(dir + '/');
+        }
         setServerFileInfo(null);
         setUploadSuccess(false);
-        setShowBrowser(false);
-    };
-
-    const handleBrowserDirChange = (dirPath: string) => {
-        // When the user navigates to a directory and the selected file is known,
-        // auto-compose path: dir + filename
-        if (selectedFile) {
-            setServerPath(dirPath.replace(/\/$/, '') + '/' + selectedFile.name);
-            setServerFileInfo(null);
-            setUploadSuccess(false);
-        }
     };
 
     const showOverwriteWarning = serverFileInfo?.exists && !serverFileInfo.is_dir && !uploadSuccess;
@@ -176,8 +170,8 @@ export function UploadFileView() {
                 {showBrowser && (
                     <div className="upload-section">
                         <ServerFileBrowser
-                            selectMode="file_or_dir"
-                            onSelect={handleBrowserSelect}
+                            selectMode="dir"
+                            hidePathInput
                             onDirectoryChange={handleBrowserDirChange}
                         />
                     </div>

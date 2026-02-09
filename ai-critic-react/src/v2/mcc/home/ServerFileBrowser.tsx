@@ -26,12 +26,17 @@ function pathSegments(path: string): { name: string; path: string }[] {
 const SelectModes = {
     File: 'file',
     FileOrDir: 'file_or_dir',
+    Dir: 'dir',
 } as const;
 
 type SelectMode = typeof SelectModes[keyof typeof SelectModes];
 
 interface ServerFileBrowserProps {
-    /** Selection mode: 'file' only selects files, 'file_or_dir' allows selecting files and directories */
+    /** Selection mode:
+     * - 'file': only selects files, click dir to enter
+     * - 'file_or_dir': click file to select, click dir to select (double-click to enter)
+     * - 'dir': click dir to enter it, current directory is the selection (for choosing upload destination)
+     */
     selectMode?: SelectMode;
     /** Called when a file (or directory in file_or_dir mode) is selected/deselected */
     onSelect?: (path: string | null) => void;
@@ -39,6 +44,8 @@ interface ServerFileBrowserProps {
     onDirectoryChange?: (path: string) => void;
     /** Initial directory to browse */
     initialDir?: string;
+    /** Hide the path input bar and Go button */
+    hidePathInput?: boolean;
 }
 
 export function ServerFileBrowser({
@@ -46,6 +53,7 @@ export function ServerFileBrowser({
     onSelect,
     onDirectoryChange,
     initialDir = '/',
+    hidePathInput = false,
 }: ServerFileBrowserProps) {
     const [currentDir, setCurrentDir] = useState(initialDir);
     const [pathInput, setPathInput] = useState(initialDir);
@@ -88,9 +96,12 @@ export function ServerFileBrowser({
                 setSelectedPath(newSelected);
                 onSelectRef.current?.(newSelected);
             } else {
+                // In file and dir modes, click on dir navigates into it
                 loadDirectory(entry.path);
             }
         } else {
+            // In dir mode, files are not selectable
+            if (selectMode === SelectModes.Dir) return;
             const newSelected = selectedPath === entry.path ? null : entry.path;
             setSelectedPath(newSelected);
             onSelectRef.current?.(newSelected);
@@ -120,26 +131,28 @@ export function ServerFileBrowser({
     return (
         <>
             {/* Path Input */}
-            <div className="download-section">
-                <label className="download-label">Server Path</label>
-                <div className="download-path-row">
-                    <input
-                        type="text"
-                        className="download-path-input"
-                        placeholder="/path/to/directory"
-                        value={pathInput}
-                        onChange={e => setPathInput(e.target.value)}
-                        onKeyDown={handlePathKeyDown}
-                    />
-                    <button
-                        className="download-go-btn"
-                        onClick={handlePathGo}
-                        disabled={loading || !pathInput.trim()}
-                    >
-                        Go
-                    </button>
+            {!hidePathInput && (
+                <div className="download-section">
+                    <label className="download-label">Server Path</label>
+                    <div className="download-path-row">
+                        <input
+                            type="text"
+                            className="download-path-input"
+                            placeholder="/path/to/directory"
+                            value={pathInput}
+                            onChange={e => setPathInput(e.target.value)}
+                            onKeyDown={handlePathKeyDown}
+                        />
+                        <button
+                            className="download-go-btn"
+                            onClick={handlePathGo}
+                            disabled={loading || !pathInput.trim()}
+                        >
+                            Go
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Breadcrumb */}
             <div className="download-breadcrumb">

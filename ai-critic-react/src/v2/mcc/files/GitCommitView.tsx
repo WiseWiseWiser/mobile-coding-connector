@@ -7,9 +7,8 @@ import type { FileDiff, DiffHunk, DiffLine } from '../../../api/checkpoints';
 import { statusBadge } from './utils';
 import { loadGitUserConfig } from '../home/settings/gitStorage';
 import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypto';
-import { consumeSSEStream } from '../../../api/sse';
-import { LogViewer } from '../../LogViewer';
-import type { LogLine } from '../../LogViewer';
+import { StreamingActionButton } from '../../StreamingActionButton';
+import { UploadIcon } from '../../icons';
 import './FilesView.css';
 import './GitCommitView.css';
 
@@ -79,11 +78,9 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
     const [loading, setLoading] = useState(true);
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
-    const [pushing, setPushing] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [pushLogs, setPushLogs] = useState<LogLine[]>([]);
-    const [showPushLogs, setShowPushLogs] = useState(false);
+    const [encryptionError, setEncryptionError] = useState<string | null>(null);
     const [showDiffs, setShowDiffs] = useState(false);
     const [diffs, setDiffs] = useState<FileDiff[]>([]);
     const [loadingDiffs, setLoadingDiffs] = useState(false);
@@ -228,46 +225,19 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
         }
     };
 
-    const handlePush = async () => {
-        setPushing(true);
-        setError('');
-        setSuccess('');
-        setPushLogs([]);
-        setShowPushLogs(true);
-        
+    const createPushAction = async () => {
+        setEncryptionError(null);
+        let encryptedKey: string | undefined;
         try {
-            let encryptedKey: string | undefined;
-            try {
-                encryptedKey = await encryptProjectSSHKey(sshKeyId);
-            } catch (err) {
-                if (err instanceof EncryptionNotAvailableError) {
-                    setError('Server encryption keys not configured. Ask the server admin to run: go run ./script/crypto/gen');
-                    setPushing(false);
-                    return;
-                }
-                setError(`Failed to encrypt SSH key: ${String(err)}`);
-                setPushing(false);
-                return;
+            encryptedKey = await encryptProjectSSHKey(sshKeyId);
+        } catch (err) {
+            if (err instanceof EncryptionNotAvailableError) {
+                setEncryptionError('Server encryption keys not configured.');
+                throw err;
             }
-            
-            const response = await gitPushStream(projectDir, encryptedKey);
-            
-            await consumeSSEStream(response, {
-                onLog: (line) => setPushLogs(prev => [...prev, line]),
-                onError: (line) => setPushLogs(prev => [...prev, line]),
-                onDone: (message, data) => {
-                    if (data.success === 'true') {
-                        setSuccess(message || 'Pushed successfully');
-                    } else {
-                        setError(message || 'Push failed');
-                    }
-                },
-            });
-        } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to push');
-        } finally {
-            setPushing(false);
+            throw err;
         }
+        return gitPushStream(projectDir, encryptedKey);
     };
 
     const handleFileClick = (path: string) => {
@@ -429,13 +399,13 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                             </button>
                             {/* Push row - push button + branch selector */}
                             <div className="mcc-git-push-row" style={{ marginTop: '12px' }}>
-                                <button
+                                <StreamingActionButton
+                                    label="Push"
+                                    runningLabel="Pushing..."
+                                    action={createPushAction}
                                     className="mcc-git-push-btn"
-                                    onClick={handlePush}
-                                    disabled={pushing}
-                                >
-                                    {pushing ? 'Pushing...' : <>Push <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: 'middle' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg></>}
-                                </button>
+                                    icon={<UploadIcon size={14} style={{ verticalAlign: 'middle' }} />}
+                                />
                                 <select
                                     className="mcc-git-branch-select"
                                     value={pushBranch}
@@ -448,17 +418,8 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                                     ))}
                                 </select>
                             </div>
-                            
-                            {/* Push Logs */}
-                            {showPushLogs && pushLogs.length > 0 && (
-                                <div className="mcc-git-push-logs">
-                                    <LogViewer
-                                        lines={pushLogs}
-                                        pending={pushing}
-                                        pendingMessage="Pushing..."
-                                        maxHeight={200}
-                                    />
-                                </div>
+                            {encryptionError && (
+                                <div className="mcc-git-fetch-result error" style={{ marginTop: 8 }}>{encryptionError}</div>
                             )}
                         </div>
                     </div>

@@ -10,6 +10,7 @@ import {
 import type { AgentDef, AgentSessionInfo } from '../../../api/agents';
 import { useV2Context } from '../../V2Context';
 import { AgentEmptyIcon } from '../../icons';
+import { loadCursorAPIKey } from './cursorStorage';
 import './AgentView.css';
 
 // ---- Outlet Context ----
@@ -23,6 +24,7 @@ export interface AgentOutletContext {
     launchError: string;
     onLaunchHeadless: (agent: AgentDef) => void;
     onStopAgent: (agentId: string) => void;
+    onRefreshAgents: () => void;
     navigateToView: (view: string) => void;
 }
 
@@ -31,6 +33,7 @@ export function AgentLayout() {
         currentProject,
         agents,
         agentsLoading,
+        refreshAgents,
         agentSessions: sessions,
         setAgentSession: setSession,
         agentLaunchError: launchError,
@@ -63,7 +66,9 @@ export function AgentLayout() {
         if (!projectDir) return;
         setLaunchError('');
         try {
-            const sessionInfo = await launchAgentSession(agent.id, projectDir);
+            // For cursor-agent, pass the API key from localStorage
+            const apiKey = agent.id === 'cursor-agent' ? loadCursorAPIKey() : undefined;
+            const sessionInfo = await launchAgentSession(agent.id, projectDir, apiKey);
             setSession(agent.id, sessionInfo);
             navigateToView(agent.id);
         } catch (err) {
@@ -103,6 +108,7 @@ export function AgentLayout() {
         launchError,
         onLaunchHeadless: handleLaunchHeadless,
         onStopAgent: handleStopAgent,
+        onRefreshAgents: refreshAgents,
         navigateToView,
     };
 

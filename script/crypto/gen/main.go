@@ -9,28 +9,31 @@ import (
 	"os"
 
 	"golang.org/x/crypto/ssh"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
-const (
-	privateKeyFile = ".ai-critic/enc-key"
-	publicKeyFile  = ".ai-critic/enc-key.pub"
-	keyBits        = 3072
+const keyBits = 3072
+
+var (
+	privateKeyFile = config.EncKeyFile
+	publicKeyFile  = config.EncKeyPubFile
 )
 
-var help = `
+var help = fmt.Sprintf(`
 Usage: go run ./script/crypto/gen
 
 Generates an RSA key pair for encrypting SSH private keys in transit.
 
 Files generated:
-  .ai-critic/enc-key      - RSA private key (OpenSSH format, used by server for decryption)
-  .ai-critic/enc-key.pub  - RSA public key (OpenSSH format)
+  %s      - RSA private key (OpenSSH format, used by server for decryption)
+  %s  - RSA public key (OpenSSH format)
 
 The server reads these files to provide RSA-OAEP encryption for SSH keys
 sent from the frontend. If these files don't exist, the server will not
 provide an encryption public key, and the frontend will refuse to send
 SSH private keys to the server.
-`
+`, config.EncKeyFile, config.EncKeyPubFile)
 
 func main() {
 	err := Handle(os.Args[1:])

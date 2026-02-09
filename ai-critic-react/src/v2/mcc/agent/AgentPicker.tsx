@@ -1,26 +1,22 @@
 import type { AgentDef, AgentSessionInfo } from '../../../api/agents';
-import { FolderIcon } from '../../icons';
+import { SettingsIcon } from '../../icons';
 
 export interface AgentPickerProps {
     agents: AgentDef[];
     loading: boolean;
-    projectName: string | null;
     launchError: string;
     sessions: Record<string, AgentSessionInfo>;
     onLaunchHeadless: (agent: AgentDef) => void;
     onOpenSessions: (agentId: string) => void;
     onStopAgent: (agentId: string) => void;
+    onConfigureAgent: (agentId: string) => void;
 }
 
-export function AgentPicker({ agents, loading, projectName, launchError, sessions, onLaunchHeadless, onOpenSessions, onStopAgent }: AgentPickerProps) {
+export function AgentPicker({ agents, loading, launchError, sessions, onLaunchHeadless, onOpenSessions, onStopAgent, onConfigureAgent }: AgentPickerProps) {
     return (
         <div className="mcc-agent-view">
             <div className="mcc-agent-header">
                 <h2>Agents</h2>
-                <div className="mcc-agent-project-badge">
-                    <FolderIcon />
-                    <span>{projectName}</span>
-                </div>
             </div>
 
             {loading && <div className="mcc-agent-loading">Loading agents...</div>}
@@ -43,6 +39,13 @@ export function AgentPicker({ agents, loading, projectName, launchError, session
                                         </span>
                                     )}
                                 </div>
+                                <button
+                                    className="mcc-agent-card-settings-icon"
+                                    onClick={() => onConfigureAgent(agent.id)}
+                                    title="Settings"
+                                >
+                                    <SettingsIcon />
+                                </button>
                             </div>
                             <div className="mcc-agent-card-desc">{agent.description}</div>
                             <div className="mcc-agent-card-actions">
@@ -74,7 +77,12 @@ export function AgentPicker({ agents, loading, projectName, launchError, session
                                     <span className="mcc-agent-card-note">Terminal-only agent</span>
                                 )}
                                 {!agent.installed && (
-                                    <span className="mcc-agent-card-note">Not available</span>
+                                    <button
+                                        className="mcc-forward-btn mcc-agent-configure-btn"
+                                        onClick={() => onConfigureAgent(agent.id)}
+                                    >
+                                        Configure Path
+                                    </button>
                                 )}
                             </div>
                         </div>

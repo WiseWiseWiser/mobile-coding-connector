@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { UploadPhases } from '../../../api/fileupload';
+import type { UploadPhase } from '../../../api/fileupload';
 import './TransferProgress.css';
 
 function formatFileSize(bytes: number): string {
@@ -17,6 +19,16 @@ export interface TransferProgressData {
     loaded: number;
     total: number;
     percent: number;
+    /** Current upload phase */
+    phase?: UploadPhase;
+    /** Current chunk index (0-based) */
+    chunkIndex?: number;
+    /** Total number of chunks */
+    totalChunks?: number;
+    /** Bytes loaded within the current chunk */
+    chunkLoaded?: number;
+    /** Total bytes in the current chunk */
+    chunkTotal?: number;
 }
 
 interface TransferProgressProps {
@@ -69,23 +81,53 @@ export function TransferProgress({ progress, label = 'Transfer' }: TransferProgr
 
     if (!progress) return null;
 
+    const isMerging = progress.phase === UploadPhases.Merging;
+    const hasChunkInfo = progress.totalChunks != null && progress.totalChunks > 1;
+    const chunkPercent = (progress.chunkLoaded != null && progress.chunkTotal)
+        ? Math.round((progress.chunkLoaded / progress.chunkTotal) * 100)
+        : 100;
+
     return (
         <div className="transfer-progress">
+            {/* Overall progress bar */}
             <div className="transfer-progress-bar-bg">
                 <div className="transfer-progress-bar" style={{ width: `${progress.percent}%` }} />
             </div>
             <div className="transfer-progress-info">
                 <span className="transfer-progress-percent">
-                    {label}: {progress.percent}%
+                    {isMerging ? 'Merging...' : `${label}: ${progress.percent}%`}
                 </span>
                 <span className="transfer-progress-size">
                     {formatFileSize(progress.loaded)} / {formatFileSize(progress.total)}
                 </span>
             </div>
-            <div className="transfer-progress-speed">
-                <span>Avg: {formatSpeed(avgSpeed)}</span>
-                <span>Current: {formatSpeed(currentSpeed)}</span>
-            </div>
+
+            {/* Chunk-level progress */}
+            {hasChunkInfo && !isMerging && (
+                <div className="transfer-progress-chunk">
+                    <div className="transfer-progress-chunk-label">
+                        Chunk {(progress.chunkIndex ?? 0) + 1} / {progress.totalChunks}
+                    </div>
+                    <div className="transfer-progress-chunk-bar-bg">
+                        <div className="transfer-progress-chunk-bar" style={{ width: `${chunkPercent}%` }} />
+                    </div>
+                </div>
+            )}
+
+            {/* Merging indicator */}
+            {isMerging && (
+                <div className="transfer-progress-merging">
+                    Combining chunks on server...
+                </div>
+            )}
+
+            {/* Speed info */}
+            {!isMerging && (
+                <div className="transfer-progress-speed">
+                    <span>Avg: {formatSpeed(avgSpeed)}</span>
+                    <span>Current: {formatSpeed(currentSpeed)}</span>
+                </div>
+            )}
         </div>
     );
 }

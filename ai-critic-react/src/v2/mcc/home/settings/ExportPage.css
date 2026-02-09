@@ -34,6 +34,12 @@
     background: #1a2744;
 }
 
+.export-page-section-item--always {
+    cursor: default;
+    border-left: 3px solid #3b82f6;
+    padding-left: 9px;
+}
+
 .export-page-section-item input[type="checkbox"] {
     width: 18px;
     height: 18px;

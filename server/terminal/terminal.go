@@ -26,11 +26,11 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// ResizeMessage is sent from client to resize the terminal
-type ResizeMessage struct {
+// ControlMessage is a JSON message sent from client to control the terminal
+type ControlMessage struct {
 	Type string `json:"type"`
-	Cols int    `json:"cols"`
-	Rows int    `json:"rows"`
+	Cols int    `json:"cols,omitempty"`
+	Rows int    `json:"rows,omitempty"`
 }
 
 // maxScrollback is the maximum number of bytes kept in the scrollback buffer per session
@@ -207,9 +207,9 @@ func (m *sessionManager) listPaginated(page, pageSize int) *TerminalSessionsResp
 		sessionList = append(sessionList, s)
 	}
 
-	// Sort by creation time (newest first)
+	// Sort by creation time (oldest first) to preserve user's creation order
 	sort.Slice(sessionList, func(i, j int) bool {
-		return sessionList[j].createdAt.Before(sessionList[i].createdAt)
+		return sessionList[i].createdAt.Before(sessionList[j].createdAt)
 	})
 
 	total := len(sessionList)
@@ -317,6 +317,11 @@ func (s *session) attach(conn *websocket.Conn) {
 		scrollbackCopy := make([]byte, len(s.scrollback))
 		copy(scrollbackCopy, s.scrollback)
 		s.mu.Unlock()
+		// Send terminal reset sequence first to clear any alternate screen mode
+		// and reset terminal state (in case a TUI program like vim was running)
+		// ESC[?1049l = exit alternate screen buffer
+		// ESC[0m = reset all attributes
+		conn.WriteMessage(websocket.BinaryMessage, []byte("\x1b[?1049l\x1b[0m"))
 		conn.WriteMessage(websocket.BinaryMessage, scrollbackCopy)
 	} else {
 		s.mu.Unlock()
@@ -403,24 +408,44 @@ func handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// Read from WebSocket and write to PTY.
 	// When the WS closes, this loop exits and we detach.
-	wsCloseCh := make(chan struct{})
+	type wsCloseResult struct {
+		closeCode int
+	}
+	wsCloseCh := make(chan wsCloseResult, 1)
+	deleteOnClose := false // Set to true if client requests deletion via message
 	go func() {
-		defer close(wsCloseCh)
+		var closeCode int
+		defer func() {
+			wsCloseCh <- wsCloseResult{closeCode: closeCode}
+		}()
 		for {
 			msgType, message, err := conn.ReadMessage()
 			if err != nil {
+				// Extract close code from WebSocket close error
+				if closeErr, ok := err.(*websocket.CloseError); ok {
+					closeCode = closeErr.Code
+				}
 				return
 			}
 
-			// Check if it's a resize message (JSON)
+			// Check if it's a JSON control message
 			if msgType == websocket.TextMessage {
-				var resize ResizeMessage
-				if err := json.Unmarshal(message, &resize); err == nil && resize.Type == "resize" {
-					pty.Setsize(s.ptmx, &pty.Winsize{
-						Rows: uint16(resize.Rows),
-						Cols: uint16(resize.Cols),
-					})
-					continue
+				var msg ControlMessage
+				if err := json.Unmarshal(message, &msg); err == nil && msg.Type != "" {
+					switch msg.Type {
+					case "resize":
+						if msg.Cols > 0 && msg.Rows > 0 {
+							pty.Setsize(s.ptmx, &pty.Winsize{
+								Rows: uint16(msg.Rows),
+								Cols: uint16(msg.Cols),
+							})
+						}
+						continue
+					case "close_delete":
+						// Legacy: client requests session deletion on close
+						deleteOnClose = true
+						continue
+					}
 				}
 			}
 
@@ -435,9 +460,16 @@ func handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 		// PTY exited, remove session
 		manager.remove(s.id)
 		conn.Close()
-	case <-wsCloseCh:
-		// WebSocket closed, session stays alive for reconnection
-		s.detach(conn)
+	case result := <-wsCloseCh:
+		// Close code 4000 = client requests session deletion (e.g., React StrictMode cleanup).
+		// Also honor the legacy close_delete message for backward compatibility.
+		shouldDelete := result.closeCode == 4000 || deleteOnClose
+		if shouldDelete {
+			manager.remove(s.id)
+		} else {
+			// Session stays alive for reconnection
+			s.detach(conn)
+		}
 	}
 }
 

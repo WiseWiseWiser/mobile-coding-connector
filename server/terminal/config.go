@@ -5,13 +5,13 @@ import (
 	"net/http"
 	"os"
 	"sync"
-)
 
-const defaultConfigFile = ".ai-critic/terminal-config.json"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+)
 
 var (
 	configFileMu   sync.RWMutex
-	configFilePath = defaultConfigFile
+	configFilePath = config.TerminalConfFile
 )
 
 // SetConfigFile sets the path to the terminal config JSON file.

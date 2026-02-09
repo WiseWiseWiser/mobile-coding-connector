@@ -66,3 +66,24 @@ export async function deleteTunnel(name: string): Promise<{ message: string }> {
     }
     return resp.json();
 }
+
+// ---- Owned Domains ----
+
+export async function fetchOwnedDomains(): Promise<string[]> {
+    const resp = await fetch('/api/cloudflare/owned-domains');
+    if (!resp.ok) throw new Error('Failed to fetch owned domains');
+    const data = await resp.json();
+    return data.owned_domains || [];
+}
+
+export async function saveOwnedDomains(domains: string[]): Promise<void> {
+    const resp = await fetch('/api/cloudflare/owned-domains', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owned_domains: domains }),
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || 'Failed to save owned domains');
+    }
+}

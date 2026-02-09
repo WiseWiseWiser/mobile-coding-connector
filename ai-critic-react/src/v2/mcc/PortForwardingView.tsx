@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import type { PortForward, TunnelProvider, ProviderInfo } from '../../hooks/usePortForwards';
-import { PortStatuses } from '../../hooks/usePortForwards';
+import { PortStatuses, TunnelProviders } from '../../hooks/usePortForwards';
 import { fetchPortLogs as apiFetchPortLogs } from '../../api/ports';
+import { fetchOwnedDomains } from '../../api/cloudflare';
 import { useV2Context } from '../V2Context';
 import { LogViewer } from '../LogViewer';
 import { PlusIcon } from '../icons';
@@ -131,6 +132,9 @@ export function PortForwardingView({
                                 ))}
                             </div>
                         </div>
+                        {newPortProvider === TunnelProviders.CloudflareTunnel && (
+                            <OwnedDomainsHint onPortLabelChange={onPortLabelChange} />
+                        )}
                         <button className="mcc-forward-btn" onClick={onAddPort}>
                             Forward
                         </button>
@@ -143,6 +147,37 @@ export function PortForwardingView({
                 )}
             </div>
             <PortForwardingHelp />
+        </div>
+    );
+}
+
+// ---- Owned Domains Hint ----
+
+function OwnedDomainsHint({ onPortLabelChange }: { onPortLabelChange: (value: string) => void }) {
+    const [domains, setDomains] = useState<string[]>([]);
+
+    useEffect(() => {
+        fetchOwnedDomains().then(setDomains).catch(() => {});
+    }, []);
+
+    if (domains.length === 0) return null;
+
+    return (
+        <div className="mcc-owned-domains-hint">
+            <label>Your Domains</label>
+            <div className="mcc-owned-domains-list">
+                {domains.map(d => (
+                    <button
+                        key={d}
+                        className="mcc-owned-domain-btn"
+                        onClick={() => onPortLabelChange(d)}
+                        title={`Use domain: ${d}`}
+                    >
+                        {d}
+                    </button>
+                ))}
+            </div>
+            <div className="mcc-owned-domains-note">Click a domain to set it as the label for named tunnel routing.</div>
         </div>
     );
 }

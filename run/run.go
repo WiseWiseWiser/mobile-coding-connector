@@ -30,9 +30,9 @@ Options:
   --dir DIR               Set the initial directory for code review (defaults to current working directory)
   --port PORT             Port to listen on (defaults to auto-find starting from %d)
   --config-file FILE      Path to configuration file (JSON)
-  --credentials-file FILE Path to credentials file (defaults to ".ai-critic/server-credentials")
-  --enc-key-file FILE     Path to encryption key file (defaults to ".ai-critic/enc-key")
-  --domains-file FILE     Path to domains JSON file (defaults to ".ai-critic/server-domains.json")
+  --credentials-file FILE Path to credentials file (defaults to "%s")
+  --enc-key-file FILE     Path to encryption key file (defaults to "%s")
+  --domains-file FILE     Path to domains JSON file (defaults to "%s")
   --rules-dir DIR         Directory containing REVIEW_RULES.md (defaults to "rules")
   --component             Serve a specific component
   -h, --help              Show this help message
@@ -40,7 +40,7 @@ Options:
 Keep-Alive Options:
   --script                Output shell script instead of running Go code
   --forever               Skip port-in-use check and start keep-alive anyway
-`, lib.DefaultServerPort)
+`, lib.DefaultServerPort, config.CredentialsFile, config.EncKeyFile, config.DomainsFile)
 
 func Run(args []string) error {
 	// Handle subcommands before flag parsing
@@ -106,17 +106,12 @@ func Run(args []string) error {
 		server.SetAIConfig(cfg)
 	}
 
-	// Set credentials file (defaults to ".ai-critic/server-credentials")
 	if credentialsFileFlag != "" {
 		auth.SetCredentialsFile(credentialsFileFlag)
 	}
-
-	// Set encryption key file (defaults to ".ai-critic/enc-key")
 	if encKeyFileFlag != "" {
 		encrypt.SetKeyFile(encKeyFileFlag)
 	}
-
-	// Set domains file (defaults to ".ai-critic/server-domains.json")
 	if domainsFileFlag != "" {
 		domains.SetDomainsFile(domainsFileFlag)
 	}

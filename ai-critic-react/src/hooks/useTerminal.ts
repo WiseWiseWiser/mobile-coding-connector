@@ -33,6 +33,8 @@ export interface UseTerminalReturn {
     sendKey: (key: string) => void;
     focus: () => void;
     reconnect: () => void;
+    /** Refit the terminal to its container. Call this when the terminal becomes visible. */
+    fit: () => void;
     /** Ref to control Ctrl modifier mode. When true, next key input is converted to a control character. */
     ctrlModeRef: MutableRefObject<boolean>;
 }
@@ -87,7 +89,6 @@ export function useTerminal(
         if (!terminalRef.current) return;
 
         let disposed = false;
-        let createdSessionId = '';  // Track session ID if newly created
         let hadUserInput = false;   // Track if user actually interacted
         const {
             theme = defaultTheme,
@@ -197,7 +198,6 @@ export function useTerminal(
                 try {
                     const msg = JSON.parse(text);
                     if (msg.type === 'session_id' && msg.session_id) {
-                        createdSessionId = msg.session_id;
                         optionsRef.current.onSessionId?.(msg.session_id);
                         return;
                     }
@@ -261,24 +261,55 @@ export function useTerminal(
         };
         window.addEventListener('resize', handleResize);
 
+        // ---- Visibility observer ----
+        // Refit terminal when it becomes visible (e.g., tab switch)
+        let intersectionObserver: IntersectionObserver | null = null;
+        if (terminalRef.current) {
+            intersectionObserver = new IntersectionObserver(
+                (entries) => {
+                    const entry = entries[0];
+                    if (entry?.isIntersecting && ws.readyState === WebSocket.OPEN) {
+                        // Small delay to ensure layout is complete
+                        setTimeout(() => {
+                            if (disposed) return;
+                            fitAddon.fit();
+                            sendResize();
+                        }, 50);
+                    }
+                },
+                { threshold: 0.1 }
+            );
+            intersectionObserver.observe(terminalRef.current);
+        }
+
         xterm.focus();
 
         // Store cleanup
         cleanupRef.current = () => {
             disposed = true;
             window.removeEventListener('resize', handleResize);
+            intersectionObserver?.disconnect();
             if (viewport) {
                 viewport.removeEventListener('touchstart', handleTouchStart);
                 viewport.removeEventListener('touchmove', handleTouchMove);
                 viewport.removeEventListener('touchend', handleTouchEnd);
             }
-            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-                ws.close();
-            }
-            // If a session was newly created (not reconnecting) and the user never interacted,
-            // delete it to avoid orphaned sessions (handles React StrictMode double-mount cleanup)
-            if (createdSessionId && !sessionId && !hadUserInput) {
-                fetch(`/api/terminal/sessions?id=${encodeURIComponent(createdSessionId)}`, { method: 'DELETE' }).catch(() => {});
+            const shouldDelete = !sessionId && !hadUserInput;
+            if (ws.readyState === WebSocket.OPEN) {
+                // Use close code 4000 to tell the backend to delete this session
+                // (e.g., React StrictMode cleanup of unused sessions).
+                // Close codes in the 4000-4999 range are reserved for application use.
+                ws.close(shouldDelete ? 4000 : 1000);
+            } else if (ws.readyState === WebSocket.CONNECTING) {
+                // WebSocket hasn't connected yet — we can't send a custom close code.
+                // Wait for the connection to open, then close with the proper code.
+                ws.onopen = () => {
+                    ws.close(shouldDelete ? 4000 : 1000);
+                };
+                // Also handle connection errors
+                ws.onerror = () => {
+                    ws.close();
+                };
             }
             wsRef.current = null;
             xterm.dispose();
@@ -311,5 +342,16 @@ export function useTerminal(
         setupRef.current?.();
     };
 
-    return { terminalRef, connected, sendKey, focus, reconnect, ctrlModeRef };
+    const fit = () => {
+        if (fitAddonRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+            fitAddonRef.current.fit();
+            // Also send resize to backend
+            const dimensions = fitAddonRef.current.proposeDimensions();
+            if (dimensions) {
+                wsRef.current.send(JSON.stringify({ type: 'resize', cols: dimensions.cols, rows: dimensions.rows }));
+            }
+        }
+    };
+
+    return { terminalRef, connected, sendKey, focus, reconnect, fit, ctrlModeRef };
 }

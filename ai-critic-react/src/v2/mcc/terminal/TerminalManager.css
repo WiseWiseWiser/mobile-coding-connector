@@ -133,14 +133,12 @@
     touch-action: pan-y !important;
 }
 
-/* Enable touch scrolling by allowing events to pass through text spans */
-.terminal-instance-content .xterm-rows span {
-    pointer-events: none !important;
-}
-
-/* Enable text selection on mobile */
-.terminal-instance-content .xterm-selection div {
-    pointer-events: auto !important;
+/* Enable text selection on the terminal */
+.terminal-instance-content .xterm-screen {
+    -webkit-user-select: text;
+    user-select: text;
+    padding-bottom: 8px;
+    width: 100%;
 }
 
 /* Mobile touch improvements */
@@ -152,17 +150,6 @@
     .terminal-instance-content .xterm-viewport {
         overscroll-behavior: contain;
     }
-
-    /* Enable long-press text selection on mobile */
-    .terminal-instance-content .xterm-screen {
-        -webkit-user-select: text;
-        user-select: text;
-    }
-}
-
-.terminal-instance-content .xterm-screen {
-    padding-bottom: 8px;
-    width: 100%;
 }
 
 .terminal-instance-shortcuts {
@@ -246,6 +233,42 @@
 .terminal-connection-status.disconnected.clickable:hover {
     background: rgba(239, 68, 68, 0.25);
     border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Empty state */
+.terminal-empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: #64748b;
+}
+
+.terminal-empty-state p {
+    margin: 0;
+    font-size: 14px;
+}
+
+.terminal-empty-state .terminal-error {
+    color: #ef4444;
+}
+
+.terminal-empty-state-btn {
+    padding: 12px 24px;
+    background: #3b82f6;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.terminal-empty-state-btn:hover {
+    background: #2563eb;
 }
 
 /* Mobile responsive */

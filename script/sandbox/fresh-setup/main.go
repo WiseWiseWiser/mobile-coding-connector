@@ -12,6 +12,7 @@ import (
 
 	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/xgo/support/cmd"
 )
 
@@ -140,7 +141,7 @@ func run(archFlag string) error {
 		}
 	}
 	fmt.Printf("Credentials file: %s\n", credentialsFile)
-	const containerCredentialsFile = "/root/.ai-critic/server-credentials"
+	containerCredentialsFile := "/root/" + config.CredentialsFile
 
 	// Ensure encryption key files exist for volume mount (create empty if missing)
 	encKeyFile, err := encKeyFilePath()
@@ -156,8 +157,8 @@ func run(archFlag string) error {
 		}
 	}
 	fmt.Printf("Encryption key file: %s\n", encKeyFile)
-	const containerEncKeyFile = "/root/.ai-critic/enc-key"
-	const containerEncKeyPubFile = "/root/.ai-critic/enc-key.pub"
+	containerEncKeyFile := "/root/" + config.EncKeyFile
+	containerEncKeyPubFile := "/root/" + config.EncKeyPubFile
 
 	// Ensure domains file exists for volume mount (create empty if missing)
 	domainsFile, err := domainsFilePath()
@@ -170,7 +171,7 @@ func run(archFlag string) error {
 		}
 	}
 	fmt.Printf("Domains file: %s\n", domainsFile)
-	const containerDomainsFile = "/root/.ai-critic/server-domains.json"
+	containerDomainsFile := "/root/" + config.DomainsFile
 
 	// Remove any existing container (ignore errors if it doesn't exist)
 	fmt.Println("Removing old container (if any)...")
@@ -274,33 +275,29 @@ func scriptDir() (string, error) {
 	return filepath.Join(repoRoot, "script", "sandbox", "fresh-setup"), nil
 }
 
-// credentialsFilePath returns the absolute path to the credentials file,
-// located alongside this script's source file.
+// resolveFilePath returns the absolute path to a file under the script directory.
+func resolveFilePath(relPath string) (string, error) {
+	dir, err := scriptDir()
+	if err != nil {
+		return "", err
+	}
+	d := filepath.Join(dir, config.DataDir)
+	if err := os.MkdirAll(d, 0755); err != nil {
+		return "", fmt.Errorf("failed to create data dir %s: %v", d, err)
+	}
+	// relPath is like ".ai-critic/server-credentials", extract the filename
+	return filepath.Join(dir, relPath), nil
+}
+
 func credentialsFilePath() (string, error) {
-	dir, err := scriptDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "server-credentials"), nil
+	return resolveFilePath(config.CredentialsFile)
 }
 
-// encKeyFilePath returns the absolute path to the encryption private key file,
-// located alongside this script's source file.
 func encKeyFilePath() (string, error) {
-	dir, err := scriptDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "enc-key"), nil
+	return resolveFilePath(config.EncKeyFile)
 }
 
-// domainsFilePath returns the absolute path to the domains JSON file,
-// located alongside this script's source file.
 func domainsFilePath() (string, error) {
-	dir, err := scriptDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "server-domains.json"), nil
+	return resolveFilePath(config.DomainsFile)
 }
 

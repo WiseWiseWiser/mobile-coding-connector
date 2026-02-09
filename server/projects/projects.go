@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
-const projectsFile = ".ai-critic/projects.json"
+var projectsFile = config.ProjectsFile
 
 type Project struct {
 	ID        string `json:"id"`

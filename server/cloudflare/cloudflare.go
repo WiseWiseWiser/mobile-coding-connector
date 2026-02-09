@@ -44,6 +44,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/cloudflare/tunnels", handleTunnels)
 	mux.HandleFunc("/api/cloudflare/download", handleDownload)
 	mux.HandleFunc("/api/cloudflare/upload", handleUpload)
+	mux.HandleFunc("/api/cloudflare/owned-domains", handleOwnedDomains)
 }
 
 // cloudflaredDir returns the path to the cloudflared config directory.

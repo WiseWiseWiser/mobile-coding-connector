@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ALL_SECTIONS, buildExportData, downloadJSON, type ExportSectionKey } from '../../../../api/settingsExport';
+import { exportSettingsZip } from '../../../../api/settingsExport';
 import { fetchCredentials } from '../../../../api/auth';
 import { fetchEncryptKeyStatus } from '../../../../api/encrypt';
 import { fetchDomains } from '../../../../api/domains';
@@ -9,97 +9,88 @@ import { fetchTerminalConfig } from '../../../../api/terminalConfig';
 import { loadSSHKeys, loadGitHubToken, loadGitUserConfig } from './gitStorage';
 import './ExportPage.css';
 
-interface SectionStats {
-    credentials: string;
-    encryption_keys: string;
-    web_domains: string;
-    cloudflare_auth: string;
-    git_configs: string;
-    terminal_config: string;
+interface ExportStats {
+    aiCriticFiles: string;
+    cloudflareFiles: string;
+    browserData: string;
 }
 
 export function ExportPage() {
     const navigate = useNavigate();
-    const [selected, setSelected] = useState<Set<ExportSectionKey>>(
-        new Set(ALL_SECTIONS.map(s => s.key))
-    );
+    const [includeBrowserData, setIncludeBrowserData] = useState(true);
     const [exporting, setExporting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [stats, setStats] = useState<Partial<SectionStats>>({});
+    const [stats, setStats] = useState<Partial<ExportStats>>({});
 
     useEffect(() => {
-        // Load stats for each section in parallel
-        fetchCredentials()
-            .then(creds => setStats(prev => ({ ...prev, credentials: `${creds.length} token(s)` })))
-            .catch(() => setStats(prev => ({ ...prev, credentials: 'Unable to load' })));
+        // Load stats for .ai-critic directory contents
+        const parts: string[] = [];
+        const promises: Promise<void>[] = [];
 
-        fetchEncryptKeyStatus()
-            .then(ks => setStats(prev => ({ ...prev, encryption_keys: ks.valid ? '1 key pair (valid)' : ks.exists ? '1 key pair (invalid)' : 'No key pair' })))
-            .catch(() => setStats(prev => ({ ...prev, encryption_keys: 'Unable to load' })));
+        promises.push(
+            fetchCredentials()
+                .then(creds => { if (creds.length > 0) parts.push(`${creds.length} token(s)`); })
+                .catch(() => {})
+        );
+        promises.push(
+            fetchEncryptKeyStatus()
+                .then(ks => { if (ks.exists) parts.push('encryption keys'); })
+                .catch(() => {})
+        );
+        promises.push(
+            fetchDomains()
+                .then(resp => { if (resp.domains?.length) parts.push(`${resp.domains.length} domain(s)`); })
+                .catch(() => {})
+        );
+        promises.push(
+            fetchTerminalConfig()
+                .then(cfg => { if (cfg.extra_paths?.length || cfg.shell) parts.push('terminal config'); })
+                .catch(() => {})
+        );
 
-        fetchDomains()
-            .then(resp => setStats(prev => ({ ...prev, web_domains: `${resp.domains?.length ?? 0} domain(s)` })))
-            .catch(() => setStats(prev => ({ ...prev, web_domains: 'Unable to load' })));
+        Promise.all(promises).then(() => {
+            setStats(prev => ({
+                ...prev,
+                aiCriticFiles: parts.length > 0 ? parts.join(', ') : 'No files found',
+            }));
+        });
 
+        // Cloudflare files
         fetchCloudflareStatus()
             .then(s => {
                 const count = s.cert_files?.length ?? 0;
-                setStats(prev => ({ ...prev, cloudflare_auth: `${count} auth file(s)` }));
+                setStats(prev => ({
+                    ...prev,
+                    cloudflareFiles: count > 0 ? `${count} file(s): ${s.cert_files!.map((f: { name: string }) => f.name).join(', ')}` : 'No files found',
+                }));
             })
-            .catch(() => setStats(prev => ({ ...prev, cloudflare_auth: 'Unable to load' })));
+            .catch(() => setStats(prev => ({ ...prev, cloudflareFiles: 'Unable to load' })));
 
-        // Git configs from local storage
+        // Browser data
         const sshKeys = loadSSHKeys();
         const token = loadGitHubToken();
         const gitUserConfig = loadGitUserConfig();
-        const parts: string[] = [];
-        parts.push(`${sshKeys.length} SSH key(s)`);
-        if (token) parts.push('GitHub token');
+        const browserParts: string[] = [];
+        if (sshKeys.length > 0) browserParts.push(`${sshKeys.length} SSH key(s)`);
+        if (token) browserParts.push('GitHub token');
         if (gitUserConfig.name || gitUserConfig.email) {
-            parts.push(`Git user: ${gitUserConfig.name || '(no name)'} <${gitUserConfig.email || '(no email)'}>`);
+            browserParts.push(`Git user: ${gitUserConfig.name || '(no name)'}`);
         }
-        setStats(prev => ({ ...prev, git_configs: parts.join(', ') }));
-
-        fetchTerminalConfig()
-            .then(cfg => {
-                const parts: string[] = [];
-                parts.push(`${cfg.extra_paths?.length ?? 0} extra PATH(s)`);
-                if (cfg.shell) parts.push(`shell: ${cfg.shell}`);
-                setStats(prev => ({ ...prev, terminal_config: parts.join(', ') }));
-            })
-            .catch(() => setStats(prev => ({ ...prev, terminal_config: 'Unable to load' })));
+        setStats(prev => ({
+            ...prev,
+            browserData: browserParts.length > 0 ? browserParts.join(', ') : 'No data',
+        }));
     }, []);
 
-    const toggle = (key: ExportSectionKey) => {
-        setSelected(prev => {
-            const next = new Set(prev);
-            if (next.has(key)) {
-                next.delete(key);
-            } else {
-                next.add(key);
-            }
-            return next;
-        });
-    };
-
     const handleExport = async () => {
-        if (selected.size === 0) return;
         setExporting(true);
         setError(null);
         try {
-            const data = await buildExportData([...selected]);
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            downloadJSON(data, `ai-critic-settings-${timestamp}.json`);
+            await exportSettingsZip(includeBrowserData);
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
         }
         setExporting(false);
-    };
-
-    const getStat = (key: ExportSectionKey): string | undefined => stats[key as keyof SectionStats];
-    const getNote = (key: ExportSectionKey): string | undefined => {
-        if (key === 'git_configs') return 'Read from browser local storage';
-        return undefined;
     };
 
     return (
@@ -111,28 +102,44 @@ export function ExportPage() {
 
             <div className="export-page-card">
                 <p className="export-page-description">
-                    Select the configuration sections to export. The data will be saved as a JSON file.
+                    Export all configuration as a .zip file. This includes all files under the .ai-critic directory and Cloudflare credentials.
                 </p>
 
                 <div className="export-page-sections">
-                    {ALL_SECTIONS.map(s => (
-                        <label key={s.key} className="export-page-section-item">
-                            <input
-                                type="checkbox"
-                                checked={selected.has(s.key)}
-                                onChange={() => toggle(s.key)}
-                            />
-                            <div className="export-page-section-info">
-                                <span className="export-page-section-label">{s.label}</span>
-                                {getStat(s.key) && (
-                                    <span className="export-page-section-stat">{getStat(s.key)}</span>
-                                )}
-                                {getNote(s.key) && (
-                                    <span className="export-page-section-note">{getNote(s.key)}</span>
-                                )}
-                            </div>
-                        </label>
-                    ))}
+                    <div className="export-page-section-item export-page-section-item--always">
+                        <div className="export-page-section-info">
+                            <span className="export-page-section-label">.ai-critic/ directory</span>
+                            {stats.aiCriticFiles && (
+                                <span className="export-page-section-stat">{stats.aiCriticFiles}</span>
+                            )}
+                            <span className="export-page-section-note">Server credentials, encryption keys, domains, terminal config, etc.</span>
+                        </div>
+                    </div>
+
+                    <div className="export-page-section-item export-page-section-item--always">
+                        <div className="export-page-section-info">
+                            <span className="export-page-section-label">Cloudflare credentials</span>
+                            {stats.cloudflareFiles && (
+                                <span className="export-page-section-stat">{stats.cloudflareFiles}</span>
+                            )}
+                            <span className="export-page-section-note">Files from ~/.cloudflared/ (cert.pem, tunnel JSONs)</span>
+                        </div>
+                    </div>
+
+                    <label className="export-page-section-item">
+                        <input
+                            type="checkbox"
+                            checked={includeBrowserData}
+                            onChange={() => setIncludeBrowserData(prev => !prev)}
+                        />
+                        <div className="export-page-section-info">
+                            <span className="export-page-section-label">Browser Data (Git Configs)</span>
+                            {stats.browserData && (
+                                <span className="export-page-section-stat">{stats.browserData}</span>
+                            )}
+                            <span className="export-page-section-note">SSH keys, GitHub token, git user config from browser storage</span>
+                        </div>
+                    </label>
                 </div>
 
                 {error && <div className="export-page-error">{error}</div>}
@@ -141,9 +148,9 @@ export function ExportPage() {
                     <button
                         className="export-page-btn export-page-btn--primary"
                         onClick={handleExport}
-                        disabled={selected.size === 0 || exporting}
+                        disabled={exporting}
                     >
-                        {exporting ? 'Exporting...' : 'Export'}
+                        {exporting ? 'Exporting...' : 'Export .zip'}
                     </button>
                     <button
                         className="export-page-btn export-page-btn--secondary"

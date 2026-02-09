@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchCloudflareStatus, cloudflareLogin, fetchTunnels, createTunnel, deleteTunnel } from '../../../../api/cloudflare';
+import { fetchCloudflareStatus, cloudflareLogin, fetchTunnels, createTunnel, deleteTunnel, fetchOwnedDomains, saveOwnedDomains } from '../../../../api/cloudflare';
 import type { CloudflareStatus, TunnelInfo } from '../../../../api/cloudflare';
 import { consumeSSEStream } from '../../../../api/sse';
 import { LogViewer } from '../../../LogViewer';
 import type { LogLine } from '../../../LogViewer';
-import { fetchDomains, saveDomains, fetchRandomDomain } from '../../../../api/domains';
-import type { DomainEntry } from '../../../../api/domains';
+import { fetchRandomDomain } from '../../../../api/domains';
 import './CloudflareSettingsView.css';
 
 /** Embeddable Cloudflare settings content (no page header) */
@@ -58,11 +57,7 @@ export function CloudflareSettingsContent() {
     const loadUserDomains = async () => {
         setDomainsLoading(true);
         try {
-            const data = await fetchDomains();
-            // Extract only the user's custom domains (filter out auto-generated ones)
-            const domains = data.domains
-                .filter(d => !d.domain.includes('trycloudflare.com') && !d.domain.includes('loca.lt'))
-                .map(d => d.domain);
+            const domains = await fetchOwnedDomains();
             setUserDomains(domains);
         } catch (err) {
             setDomainsError(String(err));
@@ -170,8 +165,7 @@ export function CloudflareSettingsContent() {
         
         try {
             const updatedDomains = [...userDomains, domain];
-            const domainEntries: DomainEntry[] = updatedDomains.map(d => ({ domain: d, provider: 'cloudflare' }));
-            await saveDomains({ domains: domainEntries });
+            await saveOwnedDomains(updatedDomains);
             setUserDomains(updatedDomains);
             setNewDomain('');
         } catch (err) {
@@ -185,8 +179,7 @@ export function CloudflareSettingsContent() {
         
         try {
             const updatedDomains = userDomains.filter(d => d !== domain);
-            const domainEntries: DomainEntry[] = updatedDomains.map(d => ({ domain: d, provider: 'cloudflare' }));
-            await saveDomains({ domains: domainEntries });
+            await saveOwnedDomains(updatedDomains);
             setUserDomains(updatedDomains);
         } catch (err) {
             setDomainsError(err instanceof Error ? err.message : String(err));

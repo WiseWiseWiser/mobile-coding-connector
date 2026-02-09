@@ -7,11 +7,9 @@ import {
 } from '../../../api/checkpoints';
 import type { CheckpointSummary, ChangedFile, FileDiff } from '../../../api/checkpoints';
 import { gitFetchStream } from '../../../api/review';
-import { consumeSSEStream } from '../../../api/sse';
 import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypto';
 import { DiffViewer } from '../../DiffViewer';
-import { LogViewer } from '../../LogViewer';
-import type { LogLine } from '../../LogViewer';
+import { StreamingActionButton } from '../../StreamingActionButton';
 import { statusBadge } from './utils';
 import './FilesView.css';
 
@@ -31,11 +29,8 @@ export function CheckpointListView({ projectName, projectDir, sshKeyId, onCreate
     const [loading, setLoading] = useState(true);
     const [showDiffs, setShowDiffs] = useState(false);
     const [loadingDiffs, setLoadingDiffs] = useState(false);
-    const [fetching, setFetching] = useState(false);
-    const [fetchResult, setFetchResult] = useState<{ ok: boolean; message: string } | null>(null);
-    const [fetchLogs, setFetchLogs] = useState<LogLine[]>([]);
-    const [showFetchLogs, setShowFetchLogs] = useState(false);
     const [deletingCheckpointId, setDeletingCheckpointId] = useState<number | null>(null);
+    const [encryptionError, setEncryptionError] = useState<string | null>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -80,42 +75,19 @@ export function CheckpointListView({ projectName, projectDir, sshKeyId, onCreate
         setDeletingCheckpointId(null);
     };
 
-    const handleGitPull = async () => {
-        setFetching(true);
-        setFetchResult(null);
-        setFetchLogs([]);
-        setShowFetchLogs(true);
+    const createGitPullAction = async () => {
+        setEncryptionError(null);
+        let encryptedKey: string | undefined;
         try {
-            let encryptedSshKey: string | undefined;
-            try {
-                encryptedSshKey = await encryptProjectSSHKey(sshKeyId);
-            } catch (err) {
-                if (err instanceof EncryptionNotAvailableError) {
-                    setFetchResult({ ok: false, message: 'Server encryption keys not configured. Ask the server admin to run: go run ./script/crypto/gen' });
-                    setFetching(false);
-                    return;
-                }
+            encryptedKey = await encryptProjectSSHKey(sshKeyId);
+        } catch (err) {
+            if (err instanceof EncryptionNotAvailableError) {
+                setEncryptionError('Server encryption keys not configured.');
                 throw err;
             }
-
-            const response = await gitFetchStream(projectDir, encryptedSshKey);
-
-            await consumeSSEStream(response, {
-                onLog: (logLine) => setFetchLogs(prev => [...prev, logLine]),
-                onError: (logLine) => setFetchLogs(prev => [...prev, logLine]),
-                onDone: (message, data) => {
-                    if (data.success === 'true') {
-                        setFetchResult({ ok: true, message: message || 'Pull completed successfully' });
-                    } else {
-                        setFetchResult({ ok: false, message: message || 'Pull failed' });
-                    }
-                },
-            });
-        } catch (err: any) {
-            setFetchResult({ ok: false, message: err.message || 'Pull failed' });
-        } finally {
-            setFetching(false);
+            throw err;
         }
+        return gitFetchStream(projectDir, encryptedKey);
     };
 
     const hasChanges = currentChanges.length > 0;
@@ -208,23 +180,15 @@ export function CheckpointListView({ projectName, projectDir, sshKeyId, onCreate
                         >
                             Git Commit
                         </button>
-                        <button
+                        <StreamingActionButton
+                            label="Git Pull"
+                            runningLabel="Pulling..."
+                            action={createGitPullAction}
                             className="mcc-git-commit-nav-btn mcc-git-fetch-btn"
-                            onClick={handleGitPull}
-                            disabled={fetching}
-                        >
-                            {fetching ? 'Pulling...' : 'Git Pull'}
-                        </button>
+                        />
                     </div>
-                    {showFetchLogs && fetchLogs.length > 0 && (
-                        <div style={{ margin: '8px 0' }}>
-                            <LogViewer lines={fetchLogs} maxHeight={150} />
-                        </div>
-                    )}
-                    {fetchResult && (
-                        <div className={`mcc-git-fetch-result ${fetchResult.ok ? 'success' : 'error'}`}>
-                            {fetchResult.message || 'Fetch completed successfully'}
-                        </div>
+                    {encryptionError && (
+                        <div className="mcc-git-fetch-result error">{encryptionError}</div>
                     )}
                 </>
             )}

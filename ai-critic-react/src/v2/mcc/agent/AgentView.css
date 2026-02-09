@@ -336,6 +336,27 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.mcc-agent-card-settings-icon {
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s, background 0.2s;
+    flex-shrink: 0;
+}
+
+.mcc-agent-card-settings-icon:hover {
+    color: #e2e8f0;
+    background: rgba(148, 163, 184, 0.1);
 }
 
 .mcc-agent-card-name {

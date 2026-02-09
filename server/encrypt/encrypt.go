@@ -15,10 +15,8 @@ import (
 	"sync"
 
 	"golang.org/x/crypto/ssh"
-)
 
-const (
-	defaultPrivateKeyFile = ".ai-critic/enc-key"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
 var (
@@ -29,7 +27,7 @@ var (
 	keysMu        sync.Mutex // protects key generation and reload
 
 	keyFileMu      sync.RWMutex
-	privateKeyFile = defaultPrivateKeyFile
+	privateKeyFile = config.EncKeyFile
 )
 
 // SetKeyFile sets the path to the encryption private key file.

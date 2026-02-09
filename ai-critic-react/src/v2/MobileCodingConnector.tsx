@@ -34,47 +34,9 @@ export function MobileCodingConnector() {
     const {
         projectsList, projectsLoading,
         currentProject, setCurrentProject,
-        setTerminalTabs,
-        setActiveTerminalTabId,
-        setTerminalSessionsLoaded,
     } = useV2Context();
 
     const terminalManagerRef = useRef<TerminalManagerHandle>(null);
-
-    // Fetch terminal sessions on mount (only once)
-    useEffect(() => {
-        let ignore = false;
-
-        fetchTerminalSessions()
-            .then((sessions) => {
-                if (ignore) return;
-                if (sessions.length === 0) {
-                    const defaultTab = { id: 'term-1', name: 'Terminal 1' };
-                    setTerminalTabs([defaultTab]);
-                    setActiveTerminalTabId(defaultTab.id);
-                    setTerminalSessionsLoaded(true);
-                    return;
-                }
-                const restoredTabs = sessions.map(s => ({
-                    id: `term-${s.id}`,
-                    name: s.name,
-                    cwd: s.cwd,
-                    sessionId: s.id,
-                }));
-                setTerminalTabs(restoredTabs);
-                setActiveTerminalTabId(restoredTabs[0].id);
-                setTerminalSessionsLoaded(true);
-            })
-            .catch(() => {
-                if (ignore) return;
-                const defaultTab = { id: 'term-1', name: 'Terminal 1' };
-                setTerminalTabs([defaultTab]);
-                setActiveTerminalTabId(defaultTab.id);
-                setTerminalSessionsLoaded(true);
-            });
-
-        return () => { ignore = true; };
-    }, []);
 
     // Restore project from URL on mount
     useEffect(() => {
@@ -117,7 +79,8 @@ export function MobileCodingConnector() {
 
     const handleSelectProject = (project: ProjectInfo) => {
         setCurrentProject(project);
-        navigate(`/project/${encodeURIComponent(project.name)}/${NavTabs.Agent}`);
+        // Just update the URL to reflect the project selection, stay on current tab
+        navigate(`/project/${encodeURIComponent(project.name)}/home`);
     };
 
     const handleTabChange = (tab: NavTab) => {
@@ -190,6 +153,7 @@ export function MobileCodingConnector() {
                         <TerminalManager 
                             ref={terminalManagerRef} 
                             isVisible={activeTab === NavTabs.Terminal}
+                            loadSessions={fetchTerminalSessions}
                         />
                     </div>
                     {/* Other tab content */}

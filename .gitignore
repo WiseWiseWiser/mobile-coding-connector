@@ -9,7 +9,7 @@ dist
 
 /cloudflared
 /rules
-/ai-critic-server-linux-amd64
+/ai-critic-server-linux-amd64*
 
 .server-credentials
 .server-domains.json

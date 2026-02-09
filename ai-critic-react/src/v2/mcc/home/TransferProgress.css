@@ -37,6 +37,46 @@
     color: #94a3b8;
 }
 
+/* Chunk progress */
+.transfer-progress-chunk {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.transfer-progress-chunk-label {
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+.transfer-progress-chunk-bar-bg {
+    height: 4px;
+    background: #1e293b;
+    border-radius: 2px;
+    overflow: hidden;
+    border: 1px solid #334155;
+}
+
+.transfer-progress-chunk-bar {
+    height: 100%;
+    background: #22c55e;
+    border-radius: 2px;
+    transition: width 0.1s ease;
+}
+
+/* Merging indicator */
+.transfer-progress-merging {
+    font-size: 13px;
+    color: #eab308;
+    font-weight: 500;
+    animation: transfer-progress-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes transfer-progress-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
 .transfer-progress-speed {
     display: flex;
     justify-content: space-between;

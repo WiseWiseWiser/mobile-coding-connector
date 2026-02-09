@@ -9,12 +9,12 @@ import (
 	"strings"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
-const (
-	cookieName      = "ai-critic-token"
-	credentialsFile = ".ai-critic/server-credentials"
-)
+const cookieName = "ai-critic-token"
+
+var credentialsFile = config.CredentialsFile
 
 var help = fmt.Sprintf(`Usage: go run ./script/request <path> [body]
 

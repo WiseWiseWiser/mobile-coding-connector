@@ -52,7 +52,14 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
                             project={project}
                             isActive={project.name === currentProject?.name}
                             onSelect={() => onSelectProject(project)}
-                            onConfigure={() => navigate(`project-config/${project.id}`)}
+                            onOpen={() => {
+                                // Use pushView which records current path in history before navigating
+                                // The view path is relative to the tab base, so we pass the project path
+                                // This will record /home in history and navigate to /project/:name
+                                // But since /project/:name is outside the tab structure, we need to handle it differently
+                                // For now, just navigate directly - the goBack in ProjectConfigView will go to /home
+                                navigate(`/project/${encodeURIComponent(project.name)}`);
+                            }}
                             onRemove={() => handleRemoveProject(project.id)}
                         />
                     ))}
@@ -87,11 +94,11 @@ interface ProjectCardProps {
     project: ProjectInfo;
     isActive: boolean;
     onSelect: () => void;
-    onConfigure: () => void;
+    onOpen: () => void;
     onRemove: () => void;
 }
 
-function ProjectCard({ project, isActive, onSelect, onConfigure, onRemove }: ProjectCardProps) {
+function ProjectCard({ project, isActive, onSelect, onOpen, onRemove }: ProjectCardProps) {
     const createdDate = new Date(project.created_at).toLocaleDateString();
 
     return (
@@ -108,8 +115,7 @@ function ProjectCard({ project, isActive, onSelect, onConfigure, onRemove }: Pro
                 <span>{createdDate}</span>
             </div>
             <div className="mcc-port-actions" style={{ marginTop: 8 }}>
-                <button className="mcc-port-action-btn" onClick={e => { e.stopPropagation(); onSelect(); }}>Open</button>
-                <button className="mcc-port-action-btn" onClick={e => { e.stopPropagation(); onConfigure(); }}>Configure</button>
+                <button className="mcc-port-action-btn" onClick={e => { e.stopPropagation(); onOpen(); }}>Open</button>
                 <button className="mcc-port-action-btn mcc-port-stop" onClick={e => { e.stopPropagation(); onRemove(); }}>Remove</button>
             </div>
         </div>

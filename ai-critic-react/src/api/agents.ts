@@ -85,11 +85,21 @@ export async function fetchAgentSessionsPaginated(page: number = 1, pageSize: nu
     return resp.json();
 }
 
-export async function launchAgentSession(agentId: string, projectDir: string): Promise<AgentSessionInfo> {
+export interface LaunchAgentOptions {
+    agentId: string;
+    projectDir: string;
+    apiKey?: string; // Optional API key (e.g., for cursor-agent)
+}
+
+export async function launchAgentSession(agentId: string, projectDir: string, apiKey?: string): Promise<AgentSessionInfo> {
+    const body: Record<string, string> = { agent_id: agentId, project_dir: projectDir };
+    if (apiKey) {
+        body.api_key = apiKey;
+    }
     const resp = await fetch('/api/agents/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent_id: agentId, project_dir: projectDir }),
+        body: JSON.stringify(body),
     });
     if (!resp.ok) {
         const text = await resp.text();
@@ -311,4 +321,61 @@ export async function fetchAgentTemplates(sessionId: string): Promise<AgentTempl
     const resp = await fetch(`${agentProxyBase(sessionId)}/templates`);
     const data = await resp.json();
     return Array.isArray(data) ? data : [];
+}
+
+// ---- Agent Path Configuration ----
+
+export interface AgentPathConfig {
+    binary_path?: string;
+}
+
+export interface AgentsPathConfig {
+    agents: Record<string, AgentPathConfig>;
+}
+
+export async function fetchAgentPathConfig(agentId: string): Promise<AgentPathConfig> {
+    const resp = await fetch(`/api/agents/config?agent_id=${encodeURIComponent(agentId)}`);
+    return resp.json();
+}
+
+export async function updateAgentPathConfig(agentId: string, binaryPath: string): Promise<void> {
+    const resp = await fetch(`/api/agents/config?agent_id=${encodeURIComponent(agentId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ binary_path: binaryPath }),
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || 'Failed to update agent config');
+    }
+}
+
+
+export interface AgentEffectivePath {
+    effective_path: string;
+    found: boolean;
+    error: string;
+}
+
+export async function fetchAgentEffectivePath(agentId: string): Promise<AgentEffectivePath> {
+    const resp = await fetch(`/api/agents/effective-path?agent_id=${encodeURIComponent(agentId)}`);
+    return resp.json();
+}
+
+// ---- OpenCode Auth Status ----
+
+export interface OpencodeAuthProvider {
+    name: string;
+    has_api_key: boolean;
+}
+
+export interface OpencodeAuthStatus {
+    authenticated: boolean;
+    providers: OpencodeAuthProvider[];
+    config_path: string;
+}
+
+export async function fetchOpencodeAuthStatus(): Promise<OpencodeAuthStatus> {
+    const resp = await fetch('/api/agents/opencode/auth');
+    return resp.json();
 }

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { usePortForwards } from '../hooks/usePortForwards';
 import type { UsePortForwardsReturn } from '../hooks/usePortForwards';
 import { useLocalPorts } from '../hooks/useLocalPorts';
@@ -9,14 +9,7 @@ import { fetchDiagnostics as apiFetchDiagnostics } from '../api/ports';
 import type { DiagnosticsData } from '../api/ports';
 import { fetchAgents } from '../api/agents';
 import type { AgentDef, AgentSessionInfo } from '../api/agents';
-
-interface TerminalTab {
-    id: string;
-    name: string;
-    cwd?: string;
-    initialCommand?: string;
-    sessionId?: string;
-}
+import type { NavTab } from './mcc/types';
 
 interface V2ContextValue {
     // Projects
@@ -37,17 +30,16 @@ interface V2ContextValue {
     // Agent session state (lifted up to persist across tab switches)
     agents: AgentDef[];
     agentsLoading: boolean;
+    refreshAgents: () => void;
     agentSessions: Record<string, AgentSessionInfo>;
     setAgentSession: (agentId: string, session: AgentSessionInfo | null) => void;
     agentLaunchError: string;
     setAgentLaunchError: (error: string) => void;
-    // Terminal state (lifted up to persist across tab switches)
-    terminalTabs: TerminalTab[];
-    setTerminalTabs: (tabs: TerminalTab[]) => void;
-    activeTerminalTabId: string;
-    setActiveTerminalTabId: (id: string) => void;
-    terminalSessionsLoaded: boolean;
-    setTerminalSessionsLoaded: (loaded: boolean) => void;
+    // Per-tab navigation history
+    tabHistories: Record<NavTab, string[]>;
+    pushTabHistory: (tab: NavTab, path: string) => void;
+    popTabHistory: (tab: NavTab) => string | undefined;
+    clearTabHistory: (tab: NavTab) => void;
 }
 
 const V2Ctx = createContext<V2ContextValue | null>(null);
@@ -115,16 +107,46 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
         });
     };
 
-    useEffect(() => {
+    const refreshAgents = () => {
+        setAgentsLoading(true);
         fetchAgents()
             .then(data => { setAgents(data); setAgentsLoading(false); })
             .catch(() => setAgentsLoading(false));
+    };
+
+    useEffect(() => {
+        refreshAgents();
     }, []);
 
-    // Terminal state (lifted up to persist across tab switches)
-    const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([]);
-    const [activeTerminalTabId, setActiveTerminalTabId] = useState('');
-    const [terminalSessionsLoaded, setTerminalSessionsLoaded] = useState(false);
+    // Per-tab navigation history
+    const [tabHistories, setTabHistories] = useState<Record<NavTab, string[]>>({} as Record<NavTab, string[]>);
+
+    const pushTabHistory = useCallback((tab: NavTab, path: string) => {
+        setTabHistories(prev => ({
+            ...prev,
+            [tab]: [...(prev[tab] || []), path],
+        }));
+    }, []);
+
+    const popTabHistory = useCallback((tab: NavTab): string | undefined => {
+        // Get the current value synchronously before updating
+        const history = tabHistories[tab] || [];
+        if (history.length === 0) return undefined;
+        
+        const popped = history[history.length - 1];
+        setTabHistories(prev => ({
+            ...prev,
+            [tab]: (prev[tab] || []).slice(0, -1),
+        }));
+        return popped;
+    }, [tabHistories]);
+
+    const clearTabHistory = useCallback((tab: NavTab) => {
+        setTabHistories(prev => ({
+            ...prev,
+            [tab]: [],
+        }));
+    }, []);
 
     return (
         <V2Ctx.Provider value={{
@@ -140,16 +162,15 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
             refreshDiagnostics,
             agents,
             agentsLoading,
+            refreshAgents,
             agentSessions,
             setAgentSession,
             agentLaunchError,
             setAgentLaunchError,
-            terminalTabs,
-            setTerminalTabs,
-            activeTerminalTabId,
-            setActiveTerminalTabId,
-            terminalSessionsLoaded,
-            setTerminalSessionsLoaded,
+            tabHistories,
+            pushTabHistory,
+            popTabHistory,
+            clearTabHistory,
         }}>
             {children}
         </V2Ctx.Provider>

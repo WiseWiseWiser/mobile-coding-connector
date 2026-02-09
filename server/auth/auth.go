@@ -11,16 +11,15 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
-const (
-	cookieName             = "ai-critic-token"
-	defaultCredentialsFile = ".ai-critic/server-credentials"
-)
+const cookieName = "ai-critic-token"
 
 var (
 	credentialsFileMu   sync.RWMutex
-	credentialsFilePath = defaultCredentialsFile
+	credentialsFilePath = config.CredentialsFile
 )
 
 // SetCredentialsFile sets the path to the credentials file.

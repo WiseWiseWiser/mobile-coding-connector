@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useCurrent } from '../../../hooks/useCurrent';
 import '@xterm/xterm/css/xterm.css';
 import { useTerminal } from '../../../hooks/useTerminal';
 import type { TerminalTheme } from '../../../hooks/useTerminal';
-import { deleteTerminalSession } from '../../../api/terminal';
+import { useTerminalTabs } from '../../../hooks/useTerminalTabs';
 import { useV2Context } from '../../V2Context';
 import './TerminalManager.css';
 
@@ -32,57 +32,52 @@ const v2Theme: TerminalTheme = {
     brightWhite: '#ffffff',
 };
 
-export interface TerminalTab {
-    id: string;
-    name: string;
-    cwd?: string;
-    initialCommand?: string;
-    /** Backend session ID, set after session is created or when restoring */
-    sessionId?: string;
-}
-
+// Re-export TerminalTab type for consumers
 interface TerminalManagerProps {
     isVisible: boolean;
+    /** Async function to load initial sessions. If provided, sessions will be loaded via this function. */
+    loadSessions?: () => Promise<Array<{ id: string; name: string; cwd?: string }>>;
 }
 
-/** Return the next unique "Terminal N" name that doesn't collide with existing names. */
-function getNextTerminalName(existingNames: string[]): string {
-    const nameSet = new Set(existingNames);
-    let num = 1;
-    while (nameSet.has(`Terminal ${num}`)) {
-        num++;
-    }
-    return `Terminal ${num}`;
+
+interface TerminalInstanceHandle {
+    fit: () => void;
+    focus: () => void;
 }
 
 // Individual terminal instance component
-function TerminalInstance({
-    id,
-    isActive,
-    cwd,
-    name,
-    initialCommand,
-    sessionId,
-    onConnectionChange,
-    onReconnectRef,
-    onSessionId,
-    onCloseTab,
-}: {
+const TerminalInstance = forwardRef<TerminalInstanceHandle, {
     id: string;
     isActive: boolean;
     cwd?: string;
     name?: string;
     initialCommand?: string;
     sessionId?: string;
+    autoFocus?: boolean;
     onConnectionChange: (connected: boolean) => void;
     onReconnectRef: (reconnect: (() => void) | null) => void;
     onSessionId: (sessionId: string) => void;
     onCloseTab: () => void;
-}) {
+    onAutoFocusHandled: () => void;
+}>(function TerminalInstance({
+    id,
+    isActive,
+    cwd,
+    name,
+    initialCommand,
+    sessionId,
+    autoFocus,
+    onConnectionChange,
+    onReconnectRef,
+    onSessionId,
+    onCloseTab,
+    onAutoFocusHandled,
+}, ref) {
     const [ctrlActive, setCtrlActive] = useState(false);
+    const autoFocusHandledRef = useRef(false);
 
     // Terminal is always active since parent keeps us mounted
-    const { terminalRef, connected, sendKey, reconnect, ctrlModeRef } = useTerminal(true, {
+    const { terminalRef, connected, sendKey, reconnect, fit, focus, ctrlModeRef } = useTerminal(true, {
         theme: v2Theme,
         cwd,
         name,
@@ -92,24 +87,34 @@ function TerminalInstance({
         onCloseRequest: onCloseTab,
         onCtrlModeConsumed: () => setCtrlActive(false),
     });
-    // Report connection status to parent
+
+    // Expose fit and focus methods to parent
+    useImperativeHandle(ref, () => ({
+        fit: () => setTimeout(() => fit(), 50),
+        focus,
+    }));
+
+    // Report connection status to parent and handle autoFocus
     const onConnectionChangeRef = useCurrent(onConnectionChange);
     const prevConnectedRef = useRef<boolean | null>(null);
-    useEffect(() => {
-        if (!isActive) return;
-        if (prevConnectedRef.current !== connected) {
-            prevConnectedRef.current = connected;
-            onConnectionChangeRef.current(connected);
+    const onAutoFocusHandledRef = useCurrent(onAutoFocusHandled);
+    if (isActive && prevConnectedRef.current !== connected) {
+        prevConnectedRef.current = connected;
+        onConnectionChangeRef.current(connected);
+        // Auto-focus when connection is established and autoFocus is requested
+        if (connected && autoFocus && !autoFocusHandledRef.current) {
+            autoFocusHandledRef.current = true;
+            focus();
+            onAutoFocusHandledRef.current();
         }
-    });
+    }
 
     // Report reconnect function to parent
     const onReconnectRefCb = useCurrent(onReconnectRef);
     const reconnectRef = useCurrent(reconnect);
-    useEffect(() => {
-        if (!isActive) return;
+    if (isActive) {
         onReconnectRefCb.current(reconnectRef.current);
-    });
+    }
 
     const handleCtrl = () => {
         const next = !ctrlModeRef.current;
@@ -155,75 +160,73 @@ function TerminalInstance({
             </div>
         </div>
     );
-}
+});
 
 export interface TerminalManagerHandle {
-    /** Open a new terminal tab, optionally in a given working directory and with an initial command */
+    /** Create a new terminal tab */
+    createTab: (options?: { name?: string; cwd?: string; initialCommand?: string; autoFocus?: boolean }) => void;
+    /** Open a new terminal tab (alias for createTab with specific params) */
     openTab: (name: string, cwd?: string, initialCommand?: string) => void;
+    /** Refit the active terminal. Call this when the terminal container becomes visible. */
+    fitActive: () => void;
 }
 
-export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManagerProps>(function TerminalManager(_props, ref) {
+export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManagerProps>(function TerminalManager({ isVisible, loadSessions }, ref) {
+    const { currentProject } = useV2Context();
+
+    // Use the unified terminal tabs hook
     const {
-        terminalTabs,
-        setTerminalTabs,
-        activeTerminalTabId,
-        setActiveTerminalTabId,
-        terminalSessionsLoaded,
-    } = useV2Context();
+        tabs,
+        activeTabId,
+        loading,
+        error,
+        setActiveTabId,
+        createTab,
+        closeTab,
+        setTabSessionId,
+        clearAutoFocus,
+        ensureLoaded,
+    } = useTerminalTabs({
+        loadSessions,
+        defaultCwd: currentProject?.dir,
+    });
+
+    // Trigger loading when component becomes visible
+    useEffect(() => {
+        if (isVisible) {
+            ensureLoaded();
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isVisible]);
 
     const [activeConnected, setActiveConnected] = useState(false);
     const activeReconnectRef = useRef<(() => void) | null>(null);
+    
+    // Store refs to terminal instances for imperative fit calls
+    const terminalRefsMap = useRef<Record<string, TerminalInstanceHandle | null>>({});
 
-    const handleAddTab = () => {
-        const newId = `term-${Date.now()}`;
-        const newName = getNextTerminalName(terminalTabs.map(t => t.name));
-        setTerminalTabs([...terminalTabs, { id: newId, name: newName }]);
-        setActiveTerminalTabId(newId);
-    };
-
-    const handleOpenTab = (name: string, cwd?: string, initialCommand?: string) => {
-        const newId = `term-${Date.now()}`;
-        setTerminalTabs([...terminalTabs, { id: newId, name, cwd, initialCommand }]);
-        setActiveTerminalTabId(newId);
-    };
+    // Ref for imperative handle
+    const activeTabIdRef = useCurrent(activeTabId);
 
     useImperativeHandle(ref, () => ({
-        openTab: handleOpenTab,
+        createTab,
+        openTab: (name: string, cwd?: string, initialCommand?: string) => {
+            createTab({ name, cwd, initialCommand });
+        },
+        fitActive: () => {
+            const activeId = activeTabIdRef.current;
+            if (activeId) {
+                terminalRefsMap.current[activeId]?.fit();
+            }
+        },
     }));
 
-    const handleCloseTab = (tabId: string) => {
-        // Find the tab to get its session ID for cleanup
-        const tab = terminalTabs.find(t => t.id === tabId);
-        if (tab?.sessionId) {
-            deleteTerminalSession(tab.sessionId).catch(() => { });
-        }
-
-        // If it's the last tab, replace it with a fresh one
-        if (terminalTabs.length <= 1) {
-            const newId = `term-${Date.now()}`;
-            const newName = getNextTerminalName([]);
-            setTerminalTabs([{ id: newId, name: newName }]);
-            setActiveTerminalTabId(newId);
-            return;
-        }
-
-        const tabIndex = terminalTabs.findIndex(t => t.id === tabId);
-        const newTabs = terminalTabs.filter(t => t.id !== tabId);
-        setTerminalTabs(newTabs);
-
-        // If closing active tab, switch to adjacent tab
-        if (activeTerminalTabId === tabId) {
-            const newActiveIndex = Math.min(tabIndex, newTabs.length - 1);
-            setActiveTerminalTabId(newTabs[newActiveIndex].id);
-        }
+    const handleAddTab = () => {
+        createTab();
     };
 
-    const handleSessionId = (tabId: string, sessionId: string) => {
-        setTerminalTabs(terminalTabs.map(t => t.id === tabId ? { ...t, sessionId } : t));
-    };
-
-    // Don't render terminals until sessions are loaded to avoid creating duplicate sessions
-    if (!terminalSessionsLoaded) {
+    // Show loading state while sessions are being fetched
+    if (loading) {
         return (
             <div className="terminal-manager">
                 <div className="terminal-manager-header">
@@ -241,23 +244,56 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
         );
     }
 
+    // Show empty state with "New Terminal" button when no tabs exist
+    if (tabs.length === 0) {
+        return (
+            <div className="terminal-manager">
+                <div className="terminal-manager-header">
+                    <div className="terminal-tabs-container">
+                        <button className="terminal-tab-add" onClick={handleAddTab} title="New Terminal">
+                            + New Terminal
+                        </button>
+                    </div>
+                    <div className="terminal-connection-status disconnected">
+                        <span className="status-dot">○</span>
+                        <span className="status-text">No terminals</span>
+                    </div>
+                </div>
+                <div className="terminal-empty-state">
+                    {error ? (
+                        <p className="terminal-error">Error: {error}</p>
+                    ) : (
+                        <p>No terminal sessions</p>
+                    )}
+                    <button className="terminal-empty-state-btn" onClick={handleAddTab}>
+                        Create New Terminal
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="terminal-manager">
             <div className="terminal-manager-header">
                 <div className="terminal-tabs-container">
-                    {terminalTabs.map(tab => (
+                    {tabs.map(tab => (
                         <div
                             key={tab.id}
-                            className={`terminal-tab-item ${activeTerminalTabId === tab.id ? 'active' : ''}`}
-                            onClick={() => setActiveTerminalTabId(tab.id)}
+                            className={`terminal-tab-item ${activeTabId === tab.id ? 'active' : ''}`}
+                            onClick={() => {
+                                setActiveTabId(tab.id);
+                                // Refit terminal when switching tabs
+                                terminalRefsMap.current[tab.id]?.fit();
+                            }}
                         >
                             <span className="terminal-tab-name">{tab.name}</span>
-                            {terminalTabs.length > 1 && (
+                            {tabs.length > 1 && (
                                 <button
                                     className="terminal-tab-close"
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        handleCloseTab(tab.id);
+                                        closeTab(tab.id);
                                     }}
                                 >
                                     ×
@@ -286,19 +322,22 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
                 )}
             </div>
             <div className="terminal-instances-container">
-                {terminalTabs.map(tab => (
+                {tabs.map(tab => (
                     <TerminalInstance
                         key={tab.id}
+                        ref={(handle) => { terminalRefsMap.current[tab.id] = handle; }}
                         id={tab.id}
-                        isActive={activeTerminalTabId === tab.id}
+                        isActive={activeTabId === tab.id}
                         cwd={tab.cwd}
                         name={tab.name}
                         initialCommand={tab.initialCommand}
                         sessionId={tab.sessionId}
+                        autoFocus={tab.autoFocus}
                         onConnectionChange={setActiveConnected}
-                        onReconnectRef={(fn) => { if (activeTerminalTabId === tab.id) activeReconnectRef.current = fn; }}
-                        onSessionId={(sid) => handleSessionId(tab.id, sid)}
-                        onCloseTab={() => handleCloseTab(tab.id)}
+                        onReconnectRef={(fn) => { if (activeTabId === tab.id) activeReconnectRef.current = fn; }}
+                        onSessionId={(sid) => setTabSessionId(tab.id, sid)}
+                        onCloseTab={() => closeTab(tab.id)}
+                        onAutoFocusHandled={() => clearAutoFocus(tab.id)}
                     />
                 ))}
             </div>

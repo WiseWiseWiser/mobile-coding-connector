@@ -16,12 +16,12 @@ export function SessionListRoute() {
             <AgentPicker
                 agents={ctx.agents}
                 loading={ctx.agentsLoading}
-                projectName={ctx.projectName}
                 launchError={ctx.launchError}
                 sessions={ctx.sessions}
                 onLaunchHeadless={ctx.onLaunchHeadless}
                 onOpenSessions={(aid) => ctx.navigateToView(aid)}
                 onStopAgent={ctx.onStopAgent}
+                onConfigureAgent={(aid) => ctx.navigateToView(`${aid}/settings`)}
             />
         );
     }

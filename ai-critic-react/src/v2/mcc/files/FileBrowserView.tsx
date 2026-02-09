@@ -1,18 +1,23 @@
 import { useState, useEffect } from 'react';
 import { fetchFiles } from '../../../api/checkpoints';
 import type { FileEntry } from '../../../api/checkpoints';
+import { runGitOpByDir, GitOps } from '../../../api/projects';
+import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypto';
+import { StreamingActionButton } from '../../StreamingActionButton';
 import './FilesView.css';
 
 export interface FileBrowserViewProps {
     projectDir: string;
     currentPath: string;
+    sshKeyId?: string;
     onNavigate: (path: string) => void;
     onViewFile: (path: string) => void;
 }
 
-export function FileBrowserView({ projectDir, currentPath, onNavigate, onViewFile }: FileBrowserViewProps) {
+export function FileBrowserView({ projectDir, currentPath, sshKeyId, onNavigate, onViewFile }: FileBrowserViewProps) {
     const [entries, setEntries] = useState<FileEntry[]>([]);
     const [loading, setLoading] = useState(true);
+    const [encryptionError, setEncryptionError] = useState<string | null>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -20,6 +25,21 @@ export function FileBrowserView({ projectDir, currentPath, onNavigate, onViewFil
             .then(data => { setEntries(data); setLoading(false); })
             .catch(() => setLoading(false));
     }, [projectDir, currentPath]);
+
+    const createGitAction = (op: typeof GitOps.Pull | typeof GitOps.Push) => async () => {
+        setEncryptionError(null);
+        let encryptedKey: string | undefined;
+        try {
+            encryptedKey = await encryptProjectSSHKey(sshKeyId);
+        } catch (err) {
+            if (err instanceof EncryptionNotAvailableError) {
+                setEncryptionError('Server encryption keys not configured.');
+                throw err;
+            }
+            throw err;
+        }
+        return runGitOpByDir(op, projectDir, encryptedKey);
+    };
 
     const handleEntryClick = (entry: FileEntry) => {
         if (entry.is_dir) {
@@ -84,6 +104,25 @@ export function FileBrowserView({ projectDir, currentPath, onNavigate, onViewFil
                         </div>
                     ))}
                 </div>
+            )}
+
+            {/* Git Actions */}
+            <div className="mcc-git-actions">
+                <StreamingActionButton
+                    label="Git Pull"
+                    runningLabel="Pulling..."
+                    action={createGitAction(GitOps.Pull)}
+                    className="mcc-git-commit-nav-btn mcc-git-fetch-btn"
+                />
+                <StreamingActionButton
+                    label="Git Push"
+                    runningLabel="Pushing..."
+                    action={createGitAction(GitOps.Push)}
+                    className="mcc-git-commit-nav-btn"
+                />
+            </div>
+            {encryptionError && (
+                <div className="mcc-git-fetch-result error">{encryptionError}</div>
             )}
         </>
     );

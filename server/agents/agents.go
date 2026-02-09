@@ -124,6 +124,9 @@ func newSessionManager() *agentSessionManager {
 // RegisterAPI registers agent-related API endpoints
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents", handleListAgents)
+	mux.HandleFunc("/api/agents/config", handleAgentConfig)
+	mux.HandleFunc("/api/agents/effective-path", handleAgentEffectivePath)
+	mux.HandleFunc("/api/agents/opencode/auth", handleOpencodeAuth)
 	mux.HandleFunc("/api/agents/sessions", handleAgentSessions)
 	// Proxy: /api/agents/sessions/{sessionID}/proxy/... -> opencode server
 	mux.HandleFunc("/api/agents/sessions/", handleAgentSessionProxy)
@@ -141,7 +144,7 @@ func findFreePort() (int, error) {
 	return port, nil
 }
 
-func (m *agentSessionManager) launch(agentID, projectDir string) (*agentSession, error) {
+func (m *agentSessionManager) launch(agentID, projectDir, apiKey string) (*agentSession, error) {
 	// Find the agent def
 	var agentDef *AgentDef
 	for i := range agentDefs {
@@ -169,11 +172,11 @@ func (m *agentSessionManager) launch(agentID, projectDir string) (*agentSession,
 
 	// For cursor-agent, use the in-process adapter instead of an external HTTP server
 	if agentDef.ID == "cursor-agent" {
-		return m.launchCursorAdapter(id, agentDef, projectDir)
+		return m.launchCursorAdapter(id, agentDef, projectDir, apiKey)
 	}
 
-	// Check command is installed and get full path
-	cmdPath, err := tool_resolve.LookPath(agentDef.Command)
+	// Check command is installed and get full path (considering custom binary path)
+	cmdPath, err := getAgentBinaryPath(agentDef.ID, agentDef.Command)
 	if err != nil {
 		return nil, fmt.Errorf("agent %s is not installed (%s not found)", agentDef.Name, agentDef.Command)
 	}
@@ -248,8 +251,8 @@ func (m *agentSessionManager) launch(agentID, projectDir string) (*agentSession,
 }
 
 // launchCursorAdapter creates a cursor adapter session (no external process, in-process HTTP handler).
-func (m *agentSessionManager) launchCursorAdapter(id string, agentDef *AgentDef, projectDir string) (*agentSession, error) {
-	adapter, err := cursor.NewAdapter(projectDir, m.settingsStore)
+func (m *agentSessionManager) launchCursorAdapter(id string, agentDef *AgentDef, projectDir, apiKey string) (*agentSession, error) {
+	adapter, err := cursor.NewAdapter(projectDir, m.settingsStore, apiKey)
 	if err != nil {
 		return nil, err
 	}
@@ -482,11 +485,134 @@ func handleListAgents(w http.ResponseWriter, r *http.Request) {
 	copy(agents, agentDefs)
 
 	for i := range agents {
-		agents[i].Installed = tool_resolve.IsAvailable(agents[i].Command)
+		agents[i].Installed = isAgentInstalled(agents[i].ID, agents[i].Command)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(agents)
+}
+
+// isAgentInstalled checks if an agent is installed, considering custom binary paths
+func isAgentInstalled(agentID, defaultCommand string) bool {
+	// Check for custom binary path first
+	customPath := GetAgentBinaryPath(agentID)
+	if customPath != "" {
+		_, err := tool_resolve.LookPath(customPath)
+		return err == nil
+	}
+	// Fall back to default command
+	return tool_resolve.IsAvailable(defaultCommand)
+}
+
+// getAgentBinaryPath returns the binary path to use for an agent
+func getAgentBinaryPath(agentID, defaultCommand string) (string, error) {
+	// Check for custom binary path first
+	customPath := GetAgentBinaryPath(agentID)
+	if customPath != "" {
+		return tool_resolve.LookPath(customPath)
+	}
+	// Fall back to default command
+	return tool_resolve.LookPath(defaultCommand)
+}
+
+// handleOpencodeAuth returns the OpenCode authentication status
+func handleOpencodeAuth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	status, err := opencode.GetAuthStatus()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
+}
+
+// handleAgentEffectivePath returns the effective binary path for an agent
+func handleAgentEffectivePath(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	agentID := r.URL.Query().Get("agent_id")
+	if agentID == "" {
+		http.Error(w, "agent_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Find the agent definition to get the default command
+	var defaultCommand string
+	for _, def := range agentDefs {
+		if def.ID == agentID {
+			defaultCommand = def.Command
+			break
+		}
+	}
+	if defaultCommand == "" {
+		http.Error(w, "unknown agent", http.StatusNotFound)
+		return
+	}
+
+	// Get the effective path
+	effectivePath, err := getAgentBinaryPath(agentID, defaultCommand)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"effective_path": effectivePath,
+		"found":          err == nil,
+		"error":          func() string { if err != nil { return err.Error() }; return "" }(),
+	})
+}
+
+// handleAgentConfig handles GET/POST for agent configuration
+func handleAgentConfig(w http.ResponseWriter, r *http.Request) {
+	agentID := r.URL.Query().Get("agent_id")
+
+	switch r.Method {
+	case http.MethodGet:
+		// Return config for a specific agent or all agents
+		cfg, err := LoadConfig()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if agentID != "" {
+			agentCfg := cfg.Agents[agentID]
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(agentCfg)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(cfg)
+		}
+
+	case http.MethodPost:
+		// Update config for a specific agent
+		if agentID == "" {
+			http.Error(w, "agent_id is required", http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			BinaryPath string `json:"binary_path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if err := SetAgentBinaryPath(agentID, req.BinaryPath); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func handleAgentSessions(w http.ResponseWriter, r *http.Request) {
@@ -515,12 +641,13 @@ func handleAgentSessions(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			AgentID    string `json:"agent_id"`
 			ProjectDir string `json:"project_dir"`
+			APIKey     string `json:"api_key,omitempty"` // Optional API key for cursor-agent
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		s, err := sessionMgr.launch(req.AgentID, req.ProjectDir)
+		s, err := sessionMgr.launch(req.AgentID, req.ProjectDir, req.APIKey)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

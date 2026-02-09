@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { fetchAgentSettings, updateAgentSettings, fetchAgentTemplates } from '../../../api/agents';
 import type { AgentSessionInfo, AgentSettings, AgentTemplate } from '../../../api/agents';
 import { AgentChatHeader } from './AgentChatHeader';
+import { CursorApiKeyInput } from './CursorApiKeyInput';
 
 export interface CursorAgentSettingsProps {
     session: AgentSessionInfo;
@@ -47,6 +48,16 @@ export function CursorAgentSettings({ session, projectName, onBack }: CursorAgen
         }
     };
 
+    const handleApiKeySuccess = (message: string) => {
+        setError('');
+        setSuccess(message);
+    };
+
+    const handleApiKeyError = (message: string) => {
+        setSuccess('');
+        setError(message);
+    };
+
     return (
         <div className="mcc-agent-view">
             <AgentChatHeader agentName={session.agent_name} projectName={projectName} onBack={onBack} />
@@ -58,6 +69,14 @@ export function CursorAgentSettings({ session, projectName, onBack }: CursorAgen
                 <div className="mcc-agent-loading">Loading settings...</div>
             ) : (
                 <div className="mcc-agent-settings-form">
+                    {/* API Key Section */}
+                    <div style={{ marginBottom: 20 }}>
+                        <CursorApiKeyInput
+                            onSuccess={handleApiKeySuccess}
+                            onError={handleApiKeyError}
+                        />
+                    </div>
+
                     <div className="mcc-agent-settings-field">
                         <label className="mcc-agent-settings-label">
                             Prompt Append Message

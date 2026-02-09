@@ -1,22 +1,34 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useV2Context } from '../../V2Context';
-import { updateProject } from '../../../api/projects';
+import { useTabHistory } from '../../../hooks/useTabHistory';
+import { NavTabs } from '../types';
+import { updateProject, runGitOp, GitOps } from '../../../api/projects';
+import type { GitOp } from '../../../api/projects';
 import { loadSSHKeys } from './settings/gitStorage';
 import type { SSHKey } from './settings/gitStorage';
+import { encryptWithServerKey, EncryptionNotAvailableError } from './crypto';
+import { LogViewer } from '../../LogViewer';
 import { KeyIcon } from '../../icons';
 
 export function ProjectConfigView() {
+    const { projectName } = useParams<{ projectName: string }>();
     const navigate = useNavigate();
-    const { projectId } = useParams<{ projectId: string }>();
     const { projectsList, fetchProjects } = useV2Context();
+    // When going back from project config, always go to /home (project list)
+    const { goBack } = useTabHistory(NavTabs.Home, { defaultBackPath: '/home' });
 
-    const project = projectsList.find(p => p.id === projectId);
+    const project = projectsList.find(p => p.name === projectName);
     const [sshKeys, setSshKeys] = useState<SSHKey[]>([]);
     const [selectedKeyId, setSelectedKeyId] = useState('');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+
+    // Git operation state
+    const [gitRunning, setGitRunning] = useState<GitOp | null>(null);
+    const [gitLogs, setGitLogs] = useState<string[]>([]);
+    const [gitResult, setGitResult] = useState<{ status: string; message?: string; error?: string } | null>(null);
 
     useEffect(() => {
         const keys = loadSSHKeys();
@@ -30,7 +42,7 @@ export function ProjectConfigView() {
         return (
             <div className="mcc-workspace-list">
                 <div className="mcc-section-header">
-                    <button className="mcc-back-btn" onClick={() => navigate(-1)}>&larr;</button>
+                    <button className="mcc-back-btn" onClick={goBack}>&larr;</button>
                     <h2>Project Not Found</h2>
                 </div>
                 <div className="mcc-ports-empty">Project not found.</div>
@@ -75,12 +87,94 @@ export function ProjectConfigView() {
         }
     };
 
+    const handleGitOp = async (op: GitOp) => {
+        setGitRunning(op);
+        setGitLogs([]);
+        setGitResult(null);
+
+        // Prepare SSH key if the project uses one
+        let sshKey: string | undefined;
+        if (project.use_ssh && project.ssh_key_id) {
+            const key = sshKeys.find(k => k.id === project.ssh_key_id);
+            if (key) {
+                try {
+                    sshKey = await encryptWithServerKey(key.privateKey);
+                } catch (err) {
+                    if (err instanceof EncryptionNotAvailableError) {
+                        setGitResult({ status: 'error', error: 'Server encryption keys not configured.' });
+                    } else {
+                        setGitResult({ status: 'error', error: String(err) });
+                    }
+                    setGitRunning(null);
+                    return;
+                }
+            }
+        }
+
+        try {
+            const resp = await runGitOp(op, {
+                project_id: project.id,
+                ssh_key: sshKey,
+            });
+
+            const contentType = resp.headers.get('Content-Type') || '';
+            if (contentType.includes('text/event-stream')) {
+                const reader = resp.body?.getReader();
+                if (!reader) {
+                    setGitResult({ status: 'error', error: 'Failed to read response stream' });
+                    setGitRunning(null);
+                    return;
+                }
+
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            if (data.type === 'log') {
+                                setGitLogs(prev => [...prev, data.message]);
+                            } else if (data.type === 'error') {
+                                setGitLogs(prev => [...prev, `ERROR: ${data.message}`]);
+                                setGitResult({ status: 'error', error: data.message });
+                            } else if (data.type === 'done') {
+                                setGitResult({ status: 'ok', message: data.message });
+                            }
+                        } catch {
+                            // Skip malformed SSE data
+                        }
+                    }
+                }
+            } else {
+                const data = await resp.json();
+                if (data.error) {
+                    setGitResult({ status: 'error', error: data.error });
+                } else {
+                    setGitResult({ status: 'ok', message: data.message });
+                }
+            }
+        } catch (err) {
+            setGitResult({ status: 'error', error: String(err) });
+        }
+        setGitRunning(null);
+    };
+
     const currentKey = sshKeys.find(k => k.id === project.ssh_key_id);
+    const gitOpLabel = (op: GitOp) => op.charAt(0).toUpperCase() + op.slice(1);
 
     return (
         <div className="mcc-workspace-list">
             <div className="mcc-section-header">
-                <button className="mcc-back-btn" onClick={() => navigate(-1)}>&larr;</button>
+                <button className="mcc-back-btn" onClick={goBack}>&larr;</button>
                 <h2>Configure Project</h2>
             </div>
 
@@ -95,6 +189,53 @@ export function ProjectConfigView() {
                 <div style={{ fontSize: '13px', color: '#64748b' }}>
                     {project.repo_url}
                 </div>
+            </div>
+
+            {/* Git Operations Section */}
+            <div style={{ padding: '16px', marginTop: 16 }}>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: '#e2e8f0', marginBottom: 12 }}>
+                    Git Operations
+                </div>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+                    <button
+                        className="mcc-port-action-btn"
+                        onClick={() => handleGitOp(GitOps.Fetch)}
+                        disabled={!!gitRunning}
+                        style={{ flex: 1, padding: '10px 16px', background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                        {gitRunning === GitOps.Fetch ? 'Fetching...' : 'Git Fetch'}
+                    </button>
+                    <button
+                        className="mcc-port-action-btn"
+                        onClick={() => handleGitOp(GitOps.Pull)}
+                        disabled={!!gitRunning}
+                        style={{ flex: 1, padding: '10px 16px', background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                        {gitRunning === GitOps.Pull ? 'Pulling...' : 'Git Pull'}
+                    </button>
+                </div>
+
+                {(gitLogs.length > 0 || !!gitRunning) && (
+                    <LogViewer
+                        lines={gitLogs.map(text => ({ text, error: text.startsWith('ERROR:') }))}
+                        pending={!!gitRunning}
+                        pendingMessage={`Git ${gitRunning ? gitOpLabel(gitRunning) : ''} in progress...`}
+                    />
+                )}
+
+                {gitResult && (
+                    <div style={{
+                        marginTop: 8,
+                        padding: '10px 14px',
+                        borderRadius: 8,
+                        fontSize: '13px',
+                        background: gitResult.status === 'ok' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                        border: gitResult.status === 'ok' ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                        color: gitResult.status === 'ok' ? '#86efac' : '#fca5a5',
+                    }}>
+                        {gitResult.status === 'ok' ? gitResult.message : `Error: ${gitResult.error}`}
+                    </div>
+                )}
             </div>
 
             {/* SSH Key Section */}
