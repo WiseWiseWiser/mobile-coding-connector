@@ -28,6 +28,7 @@ const (
 	ProviderLocaltunnel      = "localtunnel"
 	ProviderCloudflareQuick  = "cloudflare_quick"
 	ProviderCloudflareTunnel = "cloudflare_tunnel"
+	ProviderCloudflareOwned  = "cloudflare_owned"
 )
 
 // TunnelResult is sent by providers when the tunnel URL is ready or an error occurs

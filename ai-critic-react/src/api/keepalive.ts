@@ -92,4 +92,19 @@ export async function uploadBinary(
     };
 }
 
+export interface BuildableProject {
+    id: string;
+    name: string;
+    dir: string;
+    has_go_mod: boolean;
+    has_build_script: boolean;
+}
+
+/** Get the list of projects that can be built from source. */
+export async function getBuildableProjects(): Promise<BuildableProject[]> {
+    const res = await fetch(`${API_BASE}/api/keep-alive/buildable-projects`);
+    if (!res.ok) throw new Error(`buildable-projects failed: ${res.status}`);
+    return res.json();
+}
+
 export type { UploadProgress };

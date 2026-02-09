@@ -308,3 +308,95 @@ func (p *TunnelProvider) resolveTunnelCreds(tunnelRef string, logs *portforward.
 	fmt.Fprintf(logs, "[setup] Resolved tunnel: id=%s, credentials=%s\n", id, cred)
 	return id, cred, nil
 }
+
+// --- Owned Domain Provider ---
+
+// OwnedProvider implements portforward.Provider using cloudflared with user-owned domains.
+// It creates random subdomains under the user's configured owned domains without requiring
+// a named tunnel configuration in .config.local.json.
+type OwnedProvider struct{}
+
+var _ portforward.Provider = (*OwnedProvider)(nil)
+
+func (p *OwnedProvider) Name() string        { return portforward.ProviderCloudflareOwned }
+func (p *OwnedProvider) DisplayName() string { return "Cloudflare (My Domain)" }
+func (p *OwnedProvider) Description() string {
+	return "Uses your configured domain to generate random subdomains. Requires cloudflared authentication."
+}
+
+func (p *OwnedProvider) Available() bool {
+	if !portforward.IsCommandAvailable("cloudflared") {
+		return false
+	}
+	// Check if user has owned domains and is authenticated
+	userDomains := getUserDomains()
+	if len(userDomains) == 0 {
+		return false
+	}
+	return isCloudflareAuthenticated()
+}
+
+func (p *OwnedProvider) Start(port int) (*portforward.TunnelHandle, error) {
+	logs := portforward.NewLogBuffer()
+
+	// Get user domains
+	userDomains := getUserDomains()
+	if len(userDomains) == 0 {
+		return nil, fmt.Errorf("no owned domains configured")
+	}
+
+	// Use the first owned domain
+	baseDomain := userDomains[0]
+	fmt.Fprintf(logs, "[setup] Using owned domain: %s\n", baseDomain)
+
+	// Generate random subdomain
+	hostname := fmt.Sprintf("%s.%s", pick.RandomSubdomain(), baseDomain)
+	fmt.Fprintf(logs, "[setup] Generated hostname: %s\n", hostname)
+
+	// Determine tunnel name based on domain
+	tunnelName := cfutils.DefaultTunnelName(baseDomain)
+	fmt.Fprintf(logs, "[setup] Using tunnel: %s\n", tunnelName)
+
+	// Find or create tunnel
+	tunnelRef, err := cfutils.FindOrCreateTunnel(tunnelName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find/create tunnel: %v", err)
+	}
+	fmt.Fprintf(logs, "[setup] Tunnel resolved: %s\n", tunnelRef)
+
+	// Create DNS route
+	fmt.Fprintf(logs, "[setup] Creating DNS route: %s -> tunnel %s\n", hostname, tunnelRef)
+	if err := cfutils.CreateDNSRoute(tunnelRef, hostname); err != nil {
+		fmt.Fprintf(logs, "[setup] Warning: DNS route error: %v\n", err)
+	}
+
+	// Use the domain tunnel system for management
+	resultCh := make(chan portforward.TunnelResult, 1)
+	publicURL := fmt.Sprintf("https://%s", hostname)
+
+	go func() {
+		logFn := func(msg string) {
+			fmt.Fprintf(logs, "%s\n", msg)
+		}
+
+		status, err := cfutils.StartDomainTunnel(hostname, port, tunnelRef, logFn)
+		if err != nil {
+			resultCh <- portforward.TunnelResult{Err: err}
+			return
+		}
+
+		if status.Status == "active" {
+			resultCh <- portforward.TunnelResult{PublicURL: publicURL}
+		} else {
+			resultCh <- portforward.TunnelResult{Err: fmt.Errorf("tunnel failed to activate: %s", status.Error)}
+		}
+	}()
+
+	return &portforward.TunnelHandle{
+		Result: resultCh,
+		Logs:   logs,
+		Stop: func() {
+			cfutils.StopDomainTunnel(hostname, tunnelRef)
+		},
+	}, nil
+}

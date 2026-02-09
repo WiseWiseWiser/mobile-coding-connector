@@ -123,7 +123,7 @@ export function PortForwardingView({
                                 ))}
                             </div>
                         </div>
-                        {newPortProvider === TunnelProviders.CloudflareTunnel && (
+                        {(newPortProvider === TunnelProviders.CloudflareTunnel || newPortProvider === TunnelProviders.CloudflareOwned) && (
                             <OwnedDomainsHint onPortLabelChange={onPortLabelChange} />
                         )}
                         <button className="mcc-forward-btn" onClick={onAddPort}>
@@ -237,6 +237,13 @@ function PortForwardingHelp() {
                             <code>cloudflared tunnel route dns TUNNEL random-words.YOUR-DOMAIN</code>
                         </div>
                         <span>Uses your own domain with a named Cloudflare tunnel. A random subdomain (e.g. <code>brave-lake-fern.your-domain.xyz</code>) is generated for each port to prevent guessing. Requires <code>cloudflared</code> setup and <code>base_domain</code> in the server config file.</span>
+                    </div>
+                    <div className="mcc-ports-help-provider">
+                        <strong>Cloudflare (My Domain)</strong>
+                        <div className="mcc-ports-help-cmd">
+                            <code>cloudflared tunnel --hostname random-words.YOUR-DOMAIN</code>
+                        </div>
+                        <span>Uses your configured owned domain to generate random subdomains. Requires cloudflared authentication and at least one domain configured in Cloudflare Settings.</span>
                     </div>
 
                     <p className="mcc-ports-help-note">

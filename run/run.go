@@ -21,6 +21,7 @@ import (
 var help = fmt.Sprintf(`
 Usage: ai-critic [options]
        ai-critic keep-alive [options]            Auto-restart server with health checking
+       ai-critic keep-alive request <action>     Request action from keep-alive daemon (info, restart)
        ai-critic rebuild --repo-dir DIR [opts]   Rebuild from source and restart
        ai-critic check-port --port PORT          Check if a port is accessible
 
@@ -39,6 +40,10 @@ Options:
 Keep-Alive Options:
   --script                Output shell script instead of running Go code
   --forever               Skip port-in-use check and start keep-alive anyway
+
+Request Actions:
+  info                    Get current status from keep-alive daemon
+  restart                 Request keep-alive daemon to restart the server
 `, config.DefaultServerPort, config.CredentialsFile, config.EncKeyFile, config.DomainsFile)
 
 func Run(args []string) error {
@@ -46,6 +51,10 @@ func Run(args []string) error {
 	if len(args) > 0 {
 		switch args[0] {
 		case "keep-alive":
+			// Check for "keep-alive request" sub-subcommand
+			if len(args) > 1 && args[1] == "request" {
+				return runKeepAliveRequest(args[2:])
+			}
 			return runKeepAlive(args[1:])
 		case "keep-alive-script":
 			// Backward-compatible alias: same as "keep-alive --script"

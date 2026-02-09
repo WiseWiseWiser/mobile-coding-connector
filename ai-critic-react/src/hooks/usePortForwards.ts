@@ -22,6 +22,7 @@ export const TunnelProviders = {
     Localtunnel: 'localtunnel',
     CloudflareQuick: 'cloudflare_quick',
     CloudflareTunnel: 'cloudflare_tunnel',
+    CloudflareOwned: 'cloudflare_owned',
 } as const;
 
 export type TunnelProvider = typeof TunnelProviders[keyof typeof TunnelProviders];

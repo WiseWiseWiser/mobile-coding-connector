@@ -24,11 +24,11 @@ import (
 )
 
 const (
-	startupTimeout        = 10 * time.Second
-	healthCheckInterval   = 10 * time.Second
-	restartDelay          = 3 * time.Second
-	portCheckTimeout      = 2 * time.Second
-	upgradeCheckInterval  = 30 * time.Second
+	startupTimeout       = 10 * time.Second
+	healthCheckInterval  = 10 * time.Second
+	restartDelay         = 3 * time.Second
+	portCheckTimeout     = 2 * time.Second
+	upgradeCheckInterval = 30 * time.Second
 )
 
 // keepAliveState holds the mutable state of the keep-alive daemon, guarded by mu.
@@ -450,6 +450,8 @@ func startKeepAliveHTTPServer() {
 	mux.HandleFunc("/api/keep-alive/upload-target", handleKeepAliveUploadTarget)
 	mux.HandleFunc("/api/keep-alive/set-binary", handleKeepAliveSetBinary)
 	mux.HandleFunc("/api/keep-alive/logs", handleKeepAliveLogs)
+	mux.HandleFunc("/api/keep-alive/buildable-projects", handleBuildableProjects)
+	mux.HandleFunc("/api/keep-alive/build-next", handleBuildNext)
 
 	addr := fmt.Sprintf(":%d", config.KeepAlivePort)
 	fmt.Printf("[%s] Keep-alive management server listening on %s\n", timestamp(), addr)
@@ -459,15 +461,15 @@ func startKeepAliveHTTPServer() {
 }
 
 type keepAliveStatusResponse struct {
-	Running        bool   `json:"running"`
-	BinaryPath     string `json:"binary_path"`
-	ServerPort     int    `json:"server_port"`
-	ServerPID      int    `json:"server_pid"`
-	KeepAlivePort  int    `json:"keep_alive_port"`
-	KeepAlivePID   int    `json:"keep_alive_pid"`
-	StartedAt      string `json:"started_at,omitempty"`
-	Uptime         string `json:"uptime,omitempty"`
-	NextBinary     string `json:"next_binary,omitempty"`
+	Running       bool   `json:"running"`
+	BinaryPath    string `json:"binary_path"`
+	ServerPort    int    `json:"server_port"`
+	ServerPID     int    `json:"server_pid"`
+	KeepAlivePort int    `json:"keep_alive_port"`
+	KeepAlivePID  int    `json:"keep_alive_pid"`
+	StartedAt     string `json:"started_at,omitempty"`
+	Uptime        string `json:"uptime,omitempty"`
+	NextBinary    string `json:"next_binary,omitempty"`
 }
 
 func handleKeepAliveStatus(w http.ResponseWriter, r *http.Request) {
@@ -614,6 +616,306 @@ func handleKeepAliveLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	// tail -f runs indefinitely until killed, so no done event needed.
 	// When client disconnects, context is cancelled and tail is killed.
+}
+
+// ---- Build from Source ----
+
+// buildableProject represents a project that can be built
+type buildableProject struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Dir            string `json:"dir"`
+	HasGoMod       bool   `json:"has_go_mod"`
+	HasBuildScript bool   `json:"has_build_script"`
+}
+
+// findBuildableProjects scans all projects and finds those that can be built.
+// A project is buildable if it has go.mod and script/server/build/for-linux-amd64
+func findBuildableProjects() ([]buildableProject, error) {
+	projectsFile := config.ProjectsFile
+
+	data, err := os.ReadFile(projectsFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []buildableProject{}, nil
+		}
+		return nil, err
+	}
+
+	var projects []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		Dir  string `json:"dir"`
+	}
+	if err := json.Unmarshal(data, &projects); err != nil {
+		return nil, err
+	}
+
+	var buildable []buildableProject
+	for _, p := range projects {
+		if p.Dir == "" {
+			continue
+		}
+
+		// Check if directory exists
+		info, err := os.Stat(p.Dir)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+
+		// Check for go.mod
+		hasGoMod := false
+		if _, err := os.Stat(filepath.Join(p.Dir, "go.mod")); err == nil {
+			hasGoMod = true
+		}
+
+		// Check for build script
+		hasBuildScript := false
+		buildScriptPath := filepath.Join(p.Dir, "script", "server", "build", "for-linux-amd64")
+		if _, err := os.Stat(buildScriptPath); err == nil {
+			hasBuildScript = true
+		}
+
+		if hasGoMod && hasBuildScript {
+			buildable = append(buildable, buildableProject{
+				ID:             p.ID,
+				Name:           p.Name,
+				Dir:            p.Dir,
+				HasGoMod:       true,
+				HasBuildScript: true,
+			})
+		}
+	}
+
+	return buildable, nil
+}
+
+// handleBuildableProjects returns the list of projects that can be built from source.
+// GET /api/keep-alive/buildable-projects
+func handleBuildableProjects(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	buildable, err := findBuildableProjects()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to find buildable projects: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(buildable)
+}
+
+// handleBuildNext builds the next binary from a project source with SSE streaming.
+// POST /api/keep-alive/build-next
+// Request: { "project_id": "..." }
+// Response: SSE stream with build output, then done event with result
+func handleBuildNext(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request
+	var req struct {
+		ProjectID string `json:"project_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Find buildable projects
+	buildable, err := findBuildableProjects()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to find buildable projects: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Find the requested project or use the first available
+	var project *buildableProject
+	if req.ProjectID != "" {
+		for i := range buildable {
+			if buildable[i].ID == req.ProjectID {
+				project = &buildable[i]
+				break
+			}
+		}
+	} else if len(buildable) > 0 {
+		project = &buildable[0]
+	}
+
+	if project == nil {
+		http.Error(w, "no buildable project found", http.StatusBadRequest)
+		return
+	}
+
+	// Get the upload target path (next binary)
+	kaState.mu.Lock()
+	currentBin := kaState.binPath
+	kaState.mu.Unlock()
+
+	dir := filepath.Dir(currentBin)
+	currentBase, currentVersion := parseBinVersion(currentBin)
+	nextVersion := currentVersion + 1
+	newName := fmt.Sprintf("%s-v%d", currentBase, nextVersion)
+	destPath := filepath.Join(dir, newName)
+
+	// Create SSE writer
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Log build start
+	sw.SendLog(fmt.Sprintf("Building next binary (v%d) from project %s...", nextVersion, project.Name))
+	sw.SendLog(fmt.Sprintf("Target: %s", destPath))
+
+	// Create destination directory if needed
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		sw.SendError(fmt.Sprintf("Failed to create destination directory: %v", err))
+		return
+	}
+
+	// Run build script
+	buildScriptPath := filepath.Join(project.Dir, "script", "server", "build", "for-linux-amd64")
+	cmd := exec.Command(buildScriptPath, "-o", destPath)
+	cmd.Dir = project.Dir
+
+	err = sw.StreamCmd(cmd)
+	if err != nil {
+		sw.SendError(fmt.Sprintf("Build failed: %v", err))
+		return
+	}
+
+	// Make binary executable
+	if err := os.Chmod(destPath, 0755); err != nil {
+		sw.SendError(fmt.Sprintf("Failed to chmod binary: %v", err))
+		return
+	}
+
+	// Get file size
+	info, err := os.Stat(destPath)
+	if err != nil {
+		sw.SendError(fmt.Sprintf("Failed to stat binary: %v", err))
+		return
+	}
+
+	// Log success
+	sw.SendLog(fmt.Sprintf("Build successful: %s (%d bytes)", destPath, info.Size()))
+
+	// Send done event with result data
+	sw.SendDone(map[string]string{
+		"success":      "true",
+		"message":      fmt.Sprintf("Built %s (%s) v%d", newName, project.Name, nextVersion),
+		"binary_path":  destPath,
+		"binary_name":  newName,
+		"version":      strconv.Itoa(nextVersion),
+		"size":         strconv.FormatInt(info.Size(), 10),
+		"project_name": project.Name,
+	})
+}
+
+// ---- Keep-Alive Request Command ----
+
+// runKeepAliveRequest sends request commands to a running keep-alive daemon.
+// Usage: ai-critic keep-alive request <action>
+// Actions: info, restart
+func runKeepAliveRequest(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("action required: info, restart")
+	}
+
+	action := args[0]
+
+	switch action {
+	case "info":
+		return sendKeepAliveInfo()
+	case "restart":
+		return sendKeepAliveRestart()
+	default:
+		return fmt.Errorf("unknown action: %s (use 'info' or 'restart')", action)
+	}
+}
+
+// sendKeepAliveInfo fetches and displays status from the keep-alive daemon.
+func sendKeepAliveInfo() error {
+	url := fmt.Sprintf("http://localhost:%d/api/keep-alive/status", config.KeepAlivePort)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to connect to keep-alive daemon: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("keep-alive daemon returned error: %s", resp.Status)
+	}
+
+	var status struct {
+		Running       bool   `json:"running"`
+		BinaryPath    string `json:"binary_path"`
+		ServerPort    int    `json:"server_port"`
+		ServerPID     int    `json:"server_pid"`
+		KeepAlivePort int    `json:"keep_alive_port"`
+		KeepAlivePID  int    `json:"keep_alive_pid"`
+		StartedAt     string `json:"started_at,omitempty"`
+		Uptime        string `json:"uptime,omitempty"`
+		NextBinary    string `json:"next_binary,omitempty"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+		return fmt.Errorf("failed to decode response: %v", err)
+	}
+
+	fmt.Println("Keep-Alive Daemon Status")
+	fmt.Println("========================")
+	fmt.Printf("Running:        %v\n", status.Running)
+	fmt.Printf("Server PID:     %d\n", status.ServerPID)
+	fmt.Printf("Server Port:    %d\n", status.ServerPort)
+	fmt.Printf("Keep-Alive PID: %d\n", status.KeepAlivePID)
+	fmt.Printf("Keep-Alive Port:%d\n", status.KeepAlivePort)
+	fmt.Printf("Binary Path:    %s\n", status.BinaryPath)
+	if status.Uptime != "" {
+		fmt.Printf("Uptime:         %s\n", status.Uptime)
+	}
+	if status.StartedAt != "" {
+		fmt.Printf("Started At:     %s\n", status.StartedAt)
+	}
+	if status.NextBinary != "" {
+		fmt.Printf("Next Binary:    %s\n", status.NextBinary)
+	}
+
+	return nil
+}
+
+// sendKeepAliveRestart sends a restart request to the keep-alive daemon.
+func sendKeepAliveRestart() error {
+	url := fmt.Sprintf("http://localhost:%d/api/keep-alive/restart", config.KeepAlivePort)
+
+	resp, err := http.Post(url, "application/json", nil)
+	if err != nil {
+		return fmt.Errorf("failed to connect to keep-alive daemon: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("keep-alive daemon returned error: %s", resp.Status)
+	}
+
+	var result struct {
+		Status string `json:"status"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode response: %v", err)
+	}
+
+	fmt.Printf("Restart request sent: %s\n", result.Status)
+	return nil
 }
 
 // outputKeepAliveScript outputs a shell script for keep-alive.

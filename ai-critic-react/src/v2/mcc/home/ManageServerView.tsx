@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { pingKeepAlive, getKeepAliveStatus, restartServer, uploadBinary, getUploadTarget } from '../../../api/keepalive';
-import type { KeepAliveStatus, UploadTarget } from '../../../api/keepalive';
+import { pingKeepAlive, getKeepAliveStatus, restartServer, uploadBinary, getUploadTarget, getBuildableProjects } from '../../../api/keepalive';
+import type { KeepAliveStatus, UploadTarget, BuildableProject } from '../../../api/keepalive';
 import { consumeSSEStream } from '../../../api/sse';
 import { BackIcon } from '../../icons';
 import { LogViewer } from '../../LogViewer';
@@ -9,6 +9,7 @@ import { useTabHistory } from '../../../hooks/useTabHistory';
 import { NavTabs } from '../types';
 import { TransferProgress } from './TransferProgress';
 import type { TransferProgressData } from './TransferProgress';
+import { StreamingActionButton } from '../../StreamingActionButton';
 import './ManageServerView.css';
 
 export function ManageServerView() {
@@ -27,6 +28,10 @@ export function ManageServerView() {
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<TransferProgressData | null>(null);
     const [restarting, setRestarting] = useState(false);
+
+    // Build states
+    const [buildableProjects, setBuildableProjects] = useState<BuildableProject[]>([]);
+    const [nextBinaryPath, setNextBinaryPath] = useState<string | null>(null);
 
     // Log states
     const [logLines, setLogLines] = useState<LogLine[]>([]);
@@ -60,6 +65,31 @@ export function ManageServerView() {
         const interval = setInterval(fetchStatus, 10000);
         return () => clearInterval(interval);
     }, [fetchStatus]);
+
+    // Fetch buildable projects and calculate next binary path
+    useEffect(() => {
+        const loadBuildInfo = async () => {
+            try {
+                const projects = await getBuildableProjects();
+                setBuildableProjects(projects);
+                
+                // Calculate next binary path from current binary
+                if (status?.binary_path) {
+                    const currentPath = status.binary_path;
+                    const versionMatch = currentPath.match(/-v(\d+)$/);
+                    const currentVersion = versionMatch ? parseInt(versionMatch[1], 10) : 0;
+                    const nextVersion = currentVersion + 1;
+                    const nextPath = versionMatch 
+                        ? currentPath.replace(/-v\d+$/, `-v${nextVersion}`)
+                        : `${currentPath}-v1`;
+                    setNextBinaryPath(nextPath);
+                }
+            } catch {
+                setBuildableProjects([]);
+            }
+        };
+        loadBuildInfo();
+    }, [status?.binary_path]);
 
     // Log streaming via fetch + consumeSSEStream
     useEffect(() => {
@@ -175,6 +205,15 @@ export function ManageServerView() {
         setSelectedFile(null);
         setUploadTarget(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    // Build action that returns SSE Response
+    const handleBuildAction = async (): Promise<Response> => {
+        return fetch('/api/keep-alive/build-next', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: buildableProjects[0]?.id }),
+        });
     };
 
     return (
@@ -308,6 +347,40 @@ export function ManageServerView() {
                         <p className="manage-server-upload-hint">
                             Upload a new binary. It will be placed with the next version number and used on next restart.
                         </p>
+
+                        {/* Build Next button */}
+                        {buildableProjects.length > 0 && (
+                            <div style={{ marginTop: 16, borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
+                                <StreamingActionButton
+                                    label="Build Next"
+                                    runningLabel="Building..."
+                                    action={handleBuildAction}
+                                    className="manage-server-btn manage-server-btn--upload"
+                                    logMaxHeight={200}
+                                    onComplete={(result) => {
+                                        if (result.ok) {
+                                            fetchStatus();
+                                        }
+                                    }}
+                                />
+                                
+                                {nextBinaryPath && (
+                                    <div className="manage-server-confirm-row" style={{ marginTop: 8, fontSize: 12 }}>
+                                        <span className="manage-server-info-label">Output:</span>
+                                        <span className="manage-server-info-value manage-server-info-value--mono" style={{ fontSize: 11 }}>
+                                            {nextBinaryPath}
+                                        </span>
+                                    </div>
+                                )}
+                                
+                                <p className="manage-server-upload-hint">
+                                    Build the next binary from source using script/server/build/for-linux-amd64.
+                                    {buildableProjects[0] && (
+                                        <> Project: <strong>{buildableProjects[0].name}</strong></>
+                                    )}
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

@@ -266,6 +266,7 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// port forwarding: register providers and API
 	portforward.RegisterDefaultProvider(&pflocaltunnel.Provider{})
 	portforward.RegisterDefaultProvider(&pfcloudflare.QuickProvider{})
+	portforward.RegisterDefaultProvider(&pfcloudflare.OwnedProvider{})
 
 	// Register cloudflare_tunnel provider from config if available
 	if cfg := config.Get(); cfg != nil {
