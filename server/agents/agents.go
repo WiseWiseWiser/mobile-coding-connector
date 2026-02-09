@@ -435,6 +435,12 @@ func handleAgentSessionProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// For config PATCH, transform model from object to string for opencode
+	if restPath == "/config" && r.Method == http.MethodPatch {
+		opencode.ProxyConfigUpdate(w, r, s.port)
+		return
+	}
+
 	// For SSE endpoints, convert OpenCode events to ACP
 	if restPath == "/event" || restPath == "/global/event" {
 		opencode.ProxySSE(w, r, s.port)

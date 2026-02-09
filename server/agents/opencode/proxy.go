@@ -4,8 +4,10 @@ package opencode
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -66,6 +68,61 @@ func ProxySSE(w http.ResponseWriter, r *http.Request, port int) {
 		}
 		flusher.Flush()
 	}
+}
+
+// ProxyConfigUpdate handles PATCH /config by transforming the model field
+// from object format {model: {modelID: "xxx"}} to string format {model: "xxx"}
+// which is what the opencode server expects.
+func ProxyConfigUpdate(w http.ResponseWriter, r *http.Request, port int) {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	// Transform model from {modelID: "xxx"} to plain string "xxx"
+	if modelObj, ok := body["model"].(map[string]interface{}); ok {
+		if modelID, ok := modelObj["modelID"].(string); ok {
+			body["model"] = modelID
+		}
+	}
+
+	transformed, err := json.Marshal(body)
+	if err != nil {
+		http.Error(w, "failed to encode body", http.StatusInternalServerError)
+		return
+	}
+
+	targetURL := fmt.Sprintf("http://127.0.0.1:%d%s", port, r.URL.Path)
+	req, err := http.NewRequestWithContext(r.Context(), "PATCH", targetURL, bytes.NewReader(transformed))
+	if err != nil {
+		http.Error(w, "failed to create request", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "failed to connect to agent server", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copy response headers and status
+	for k, v := range resp.Header {
+		for _, vv := range v {
+			w.Header().Add(k, vv)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 // ProxyMessages fetches messages from the opencode server,

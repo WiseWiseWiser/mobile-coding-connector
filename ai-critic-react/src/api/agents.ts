@@ -105,11 +105,22 @@ export async function fetchOpencodeConfig(sessionId: string): Promise<OpencodeCo
 }
 
 export async function updateAgentConfig(sessionId: string, config: { model: { modelID: string } }): Promise<void> {
-    await fetch(`${agentProxyBase(sessionId)}/config`, {
+    const resp = await fetch(`${agentProxyBase(sessionId)}/config`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config),
     });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || 'Failed to update config');
+    }
+    const data = await resp.json().catch(() => null);
+    if (data && data.success === false) {
+        const errMsg = Array.isArray(data.error)
+            ? data.error.map((e: { message?: string }) => e.message).join('; ')
+            : String(data.error || 'Failed to update config');
+        throw new Error(errMsg);
+    }
 }
 
 /** OpenCode provider model info */

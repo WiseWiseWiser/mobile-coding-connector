@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { ACPMessage, ACPMessagePart } from '../../../api/acp';
 import { ACPContentTypes, ACPRoles } from '../../../api/acp';
-import { truncate } from './utils';
 
 // ---- Message Grouping ----
 
@@ -89,47 +88,7 @@ function ACPMessagePartView({ part }: { part: ACPMessagePart }) {
     }
 
     if (part.content_type === ACPContentTypes.ToolCall) {
-        const toolName = part.name || 'tool';
-        const status = part.metadata?.status as string | undefined;
-        const isRunning = status === 'running' || status === 'pending';
-        const hasError = status === 'error';
-        const output = part.metadata?.output as string | undefined;
-        const error = part.metadata?.error as string | undefined;
-        const title = part.metadata?.title as string | undefined;
-
-        // Try to extract filename from tool input
-        let fileName = '';
-        const toolInput = part.metadata?.input || tryParseJSON(part.content);
-        if (toolInput && typeof toolInput === 'object') {
-            const inp = toolInput as Record<string, unknown>;
-            fileName = (inp.filePath || inp.path || inp.file || '') as string;
-        }
-
-        return (
-            <div className={`mcc-agent-msg-tool ${isRunning ? 'running' : ''} ${hasError ? 'error' : ''}`}>
-                <div className="mcc-agent-msg-tool-header">
-                    <span className="mcc-agent-msg-tool-icon">
-                        {isRunning ? '⏳' : hasError ? '❌' : '⚙️'}
-                    </span>
-                    <span className="mcc-agent-msg-tool-name">{title || toolName}</span>
-                    {fileName && (
-                        <span className="mcc-agent-msg-tool-file" style={{
-                            marginLeft: '8px',
-                            color: 'var(--mcc-text-secondary)',
-                            fontSize: '0.9em'
-                        }}>
-                            {fileName}
-                        </span>
-                    )}
-                </div>
-                {output && (
-                    <pre className="mcc-agent-msg-tool-output">{truncate(output, 500)}</pre>
-                )}
-                {error && (
-                    <pre className="mcc-agent-msg-tool-error">{truncate(error, 500)}</pre>
-                )}
-            </div>
-        );
+        return <ToolCallView part={part} />;
     }
 
     // Fallback: render content as text
@@ -138,6 +97,63 @@ function ACPMessagePartView({ part }: { part: ACPMessagePart }) {
     }
 
     return null;
+}
+
+const TRUNCATE_LIMIT = 500;
+
+function ExpandableContent({ text, className }: { text: string; className: string }) {
+    const [expanded, setExpanded] = useState(false);
+    const isTruncated = text.length > TRUNCATE_LIMIT;
+    const displayText = !expanded && isTruncated ? text.slice(0, TRUNCATE_LIMIT) + '...' : text;
+
+    return (
+        <>
+            <pre className={className}>{displayText}</pre>
+            {isTruncated && (
+                <button className="mcc-agent-msg-tool-expand-btn" onClick={() => setExpanded(!expanded)}>
+                    {expanded ? 'Show less' : 'Show more'}
+                </button>
+            )}
+        </>
+    );
+}
+
+function ToolCallView({ part }: { part: ACPMessagePart }) {
+    const toolName = part.name || 'tool';
+    const status = part.metadata?.status as string | undefined;
+    const isRunning = status === 'running' || status === 'pending';
+    const hasError = status === 'error';
+    const output = part.metadata?.output as string | undefined;
+    const error = part.metadata?.error as string | undefined;
+    const title = part.metadata?.title as string | undefined;
+
+    // Try to extract filename from tool input
+    let fileName = '';
+    const toolInput = part.metadata?.input || tryParseJSON(part.content);
+    if (toolInput && typeof toolInput === 'object') {
+        const inp = toolInput as Record<string, unknown>;
+        fileName = (inp.filePath || inp.path || inp.file || '') as string;
+    }
+
+    return (
+        <div className={`mcc-agent-msg-tool ${isRunning ? 'running' : ''} ${hasError ? 'error' : ''}`}>
+            <div className="mcc-agent-msg-tool-header">
+                <span className="mcc-agent-msg-tool-icon">
+                    {isRunning ? '⏳' : hasError ? '❌' : '⚙️'}
+                </span>
+                <span className="mcc-agent-msg-tool-name">{title || toolName}</span>
+                {fileName && (
+                    <span className="mcc-agent-msg-tool-file">{fileName}</span>
+                )}
+            </div>
+            {output && (
+                <ExpandableContent text={output} className="mcc-agent-msg-tool-output" />
+            )}
+            {error && (
+                <ExpandableContent text={error} className="mcc-agent-msg-tool-error" />
+            )}
+        </div>
+    );
 }
 
 function tryParseJSON(s: string): unknown {

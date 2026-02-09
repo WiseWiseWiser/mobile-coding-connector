@@ -4,10 +4,12 @@ import { useAutoScroll } from '../../../hooks/useAutoScroll';
 import {
     fetchAgentSessions, fetchMessages, sendPromptAsync, agentEventUrl,
     fetchOpencodeConfig, fetchOpencodeProviders, updateAgentConfig,
+    stopAgentSession,
     AgentSessionStatuses,
 } from '../../../api/agents';
 import type { AgentSessionInfo, OpencodeConfig } from '../../../api/agents';
 import type { ACPMessage } from '../../../api/acp';
+import { ACPEventTypes, ACPRoles } from '../../../api/acp';
 import { parseSSEEvent, convertMessages } from '../../../api/acp_adapter';
 import { AgentChatHeader } from './AgentChatHeader';
 import type { ModelOption } from './AgentChatHeader';
@@ -26,6 +28,8 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
     const [messages, setMessages] = useState<ACPMessage[]>([]);
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
+    const [agentProcessing, setAgentProcessing] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [agentConfig, setAgentConfig] = useState<OpencodeConfig | null>(null);
     const [contextLimit, setContextLimit] = useState<number>(0);
     const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
@@ -120,6 +124,20 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
             if (updater) {
                 setMessages(updater);
             }
+
+            // Track agent processing state from SSE events
+            try {
+                const parsed = JSON.parse(event.data);
+                const eventType: string = parsed?.type;
+                const role: string = parsed?.message?.role;
+                if (role === ACPRoles.Agent) {
+                    if (eventType === ACPEventTypes.MessageCreated || eventType === ACPEventTypes.MessageUpdated) {
+                        setAgentProcessing(true);
+                    } else if (eventType === ACPEventTypes.MessageCompleted) {
+                        setAgentProcessing(false);
+                    }
+                }
+            } catch { /* ignore parse errors */ }
         };
 
         return () => eventSource.close();
@@ -140,7 +158,16 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
     const handleModelChange = async (modelId: string) => {
         try {
             await updateAgentConfig(session.id, { model: { modelID: modelId } });
-            setAgentConfig(prev => prev ? { ...prev, model: { modelID: modelId, providerID: 'cursor' } } : prev);
+            setAgentConfig(prev => prev ? { ...prev, model: { modelID: modelId, providerID: prev.model?.providerID || '' } } : prev);
+        } catch (err) {
+            setErrorMessage(`Failed to change model: ${err instanceof Error ? err.message : String(err)}`);
+        }
+    };
+
+    const handleStop = async () => {
+        try {
+            await stopAgentSession(session.id);
+            onStop();
         } catch { /* ignore */ }
     };
 
@@ -206,6 +233,13 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
                 ))}
             </div>
 
+            {errorMessage && (
+                <div className="mcc-agent-error-toast">
+                    <span>{errorMessage}</span>
+                    <button className="mcc-agent-error-toast-close" onClick={() => setErrorMessage(null)}>×</button>
+                </div>
+            )}
+
             <div className="mcc-agent-input-area">
                 <textarea
                     className="mcc-agent-input"
@@ -214,15 +248,24 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     rows={2}
-                    disabled={sending}
+                    disabled={sending || agentProcessing}
                 />
-                <button
-                    className="mcc-agent-send-btn"
-                    onClick={handleSend}
-                    disabled={!input.trim() || sending}
-                >
-                    {sending ? '...' : 'Send'}
-                </button>
+                {agentProcessing ? (
+                    <button
+                        className="mcc-agent-send-btn mcc-agent-stop-btn"
+                        onClick={handleStop}
+                    >
+                        Stop
+                    </button>
+                ) : (
+                    <button
+                        className="mcc-agent-send-btn"
+                        onClick={handleSend}
+                        disabled={!input.trim() || sending}
+                    >
+                        {sending ? '...' : 'Send'}
+                    </button>
+                )}
             </div>
         </div>
     );
