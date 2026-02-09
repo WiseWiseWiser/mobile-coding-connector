@@ -231,25 +231,28 @@ export function useTerminal(
             if (ws.readyState !== WebSocket.OPEN) return;
             hadUserInput = true;
 
-            // When Ctrl mode is active, convert next single-char input to control character
-            if (ctrlModeRef.current && data.length === 1) {
-                ctrlModeRef.current = false;
-                optionsRef.current.onCtrlModeConsumed?.();
-                const charCode = data.charCodeAt(0);
-                if (charCode >= 97 && charCode <= 122) {
-                    // a-z → Ctrl+A (0x01) through Ctrl+Z (0x1A)
-                    ws.send(String.fromCharCode(charCode - 96));
-                    return;
-                }
-                if (charCode >= 65 && charCode <= 90) {
-                    // A-Z → Ctrl+A (0x01) through Ctrl+Z (0x1A)
-                    ws.send(String.fromCharCode(charCode - 64));
-                    return;
-                }
-            }
+            // When Ctrl mode is active, convert next single printable char to control character.
+            // Multi-byte sequences (escape sequences like arrow keys, focus events) are
+            // ignored and don't consume ctrl mode.
             if (ctrlModeRef.current) {
-                ctrlModeRef.current = false;
-                optionsRef.current.onCtrlModeConsumed?.();
+                if (data.length === 1) {
+                    ctrlModeRef.current = false;
+                    optionsRef.current.onCtrlModeConsumed?.();
+                    const charCode = data.charCodeAt(0);
+                    if (charCode >= 97 && charCode <= 122) {
+                        // a-z → Ctrl+A (0x01) through Ctrl+Z (0x1A)
+                        ws.send(String.fromCharCode(charCode - 96));
+                        return;
+                    }
+                    if (charCode >= 65 && charCode <= 90) {
+                        // A-Z → Ctrl+A (0x01) through Ctrl+Z (0x1A)
+                        ws.send(String.fromCharCode(charCode - 64));
+                        return;
+                    }
+                    // Non-alphabetic single char — send as-is
+                } else {
+                    // Multi-byte input (escape sequence) — pass through without consuming ctrl
+                }
             }
             ws.send(data);
         });

@@ -116,11 +116,27 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
         onReconnectRefCb.current(reconnectRef.current);
     }
 
+    const ctrlInputRef = useRef<HTMLInputElement | null>(null);
     const handleCtrl = () => {
         const next = !ctrlModeRef.current;
         ctrlModeRef.current = next;
         setCtrlActive(next);
+        // Focus the ctrl input field so user can type the next character
+        if (next) {
+            setTimeout(() => ctrlInputRef.current?.focus(), 0);
+        }
     };
+    const handleCtrlInput = (char: string) => {
+        ctrlModeRef.current = false;
+        setCtrlActive(false);
+        const charCode = char.toLowerCase().charCodeAt(0);
+        if (charCode >= 97 && charCode <= 122) {
+            // a-z → Ctrl+A (0x01) through Ctrl+Z (0x1A)
+            sendKey(String.fromCharCode(charCode - 96));
+        }
+        focus();
+    };
+    const handleEsc = () => sendKey('\x1b');
     const handleCtrlC = () => sendKey('\x03');
     const handleCtrlA = () => sendKey('\x01');
     const handleCtrlR = () => sendKey('\x12');
@@ -152,6 +168,28 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
                 <button className="term-shortcut-btn" onClick={handleArrowUp}>↑</button>
                 <button className="term-shortcut-btn" onClick={handleArrowDown}>↓</button>
                 <button className={`term-shortcut-btn ${ctrlActive ? 'active' : ''}`} onClick={handleCtrl}>Ctrl</button>
+                {/* Hidden input to capture the next character when Ctrl mode is active */}
+                <input
+                    ref={ctrlInputRef}
+                    className="term-ctrl-hidden-input"
+                    type="text"
+                    maxLength={1}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    autoComplete="off"
+                    onInput={(e) => {
+                        const val = (e.target as HTMLInputElement).value;
+                        if (val.length > 0) {
+                            handleCtrlInput(val);
+                            (e.target as HTMLInputElement).value = '';
+                        }
+                    }}
+                    onBlur={() => {
+                        ctrlModeRef.current = false;
+                        setCtrlActive(false);
+                    }}
+                />
+                <button className="term-shortcut-btn" onClick={handleEsc}>Esc</button>
                 <button className="term-shortcut-btn" onClick={handleCtrlC}>^C</button>
                 <button className="term-shortcut-btn" onClick={handleCtrlA}>^A</button>
                 <button className="term-shortcut-btn" onClick={handleCtrlR}>^R</button>

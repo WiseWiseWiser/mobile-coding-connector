@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -305,6 +307,64 @@ func (s *session) readLoop() {
 	}
 }
 
+// stripTerminalQueries removes terminal query escape sequences from scrollback
+// data to prevent xterm.js from generating responses that leak into the PTY
+// as literal input text on reconnect.
+//
+// Stripped sequences:
+//   - OSC queries: \x1b]N;?\x07 or \x1b]N;?\x1b\\ (e.g. color queries)
+//   - Device Attributes: \x1b[c, \x1b[>c, \x1b[=c
+//   - Device Status Reports: \x1b[5n, \x1b[6n
+//   - DECRQM: \x1b[?N$p
+var terminalQueryRe = regexp.MustCompile(
+	`\x1b\]\d+;[^\x07\x1b]*\?\x07` + // OSC N;...? BEL
+		`|\x1b\]\d+;[^\x07\x1b]*\?\x1b\\` + // OSC N;...? ST
+		`|\x1b\[[>=]?c` + // Device Attributes (DA1, DA2, DA3)
+		`|\x1b\[[56]n` + // Device Status Report
+		`|\x1b\[\?\d+\$p`, // DECRQM (request mode)
+)
+
+func stripTerminalQueries(data []byte) []byte {
+	return terminalQueryRe.ReplaceAll(data, nil)
+}
+
+// isAlternateScreenActive checks if the scrollback data has an alternate screen
+// enter (\x1b[?1049h) that was never exited (\x1b[?1049l), indicating a TUI
+// program (like vim) is still running.
+func isAlternateScreenActive(data []byte) bool {
+	enterSeq := []byte("\x1b[?1049h")
+	exitSeq := []byte("\x1b[?1049l")
+	lastEnter := bytes.LastIndex(data, enterSeq)
+	if lastEnter == -1 {
+		return false
+	}
+	lastExit := bytes.LastIndex(data, exitSeq)
+	return lastExit < lastEnter
+}
+
+// stripAlternateScreenPairs removes the content between matched alternate screen
+// enter (\x1b[?1049h) and exit (\x1b[?1049l) pairs from scrollback.
+// If alternate screen is still active (entered but not exited), leaves it intact.
+func stripAlternateScreenPairs(data []byte) []byte {
+	enterSeq := []byte("\x1b[?1049h")
+	exitSeq := []byte("\x1b[?1049l")
+	for {
+		enterIdx := bytes.Index(data, enterSeq)
+		if enterIdx == -1 {
+			break
+		}
+		exitIdx := bytes.Index(data[enterIdx:], exitSeq)
+		if exitIdx == -1 {
+			// Alternate screen still active — leave the rest intact
+			break
+		}
+		// Remove the matched enter/exit pair and content between them
+		endIdx := enterIdx + exitIdx + len(exitSeq)
+		data = append(data[:enterIdx], data[endIdx:]...)
+	}
+	return data
+}
+
 func (s *session) attach(conn *websocket.Conn) {
 	s.mu.Lock()
 	// Detach previous connection if any
@@ -317,11 +377,19 @@ func (s *session) attach(conn *websocket.Conn) {
 		scrollbackCopy := make([]byte, len(s.scrollback))
 		copy(scrollbackCopy, s.scrollback)
 		s.mu.Unlock()
-		// Send terminal reset sequence first to clear any alternate screen mode
-		// and reset terminal state (in case a TUI program like vim was running)
-		// ESC[?1049l = exit alternate screen buffer
-		// ESC[0m = reset all attributes
-		conn.WriteMessage(websocket.BinaryMessage, []byte("\x1b[?1049l\x1b[0m"))
+
+		altScreenActive := isAlternateScreenActive(scrollbackCopy)
+		if !altScreenActive {
+			// No TUI running — send terminal reset to clear any stale alternate screen state
+			// ESC[?1049l = exit alternate screen buffer
+			// ESC[0m = reset all attributes
+			conn.WriteMessage(websocket.BinaryMessage, []byte("\x1b[?1049l\x1b[0m"))
+			// Strip completed alternate screen pairs and terminal queries
+			scrollbackCopy = stripAlternateScreenPairs(scrollbackCopy)
+			scrollbackCopy = stripTerminalQueries(scrollbackCopy)
+		}
+		// If alt screen is active (TUI still running), replay scrollback as-is
+		// so the TUI can redraw itself
 		conn.WriteMessage(websocket.BinaryMessage, scrollbackCopy)
 	} else {
 		s.mu.Unlock()
