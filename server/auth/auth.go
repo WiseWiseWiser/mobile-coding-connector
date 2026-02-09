@@ -15,7 +15,7 @@ import (
 
 const (
 	cookieName             = "ai-critic-token"
-	defaultCredentialsFile = ".server-credentials"
+	defaultCredentialsFile = ".ai-critic/server-credentials"
 )
 
 var (

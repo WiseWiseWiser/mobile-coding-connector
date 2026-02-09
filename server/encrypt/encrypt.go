@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	defaultPrivateKeyFile = ".ai-critic-enc-key"
+	defaultPrivateKeyFile = ".ai-critic/enc-key"
 )
 
 var (

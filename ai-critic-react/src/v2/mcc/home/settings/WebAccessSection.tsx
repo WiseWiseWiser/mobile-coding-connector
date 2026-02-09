@@ -141,7 +141,7 @@ export function WebAccessSection() {
     };
 
     const isStarting = (domain: string) => startingDomain === domain;
-    const displayTunnelName = tunnelName || 'ai-agent-tunnel';
+    const displayTunnelName = tunnelName || '(auto)';
 
     return (
         <div className="diagnose-section">

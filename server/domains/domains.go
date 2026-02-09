@@ -13,7 +13,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
 
-const defaultDomainsFile = ".server-domains.json"
+const defaultDomainsFile = ".ai-critic/server-domains.json"
 
 var (
 	domainsFileMu   sync.RWMutex

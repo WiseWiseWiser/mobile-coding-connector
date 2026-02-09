@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -71,6 +73,15 @@ type AgentSessionInfo struct {
 	CreatedAt  string `json:"created_at"`
 	Status     string `json:"status"` // "starting", "running", "stopped", "error"
 	Error      string `json:"error,omitempty"`
+}
+
+// AgentSessionsResponse holds paginated agent sessions response
+type AgentSessionsResponse struct {
+	Sessions   []AgentSessionInfo `json:"sessions"`
+	Page       int                `json:"page"`
+	PageSize   int                `json:"page_size"`
+	Total      int                `json:"total"`
+	TotalPages int                `json:"total_pages"`
 }
 
 // agentSession holds state for a running headless agent process
@@ -206,8 +217,16 @@ func (m *agentSessionManager) launch(agentID, projectDir string) (*agentSession,
 	m.sessions[id] = s
 	m.mu.Unlock()
 
-	// Wait for agent server to be ready
-	go s.waitReady()
+	// Wait for agent server to be ready, then apply preferred model
+	go func() {
+		s.waitReady()
+		s.mu.Lock()
+		status := s.status
+		s.mu.Unlock()
+		if status == "running" {
+			s.applyPreferredModel()
+		}
+	}()
 
 	// Monitor process exit
 	go func() {
@@ -279,6 +298,72 @@ func (s *agentSession) waitReady() {
 	s.mu.Unlock()
 }
 
+// preferredModelSubstring is the preferred model to auto-select when available.
+const preferredModelSubstring = "kimi-k2.5"
+
+// applyPreferredModel checks available models and sets the preferred one if found.
+func (s *agentSession) applyPreferredModel() {
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", s.port)
+
+	// Fetch current config to check current model
+	configResp, err := http.Get(baseURL + "/config")
+	if err != nil {
+		return
+	}
+	defer configResp.Body.Close()
+
+	var config struct {
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(configResp.Body).Decode(&config); err != nil {
+		return
+	}
+
+	// Already using the preferred model
+	if strings.Contains(config.Model, preferredModelSubstring) {
+		return
+	}
+
+	// Fetch providers to find available models
+	providersResp, err := http.Get(baseURL + "/config/providers")
+	if err != nil {
+		return
+	}
+	defer providersResp.Body.Close()
+
+	var providers struct {
+		Providers []struct {
+			ID     string                     `json:"id"`
+			Models map[string]json.RawMessage `json:"models"`
+		} `json:"providers"`
+	}
+	if err := json.NewDecoder(providersResp.Body).Decode(&providers); err != nil {
+		return
+	}
+
+	// Find a model matching the preferred substring
+	for _, p := range providers.Providers {
+		for modelID := range p.Models {
+			if !strings.Contains(modelID, preferredModelSubstring) {
+				continue
+			}
+			// Found preferred model, apply it
+			body := fmt.Sprintf(`{"model":"%s"}`, modelID)
+			req, err := http.NewRequest("PATCH", baseURL+"/config", strings.NewReader(body))
+			if err != nil {
+				return
+			}
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return
+			}
+			resp.Body.Close()
+			return
+		}
+	}
+}
+
 func (m *agentSessionManager) get(id string) *agentSession {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -286,10 +371,45 @@ func (m *agentSessionManager) get(id string) *agentSession {
 }
 
 func (m *agentSessionManager) list() []AgentSessionInfo {
+	return m.listPaginated(1, 1000).Sessions // default to high limit for backward compatibility
+}
+
+func (m *agentSessionManager) listPaginated(page, pageSize int) *AgentSessionsResponse {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	result := make([]AgentSessionInfo, 0, len(m.sessions))
+
+	// Convert sessions to slice for sorting
+	sessionList := make([]*agentSession, 0, len(m.sessions))
 	for _, s := range m.sessions {
+		sessionList = append(sessionList, s)
+	}
+
+	// Sort by creation time (newest first)
+	sort.Slice(sessionList, func(i, j int) bool {
+		return sessionList[j].createdAt.Before(sessionList[i].createdAt)
+	})
+
+	total := len(sessionList)
+	totalPages := (total + pageSize - 1) / pageSize
+
+	// Apply pagination
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+
+	var pagedSessions []*agentSession
+	if start < total {
+		pagedSessions = sessionList[start:end]
+	}
+
+	// Convert to response format
+	sessions := make([]AgentSessionInfo, 0, len(pagedSessions))
+	for _, s := range pagedSessions {
 		s.mu.Lock()
 		info := AgentSessionInfo{
 			ID:         s.id,
@@ -302,9 +422,16 @@ func (m *agentSessionManager) list() []AgentSessionInfo {
 			Error:      s.err,
 		}
 		s.mu.Unlock()
-		result = append(result, info)
+		sessions = append(sessions, info)
 	}
-	return result
+
+	return &AgentSessionsResponse{
+		Sessions:   sessions,
+		Page:       page,
+		PageSize:   pageSize,
+		Total:      total,
+		TotalPages: totalPages,
+	}
 }
 
 func (m *agentSessionManager) stop(id string) {
@@ -365,7 +492,22 @@ func handleListAgents(w http.ResponseWriter, r *http.Request) {
 func handleAgentSessions(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		sessions := sessionMgr.list()
+		// Parse pagination parameters
+		page := 1
+		pageSize := 20 // default page size
+
+		if p := r.URL.Query().Get("page"); p != "" {
+			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+				page = parsed
+			}
+		}
+		if ps := r.URL.Query().Get("page_size"); ps != "" {
+			if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
+				pageSize = parsed
+			}
+		}
+
+		sessions := sessionMgr.listPaginated(page, pageSize)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(sessions)
 

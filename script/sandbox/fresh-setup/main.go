@@ -140,7 +140,7 @@ func run(archFlag string) error {
 		}
 	}
 	fmt.Printf("Credentials file: %s\n", credentialsFile)
-	const containerCredentialsFile = "/root/.server-credentials"
+	const containerCredentialsFile = "/root/.ai-critic/server-credentials"
 
 	// Ensure encryption key files exist for volume mount (create empty if missing)
 	encKeyFile, err := encKeyFilePath()
@@ -156,8 +156,8 @@ func run(archFlag string) error {
 		}
 	}
 	fmt.Printf("Encryption key file: %s\n", encKeyFile)
-	const containerEncKeyFile = "/root/.ai-critic-enc-key"
-	const containerEncKeyPubFile = "/root/.ai-critic-enc-key.pub"
+	const containerEncKeyFile = "/root/.ai-critic/enc-key"
+	const containerEncKeyPubFile = "/root/.ai-critic/enc-key.pub"
 
 	// Ensure domains file exists for volume mount (create empty if missing)
 	domainsFile, err := domainsFilePath()
@@ -170,7 +170,7 @@ func run(archFlag string) error {
 		}
 	}
 	fmt.Printf("Domains file: %s\n", domainsFile)
-	const containerDomainsFile = "/root/.server-domains.json"
+	const containerDomainsFile = "/root/.ai-critic/server-domains.json"
 
 	// Remove any existing container (ignore errors if it doesn't exist)
 	fmt.Println("Removing old container (if any)...")
@@ -281,7 +281,7 @@ func credentialsFilePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, ".server-credentials"), nil
+	return filepath.Join(dir, "server-credentials"), nil
 }
 
 // encKeyFilePath returns the absolute path to the encryption private key file,
@@ -291,7 +291,7 @@ func encKeyFilePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, ".ai-critic-enc-key"), nil
+	return filepath.Join(dir, "enc-key"), nil
 }
 
 // domainsFilePath returns the absolute path to the domains JSON file,
@@ -301,6 +301,6 @@ func domainsFilePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, ".server-domains.json"), nil
+	return filepath.Join(dir, "server-domains.json"), nil
 }
 

@@ -13,7 +13,7 @@ import (
 
 const (
 	cookieName      = "ai-critic-token"
-	credentialsFile = ".server-credentials"
+	credentialsFile = ".ai-critic/server-credentials"
 )
 
 var help = fmt.Sprintf(`Usage: go run ./script/request <path> [body]

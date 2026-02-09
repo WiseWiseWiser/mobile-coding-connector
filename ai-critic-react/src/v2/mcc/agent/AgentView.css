@@ -819,6 +819,65 @@
     background: rgba(148, 163, 184, 0.1);
 }
 
+/* ---- Pagination ---- */
+
+.mcc-agent-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: #0f172a;
+    border-top: 1px solid #1e293b;
+    border-bottom: 1px solid #1e293b;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.mcc-agent-pagination-info {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.mcc-agent-pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mcc-agent-pagination-btn {
+    padding: 4px 8px;
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+    min-width: 28px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mcc-agent-pagination-btn:hover:not(:disabled) {
+    background: #334155;
+    color: #e2e8f0;
+    border-color: #475569;
+}
+
+.mcc-agent-pagination-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.mcc-agent-pagination-page {
+    font-size: 12px;
+    color: #e2e8f0;
+    min-width: 80px;
+    text-align: center;
+}
+
 /* ---- Agent Settings Form ---- */
 
 .mcc-agent-settings-form {

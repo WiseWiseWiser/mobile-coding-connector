@@ -17,7 +17,7 @@ go run ./script/request /api/checkpoints?project=myproject
 go run ./script/request /api/checkpoints '{"project_dir":"/path/to/project","name":"test","file_paths":["file.txt"]}'
 ```
 
-The tool automatically reads `.server-credentials` for auth (cookie: `ai-critic-token`).
+The tool automatically reads `.ai-critic/server-credentials` for auth (cookie: `ai-critic-token`).
 
 ## Usage
 
@@ -57,5 +57,5 @@ go run ./script/request <path> [body]
 ## Important Notes
 
 - Server must be running (`go run ./script/server/run`) before sending requests.
-- The `.server-credentials` file must exist if auth is enabled; each line is a valid token.
+- The `.ai-critic/server-credentials` file must exist if auth is enabled; each line is a valid token.
 - Always limit output when piping: `go run ./script/request /api/xxx | head -c 4096`.

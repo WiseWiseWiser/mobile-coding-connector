@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +44,15 @@ type SessionInfo struct {
 	CreatedAt string `json:"created_at"`
 	// Connected is true when a WebSocket client is currently attached
 	Connected bool `json:"connected"`
+}
+
+// TerminalSessionsResponse holds paginated terminal sessions response
+type TerminalSessionsResponse struct {
+	Sessions   []SessionInfo `json:"sessions"`
+	Page       int           `json:"page"`
+	PageSize   int           `json:"page_size"`
+	Total      int           `json:"total"`
+	TotalPages int           `json:"total_pages"`
 }
 
 // session holds the state for one persistent terminal session
@@ -183,10 +194,45 @@ func (m *sessionManager) get(id string) *session {
 }
 
 func (m *sessionManager) list() []SessionInfo {
+	return m.listPaginated(1, 1000).Sessions // default to high limit for backward compatibility
+}
+
+func (m *sessionManager) listPaginated(page, pageSize int) *TerminalSessionsResponse {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	result := make([]SessionInfo, 0, len(m.sessions))
+
+	// Convert sessions to slice for sorting
+	sessionList := make([]*session, 0, len(m.sessions))
 	for _, s := range m.sessions {
+		sessionList = append(sessionList, s)
+	}
+
+	// Sort by creation time (newest first)
+	sort.Slice(sessionList, func(i, j int) bool {
+		return sessionList[j].createdAt.Before(sessionList[i].createdAt)
+	})
+
+	total := len(sessionList)
+	totalPages := (total + pageSize - 1) / pageSize
+
+	// Apply pagination
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+
+	var pagedSessions []*session
+	if start < total {
+		pagedSessions = sessionList[start:end]
+	}
+
+	// Convert to response format
+	sessions := make([]SessionInfo, 0, len(pagedSessions))
+	for _, s := range pagedSessions {
 		s.mu.Lock()
 		info := SessionInfo{
 			ID:        s.id,
@@ -196,9 +242,16 @@ func (m *sessionManager) list() []SessionInfo {
 			Connected: s.conn != nil,
 		}
 		s.mu.Unlock()
-		result = append(result, info)
+		sessions = append(sessions, info)
 	}
-	return result
+
+	return &TerminalSessionsResponse{
+		Sessions:   sessions,
+		Page:       page,
+		PageSize:   pageSize,
+		Total:      total,
+		TotalPages: totalPages,
+	}
 }
 
 func (m *sessionManager) remove(id string) {
@@ -391,7 +444,22 @@ func handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 func handleSessions(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		sessions := manager.list()
+		// Parse pagination parameters
+		page := 1
+		pageSize := 20 // default page size
+
+		if p := r.URL.Query().Get("page"); p != "" {
+			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+				page = parsed
+			}
+		}
+		if ps := r.URL.Query().Get("page_size"); ps != "" {
+			if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
+				pageSize = parsed
+			}
+		}
+
+		sessions := manager.listPaginated(page, pageSize)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(sessions)
 	case http.MethodDelete:
@@ -406,4 +474,3 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
-

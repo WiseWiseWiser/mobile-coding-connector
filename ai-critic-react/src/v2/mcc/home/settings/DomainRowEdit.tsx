@@ -64,12 +64,12 @@ export function DomainRowEdit({ entry, tunnelName, onSave, onRemove, onCancel, o
                     <input
                         type="text"
                         className="diagnose-webaccess-input"
-                        placeholder="ai-agent-tunnel"
+                        placeholder="auto (derived from domain)"
                         value={editTunnelName}
                         onChange={e => setEditTunnelName(e.target.value)}
                     />
                     <span className="diagnose-webaccess-tunnel-name-hint">
-                        Shared Cloudflare named tunnel identifier. Default: ai-agent-tunnel
+                        Shared Cloudflare named tunnel identifier. Default: auto (derived from domain)
                     </span>
                 </div>
             )}

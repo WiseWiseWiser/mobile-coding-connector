@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,32 +22,32 @@ import (
 // ChatMessage follows ACP message format.
 type ChatMessage struct {
 	ID    string        `json:"id"`
-	Role  string        `json:"role"`            // "user" or "agent"
+	Role  string        `json:"role"` // "user" or "agent"
 	Parts []MessagePart `json:"parts"`
-	Time  int64         `json:"time,omitempty"`   // Unix timestamp in seconds
-	Model string        `json:"model,omitempty"`  // Model ID (agent messages only)
+	Time  int64         `json:"time,omitempty"`  // Unix timestamp in seconds
+	Model string        `json:"model,omitempty"` // Model ID (agent messages only)
 }
 
 // MessagePart follows ACP message part format.
 type MessagePart struct {
 	ID          string                 `json:"id"`
-	ContentType string                 `json:"content_type"`          // "text/plain", "tool/call", "tool/result", "text/thinking"
-	Content     string                 `json:"content"`               // Main content text
-	Name        string                 `json:"name,omitempty"`        // For tool calls: tool name
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`    // Additional metadata
+	ContentType string                 `json:"content_type"`       // "text/plain", "tool/call", "tool/result", "text/thinking"
+	Content     string                 `json:"content"`            // Main content text
+	Name        string                 `json:"name,omitempty"`     // For tool calls: tool name
+	Metadata    map[string]interface{} `json:"metadata,omitempty"` // Additional metadata
 }
 
 // ChatSession represents a chat session with cursor-agent.
 type ChatSession struct {
-	ID             string `json:"id"`
-	CreatedAt      string `json:"created_at"`
-	FirstMessage   string `json:"firstMessage,omitempty"`
-	CursorSession  string `json:"-"` // cursor-agent's session_id
-	ProjectDir     string `json:"-"`
-	CommandPath    string `json:"-"`
-	ResumeID       string `json:"-"` // For multi-turn: cursor's session_id to resume
-	Model          string `json:"-"` // model to use for cursor-agent
-	adapter        *Adapter // parent adapter for global broadcast
+	ID            string   `json:"id"`
+	CreatedAt     string   `json:"created_at"`
+	FirstMessage  string   `json:"firstMessage,omitempty"`
+	CursorSession string   `json:"-"` // cursor-agent's session_id
+	ProjectDir    string   `json:"-"`
+	CommandPath   string   `json:"-"`
+	ResumeID      string   `json:"-"` // For multi-turn: cursor's session_id to resume
+	Model         string   `json:"-"` // model to use for cursor-agent
+	adapter       *Adapter // parent adapter for global broadcast
 
 	mu       sync.Mutex
 	messages []ChatMessage
@@ -57,7 +59,7 @@ type ChatSession struct {
 
 // ACPEvent is a standard ACP SSE event sent to subscribers.
 type ACPEvent struct {
-	Type    string      `json:"type"`    // "acp.message.created", "acp.message.updated", "acp.message.completed"
+	Type    string      `json:"type"` // "acp.message.created", "acp.message.updated", "acp.message.completed"
 	Message ChatMessage `json:"message"`
 }
 
@@ -89,15 +91,15 @@ const settingsNamespace = "cursor-agent"
 
 // Adapter manages cursor-agent chat sessions.
 type Adapter struct {
-	mu               sync.Mutex
-	sessions         map[string]*ChatSession
-	counter          int
-	projectDir       string
-	cmdPath          string
-	model            string // selected model ID, empty means default
-	settings         AdapterSettings
-	settingsStore    *settings.Store
-	globalSubs       map[chan SSEEvent]struct{}
+	mu            sync.Mutex
+	sessions      map[string]*ChatSession
+	counter       int
+	projectDir    string
+	cmdPath       string
+	model         string // selected model ID, empty means default
+	settings      AdapterSettings
+	settingsStore *settings.Store
+	globalSubs    map[chan SSEEvent]struct{}
 }
 
 // NewAdapter creates a new cursor adapter for the given project directory.
@@ -253,17 +255,75 @@ func (a *Adapter) GetSession(id string) *ChatSession {
 	return a.sessions[id]
 }
 
-// ListSessions returns all sessions.
-func (a *Adapter) ListSessions() []map[string]string {
+// PaginationParams holds pagination parameters
+type PaginationParams struct {
+	Page     int `json:"page"`      // 1-based page number
+	PageSize int `json:"page_size"` // number of items per page
+}
+
+// PaginatedResponse holds paginated response data
+type PaginatedResponse struct {
+	Items      []map[string]string `json:"items"`
+	Page       int                 `json:"page"`
+	PageSize   int                 `json:"page_size"`
+	Total      int                 `json:"total"`
+	TotalPages int                 `json:"total_pages"`
+}
+
+// ListSessions returns all sessions with optional pagination.
+func (a *Adapter) ListSessions(page, pageSize int) *PaginatedResponse {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	result := make([]map[string]string, 0, len(a.sessions))
+
+	// Convert sessions to slice for sorting
+	sessionList := make([]*ChatSession, 0, len(a.sessions))
 	for _, s := range a.sessions {
-		result = append(result, map[string]string{
-			"id": s.ID,
-		})
+		sessionList = append(sessionList, s)
 	}
-	return result
+
+	// Sort by creation time (newest first)
+	sort.Slice(sessionList, func(i, j int) bool {
+		timeI, _ := time.Parse(time.RFC3339, sessionList[i].CreatedAt)
+		timeJ, _ := time.Parse(time.RFC3339, sessionList[j].CreatedAt)
+		return timeJ.Before(timeI) // newer first
+	})
+
+	total := len(sessionList)
+	totalPages := (total + pageSize - 1) / pageSize
+
+	// Apply pagination
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+
+	var pagedSessions []*ChatSession
+	if start < total {
+		pagedSessions = sessionList[start:end]
+	}
+
+	// Convert to response format
+	items := make([]map[string]string, 0, len(pagedSessions))
+	for _, s := range pagedSessions {
+		item := map[string]string{
+			"id":           s.ID,
+			"created_at":   s.CreatedAt,
+			"firstMessage": s.FirstMessage,
+		}
+		items = append(items, item)
+	}
+
+	return &PaginatedResponse{
+		Items:      items,
+		Page:       page,
+		PageSize:   pageSize,
+		Total:      total,
+		TotalPages: totalPages,
+	}
 }
 
 // DeleteSession removes a session.
@@ -714,8 +774,23 @@ func extractSessionID(path, suffix string) string {
 	return strings.TrimSuffix(path, "/")
 }
 
-func (a *Adapter) handleListSessions(w http.ResponseWriter, _ *http.Request) {
-	sessions := a.ListSessions()
+func (a *Adapter) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	// Parse pagination parameters
+	page := 1
+	pageSize := 50 // default page size
+
+	if p := r.URL.Query().Get("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+	if ps := r.URL.Query().Get("page_size"); ps != "" {
+		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
+			pageSize = parsed
+		}
+	}
+
+	sessions := a.ListSessions(page, pageSize)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sessions)
 }

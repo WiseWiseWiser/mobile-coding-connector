@@ -30,9 +30,9 @@ Options:
   --dir DIR               Set the initial directory for code review (defaults to current working directory)
   --port PORT             Port to listen on (defaults to auto-find starting from %d)
   --config-file FILE      Path to configuration file (JSON)
-  --credentials-file FILE Path to credentials file (defaults to ".server-credentials")
-  --enc-key-file FILE     Path to encryption key file (defaults to ".ai-critic-enc-key")
-  --domains-file FILE     Path to domains JSON file (defaults to ".server-domains.json")
+  --credentials-file FILE Path to credentials file (defaults to ".ai-critic/server-credentials")
+  --enc-key-file FILE     Path to encryption key file (defaults to ".ai-critic/enc-key")
+  --domains-file FILE     Path to domains JSON file (defaults to ".ai-critic/server-domains.json")
   --rules-dir DIR         Directory containing REVIEW_RULES.md (defaults to "rules")
   --component             Serve a specific component
   -h, --help              Show this help message
@@ -106,17 +106,17 @@ func Run(args []string) error {
 		server.SetAIConfig(cfg)
 	}
 
-	// Set credentials file (defaults to ".server-credentials")
+	// Set credentials file (defaults to ".ai-critic/server-credentials")
 	if credentialsFileFlag != "" {
 		auth.SetCredentialsFile(credentialsFileFlag)
 	}
 
-	// Set encryption key file (defaults to ".ai-critic-enc-key")
+	// Set encryption key file (defaults to ".ai-critic/enc-key")
 	if encKeyFileFlag != "" {
 		encrypt.SetKeyFile(encKeyFileFlag)
 	}
 
-	// Set domains file (defaults to ".server-domains.json")
+	// Set domains file (defaults to ".ai-critic/server-domains.json")
 	if domainsFileFlag != "" {
 		domains.SetDomainsFile(domainsFileFlag)
 	}

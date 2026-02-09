@@ -2,6 +2,7 @@ package cloudflare
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -11,8 +12,6 @@ import (
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
-
-const defaultDomainTunnelName = "ai-agent-tunnel"
 
 var (
 	domainMu      sync.Mutex
@@ -94,11 +93,11 @@ type LogFunc func(message string)
 // StartDomainTunnel starts a cloudflare named tunnel for the given domain.
 // The domain is routed via DNS to the tunnel, and an ingress rule maps it
 // to http://localhost:<port>.
-// tunnelName is the cloudflare tunnel name to use; if empty, defaults to "ai-agent-tunnel".
+// tunnelName is the cloudflare tunnel name to use; if empty, a default is derived from the domain.
 // logFn is an optional callback for streaming log messages.
 func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc) (*DomainTunnelStatus, error) {
 	if tunnelName == "" {
-		tunnelName = defaultDomainTunnelName
+		tunnelName = DefaultTunnelName(domain)
 	}
 	if logFn == nil {
 		logFn = func(string) {}
@@ -153,10 +152,10 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 }
 
 // StopDomainTunnel stops the tunnel for the given domain.
-// tunnelName is the cloudflare tunnel name; if empty, defaults to "ai-agent-tunnel".
+// tunnelName is the cloudflare tunnel name; if empty, a default is derived from the domain.
 func StopDomainTunnel(domain string, tunnelName string) error {
 	if tunnelName == "" {
-		tunnelName = defaultDomainTunnelName
+		tunnelName = DefaultTunnelName(domain)
 	}
 
 	domainMu.Lock()
@@ -256,16 +255,26 @@ func writeDomainConfigAndRestart(tunnelRef string) error {
 		return err
 	}
 
-	// Start tunnel in its own process group so it survives server restart
+	// Start tunnel in its own process group so it survives server restart.
+	// Dual-write output to both a log file and stdout/stderr.
 	cmd := exec.Command("cloudflared", "tunnel", "--config", cfgPath, "run", tunnelRef)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	logFile, err := os.OpenFile(cfgPath+".log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err == nil {
+		cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
+		cmd.Stderr = io.MultiWriter(os.Stderr, logFile)
+	} else {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 		Pgid:    0,
 	}
 
 	if err := cmd.Start(); err != nil {
+		if logFile != nil {
+			logFile.Close()
+		}
 		return fmt.Errorf("failed to start cloudflared: %v", err)
 	}
 
@@ -273,6 +282,9 @@ func writeDomainConfigAndRestart(tunnelRef string) error {
 
 	go func() {
 		cmd.Wait()
+		if logFile != nil {
+			logFile.Close()
+		}
 	}()
 
 	return nil

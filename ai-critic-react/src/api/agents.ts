@@ -29,6 +29,28 @@ export interface AgentSessionInfo {
     error?: string;
 }
 
+export interface AgentSessionsResponse {
+    sessions: AgentSessionInfo[];
+    page: number;
+    page_size: number;
+    total: number;
+    total_pages: number;
+}
+
+export interface OpencodeSession {
+    id: string;
+    created_at?: string;
+    firstMessage?: string;
+}
+
+export interface OpencodeSessionsResponse {
+    items: OpencodeSession[];
+    page: number;
+    page_size: number;
+    total: number;
+    total_pages: number;
+}
+
 // ---- API functions ----
 
 export async function fetchAgents(): Promise<AgentDef[]> {
@@ -37,10 +59,30 @@ export async function fetchAgents(): Promise<AgentDef[]> {
     return Array.isArray(data) ? data : [];
 }
 
-export async function fetchAgentSessions(): Promise<AgentSessionInfo[]> {
-    const resp = await fetch('/api/agents/sessions');
+export async function fetchAgentSessions(page?: number, pageSize?: number): Promise<AgentSessionInfo[]> {
+    const params = new URLSearchParams();
+    if (page) params.set('page', page.toString());
+    if (pageSize) params.set('page_size', pageSize.toString());
+    
+    const url = params.toString() ? `/api/agents/sessions?${params}` : '/api/agents/sessions';
+    const resp = await fetch(url);
     const data = await resp.json();
+    
+    // Handle both paginated and legacy response formats
+    if (data.sessions && Array.isArray(data.sessions)) {
+        return data.sessions;
+    }
     return Array.isArray(data) ? data : [];
+}
+
+export async function fetchAgentSessionsPaginated(page: number = 1, pageSize: number = 20): Promise<AgentSessionsResponse> {
+    const params = new URLSearchParams({
+        page: page.toString(),
+        page_size: pageSize.toString(),
+    });
+    
+    const resp = await fetch(`/api/agents/sessions?${params}`);
+    return resp.json();
 }
 
 export async function launchAgentSession(agentId: string, projectDir: string): Promise<AgentSessionInfo> {
@@ -65,10 +107,30 @@ export function agentProxyBase(sessionId: string): string {
     return `/api/agents/sessions/${sessionId}/proxy`;
 }
 
-export async function listOpencodeSessions(sessionId: string): Promise<{ id: string }[]> {
-    const resp = await fetch(`${agentProxyBase(sessionId)}/session`);
+export async function listOpencodeSessions(sessionId: string, page?: number, pageSize?: number): Promise<{ id: string }[]> {
+    const params = new URLSearchParams();
+    if (page) params.set('page', page.toString());
+    if (pageSize) params.set('page_size', pageSize.toString());
+    
+    const url = params.toString() ? `${agentProxyBase(sessionId)}/session?${params}` : `${agentProxyBase(sessionId)}/session`;
+    const resp = await fetch(url);
     const data = await resp.json();
+    
+    // Handle both paginated and legacy response formats
+    if (data.items && Array.isArray(data.items)) {
+        return data.items;
+    }
     return Array.isArray(data) ? data : [];
+}
+
+export async function listOpencodeSessionsPaginated(sessionId: string, page: number = 1, pageSize: number = 50): Promise<OpencodeSessionsResponse> {
+    const params = new URLSearchParams({
+        page: page.toString(),
+        page_size: pageSize.toString(),
+    });
+    
+    const resp = await fetch(`${agentProxyBase(sessionId)}/session?${params}`);
+    return resp.json();
 }
 
 export async function createOpencodeSession(sessionId: string): Promise<{ id: string }> {

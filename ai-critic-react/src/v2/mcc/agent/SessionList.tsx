@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useCurrent } from '../../../hooks/useCurrent';
 import {
     fetchAgentSessions, listOpencodeSessions, createOpencodeSession,
-    fetchMessages, AgentSessionStatuses,
+    fetchMessages, AgentSessionStatuses, listOpencodeSessionsPaginated, type OpencodeSessionsResponse,
 } from '../../../api/agents';
 import type { AgentSessionInfo } from '../../../api/agents';
 import { ACPRoles } from '../../../api/acp';
@@ -24,12 +24,17 @@ export interface SessionListProps {
 interface SessionPreview {
     id: string;
     firstMessage: string;
+    created_at?: string;
 }
 
 export function SessionList({ session, projectName, onBack, onStop, onSelectSession, onSessionUpdate, onSettings }: SessionListProps) {
     const [sessions, setSessions] = useState<SessionPreview[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    const pageSize = 20;
     const onSelectSessionRef = useCurrent(onSelectSession);
     const sessionRef = useCurrent(session);
 
@@ -59,11 +64,11 @@ export function SessionList({ session, projectName, onBack, onStop, onSelectSess
         const load = async () => {
             setLoading(true);
             try {
-                const list = await listOpencodeSessions(session.id);
+                const response = await listOpencodeSessionsPaginated(session.id, currentPage, pageSize);
                 if (cancelled) return;
 
                 // If no sessions exist, auto-create one and navigate into it
-                if (list.length === 0) {
+                if (response.total === 0) {
                     const newSession = await createOpencodeSession(session.id);
                     if (!cancelled) {
                         onSelectSessionRef.current(newSession.id);
@@ -71,9 +76,12 @@ export function SessionList({ session, projectName, onBack, onStop, onSelectSess
                     return;
                 }
 
+                setTotalPages(response.total_pages);
+                setTotalCount(response.total);
+
                 // Fetch first user message for each session as preview
                 const previews = await Promise.all(
-                    list.map(async (s) => {
+                    response.items.map(async (s) => {
                         try {
                             const rawMsgs = await fetchMessages(session.id, s.id);
                             const msgs = convertMessages(rawMsgs);
@@ -82,9 +90,9 @@ export function SessionList({ session, projectName, onBack, onStop, onSelectSess
                                 .map(p => p.content || '')
                                 .join(' ')
                                 .trim() || '';
-                            return { id: s.id, firstMessage: text };
+                            return { id: s.id, firstMessage: text, created_at: s.created_at };
                         } catch {
-                            return { id: s.id, firstMessage: '' };
+                            return { id: s.id, firstMessage: '', created_at: s.created_at };
                         }
                     })
                 );
@@ -99,7 +107,7 @@ export function SessionList({ session, projectName, onBack, onStop, onSelectSess
         load();
         return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [session.id, session.status]);
+    }, [session.id, session.status, currentPage]);
 
     const handleNewChat = async () => {
         setCreating(true);
@@ -108,6 +116,43 @@ export function SessionList({ session, projectName, onBack, onStop, onSelectSess
             onSelectSession(newSession.id);
         } catch { /* ignore */ }
         setCreating(false);
+    };
+
+    const handlePageChange = (newPage: number) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            setCurrentPage(newPage);
+        }
+    };
+
+    const renderPagination = () => {
+        if (totalPages <= 1) return null;
+
+        return (
+            <div className="mcc-agent-pagination">
+                <div className="mcc-agent-pagination-info">
+                    Showing {sessions.length} of {totalCount} sessions
+                </div>
+                <div className="mcc-agent-pagination-controls">
+                    <button
+                        className="mcc-agent-pagination-btn"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                    >
+                        ←
+                    </button>
+                    <span className="mcc-agent-pagination-page">
+                        Page {currentPage} of {totalPages}
+                    </span>
+                    <button
+                        className="mcc-agent-pagination-btn"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                    >
+                        →
+                    </button>
+                </div>
+            </div>
+        );
     };
 
     // Show spinner while starting
@@ -144,27 +189,34 @@ export function SessionList({ session, projectName, onBack, onStop, onSelectSess
             ) : sessions.length === 0 ? (
                 <div className="mcc-agent-loading">No sessions yet</div>
             ) : (
-                <div className="mcc-agent-session-list">
-                    {sessions.map((s, idx) => (
-                        <button
-                            key={s.id}
-                            className="mcc-agent-session-card"
-                            onClick={() => onSelectSession(s.id)}
-                        >
-                            <div className="mcc-agent-session-card-title">
-                                Session {sessions.length - idx}
-                            </div>
-                            <div className="mcc-agent-session-card-preview">
-                                {s.firstMessage
-                                    ? truncate(s.firstMessage, 100)
-                                    : 'No messages yet'}
-                            </div>
-                            <div className="mcc-agent-session-card-id">
-                                {s.id.slice(0, 8)}...
-                            </div>
-                        </button>
-                    ))}
-                </div>
+                <>
+                    {renderPagination()}
+                    <div className="mcc-agent-session-list">
+                        {sessions.map((s, idx) => {
+                            const globalIndex = totalCount - ((currentPage - 1) * pageSize) - idx;
+                            return (
+                                <button
+                                    key={s.id}
+                                    className="mcc-agent-session-card"
+                                    onClick={() => onSelectSession(s.id)}
+                                >
+                                    <div className="mcc-agent-session-card-title">
+                                        Session {globalIndex}
+                                    </div>
+                                    <div className="mcc-agent-session-card-preview">
+                                        {s.firstMessage
+                                            ? truncate(s.firstMessage, 100)
+                                            : 'No messages yet'}
+                                    </div>
+                                    <div className="mcc-agent-session-card-id">
+                                        {s.id.slice(0, 8)}...
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {renderPagination()}
+                </>
             )}
         </div>
     );

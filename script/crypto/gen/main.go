@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	privateKeyFile = ".ai-critic-enc-key"
-	publicKeyFile  = ".ai-critic-enc-key.pub"
+	privateKeyFile = ".ai-critic/enc-key"
+	publicKeyFile  = ".ai-critic/enc-key.pub"
 	keyBits        = 3072
 )
 
@@ -23,8 +23,8 @@ Usage: go run ./script/crypto/gen
 Generates an RSA key pair for encrypting SSH private keys in transit.
 
 Files generated:
-  .ai-critic-enc-key      - RSA private key (OpenSSH format, used by server for decryption)
-  .ai-critic-enc-key.pub  - RSA public key (OpenSSH format)
+  .ai-critic/enc-key      - RSA private key (OpenSSH format, used by server for decryption)
+  .ai-critic/enc-key.pub  - RSA public key (OpenSSH format)
 
 The server reads these files to provide RSA-OAEP encryption for SSH keys
 sent from the frontend. If these files don't exist, the server will not

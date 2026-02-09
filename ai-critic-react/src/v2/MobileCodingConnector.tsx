@@ -7,6 +7,7 @@ import { NavTabs } from './mcc/types';
 import type { NavTab } from './mcc/types';
 import { MenuIcon, SettingsIcon, ProfileIcon, HomeIcon, AgentIcon, TerminalIcon, PortsIcon, FilesIcon } from './icons';
 import { NavButton } from './buttons';
+import { ProjectDropdown } from './mcc/ProjectDropdown';
 import { TerminalManager } from './mcc/terminal/TerminalManager';
 import type { TerminalManagerHandle } from './mcc/terminal/TerminalManager';
 import { fetchTerminalSessions } from '../api/terminal';
@@ -144,9 +145,11 @@ export function MobileCodingConnector() {
                 <button className="mcc-menu-btn" onClick={() => setMenuOpen(!menuOpen)}>
                     <MenuIcon />
                 </button>
-                <div className="mcc-title">
-                    {currentProject ? currentProject.name : 'Mobile Coding Connector'}
-                </div>
+                <ProjectDropdown
+                    projects={projectsList}
+                    currentProject={currentProject}
+                    onProjectSelect={handleSelectProject}
+                />
                 <button className="mcc-profile-btn">
                     <ProfileIcon />
                 </button>

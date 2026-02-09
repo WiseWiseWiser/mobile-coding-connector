@@ -12,6 +12,7 @@ import (
 
 	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
+	cf "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 )
 
 const defaultConfigFile = ".config.local.json"
@@ -102,7 +103,7 @@ Required fields:
   - domain: The subdomain for your AI Agent (mandatory)
 
 Optional fields (with defaults):
-  - tunnel_id: Tunnel name (default: "ai-agent-tunnel")
+  - tunnel_id: Tunnel name (default: derived from domain)
   - local_port: Local server port (default: "%s")
   - config_path: Cloudflared config directory (default: "~/.cloudflared")`, defaultPort, defaultPort)
 	}
@@ -110,7 +111,7 @@ Optional fields (with defaults):
 	// Apply defaults
 	tunnelID := config.Cloudflare.TunnelID
 	if tunnelID == "" {
-		tunnelID = "ai-agent-tunnel"
+		tunnelID = cf.DefaultTunnelName(config.Cloudflare.Domain)
 	}
 
 	localPort := config.Cloudflare.LocalPort

@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-const defaultConfigFile = ".terminal-config.json"
+const defaultConfigFile = ".ai-critic/terminal-config.json"
 
 var (
 	configFileMu   sync.RWMutex
