@@ -1553,6 +1553,86 @@ body:has(.mcc) {
     color: #64748b;
 }
 
+.mcc-owned-domain-btn.active {
+    background: #2563eb;
+    color: #ffffff;
+    border-color: #3b82f6;
+}
+
+/* Subdomain field with generate button */
+.mcc-subdomain-field {
+    margin-top: 8px;
+}
+
+.mcc-subdomain-input-group {
+    display: flex;
+    gap: 8px;
+}
+
+.mcc-subdomain-input {
+    flex: 1;
+    padding: 10px 12px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #f1f5f9;
+    font-size: 15px;
+    box-sizing: border-box;
+}
+
+.mcc-subdomain-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.mcc-generate-btn {
+    padding: 10px 14px;
+    background: #475569;
+    border: 1px solid #64748b;
+    border-radius: 8px;
+    color: #f1f5f9;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mcc-generate-btn:hover {
+    background: #3b82f6;
+    border-color: #3b82f6;
+}
+
+.mcc-generate-btn:active {
+    transform: scale(0.95);
+}
+
+/* Domain preview */
+.mcc-domain-preview {
+    margin-top: 8px;
+    padding: 12px;
+    background: #1e3a5f;
+    border: 1px solid #2563eb;
+    border-radius: 8px;
+}
+
+.mcc-domain-preview label {
+    display: block;
+    font-size: 11px;
+    color: #93c5fd;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.mcc-domain-preview-value {
+    font-size: 14px;
+    color: #bfdbfe;
+    font-weight: 500;
+    word-break: break-all;
+}
+
 /* Port provider badge */
 .mcc-port-provider-badge {
     margin-left: auto;

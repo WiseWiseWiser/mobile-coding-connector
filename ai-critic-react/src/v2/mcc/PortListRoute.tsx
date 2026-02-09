@@ -27,9 +27,14 @@ export function PortListRoute() {
             newPortNumber={ctx.newPortNumber}
             newPortLabel={ctx.newPortLabel}
             newPortProvider={ctx.newPortProvider}
+            newPortSubdomain={ctx.newPortSubdomain}
+            newPortBaseDomain={ctx.newPortBaseDomain}
             onPortNumberChange={ctx.onPortNumberChange}
             onPortLabelChange={ctx.onPortLabelChange}
             onPortProviderChange={ctx.onPortProviderChange}
+            onPortSubdomainChange={ctx.onPortSubdomainChange}
+            onPortBaseDomainChange={ctx.onPortBaseDomainChange}
+            onGenerateSubdomain={ctx.onGenerateSubdomain}
             onAddPort={ctx.onAddPort}
             onRemovePort={ctx.onRemovePort}
             onNavigateToView={ctx.navigateToView}

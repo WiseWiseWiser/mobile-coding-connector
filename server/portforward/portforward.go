@@ -58,8 +58,9 @@ type Provider interface {
 	Description() string
 	// Available returns true if the provider's dependencies are installed
 	Available() bool
-	// Start begins tunneling the given local port and returns a handle
-	Start(port int) (*TunnelHandle, error)
+	// Start begins tunneling the given local port and returns a handle.
+	// The hostname parameter is an optional hint for the desired public hostname (used by Cloudflare providers).
+	Start(port int, hostname string) (*TunnelHandle, error)
 }
 
 // PortForward represents a single port forward entry (API response)
@@ -209,7 +210,7 @@ func (m *Manager) Add(port int, label string, providerName string) (*PortForward
 	m.mu.Unlock()
 
 	// Start the tunnel
-	handle, err := p.Start(port)
+	handle, err := p.Start(port, label)
 	if err != nil {
 		m.mu.Lock()
 		t.status = StatusError

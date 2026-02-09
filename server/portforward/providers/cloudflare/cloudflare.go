@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,7 +31,7 @@ func (p *QuickProvider) Description() string {
 }
 func (p *QuickProvider) Available() bool { return portforward.IsCommandAvailable("cloudflared") }
 
-func (p *QuickProvider) Start(port int) (*portforward.TunnelHandle, error) {
+func (p *QuickProvider) Start(port int, _ string) (*portforward.TunnelHandle, error) {
 	logs := portforward.NewLogBuffer()
 
 	cmd := exec.Command("cloudflared", "tunnel", "--url", fmt.Sprintf("http://localhost:%d", port))
@@ -143,7 +145,7 @@ func isCloudflareAuthenticated() bool {
 	return status.Authenticated
 }
 
-func (p *TunnelProvider) Start(port int) (*portforward.TunnelHandle, error) {
+func (p *TunnelProvider) Start(port int, hostname string) (*portforward.TunnelHandle, error) {
 	logs := portforward.NewLogBuffer()
 
 	if p.cfg.BaseDomain == "" {
@@ -155,17 +157,21 @@ func (p *TunnelProvider) Start(port int) (*portforward.TunnelHandle, error) {
 		tunnelRef = p.cfg.TunnelID
 	}
 
-	// Try to use user-configured domain if Cloudflare is authenticated
-	hostname := ""
-	userDomains := getUserDomains()
-	if len(userDomains) > 0 && isCloudflareAuthenticated() {
-		// Use the first available user domain
-		hostname = userDomains[0]
-		fmt.Fprintf(logs, "[setup] Using user-configured domain: %s\n", hostname)
+	// Use provided hostname if valid, otherwise fall back to default logic
+	if hostname == "" || !strings.Contains(hostname, ".") {
+		// Try to use user-configured domain if Cloudflare is authenticated
+		userDomains := getUserDomains()
+		if len(userDomains) > 0 && isCloudflareAuthenticated() {
+			// Use the first available user domain
+			hostname = userDomains[0]
+			fmt.Fprintf(logs, "[setup] Using user-configured domain: %s\n", hostname)
+		} else {
+			// Fall back to random subdomain
+			hostname = fmt.Sprintf("%s.%s", pick.RandomSubdomain(), p.cfg.BaseDomain)
+			fmt.Fprintf(logs, "[setup] Using generated subdomain: %s\n", hostname)
+		}
 	} else {
-		// Fall back to random subdomain
-		hostname = fmt.Sprintf("%s.%s", pick.RandomSubdomain(), p.cfg.BaseDomain)
-		fmt.Fprintf(logs, "[setup] Using generated subdomain: %s\n", hostname)
+		fmt.Fprintf(logs, "[setup] Using provided hostname: %s\n", hostname)
 	}
 
 	localURL := fmt.Sprintf("http://localhost:%d", port)
@@ -336,7 +342,7 @@ func (p *OwnedProvider) Available() bool {
 	return isCloudflareAuthenticated()
 }
 
-func (p *OwnedProvider) Start(port int) (*portforward.TunnelHandle, error) {
+func (p *OwnedProvider) Start(port int, hostname string) (*portforward.TunnelHandle, error) {
 	logs := portforward.NewLogBuffer()
 
 	// Get user domains
@@ -345,16 +351,22 @@ func (p *OwnedProvider) Start(port int) (*portforward.TunnelHandle, error) {
 		return nil, fmt.Errorf("no owned domains configured")
 	}
 
-	// Use the first owned domain
-	baseDomain := userDomains[0]
-	fmt.Fprintf(logs, "[setup] Using owned domain: %s\n", baseDomain)
+	// Use provided hostname if valid, otherwise generate one
+	if hostname == "" || !strings.Contains(hostname, ".") {
+		// Use the first owned domain
+		baseDomain := userDomains[0]
+		fmt.Fprintf(logs, "[setup] Using owned domain: %s\n", baseDomain)
 
-	// Generate random subdomain
-	hostname := fmt.Sprintf("%s.%s", pick.RandomSubdomain(), baseDomain)
-	fmt.Fprintf(logs, "[setup] Generated hostname: %s\n", hostname)
+		// Generate random subdomain
+		hostname = fmt.Sprintf("%s.%s", pick.RandomSubdomain(), baseDomain)
+		fmt.Fprintf(logs, "[setup] Generated hostname: %s\n", hostname)
+	} else {
+		fmt.Fprintf(logs, "[setup] Using provided hostname: %s\n", hostname)
+	}
 
-	// Determine tunnel name based on domain
-	tunnelName := cfutils.DefaultTunnelName(baseDomain)
+	// Determine tunnel name based on full hostname to ensure uniqueness
+	// Each unique subdomain gets its own tunnel to avoid collisions
+	tunnelName := cfutils.DefaultTunnelName(hostname)
 	fmt.Fprintf(logs, "[setup] Using tunnel: %s\n", tunnelName)
 
 	// Find or create tunnel
@@ -364,31 +376,69 @@ func (p *OwnedProvider) Start(port int) (*portforward.TunnelHandle, error) {
 	}
 	fmt.Fprintf(logs, "[setup] Tunnel resolved: %s\n", tunnelRef)
 
+	// Get tunnel ID and credentials
+	tunnelID, credFile, err := cfutils.EnsureTunnelExists(tunnelRef)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tunnel credentials: %v", err)
+	}
+	fmt.Fprintf(logs, "[setup] Got tunnel credentials: id=%s\n", tunnelID)
+
 	// Create DNS route
 	fmt.Fprintf(logs, "[setup] Creating DNS route: %s -> tunnel %s\n", hostname, tunnelRef)
 	if err := cfutils.CreateDNSRoute(tunnelRef, hostname); err != nil {
 		fmt.Fprintf(logs, "[setup] Warning: DNS route error: %v\n", err)
 	}
 
-	// Use the domain tunnel system for management
+	// Create a standalone config file for this port mapping
+	configDir, err := cfutils.DefaultConfigDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get config directory: %v", err)
+	}
+
+	// Use a unique config file per port to ensure isolation
+	// Sanitize hostname for filename (remove dots and special chars)
+	safeHostname := strings.ReplaceAll(hostname, ".", "-")
+	configFile := filepath.Join(configDir, fmt.Sprintf("config-port-%d-%s.yml", port, safeHostname))
+
+	// Build ingress rules - only this specific hostname
+	localURL := fmt.Sprintf("http://localhost:%d", port)
+	ingressRules := []cfutils.IngressRule{
+		{Hostname: hostname, Service: localURL},
+		{Service: "http_status:404"}, // catch-all
+	}
+
+	cfg := &cfutils.CloudflaredConfig{
+		Tunnel:          tunnelID,
+		CredentialsFile: credFile,
+		Ingress:         ingressRules,
+	}
+
+	if err := cfutils.WriteCloudflaredConfig(configFile, cfg); err != nil {
+		return nil, fmt.Errorf("failed to write cloudflared config: %v", err)
+	}
+	fmt.Fprintf(logs, "[setup] Created standalone config: %s\n", configFile)
+
+	// Start cloudflared with this specific config
 	resultCh := make(chan portforward.TunnelResult, 1)
 	publicURL := fmt.Sprintf("https://%s", hostname)
 
+	cmd := exec.Command("cloudflared", "tunnel", "--config", configFile, "run", tunnelRef)
+	cmd.Stdout = logs
+	cmd.Stderr = logs
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start cloudflared: %v", err)
+	}
+	fmt.Fprintf(logs, "[tunnel] Started cloudflared (PID %d) for port %d\n", cmd.Process.Pid, port)
+
 	go func() {
-		logFn := func(msg string) {
-			fmt.Fprintf(logs, "%s\n", msg)
-		}
+		// Give the tunnel a few seconds to establish
+		time.Sleep(5 * time.Second)
+		resultCh <- portforward.TunnelResult{PublicURL: publicURL}
 
-		status, err := cfutils.StartDomainTunnel(hostname, port, tunnelRef, logFn)
-		if err != nil {
-			resultCh <- portforward.TunnelResult{Err: err}
-			return
-		}
-
-		if status.Status == "active" {
-			resultCh <- portforward.TunnelResult{PublicURL: publicURL}
-		} else {
-			resultCh <- portforward.TunnelResult{Err: fmt.Errorf("tunnel failed to activate: %s", status.Error)}
+		// Wait for the process to complete
+		if err := cmd.Wait(); err != nil {
+			fmt.Fprintf(logs, "[tunnel] Cloudflared exited: %v\n", err)
 		}
 	}()
 
@@ -396,7 +446,15 @@ func (p *OwnedProvider) Start(port int) (*portforward.TunnelHandle, error) {
 		Result: resultCh,
 		Logs:   logs,
 		Stop: func() {
-			cfutils.StopDomainTunnel(hostname, tunnelRef)
+			fmt.Fprintf(logs, "[cleanup] Stopping cloudflared process...\n")
+			if cmd.Process != nil {
+				cmd.Process.Kill()
+				cmd.Wait()
+			}
+			// Clean up the config file
+			if err := os.Remove(configFile); err == nil {
+				fmt.Fprintf(logs, "[cleanup] Removed config file: %s\n", configFile)
+			}
 		},
 	}, nil
 }

@@ -22,9 +22,14 @@ export interface PortForwardingViewProps {
     newPortNumber: string;
     newPortLabel: string;
     newPortProvider: TunnelProvider;
+    newPortSubdomain?: string;
+    newPortBaseDomain?: string;
     onPortNumberChange: (value: string) => void;
     onPortLabelChange: (value: string) => void;
     onPortProviderChange: (value: TunnelProvider) => void;
+    onPortSubdomainChange?: (value: string) => void;
+    onPortBaseDomainChange?: (value: string) => void;
+    onGenerateSubdomain?: () => void;
     onAddPort: () => void;
     onRemovePort: (port: number) => void;
     onNavigateToView: (view: string) => void;
@@ -46,9 +51,14 @@ export function PortForwardingView({
     newPortNumber,
     newPortLabel,
     newPortProvider,
+    newPortSubdomain,
+    newPortBaseDomain,
     onPortNumberChange,
     onPortLabelChange,
     onPortProviderChange,
+    onPortSubdomainChange,
+    onPortBaseDomainChange,
+    onGenerateSubdomain,
     onAddPort,
     onRemovePort,
     onNavigateToView,
@@ -124,7 +134,40 @@ export function PortForwardingView({
                             </div>
                         </div>
                         {(newPortProvider === TunnelProviders.CloudflareTunnel || newPortProvider === TunnelProviders.CloudflareOwned) && (
-                            <OwnedDomainsHint onPortLabelChange={onPortLabelChange} />
+                            <>
+                                <div className="mcc-form-field mcc-subdomain-field">
+                                    <label>Subdomain</label>
+                                    <div className="mcc-subdomain-input-group">
+                                        <input
+                                            type="text"
+                                            placeholder="brave-apex-dawn"
+                                            value={newPortSubdomain || ''}
+                                            onChange={e => onPortSubdomainChange?.(e.target.value)}
+                                            className="mcc-subdomain-input"
+                                        />
+                                        <button
+                                            className="mcc-generate-btn"
+                                            onClick={onGenerateSubdomain}
+                                            title="Generate random subdomain"
+                                            type="button"
+                                        >
+                                            🎲
+                                        </button>
+                                    </div>
+                                </div>
+                                <OwnedDomainsHint
+                                    selectedDomain={newPortBaseDomain}
+                                    onSelectDomain={onPortBaseDomainChange}
+                                />
+                                {newPortSubdomain && newPortBaseDomain && (
+                                    <div className="mcc-domain-preview">
+                                        <label>Full Domain</label>
+                                        <div className="mcc-domain-preview-value">
+                                            {newPortSubdomain}.{newPortBaseDomain}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
                         )}
                         <button className="mcc-forward-btn" onClick={onAddPort}>
                             Forward
@@ -154,7 +197,12 @@ export function PortForwardingView({
 
 // ---- Owned Domains Hint ----
 
-function OwnedDomainsHint({ onPortLabelChange }: { onPortLabelChange: (value: string) => void }) {
+interface OwnedDomainsHintProps {
+    selectedDomain?: string;
+    onSelectDomain?: (value: string) => void;
+}
+
+function OwnedDomainsHint({ selectedDomain, onSelectDomain }: OwnedDomainsHintProps) {
     const [domains, setDomains] = useState<string[]>([]);
 
     useEffect(() => {
@@ -165,20 +213,21 @@ function OwnedDomainsHint({ onPortLabelChange }: { onPortLabelChange: (value: st
 
     return (
         <div className="mcc-owned-domains-hint">
-            <label>Your Domains</label>
+            <label>Base Domain</label>
             <div className="mcc-owned-domains-list">
                 {domains.map(d => (
                     <button
                         key={d}
-                        className="mcc-owned-domain-btn"
-                        onClick={() => onPortLabelChange(d)}
+                        className={`mcc-owned-domain-btn ${selectedDomain === d ? 'active' : ''}`}
+                        onClick={() => onSelectDomain?.(d)}
                         title={`Use domain: ${d}`}
+                        type="button"
                     >
                         {d}
                     </button>
                 ))}
             </div>
-            <div className="mcc-owned-domains-note">Click a domain to set it as the label for named tunnel routing.</div>
+            <div className="mcc-owned-domains-note">Select a domain as the base for your subdomain.</div>
         </div>
     );
 }

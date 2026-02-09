@@ -16,13 +16,13 @@ type Provider struct{}
 var _ portforward.Provider = (*Provider)(nil)
 
 func (p *Provider) Name() string        { return portforward.ProviderLocaltunnel }
-func (p *Provider) DisplayName() string  { return "localtunnel" }
+func (p *Provider) DisplayName() string { return "localtunnel" }
 func (p *Provider) Description() string {
 	return "Free tunneling via loca.lt (npx localtunnel). No account required."
 }
 func (p *Provider) Available() bool { return portforward.IsCommandAvailable("npx") }
 
-func (p *Provider) Start(port int) (*portforward.TunnelHandle, error) {
+func (p *Provider) Start(port int, _ string) (*portforward.TunnelHandle, error) {
 	logs := portforward.NewLogBuffer()
 
 	cmd := exec.Command("npx", "--yes", "localtunnel", "--port", fmt.Sprintf("%d", port))
