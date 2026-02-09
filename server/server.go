@@ -29,6 +29,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/fileupload"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/keepalive"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
 	pfcloudflare "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/cloudflare"
 	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/localtunnel"
@@ -311,6 +312,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Settings export/import API
 	settings.RegisterAPI(mux)
+
+	// Keep-alive management API (proxy to keep-alive daemon)
+	keepalive.RegisterAPI(mux)
 
 	return nil
 }

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 	"github.com/xhd2015/lifelog-private/ai-critic/server"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
@@ -40,7 +39,7 @@ Options:
 Keep-Alive Options:
   --script                Output shell script instead of running Go code
   --forever               Skip port-in-use check and start keep-alive anyway
-`, lib.DefaultServerPort, config.CredentialsFile, config.EncKeyFile, config.DomainsFile)
+`, config.DefaultServerPort, config.CredentialsFile, config.EncKeyFile, config.DomainsFile)
 
 func Run(args []string) error {
 	// Handle subcommands before flag parsing
@@ -134,7 +133,7 @@ func Run(args []string) error {
 	// Determine port to use
 	port := portFlag
 	if port <= 0 {
-		port = lib.DefaultServerPort
+		port = config.DefaultServerPort
 	}
 	// Check if port is already in use
 	if isPortInUse(port) {

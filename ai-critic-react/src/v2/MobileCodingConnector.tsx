@@ -54,8 +54,7 @@ export function MobileCodingConnector() {
         const proj = currentProjectRef.current;
         if (proj) {
             const projBase = `/project/${encodeURIComponent(proj.name)}`;
-            // Home tab with a project and no view shows the project list (no /tab suffix)
-            if (tab === NavTabs.Home && !view) return projBase;
+            if (tab === NavTabs.Home && !view) return `${projBase}/home`;
             if (view) return `${projBase}/${tab}/${view}`;
             return `${projBase}/${tab}`;
         }

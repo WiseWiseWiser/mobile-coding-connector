@@ -1,9 +1,11 @@
 package run
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,11 +13,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
 )
 
@@ -26,6 +30,20 @@ const (
 	portCheckTimeout      = 2 * time.Second
 	upgradeCheckInterval  = 30 * time.Second
 )
+
+// keepAliveState holds the mutable state of the keep-alive daemon, guarded by mu.
+type keepAliveState struct {
+	mu         sync.Mutex
+	binPath    string    // current binary being run
+	serverPort int       // the port the managed server listens on
+	serverPID  int       // PID of the currently running server, 0 if not running
+	startedAt  time.Time // when the current server was started
+	restartCh  chan struct{}
+}
+
+var kaState = &keepAliveState{
+	restartCh: make(chan struct{}, 1),
+}
 
 func runKeepAlive(args []string) error {
 	var scriptFlag bool
@@ -40,7 +58,7 @@ func runKeepAlive(args []string) error {
 		return err
 	}
 
-	port := lib.DefaultServerPort
+	port := config.DefaultServerPort
 	if portFlag > 0 {
 		port = portFlag
 	}
@@ -48,6 +66,10 @@ func runKeepAlive(args []string) error {
 	if scriptFlag {
 		return outputKeepAliveScript(port, args)
 	}
+
+	// Start the keep-alive management HTTP server
+	go startKeepAliveHTTPServer()
+
 	return runKeepAliveLoop(port, foreverFlag, args)
 }
 
@@ -68,7 +90,12 @@ func runKeepAliveLoop(port int, forever bool, serverArgs []string) error {
 		return fmt.Errorf("resolve executable path: %w", err)
 	}
 
-	logFile, err := os.OpenFile("ai-critic-server.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	kaState.mu.Lock()
+	kaState.binPath = binPath
+	kaState.serverPort = port
+	kaState.mu.Unlock()
+
+	logFile, err := os.OpenFile(config.ServerLogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		fmt.Printf("[%s] Warning: could not open log file: %v\n", timestamp(), err)
 		logFile = nil
@@ -81,21 +108,28 @@ func runKeepAliveLoop(port int, forever bool, serverArgs []string) error {
 
 	for {
 		// Before starting, check if there's a newer versioned binary
-		newerBin := findNewerBinary(binPath)
+		kaState.mu.Lock()
+		currentBin := kaState.binPath
+		kaState.mu.Unlock()
+
+		newerBin := findNewerBinary(currentBin)
 		if newerBin != "" {
-			fmt.Printf("[%s] Found newer binary: %s (upgrading from %s)\n", timestamp(), newerBin, filepath.Base(binPath))
-			binPath = newerBin
+			fmt.Printf("[%s] Found newer binary: %s (upgrading from %s)\n", timestamp(), newerBin, filepath.Base(currentBin))
+			kaState.mu.Lock()
+			kaState.binPath = newerBin
+			currentBin = newerBin
+			kaState.mu.Unlock()
 		}
 
-		fmt.Printf("[%s] Starting ai-critic server on port %d (binary: %s)...\n", timestamp(), port, filepath.Base(binPath))
+		fmt.Printf("[%s] Starting ai-critic server on port %d (binary: %s)...\n", timestamp(), port, filepath.Base(currentBin))
 
 		// Build server args: include --port if it was specified
 		cmdArgs := append([]string{}, serverArgs...)
 
 		// Ensure the binary is executable
-		os.Chmod(binPath, 0755)
+		os.Chmod(currentBin, 0755)
 
-		cmd := exec.Command(binPath, cmdArgs...)
+		cmd := exec.Command(currentBin, cmdArgs...)
 		cmd.Dir, _ = os.Getwd()
 
 		// Create a new process group so we can kill all child processes
@@ -112,6 +146,9 @@ func runKeepAliveLoop(port int, forever bool, serverArgs []string) error {
 
 		if err := cmd.Start(); err != nil {
 			fmt.Printf("[%s] Failed to start server: %v\n", timestamp(), err)
+			kaState.mu.Lock()
+			kaState.serverPID = 0
+			kaState.mu.Unlock()
 			fmt.Printf("[%s] Restarting in %v...\n", timestamp(), restartDelay)
 			time.Sleep(restartDelay)
 			continue
@@ -120,11 +157,19 @@ func runKeepAliveLoop(port int, forever bool, serverArgs []string) error {
 		pid := cmd.Process.Pid
 		fmt.Printf("[%s] Server started (PID=%d)\n", timestamp(), pid)
 
+		kaState.mu.Lock()
+		kaState.serverPID = pid
+		kaState.startedAt = time.Now()
+		kaState.mu.Unlock()
+
 		// Wait for port to become ready
 		ready := waitForPort(port, startupTimeout, cmd)
 		if !ready {
 			fmt.Printf("[%s] ERROR: Server failed to become ready within %v\n", timestamp(), startupTimeout)
 			killProcessGroup(cmd)
+			kaState.mu.Lock()
+			kaState.serverPID = 0
+			kaState.mu.Unlock()
 			fmt.Printf("[%s] Restarting in %v...\n", timestamp(), restartDelay)
 			time.Sleep(restartDelay)
 			continue
@@ -132,12 +177,16 @@ func runKeepAliveLoop(port int, forever bool, serverArgs []string) error {
 
 		fmt.Printf("[%s] Server is ready (PID=%d, port=%d)\n", timestamp(), pid, port)
 
-		// Health check loop (also checks for binary upgrades)
-		exitReason := healthCheckLoop(port, cmd, binPath)
+		// Health check loop (also checks for binary upgrades and restart signals)
+		exitReason := healthCheckLoop(port, cmd, currentBin)
+
+		kaState.mu.Lock()
+		kaState.serverPID = 0
+		kaState.mu.Unlock()
 
 		switch exitReason {
-		case exitReasonUpgrade:
-			fmt.Printf("[%s] Upgrading binary, restarting immediately...\n", timestamp())
+		case exitReasonUpgrade, exitReasonRestart:
+			fmt.Printf("[%s] %s, restarting immediately...\n", timestamp(), exitReason)
 		default:
 			fmt.Printf("[%s] Server exited (%s), restarting in %v...\n", timestamp(), exitReason, restartDelay)
 			time.Sleep(restartDelay)
@@ -148,9 +197,10 @@ func runKeepAliveLoop(port int, forever bool, serverArgs []string) error {
 type exitReasonType string
 
 const (
-	exitReasonProcessExit  exitReasonType = "process exited"
-	exitReasonPortDead     exitReasonType = "port unreachable"
-	exitReasonUpgrade      exitReasonType = "binary upgrade"
+	exitReasonProcessExit exitReasonType = "process exited"
+	exitReasonPortDead    exitReasonType = "port unreachable"
+	exitReasonUpgrade     exitReasonType = "binary upgrade"
+	exitReasonRestart     exitReasonType = "restart requested"
 )
 
 // waitForPort waits for the port to become accessible within the timeout.
@@ -197,6 +247,13 @@ func healthCheckLoop(port int, cmd *exec.Cmd, currentBinPath string) exitReasonT
 			// Process exited on its own
 			return exitReasonProcessExit
 
+		case <-kaState.restartCh:
+			// Restart requested via API
+			fmt.Printf("[%s] Restart requested via API, stopping server (PID=%d)...\n", timestamp(), cmd.Process.Pid)
+			gracefulStopGroup(cmd)
+			waitForDone(done, 5*time.Second)
+			return exitReasonRestart
+
 		case <-healthTicker.C:
 			if !isPortReachable(port) {
 				consecutiveFailures++
@@ -218,6 +275,9 @@ func healthCheckLoop(port int, cmd *exec.Cmd, currentBinPath string) exitReasonT
 			if newerBin != "" {
 				fmt.Printf("[%s] Detected newer binary: %s, stopping current server for upgrade...\n",
 					timestamp(), filepath.Base(newerBin))
+				kaState.mu.Lock()
+				kaState.binPath = newerBin
+				kaState.mu.Unlock()
 				gracefulStopGroup(cmd)
 				waitForDone(done, 5*time.Second)
 				return exitReasonUpgrade
@@ -381,6 +441,181 @@ func findNewerBinary(currentBinPath string) string {
 	return candidates[0].path
 }
 
+// ---- Keep-Alive Management HTTP Server ----
+
+func startKeepAliveHTTPServer() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/keep-alive/status", handleKeepAliveStatus)
+	mux.HandleFunc("/api/keep-alive/restart", handleKeepAliveRestart)
+	mux.HandleFunc("/api/keep-alive/upload-target", handleKeepAliveUploadTarget)
+	mux.HandleFunc("/api/keep-alive/set-binary", handleKeepAliveSetBinary)
+	mux.HandleFunc("/api/keep-alive/logs", handleKeepAliveLogs)
+
+	addr := fmt.Sprintf(":%d", config.KeepAlivePort)
+	fmt.Printf("[%s] Keep-alive management server listening on %s\n", timestamp(), addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		fmt.Printf("[%s] Keep-alive management server error: %v\n", timestamp(), err)
+	}
+}
+
+type keepAliveStatusResponse struct {
+	Running        bool   `json:"running"`
+	BinaryPath     string `json:"binary_path"`
+	ServerPort     int    `json:"server_port"`
+	ServerPID      int    `json:"server_pid"`
+	KeepAlivePort  int    `json:"keep_alive_port"`
+	KeepAlivePID   int    `json:"keep_alive_pid"`
+	StartedAt      string `json:"started_at,omitempty"`
+	Uptime         string `json:"uptime,omitempty"`
+	NextBinary     string `json:"next_binary,omitempty"`
+}
+
+func handleKeepAliveStatus(w http.ResponseWriter, r *http.Request) {
+	kaState.mu.Lock()
+	currentBin := kaState.binPath
+	resp := keepAliveStatusResponse{
+		Running:       kaState.serverPID > 0,
+		BinaryPath:    currentBin,
+		ServerPort:    kaState.serverPort,
+		ServerPID:     kaState.serverPID,
+		KeepAlivePort: config.KeepAlivePort,
+		KeepAlivePID:  os.Getpid(),
+	}
+	if kaState.serverPID > 0 && !kaState.startedAt.IsZero() {
+		resp.StartedAt = kaState.startedAt.Format(time.RFC3339)
+		resp.Uptime = time.Since(kaState.startedAt).Truncate(time.Second).String()
+	}
+	kaState.mu.Unlock()
+
+	// Check for newer binary
+	if newerBin := findNewerBinary(currentBin); newerBin != "" {
+		resp.NextBinary = newerBin
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func handleKeepAliveRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Non-blocking send to restart channel
+	select {
+	case kaState.restartCh <- struct{}{}:
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "restart_requested"})
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "restart_already_pending"})
+	}
+}
+
+// handleKeepAliveUploadTarget returns the path where the next binary should be uploaded.
+// GET /api/keep-alive/upload-target
+func handleKeepAliveUploadTarget(w http.ResponseWriter, r *http.Request) {
+	kaState.mu.Lock()
+	currentBin := kaState.binPath
+	kaState.mu.Unlock()
+
+	dir := filepath.Dir(currentBin)
+	currentBase, currentVersion := parseBinVersion(currentBin)
+	nextVersion := currentVersion + 1
+	newName := fmt.Sprintf("%s-v%d", currentBase, nextVersion)
+	destPath := filepath.Join(dir, newName)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"path":            destPath,
+		"binary_name":     newName,
+		"current_version": currentVersion,
+		"next_version":    nextVersion,
+	})
+}
+
+// handleKeepAliveSetBinary notifies the keep-alive daemon that a new binary has been uploaded
+// and is ready to use. It makes the binary executable.
+// POST /api/keep-alive/set-binary  { "path": "/path/to/binary" }
+func handleKeepAliveSetBinary(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if req.Path == "" {
+		http.Error(w, "path is required", http.StatusBadRequest)
+		return
+	}
+
+	// Verify the file exists
+	info, err := os.Stat(req.Path)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("binary not found: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Make executable
+	if err := os.Chmod(req.Path, 0755); err != nil {
+		http.Error(w, fmt.Sprintf("failed to chmod: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("[%s] New binary set: %s (%d bytes)\n", timestamp(), req.Path, info.Size())
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"path":   req.Path,
+		"size":   info.Size(),
+	})
+}
+
+// handleKeepAliveLogs streams the server log via tail -fn100, using the shared SSE writer.
+// GET /api/keep-alive/logs?lines=100
+func handleKeepAliveLogs(w http.ResponseWriter, r *http.Request) {
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	linesStr := r.URL.Query().Get("lines")
+	maxLines := "100"
+	if linesStr != "" {
+		if n, err := strconv.Atoi(linesStr); err == nil && n > 0 {
+			maxLines = strconv.Itoa(n)
+		}
+	}
+
+	logPath := config.ServerLogFile
+	cmd := exec.Command("tail", "-fn"+maxLines, logPath)
+
+	// Kill tail when the client disconnects
+	ctx := r.Context()
+	go func() {
+		<-ctx.Done()
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+	}()
+
+	if err := sw.StreamCmd(cmd); err != nil {
+		sw.SendError(fmt.Sprintf("tail error: %v", err))
+	}
+	// tail -f runs indefinitely until killed, so no done event needed.
+	// When client disconnects, context is cancelled and tail is killed.
+}
+
 // outputKeepAliveScript outputs a shell script for keep-alive.
 func outputKeepAliveScript(port int, serverArgs []string) error {
 	binPath, err := os.Executable()
@@ -391,7 +626,7 @@ func outputKeepAliveScript(port int, serverArgs []string) error {
 	// Build the server command with all original args
 	var cmdParts []string
 	cmdParts = append(cmdParts, terminal.ShellQuote(binPath))
-	if port != lib.DefaultServerPort {
+	if port != config.DefaultServerPort {
 		cmdParts = append(cmdParts, "--port", fmt.Sprintf("%d", port))
 	}
 	for _, a := range serverArgs {
@@ -400,7 +635,7 @@ func outputKeepAliveScript(port int, serverArgs []string) error {
 	serverCmd := strings.Join(cmdParts, " ")
 
 	script := fmt.Sprintf(`#!/bin/sh
-LOG_FILE="ai-critic-server.log"
+LOG_FILE="%s"
 PORT=%d
 STARTUP_TIMEOUT=10
 HEALTH_CHECK_INTERVAL=10
@@ -475,7 +710,7 @@ while true; do
   echo "[$(date)] Server exited with code $EXIT_CODE, restarting in ${RESTART_DELAY}s..."
   sleep "$RESTART_DELAY"
 done
-`, port, terminal.ShellQuote(binPath), serverCmd, serverCmd)
+`, config.ServerLogFile, port, terminal.ShellQuote(binPath), serverCmd, serverCmd)
 
 	fmt.Print(script)
 	return nil

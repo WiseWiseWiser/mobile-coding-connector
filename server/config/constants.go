@@ -4,6 +4,18 @@ package config
 // working directory (or under $HOME for per-user configs like agents.json).
 const DataDir = ".ai-critic"
 
+// Network ports.
+const (
+	// DefaultServerPort is the default port for the Go backend server.
+	DefaultServerPort = 23712
+
+	// KeepAlivePort is the port for the keep-alive management HTTP server.
+	KeepAlivePort = 23312
+
+	// ServerLogFile is the log file for the keep-alive managed server.
+	ServerLogFile = "ai-critic-server.log"
+)
+
 // File paths relative to DataDir.
 const (
 	CredentialsFile  = DataDir + "/server-credentials"

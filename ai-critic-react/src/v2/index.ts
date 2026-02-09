@@ -13,6 +13,7 @@ export { GitSettings, GitSettingsContent } from './mcc/home/settings/GitSettings
 export { CloneRepoView } from './mcc/home/settings/CloneRepoView';
 export { UploadFileView } from './mcc/home/UploadFileView';
 export { DownloadFileView } from './mcc/home/DownloadFileView';
+export { ManageServerView } from './mcc/home/ManageServerView';
 export { TerminalView } from './mcc/terminal/TerminalView';
 export { AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute } from './mcc/agent';
 export { PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute } from './mcc';

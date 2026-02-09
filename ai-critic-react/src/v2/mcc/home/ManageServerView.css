@@ -1,0 +1,252 @@
+.mcc-manage-server {
+    padding-bottom: 24px;
+}
+
+/* Cards */
+.manage-server-card {
+    margin: 12px 16px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 14px;
+}
+
+.manage-server-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.manage-server-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+/* Badges */
+.manage-server-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 12px;
+    white-space: nowrap;
+}
+
+.manage-server-badge--running {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.manage-server-badge--stopped {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.manage-server-badge--checking {
+    color: #94a3b8;
+    background: rgba(148, 163, 184, 0.15);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+/* Info rows */
+.manage-server-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.manage-server-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.manage-server-info-label {
+    font-size: 13px;
+    color: #64748b;
+    flex-shrink: 0;
+    min-width: 100px;
+}
+
+.manage-server-info-value {
+    font-size: 13px;
+    color: #e2e8f0;
+    font-weight: 500;
+    text-align: right;
+    word-break: break-all;
+}
+
+.manage-server-info-value--mono {
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+/* Hint text */
+.manage-server-hint {
+    margin-top: 12px;
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.manage-server-hint code {
+    background: rgba(148, 163, 184, 0.15);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.manage-server-hint p {
+    margin: 0 0 8px 0;
+}
+
+.manage-server-command {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 0;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 12px;
+    color: #e2e8f0;
+    word-break: break-all;
+    white-space: pre-wrap;
+    user-select: all;
+    -webkit-user-select: all;
+}
+
+/* Messages */
+.manage-server-error {
+    color: #ef4444;
+    padding: 8px 16px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
+    margin: 8px 16px;
+    font-size: 13px;
+}
+
+.manage-server-success {
+    padding: 8px 16px;
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    border-radius: 8px;
+    margin: 8px 16px;
+    color: #22c55e;
+    font-size: 13px;
+}
+
+/* Actions */
+.manage-server-actions {
+    margin: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.manage-server-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.manage-server-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.manage-server-btn--restart {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.manage-server-btn--restart:hover:not(:disabled) {
+    background: rgba(245, 158, 11, 0.25);
+}
+
+.manage-server-btn--upload {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.manage-server-btn--upload:hover:not(:disabled) {
+    background: rgba(59, 130, 246, 0.25);
+}
+
+.manage-server-upload-hint {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 4px;
+}
+
+/* Confirm step */
+.manage-server-confirm {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+}
+
+.manage-server-confirm-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.manage-server-confirm-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.manage-server-confirm-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.manage-server-btn--confirm {
+    flex: 1;
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.manage-server-btn--confirm:hover:not(:disabled) {
+    background: rgba(34, 197, 94, 0.25);
+}
+
+.manage-server-btn--cancel {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.manage-server-btn--cancel:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.25);
+}
+
+/* Highlight for next binary */
+.manage-server-info-value--highlight {
+    color: #f59e0b !important;
+}
+
+/* Server Logs - uses shared LogViewer component */

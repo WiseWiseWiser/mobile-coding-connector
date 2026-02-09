@@ -2,7 +2,7 @@ import { Outlet, useNavigate, useOutletContext } from 'react-router-dom';
 import { deleteProject as apiDeleteProject } from '../../../api/projects';
 import type { ProjectInfo } from '../../../api/projects';
 import { useV2Context } from '../../V2Context';
-import { PlusIcon, GitIcon, DiagnoseIcon, UploadIcon, DownloadIcon } from '../../icons';
+import { PlusIcon, GitIcon, DiagnoseIcon, UploadIcon, DownloadIcon, SettingsIcon } from '../../icons';
 
 // Re-export sub-views for route registration
 export { DiagnoseView } from './DiagnoseView';
@@ -84,6 +84,10 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
             <button className="mcc-upload-btn" onClick={() => navigate('download-file')}>
                 <DownloadIcon />
                 <span>Download File</span>
+            </button>
+            <button className="mcc-diagnose-btn" onClick={() => navigate('manage-server')}>
+                <SettingsIcon />
+                <span>Manage Server</span>
             </button>
         </div>
     );
