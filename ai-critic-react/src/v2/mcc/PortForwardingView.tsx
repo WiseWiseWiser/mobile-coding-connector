@@ -69,16 +69,7 @@ export function PortForwardingView({
             {actionError && (
                 <div className="mcc-ports-error">{actionError}</div>
             )}
-            
-            {/* Local Listening Ports Table */}
-            <LocalPortsTable
-                ports={localPorts}
-                loading={localPortsLoading}
-                error={localPortsError}
-                forwardedPorts={new Set(ports.map(p => p.localPort))}
-                onForwardPort={onForwardLocalPort}
-            />
-            
+
             <div className="mcc-ports-subtitle">
                 {loading ? 'Loading...' : `Active Forwards (${ports.length})`}
             </div>
@@ -87,7 +78,7 @@ export function PortForwardingView({
                     <PortForwardCard key={port.localPort} port={port} onRemove={() => onRemovePort(port.localPort)} onNavigateToView={onNavigateToView} />
                 ))}
                 {!loading && ports.length === 0 && (
-                    <div className="mcc-ports-empty">No port forwards active. Add one below.</div>
+                    <div className="mcc-ports-empty">No port forwards active.</div>
                 )}
             </div>
             <div className="mcc-add-port-section">
@@ -146,6 +137,16 @@ export function PortForwardingView({
                     </button>
                 )}
             </div>
+
+            {/* Local Listening Ports Table */}
+            <LocalPortsTable
+                ports={localPorts}
+                loading={localPortsLoading}
+                error={localPortsError}
+                forwardedPorts={new Set(ports.map(p => p.localPort))}
+                onForwardPort={onForwardLocalPort}
+            />
+
             <PortForwardingHelp />
         </div>
     );

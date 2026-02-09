@@ -22,12 +22,12 @@ import (
 	"github.com/xhd2015/kool/pkgs/web"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
-	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/fileupload"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/checkpoint"
+	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/fileupload"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
 	pfcloudflare "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/cloudflare"
@@ -211,6 +211,8 @@ func Static(mux *http.ServeMux, opts StaticOptions) error {
 	mux.Handle("/assets/", http.StripPrefix("/assets/", &mimeTypeHandler{http.FileServer(http.FS(assetsFileSystem))}))
 	// Serve React static files like vite.svg from root
 	mux.Handle("/ai-critic.svg", &mimeTypeHandler{http.FileServer(http.FS(reactFileSystem))})
+	// Serve PWA manifest.json
+	mux.Handle("/manifest.json", &mimeTypeHandler{http.FileServer(http.FS(reactFileSystem))})
 
 	// Serve the main HTML page
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

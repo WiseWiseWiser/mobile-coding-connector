@@ -11,13 +11,16 @@ export interface OpencodeSettingsProps {
 
 export function OpencodeSettings({ session, projectName, onBack }: OpencodeSettingsProps) {
     const [authStatus, setAuthStatus] = useState<OpencodeAuthStatus | null>(null);
-    const [currentModel, setCurrentModel] = useState<string>('');
+    const [savedModel, setSavedModel] = useState<string>('');
+    const [selectedModel, setSelectedModel] = useState<string>('');
     const [models, setModels] = useState<Record<string, OpencodeModelInfo>>({});
     const [defaultModel, setDefaultModel] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState('');
     const [error, setError] = useState('');
+
+    const hasChanges = selectedModel !== savedModel;
 
     useEffect(() => {
         Promise.all([
@@ -26,7 +29,9 @@ export function OpencodeSettings({ session, projectName, onBack }: OpencodeSetti
             fetchOpencodeProviders(session.id),
         ]).then(([auth, config, providers]) => {
             setAuthStatus(auth);
-            setCurrentModel(config.model?.modelID || '');
+            const currentModel = config.model?.modelID || '';
+            setSavedModel(currentModel);
+            setSelectedModel(currentModel);
             
             // Combine all models from all providers
             const allModels: Record<string, OpencodeModelInfo> = {};
@@ -45,19 +50,25 @@ export function OpencodeSettings({ session, projectName, onBack }: OpencodeSetti
         }).catch(() => setLoading(false));
     }, [session.id]);
 
-    const handleModelChange = async (modelId: string) => {
+    const handleSave = async () => {
         setSaving(true);
         setError('');
         setSuccess('');
         try {
-            await updateAgentConfig(session.id, { model: { modelID: modelId } });
-            setCurrentModel(modelId);
+            await updateAgentConfig(session.id, { model: { modelID: selectedModel } });
+            setSavedModel(selectedModel);
             setSuccess('Model updated successfully');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to update model');
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleCancel = () => {
+        setSelectedModel(savedModel);
+        setError('');
+        setSuccess('');
     };
 
     return (
@@ -119,14 +130,14 @@ export function OpencodeSettings({ session, projectName, onBack }: OpencodeSetti
                             Select the AI model to use for this session.
                         </div>
                         <select
-                            value={currentModel || defaultModel}
-                            onChange={(e) => handleModelChange(e.target.value)}
+                            value={selectedModel || defaultModel}
+                            onChange={(e) => setSelectedModel(e.target.value)}
                             disabled={saving}
                             style={{
                                 width: '100%',
                                 padding: '10px 12px',
                                 background: '#1e293b',
-                                border: '1px solid #334155',
+                                border: hasChanges ? '1px solid #3b82f6' : '1px solid #334155',
                                 borderRadius: 8,
                                 color: '#e2e8f0',
                                 fontSize: '14px',
@@ -137,16 +148,65 @@ export function OpencodeSettings({ session, projectName, onBack }: OpencodeSetti
                                 <option key={id} value={id}>
                                     {model.name || id}
                                     {id === defaultModel ? ' (default)' : ''}
-                                    {id === currentModel ? ' (current)' : ''}
+                                    {id === savedModel ? ' (saved)' : ''}
                                 </option>
                             ))}
                         </select>
-                        {currentModel && currentModel !== defaultModel && (
+                        {savedModel && savedModel !== defaultModel && (
                             <div style={{ marginTop: 8, fontSize: '13px', color: '#94a3b8' }}>
-                                Current: <strong style={{ color: '#e2e8f0' }}>{models[currentModel]?.name || currentModel}</strong>
+                                Saved: <strong style={{ color: '#e2e8f0' }}>{models[savedModel]?.name || savedModel}</strong>
                             </div>
                         )}
                     </div>
+
+                    {/* Save/Cancel Buttons */}
+                    {hasChanges && (
+                        <div style={{ 
+                            marginTop: 16, 
+                            display: 'flex', 
+                            gap: 12,
+                            padding: '12px',
+                            background: 'rgba(59, 130, 246, 0.1)',
+                            borderRadius: 8,
+                            border: '1px solid rgba(59, 130, 246, 0.3)',
+                        }}>
+                            <button
+                                onClick={handleSave}
+                                disabled={saving}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    background: saving ? '#3b82f6' : '#3b82f6',
+                                    opacity: saving ? 0.7 : 1,
+                                    border: 'none',
+                                    borderRadius: 6,
+                                    color: '#fff',
+                                    fontSize: '14px',
+                                    fontWeight: 500,
+                                    cursor: saving ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {saving ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                                onClick={handleCancel}
+                                disabled={saving}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    background: 'transparent',
+                                    border: '1px solid #475569',
+                                    borderRadius: 6,
+                                    color: '#94a3b8',
+                                    fontSize: '14px',
+                                    fontWeight: 500,
+                                    cursor: saving ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    )}
 
                     {error && (
                         <div className="mcc-agent-settings-message mcc-agent-settings-error" style={{

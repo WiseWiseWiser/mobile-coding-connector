@@ -127,6 +127,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/config", handleAgentConfig)
 	mux.HandleFunc("/api/agents/effective-path", handleAgentEffectivePath)
 	mux.HandleFunc("/api/agents/opencode/auth", handleOpencodeAuth)
+	mux.HandleFunc("/api/agents/opencode/settings", handleOpencodeSettings)
 	mux.HandleFunc("/api/agents/sessions", handleAgentSessions)
 	// Proxy: /api/agents/sessions/{sessionID}/proxy/... -> opencode server
 	mux.HandleFunc("/api/agents/sessions/", handleAgentSessionProxy)
@@ -305,6 +306,7 @@ func (s *agentSession) waitReady() {
 const preferredModelSubstring = "kimi-k2.5"
 
 // applyPreferredModel checks available models and sets the preferred one if found.
+// First tries to apply the saved model from settings, then falls back to preferred model.
 func (s *agentSession) applyPreferredModel() {
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", s.port)
 
@@ -322,8 +324,25 @@ func (s *agentSession) applyPreferredModel() {
 		return
 	}
 
-	// Already using the preferred model
-	if strings.Contains(config.Model, preferredModelSubstring) {
+	// If a model is already set, don't override
+	if config.Model != "" {
+		return
+	}
+
+	// Try to apply the saved model from settings first
+	savedModel := opencode.GetModel()
+	if savedModel != "" {
+		body := fmt.Sprintf(`{"model":"%s"}`, savedModel)
+		req, err := http.NewRequest("PATCH", baseURL+"/config", strings.NewReader(body))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return
+		}
+		resp.Body.Close()
 		return
 	}
 
@@ -532,6 +551,36 @@ func handleOpencodeAuth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(status)
 }
 
+// handleOpencodeSettings handles GET/POST for opencode web server settings
+func handleOpencodeSettings(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		settings, err := opencode.LoadSettings()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(settings)
+
+	case http.MethodPost:
+		var req opencode.Settings
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if err := opencode.SaveSettings(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 // handleAgentEffectivePath returns the effective binary path for an agent
 func handleAgentEffectivePath(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -565,7 +614,12 @@ func handleAgentEffectivePath(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"effective_path": effectivePath,
 		"found":          err == nil,
-		"error":          func() string { if err != nil { return err.Error() }; return "" }(),
+		"error": func() string {
+			if err != nil {
+				return err.Error()
+			}
+			return ""
+		}(),
 	})
 }
 

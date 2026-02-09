@@ -73,6 +73,7 @@ func ProxySSE(w http.ResponseWriter, r *http.Request, port int) {
 // ProxyConfigUpdate handles PATCH /config by transforming the model field
 // from object format {model: {modelID: "xxx"}} to string format {model: "xxx"}
 // which is what the opencode server expects.
+// Also persists the model to local settings.
 func ProxyConfigUpdate(w http.ResponseWriter, r *http.Request, port int) {
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -87,9 +88,12 @@ func ProxyConfigUpdate(w http.ResponseWriter, r *http.Request, port int) {
 	}
 
 	// Transform model from {modelID: "xxx"} to plain string "xxx"
+	// and save to local settings
 	if modelObj, ok := body["model"].(map[string]interface{}); ok {
 		if modelID, ok := modelObj["modelID"].(string); ok {
 			body["model"] = modelID
+			// Persist the model selection
+			_ = SetModel(modelID)
 		}
 	}
 

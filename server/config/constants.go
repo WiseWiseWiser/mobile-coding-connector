@@ -6,13 +6,14 @@ const DataDir = ".ai-critic"
 
 // File paths relative to DataDir.
 const (
-	CredentialsFile   = DataDir + "/server-credentials"
-	EncKeyFile        = DataDir + "/enc-key"
-	EncKeyPubFile     = DataDir + "/enc-key.pub"
-	DomainsFile       = DataDir + "/server-domains.json"
-	CloudflareFile    = DataDir + "/cloudflare.json"
-	TerminalConfFile  = DataDir + "/terminal-config.json"
-	ProjectsFile      = DataDir + "/projects.json"
-	AgentsFile        = DataDir + "/agents.json"
-	ProjectsDir       = DataDir + "/projects"
+	CredentialsFile  = DataDir + "/server-credentials"
+	EncKeyFile       = DataDir + "/enc-key"
+	EncKeyPubFile    = DataDir + "/enc-key.pub"
+	DomainsFile      = DataDir + "/server-domains.json"
+	CloudflareFile   = DataDir + "/cloudflare.json"
+	TerminalConfFile = DataDir + "/terminal-config.json"
+	ProjectsFile     = DataDir + "/projects.json"
+	AgentsFile       = DataDir + "/agents.json"
+	OpencodeFile     = DataDir + "/opencode.json"
+	ProjectsDir      = DataDir + "/projects"
 )
