@@ -3,6 +3,9 @@ package lib
 import "github.com/xhd2015/lifelog-private/ai-critic/server/config"
 
 const (
+	// BinaryName is the name of the server binary used in releases and installs.
+	BinaryName = "ai-critic-server"
+
 	// DefaultServerPort is the default port for the Go backend server.
 	// Re-exported from config for backward compatibility.
 	DefaultServerPort = config.DefaultServerPort
