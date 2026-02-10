@@ -260,6 +260,14 @@ func cloudflaredDir() string {
 	return ""
 }
 
+// opencodeConfigDir returns the opencode config directory (~/.local/share/opencode).
+func opencodeConfigDir() string {
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".local", "share", "opencode")
+	}
+	return ""
+}
+
 func exportCloudflareAuth() (*CloudflareAuthExport, error) {
 	certFiles := cloudflareSettings.ListCertFiles()
 	var files []CloudflareFileExport

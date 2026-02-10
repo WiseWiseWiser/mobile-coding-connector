@@ -6,91 +6,306 @@ import { fetchEncryptKeyStatus } from '../../../../api/encrypt';
 import { fetchDomains } from '../../../../api/domains';
 import { fetchCloudflareStatus } from '../../../../api/cloudflare';
 import { fetchTerminalConfig } from '../../../../api/terminalConfig';
+import { fetchOpencodeAuthStatus, type OpencodeAuthStatus } from '../../../../api/agents';
 import { loadSSHKeys, loadGitHubToken, loadGitUserConfig } from './gitStorage';
 import './ExportPage.css';
 
-interface ExportStats {
-    aiCriticFiles: string;
-    cloudflareFiles: string;
-    browserData: string;
+interface ExportItem {
+    id: string;
+    category: string;
+    label: string;
+    description: string;
+    checked: boolean;
+    exists: boolean;
+    details?: string;
 }
 
 export function ExportPage() {
     const navigate = useNavigate();
-    const [includeBrowserData, setIncludeBrowserData] = useState(true);
+    const [items, setItems] = useState<ExportItem[]>([]);
     const [exporting, setExporting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [stats, setStats] = useState<Partial<ExportStats>>({});
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Load stats for .ai-critic directory contents
-        const parts: string[] = [];
-        const promises: Promise<void>[] = [];
+        loadExportItems();
+    }, []);
 
-        promises.push(
-            fetchCredentials()
-                .then(creds => { if (creds.length > 0) parts.push(`${creds.length} token(s)`); })
-                .catch(() => {})
-        );
-        promises.push(
-            fetchEncryptKeyStatus()
-                .then(ks => { if (ks.exists) parts.push('encryption keys'); })
-                .catch(() => {})
-        );
-        promises.push(
-            fetchDomains()
-                .then(resp => { if (resp.domains?.length) parts.push(`${resp.domains.length} domain(s)`); })
-                .catch(() => {})
-        );
-        promises.push(
-            fetchTerminalConfig()
-                .then(cfg => { if (cfg.extra_paths?.length || cfg.shell) parts.push('terminal config'); })
-                .catch(() => {})
-        );
+    const loadExportItems = async () => {
+        setLoading(true);
+        const newItems: ExportItem[] = [];
 
-        Promise.all(promises).then(() => {
-            setStats(prev => ({
-                ...prev,
-                aiCriticFiles: parts.length > 0 ? parts.join(', ') : 'No files found',
-            }));
+        // Server Credentials
+        try {
+            const creds = await fetchCredentials();
+            newItems.push({
+                id: 'credentials',
+                category: 'ai-critic',
+                label: 'Server Credentials',
+                description: 'API tokens for authentication',
+                checked: creds.length > 0,
+                exists: creds.length > 0,
+                details: creds.length > 0 ? `${creds.length} token(s)` : 'None',
+            });
+        } catch {
+            newItems.push({
+                id: 'credentials',
+                category: 'ai-critic',
+                label: 'Server Credentials',
+                description: 'API tokens for authentication',
+                checked: false,
+                exists: false,
+                details: 'Unable to load',
+            });
+        }
+
+        // Encryption Keys
+        try {
+            const ks = await fetchEncryptKeyStatus();
+            newItems.push({
+                id: 'encryption_keys',
+                category: 'ai-critic',
+                label: 'Encryption Keys',
+                description: 'RSA key pair for encryption',
+                checked: ks.exists,
+                exists: ks.exists,
+                details: ks.exists ? 'Keys exist' : 'None',
+            });
+        } catch {
+            newItems.push({
+                id: 'encryption_keys',
+                category: 'ai-critic',
+                label: 'Encryption Keys',
+                description: 'RSA key pair for encryption',
+                checked: false,
+                exists: false,
+                details: 'Unable to load',
+            });
+        }
+
+        // Web Domains
+        try {
+            const resp = await fetchDomains();
+            const count = resp.domains?.length ?? 0;
+            newItems.push({
+                id: 'web_domains',
+                category: 'ai-critic',
+                label: 'Web Domains',
+                description: 'Configured domains for port forwarding',
+                checked: count > 0,
+                exists: count > 0,
+                details: count > 0 ? `${count} domain(s)` : 'None',
+            });
+        } catch {
+            newItems.push({
+                id: 'web_domains',
+                category: 'ai-critic',
+                label: 'Web Domains',
+                description: 'Configured domains for port forwarding',
+                checked: false,
+                exists: false,
+                details: 'Unable to load',
+            });
+        }
+
+        // Terminal Config
+        try {
+            const cfg = await fetchTerminalConfig();
+            const hasConfig = !!(cfg.extra_paths?.length || cfg.shell);
+            newItems.push({
+                id: 'terminal_config',
+                category: 'ai-critic',
+                label: 'Terminal Config',
+                description: 'Shell and PATH settings',
+                checked: hasConfig,
+                exists: hasConfig,
+                details: hasConfig ? 'Config exists' : 'None',
+            });
+        } catch {
+            newItems.push({
+                id: 'terminal_config',
+                category: 'ai-critic',
+                label: 'Terminal Config',
+                description: 'Shell and PATH settings',
+                checked: false,
+                exists: false,
+                details: 'Unable to load',
+            });
+        }
+
+        // Cloudflare
+        try {
+            const status = await fetchCloudflareStatus();
+            const files = status.cert_files ?? [];
+            const hasFiles = files.length > 0;
+            newItems.push({
+                id: 'cloudflare',
+                category: 'cloudflare',
+                label: 'Cloudflare Credentials',
+                description: 'cert.pem and tunnel files from ~/.cloudflared/',
+                checked: hasFiles,
+                exists: hasFiles,
+                details: hasFiles ? `${files.length} file(s): ${files.map((f: { name: string }) => f.name).join(', ')}` : 'None',
+            });
+        } catch {
+            newItems.push({
+                id: 'cloudflare',
+                category: 'cloudflare',
+                label: 'Cloudflare Credentials',
+                description: 'cert.pem and tunnel files from ~/.cloudflared/',
+                checked: false,
+                exists: false,
+                details: 'Unable to load',
+            });
+        }
+
+        // Opencode
+        try {
+            const status: OpencodeAuthStatus = await fetchOpencodeAuthStatus();
+            const authenticated = status.authenticated;
+            newItems.push({
+                id: 'opencode',
+                category: 'opencode',
+                label: 'OpenCode Config',
+                description: 'Authentication and settings from ~/.local/share/opencode/',
+                checked: authenticated,
+                exists: authenticated,
+                details: authenticated ? `${status.providers?.length ?? 0} provider(s)` : 'None',
+            });
+        } catch {
+            newItems.push({
+                id: 'opencode',
+                category: 'opencode',
+                label: 'OpenCode Config',
+                description: 'Authentication and settings from ~/.local/share/opencode/',
+                checked: false,
+                exists: false,
+                details: 'Unable to load',
+            });
+        }
+
+        // Browser Data - SSH Keys
+        const sshKeys = loadSSHKeys();
+        newItems.push({
+            id: 'browser_ssh_keys',
+            category: 'browser',
+            label: 'SSH Keys',
+            description: 'SSH keys stored in browser',
+            checked: sshKeys.length > 0,
+            exists: sshKeys.length > 0,
+            details: sshKeys.length > 0 ? `${sshKeys.length} key(s)` : 'None',
         });
 
-        // Cloudflare files
-        fetchCloudflareStatus()
-            .then(s => {
-                const count = s.cert_files?.length ?? 0;
-                setStats(prev => ({
-                    ...prev,
-                    cloudflareFiles: count > 0 ? `${count} file(s): ${s.cert_files!.map((f: { name: string }) => f.name).join(', ')}` : 'No files found',
-                }));
-            })
-            .catch(() => setStats(prev => ({ ...prev, cloudflareFiles: 'Unable to load' })));
-
-        // Browser data
-        const sshKeys = loadSSHKeys();
+        // Browser Data - GitHub Token
         const token = loadGitHubToken();
+        newItems.push({
+            id: 'browser_github_token',
+            category: 'browser',
+            label: 'GitHub Token',
+            description: 'GitHub personal access token',
+            checked: !!token,
+            exists: !!token,
+            details: token ? 'Token exists' : 'None',
+        });
+
+        // Browser Data - Git Config
         const gitUserConfig = loadGitUserConfig();
-        const browserParts: string[] = [];
-        if (sshKeys.length > 0) browserParts.push(`${sshKeys.length} SSH key(s)`);
-        if (token) browserParts.push('GitHub token');
-        if (gitUserConfig.name || gitUserConfig.email) {
-            browserParts.push(`Git user: ${gitUserConfig.name || '(no name)'}`);
-        }
-        setStats(prev => ({
-            ...prev,
-            browserData: browserParts.length > 0 ? browserParts.join(', ') : 'No data',
-        }));
-    }, []);
+        const hasGitConfig = !!(gitUserConfig.name || gitUserConfig.email);
+        newItems.push({
+            id: 'browser_git_config',
+            category: 'browser',
+            label: 'Git User Config',
+            description: 'Git name and email settings',
+            checked: hasGitConfig,
+            exists: hasGitConfig,
+            details: hasGitConfig ? `${gitUserConfig.name || '(no name)'} <${gitUserConfig.email || '(no email)'}>` : 'None',
+        });
+
+        setItems(newItems);
+        setLoading(false);
+    };
+
+    const toggleItem = (id: string) => {
+        setItems(prev => prev.map(item =>
+            item.id === id ? { ...item, checked: !item.checked } : item
+        ));
+    };
+
+    const toggleCategory = (category: string) => {
+        const categoryItems = items.filter(i => i.category === category);
+        const allChecked = categoryItems.every(i => i.checked);
+        setItems(prev => prev.map(item =>
+            item.category === category ? { ...item, checked: !allChecked } : item
+        ));
+    };
 
     const handleExport = async () => {
         setExporting(true);
         setError(null);
         try {
+            const selectedCategories = new Set<string>();
+            items.forEach(item => {
+                if (item.checked) {
+                    selectedCategories.add(item.category);
+                }
+            });
+
+            // Browser data is handled separately
+            const includeBrowserData = items.filter(i => i.category === 'browser' && i.checked).length > 0;
+
             await exportSettingsZip(includeBrowserData);
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
         }
         setExporting(false);
+    };
+
+    const aiCriticItems = items.filter(i => i.category === 'ai-critic');
+    const cloudflareItems = items.filter(i => i.category === 'cloudflare');
+    const opencodeItems = items.filter(i => i.category === 'opencode');
+    const browserItems = items.filter(i => i.category === 'browser');
+
+    const renderCategory = (title: string, items: ExportItem[], categoryId: string) => {
+        if (items.length === 0) return null;
+        const allChecked = items.every(i => i.checked);
+        const someChecked = items.some(i => i.checked) && !allChecked;
+
+        return (
+            <div className="export-page-category">
+                <div className="export-page-category-header">
+                    <label className="export-page-category-checkbox">
+                        <input
+                            type="checkbox"
+                            checked={allChecked}
+                            ref={el => {
+                                if (el) el.indeterminate = someChecked;
+                            }}
+                            onChange={() => toggleCategory(categoryId)}
+                        />
+                        <span className="export-page-category-title">{title}</span>
+                    </label>
+                </div>
+                <div className="export-page-category-items">
+                    {items.map(item => (
+                        <label key={item.id} className={`export-page-item ${!item.exists ? 'export-page-item--missing' : ''}`}>
+                            <input
+                                type="checkbox"
+                                checked={item.checked}
+                                onChange={() => toggleItem(item.id)}
+                                disabled={!item.exists}
+                            />
+                            <div className="export-page-item-info">
+                                <span className="export-page-item-label">{item.label}</span>
+                                <span className="export-page-item-description">{item.description}</span>
+                                {item.details && (
+                                    <span className="export-page-item-details">{item.details}</span>
+                                )}
+                            </div>
+                        </label>
+                    ))}
+                </div>
+            </div>
+        );
     };
 
     return (
@@ -102,45 +317,19 @@ export function ExportPage() {
 
             <div className="export-page-card">
                 <p className="export-page-description">
-                    Export all configuration as a .zip file. This includes all files under the .ai-critic directory and Cloudflare credentials.
+                    Select the items you want to export. Each category can be expanded to choose specific items.
                 </p>
 
-                <div className="export-page-sections">
-                    <div className="export-page-section-item export-page-section-item--always">
-                        <div className="export-page-section-info">
-                            <span className="export-page-section-label">.ai-critic/ directory</span>
-                            {stats.aiCriticFiles && (
-                                <span className="export-page-section-stat">{stats.aiCriticFiles}</span>
-                            )}
-                            <span className="export-page-section-note">Server credentials, encryption keys, domains, terminal config, etc.</span>
-                        </div>
+                {loading ? (
+                    <div className="export-page-loading">Loading items...</div>
+                ) : (
+                    <div className="export-page-categories">
+                        {renderCategory('.ai-critic/ Directory', aiCriticItems, 'ai-critic')}
+                        {renderCategory('Cloudflare Credentials', cloudflareItems, 'cloudflare')}
+                        {renderCategory('OpenCode Config', opencodeItems, 'opencode')}
+                        {renderCategory('Browser Data (Git Configs)', browserItems, 'browser')}
                     </div>
-
-                    <div className="export-page-section-item export-page-section-item--always">
-                        <div className="export-page-section-info">
-                            <span className="export-page-section-label">Cloudflare credentials</span>
-                            {stats.cloudflareFiles && (
-                                <span className="export-page-section-stat">{stats.cloudflareFiles}</span>
-                            )}
-                            <span className="export-page-section-note">Files from ~/.cloudflared/ (cert.pem, tunnel JSONs)</span>
-                        </div>
-                    </div>
-
-                    <label className="export-page-section-item">
-                        <input
-                            type="checkbox"
-                            checked={includeBrowserData}
-                            onChange={() => setIncludeBrowserData(prev => !prev)}
-                        />
-                        <div className="export-page-section-info">
-                            <span className="export-page-section-label">Browser Data (Git Configs)</span>
-                            {stats.browserData && (
-                                <span className="export-page-section-stat">{stats.browserData}</span>
-                            )}
-                            <span className="export-page-section-note">SSH keys, GitHub token, git user config from browser storage</span>
-                        </div>
-                    </label>
-                </div>
+                )}
 
                 {error && <div className="export-page-error">{error}</div>}
 
@@ -148,7 +337,7 @@ export function ExportPage() {
                     <button
                         className="export-page-btn export-page-btn--primary"
                         onClick={handleExport}
-                        disabled={exporting}
+                        disabled={exporting || loading || !items.some(i => i.checked)}
                     >
                         {exporting ? 'Exporting...' : 'Export .zip'}
                     </button>

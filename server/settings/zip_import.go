@@ -27,6 +27,7 @@ const (
 	zipPrefixAICritic   = "ai-critic/"
 	diskPrefixAICritic  = config.DataDir + "/"
 	zipPrefixCloudflare = "cloudflare/"
+	zipPrefixOpencode   = "opencode/"
 )
 
 // ImportFilePreview describes a single file in the import preview.
@@ -63,13 +64,30 @@ func handleImportZipConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	files, zipReader, err := readZipFromRequest(r)
+	// Parse multipart form (max 50MB)
+	if err := r.ParseMultipartForm(50 << 20); err != nil {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("failed to parse form: %v", err))
+		return
+	}
+
+	files, zipReader, err := readZipFromRequestWithForm(r)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if err := applyZipImport(files, zipReader); err != nil {
+	// Check for selected paths (optional, for selective import)
+	selectedPaths := make(map[string]bool)
+	if selectedPathsJSON := r.FormValue("selected_paths"); selectedPathsJSON != "" {
+		var paths []string
+		if err := json.Unmarshal([]byte(selectedPathsJSON), &paths); err == nil {
+			for _, p := range paths {
+				selectedPaths[p] = true
+			}
+		}
+	}
+
+	if err := applyZipImportWithSelection(files, zipReader, selectedPaths); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -85,6 +103,12 @@ func readZipFromRequest(r *http.Request) ([]*zip.File, *zip.Reader, error) {
 		return nil, nil, fmt.Errorf("failed to parse form: %w", err)
 	}
 
+	return readZipFromRequestWithForm(r)
+}
+
+// readZipFromRequestWithForm reads the uploaded zip file from an already parsed multipart request.
+// Returns the list of zip files, the zip reader, and any error.
+func readZipFromRequestWithForm(r *http.Request) ([]*zip.File, *zip.Reader, error) {
 	file, _, err := r.FormFile("file")
 	if err != nil {
 		return nil, nil, fmt.Errorf("missing 'file' field: %w", err)
@@ -164,6 +188,16 @@ func resolveDestPath(zipPath string) string {
 		return filepath.Join(dir, name)
 	}
 
+	// Files under opencode/ go to ~/.local/share/opencode/
+	if strings.HasPrefix(zipPath, zipPrefixOpencode) {
+		name := strings.TrimPrefix(zipPath, zipPrefixOpencode)
+		dir := opencodeConfigDir()
+		if dir == "" {
+			return ""
+		}
+		return filepath.Join(dir, name)
+	}
+
 	return ""
 }
 
@@ -213,6 +247,59 @@ func applyZipImport(files []*zip.File, _ *zip.Reader) error {
 	return nil
 }
 
+// applyZipImportWithSelection extracts selected zip files to their destination paths.
+// If selectedPaths is empty, all files are imported.
+func applyZipImportWithSelection(files []*zip.File, _ *zip.Reader, selectedPaths map[string]bool) error {
+	for _, f := range files {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+
+		zipPath := filepath.ToSlash(f.Name)
+
+		// Skip if not in selected paths (unless selection is empty, then import all)
+		if len(selectedPaths) > 0 && !selectedPaths[zipPath] {
+			continue
+		}
+
+		destPath := resolveDestPath(zipPath)
+		if destPath == "" {
+			continue
+		}
+
+		// Validate: prevent path traversal
+		if strings.Contains(destPath, "..") {
+			continue
+		}
+
+		content, err := readZipFile(f)
+		if err != nil {
+			return fmt.Errorf("read %s from zip: %w", zipPath, err)
+		}
+
+		// Special handling for server-credentials: merge tokens
+		if zipPath == zipPrefixAICritic+"server-credentials" {
+			if err := mergeCredentialsFile(destPath, content); err != nil {
+				return fmt.Errorf("merge credentials: %w", err)
+			}
+			continue
+		}
+
+		// Determine file permissions
+		perm := filePermission(zipPath)
+
+		// Ensure parent directory exists
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return fmt.Errorf("create dir for %s: %w", destPath, err)
+		}
+
+		if err := os.WriteFile(destPath, content, perm); err != nil {
+			return fmt.Errorf("write %s: %w", destPath, err)
+		}
+	}
+	return nil
+}
+
 // filePermission returns the appropriate file permission for a given zip path.
 func filePermission(zipPath string) os.FileMode {
 	// Private keys get restricted permissions
@@ -221,6 +308,10 @@ func filePermission(zipPath string) os.FileMode {
 	}
 	// Cloudflare files get restricted permissions
 	if strings.HasPrefix(zipPath, zipPrefixCloudflare) {
+		return 0600
+	}
+	// Opencode files (auth.json with API keys) get restricted permissions
+	if strings.HasPrefix(zipPath, zipPrefixOpencode) {
 		return 0600
 	}
 	return 0644

@@ -58,11 +58,14 @@ export function PortsLayout() {
         try {
             // Use passed domain parameter, or fall back to current state
             const effectiveDomain = baseDomain || newPortBaseDomain || undefined;
+            console.log('[PortsLayout] generateSubdomain called with baseDomain param:', baseDomain, 'effectiveDomain:', effectiveDomain);
             const domain = await fetchRandomDomain(effectiveDomain);
             // Extract just the subdomain part (before the first dot)
             const subdomain = domain.split('.')[0];
+            console.log('[PortsLayout] Generated subdomain:', subdomain, 'from domain:', domain);
             setNewPortSubdomain(subdomain);
-        } catch {
+        } catch (err) {
+            console.log('[PortsLayout] generateSubdomain error:', err);
             // Fallback: generate a simple random string
             const random = Math.random().toString(36).substring(2, 8);
             setNewPortSubdomain(random);
@@ -140,11 +143,14 @@ export function PortsLayout() {
         showNewForm: showNewPortForm,
         onToggleNewForm: () => {
             const newValue = !showNewPortForm;
+            console.log('[PortsLayout] onToggleNewForm called, newValue:', newValue);
             setShowNewPortForm(newValue);
             // Generate subdomain when opening form with Cloudflare provider
             // Use ref to get latest provider state (avoid stale closure)
             const currentProvider = providerRef.current;
+            console.log('[PortsLayout] currentProvider from ref:', currentProvider);
             if (newValue && (currentProvider === TunnelProviders.CloudflareTunnel || currentProvider === TunnelProviders.CloudflareOwned)) {
+                console.log('[PortsLayout] Generating subdomain on form open');
                 generateSubdomain(newPortBaseDomain || undefined);
             }
         },
@@ -165,12 +171,17 @@ export function PortsLayout() {
         },
         onPortSubdomainChange: setNewPortSubdomain,
         onPortBaseDomainChange: (domain: string) => {
+            console.log('[PortsLayout] onPortBaseDomainChange called with:', domain);
+            console.log('[PortsLayout] Current state before update:', { newPortBaseDomain, newPortSubdomain, newPortProvider });
             setNewPortBaseDomain(domain);
+            console.log('[PortsLayout] After setNewPortBaseDomain, current ref value:', newPortBaseDomain);
             // Generate subdomain when selecting a base domain for Cloudflare providers
             // Use ref to get latest subdomain state (avoid stale closure)
             const currentProvider = providerRef.current;
             const currentSubdomain = subdomainRef.current;
+            console.log('[PortsLayout] Ref values - provider:', currentProvider, 'subdomain:', currentSubdomain);
             if (domain && !currentSubdomain && (currentProvider === TunnelProviders.CloudflareTunnel || currentProvider === TunnelProviders.CloudflareOwned)) {
+                console.log('[PortsLayout] Generating subdomain for domain:', domain);
                 generateSubdomain(domain);
             }
         },

@@ -269,6 +269,22 @@ export async function confirmImportZip(file: File): Promise<void> {
     }
 }
 
+/** Confirm importing selected files from a zip */
+export async function confirmImportZipWithSelection(file: File, selectedPaths: string[]): Promise<void> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('selected_paths', JSON.stringify(selectedPaths));
+
+    const resp = await fetch('/api/settings/import-zip/confirm', {
+        method: 'POST',
+        body: formData,
+    });
+    if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to import zip');
+    }
+}
+
 /** Extract browser-data.json from a zip file (for client-side import) */
 export async function extractBrowserDataFromZip(file: File): Promise<BrowserExportData> {
     const formData = new FormData();

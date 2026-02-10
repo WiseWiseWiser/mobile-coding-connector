@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     previewImportZip,
-    confirmImportZip,
+    confirmImportZipWithSelection,
     extractBrowserDataFromZip,
     applyBrowserData,
     type ImportFilePreview,
@@ -43,6 +43,10 @@ function getActionClass(action: FileAction): string {
         case FileActions.Merge: return 'import-page-action-badge--merge';
         default: return '';
     }
+}
+
+interface SelectedFile extends ImportFilePreview {
+    selected: boolean;
 }
 
 /** A single browser data item with its import action */
@@ -107,8 +111,8 @@ function computeBrowserDataPreview(data: BrowserExportData): BrowserDataItem[] {
 }
 
 /** Group files by their top-level directory for display */
-function groupFiles(files: ImportFilePreview[]): { group: string; files: ImportFilePreview[] }[] {
-    const groups = new Map<string, ImportFilePreview[]>();
+function groupFiles(files: SelectedFile[]): { group: string; files: SelectedFile[] }[] {
+    const groups = new Map<string, SelectedFile[]>();
 
     for (const f of files) {
         const slashIdx = f.path.indexOf('/');
@@ -121,13 +125,22 @@ function groupFiles(files: ImportFilePreview[]): { group: string; files: ImportF
     return Array.from(groups.entries()).map(([group, files]) => ({ group, files }));
 }
 
+function getGroupTitle(group: string): string {
+    switch (group) {
+        case 'ai-critic': return '.ai-critic/ Directory';
+        case 'cloudflare': return 'Cloudflare Credentials';
+        case 'opencode': return 'OpenCode Config';
+        default: return group;
+    }
+}
+
 export function ImportPage() {
     const navigate = useNavigate();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [step, setStep] = useState<ImportStep>('choose');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [preview, setPreview] = useState<ImportFilePreview[]>([]);
+    const [files, setFiles] = useState<SelectedFile[]>([]);
     const [hasBrowserData, setHasBrowserData] = useState(false);
     const [browserDataItems, setBrowserDataItems] = useState<BrowserDataItem[]>([]);
     const [importBrowserData, setImportBrowserData] = useState(true);
@@ -152,7 +165,8 @@ export function ImportPage() {
             const serverFiles = result.files.filter(f => f.path !== 'browser-data.json');
             const browserDataFile = result.files.find(f => f.path === 'browser-data.json');
 
-            setPreview(serverFiles);
+            // Initialize all files as selected
+            setFiles(serverFiles.map(f => ({ ...f, selected: true })));
             setHasBrowserData(!!browserDataFile);
             setImportBrowserData(!!browserDataFile);
 
@@ -175,13 +189,36 @@ export function ImportPage() {
         setLoading(false);
     };
 
+    const toggleFile = (path: string) => {
+        setFiles(prev => prev.map(f =>
+            f.path === path ? { ...f, selected: !f.selected } : f
+        ));
+    };
+
+    const toggleGroup = (group: string) => {
+        const groupFiles = files.filter(f => {
+            const slashIdx = f.path.indexOf('/');
+            const fileGroup = slashIdx >= 0 ? f.path.substring(0, slashIdx) : '(root)';
+            return fileGroup === group;
+        });
+        const allSelected = groupFiles.every(f => f.selected);
+        setFiles(prev => prev.map(f => {
+            const slashIdx = f.path.indexOf('/');
+            const fileGroup = slashIdx >= 0 ? f.path.substring(0, slashIdx) : '(root)';
+            return fileGroup === group ? { ...f, selected: !allSelected } : f;
+        }));
+    };
+
     const handleConfirm = async () => {
         if (!selectedFile) return;
         setImporting(true);
         setImportError(null);
         try {
+            // Get list of selected file paths
+            const selectedPaths = files.filter(f => f.selected).map(f => f.path);
+
             // Import server-side files
-            await confirmImportZip(selectedFile);
+            await confirmImportZipWithSelection(selectedFile, selectedPaths);
 
             // Import browser data if selected
             if (importBrowserData && hasBrowserData) {
@@ -196,11 +233,10 @@ export function ImportPage() {
         setImporting(false);
     };
 
-    const grouped = groupFiles(preview);
+    const grouped = groupFiles(files);
 
-    const createCount = preview.filter(f => f.action === FileActions.Create).length;
-    const overwriteCount = preview.filter(f => f.action === FileActions.Overwrite).length;
-    const mergeCount = preview.filter(f => f.action === FileActions.Merge).length;
+    const selectedCount = files.filter(f => f.selected).length;
+    const totalCount = files.length;
 
     return (
         <div className="diagnose-view">
@@ -247,44 +283,53 @@ export function ImportPage() {
             {step === 'preview' && (
                 <div className="import-page-card">
                     <p className="import-page-description">
-                        The following files will be imported from <strong>{selectedFile?.name}</strong>:
+                        Select the items you want to import from <strong>{selectedFile?.name}</strong>:
                     </p>
 
                     <div className="import-page-summary">
-                        {createCount > 0 && (
-                            <span className="import-page-summary-badge import-page-action-badge--create">
-                                {createCount} new
-                            </span>
-                        )}
-                        {overwriteCount > 0 && (
-                            <span className="import-page-summary-badge import-page-action-badge--overwrite">
-                                {overwriteCount} overwrite
-                            </span>
-                        )}
-                        {mergeCount > 0 && (
-                            <span className="import-page-summary-badge import-page-action-badge--merge">
-                                {mergeCount} merge
-                            </span>
-                        )}
+                        <span className="import-page-summary-badge">
+                            {selectedCount} of {totalCount} selected
+                        </span>
                     </div>
 
                     <div className="import-page-file-list">
-                        {grouped.map(g => (
-                            <div key={g.group} className="import-page-file-group">
-                                <div className="import-page-file-group-header">{g.group}/</div>
-                                {g.files.map(f => (
-                                    <div key={f.path} className="import-page-file-row">
-                                        <span className="import-page-file-name">
-                                            {f.path.substring(f.path.indexOf('/') + 1)}
-                                        </span>
-                                        <span className="import-page-file-size">{formatFileSize(f.size)}</span>
-                                        <span className={`import-page-action-badge ${getActionClass(f.action as FileAction)}`}>
-                                            {getActionLabel(f.action as FileAction)}
-                                        </span>
+                        {grouped.map(g => {
+                            const allSelected = g.files.every(f => f.selected);
+                            const someSelected = g.files.some(f => f.selected) && !allSelected;
+                            return (
+                                <div key={g.group} className="import-page-file-group">
+                                    <div className="import-page-file-group-header">
+                                        <label className="import-page-group-checkbox">
+                                            <input
+                                                type="checkbox"
+                                                checked={allSelected}
+                                                ref={el => {
+                                                    if (el) el.indeterminate = someSelected;
+                                                }}
+                                                onChange={() => toggleGroup(g.group)}
+                                            />
+                                            <span>{getGroupTitle(g.group)}/</span>
+                                        </label>
                                     </div>
-                                ))}
-                            </div>
-                        ))}
+                                    {g.files.map(f => (
+                                        <label key={f.path} className="import-page-file-row import-page-file-row--selectable">
+                                            <input
+                                                type="checkbox"
+                                                checked={f.selected}
+                                                onChange={() => toggleFile(f.path)}
+                                            />
+                                            <span className="import-page-file-name">
+                                                {f.path.substring(f.path.indexOf('/') + 1)}
+                                            </span>
+                                            <span className="import-page-file-size">{formatFileSize(f.size)}</span>
+                                            <span className={`import-page-action-badge ${getActionClass(f.action as FileAction)}`}>
+                                                {getActionLabel(f.action as FileAction)}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                            );
+                        })}
                     </div>
 
                     {hasBrowserData && (
@@ -324,16 +369,16 @@ export function ImportPage() {
                         <button
                             className="import-page-btn import-page-btn--primary"
                             onClick={handleConfirm}
-                            disabled={preview.length === 0 || importing}
+                            disabled={selectedCount === 0 || importing}
                         >
-                            {importing ? 'Importing...' : 'Confirm Import'}
+                            {importing ? 'Importing...' : `Import ${selectedCount} Item${selectedCount !== 1 ? 's' : ''}`}
                         </button>
                         <button
                             className="import-page-btn import-page-btn--secondary"
                             onClick={() => {
                                 setStep('choose');
                                 setSelectedFile(null);
-                                setPreview([]);
+                                setFiles([]);
                             }}
                             disabled={importing}
                         >

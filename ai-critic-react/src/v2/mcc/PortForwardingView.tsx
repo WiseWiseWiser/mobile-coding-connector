@@ -169,7 +169,11 @@ export function PortForwardingView({
                                 )}
                             </>
                         )}
-                        <button className="mcc-forward-btn" onClick={onAddPort}>
+                        <button 
+                            className="mcc-forward-btn" 
+                            onClick={onAddPort}
+                            disabled={!newPortNumber || ((newPortProvider === TunnelProviders.CloudflareTunnel || newPortProvider === TunnelProviders.CloudflareOwned) && !newPortBaseDomain)}
+                        >
                             Forward
                         </button>
                     </div>
@@ -204,10 +208,27 @@ interface OwnedDomainsHintProps {
 
 function OwnedDomainsHint({ selectedDomain, onSelectDomain }: OwnedDomainsHintProps) {
     const [domains, setDomains] = useState<string[]>([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetchOwnedDomains().then(setDomains).catch(() => {});
+        setLoading(true);
+        fetchOwnedDomains().then((domains) => {
+            setDomains(domains);
+            // Auto-select the first domain if none is selected
+            if (domains.length > 0 && !selectedDomain) {
+                onSelectDomain?.(domains[0]);
+            }
+        }).catch(() => {}).finally(() => setLoading(false));
     }, []);
+
+    if (loading) {
+        return (
+            <div className="mcc-owned-domains-hint">
+                <label>Base Domain</label>
+                <div className="mcc-owned-domains-loading">Loading domains...</div>
+            </div>
+        );
+    }
 
     if (domains.length === 0) return null;
 

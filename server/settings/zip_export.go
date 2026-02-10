@@ -53,7 +53,15 @@ func handleExportZip(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 3. Add browser-data.json if provided
+	// 3. Add opencode files from ~/.local/share/opencode/ into opencode/ prefix in the zip
+	opencodeDir := opencodeConfigDir()
+	if opencodeDir != "" {
+		if err := addOpencodeFilesToZip(zw, opencodeDir); err != nil {
+			fmt.Fprintf(os.Stderr, "export-zip: error adding opencode files: %v\n", err)
+		}
+	}
+
+	// 4. Add browser-data.json if provided
 	if len(browserData) > 0 {
 		fw, err := zw.Create("browser-data.json")
 		if err != nil {
@@ -112,6 +120,36 @@ func addCloudflareFilesToZip(zw *zip.Writer, cfDir string) error {
 
 		srcPath := filepath.Join(cfDir, name)
 		zipPath := "cloudflare/" + name
+		if err := addFileToZip(zw, srcPath, zipPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addOpencodeFilesToZip adds opencode config files (auth.json, settings.json, etc.)
+// from the opencode directory into a "opencode/" prefix in the zip.
+func addOpencodeFilesToZip(zw *zip.Writer, opencodeDir string) error {
+	entries, err := os.ReadDir(opencodeDir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		// Include all JSON files (auth.json, settings.json, etc.)
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
+
+		srcPath := filepath.Join(opencodeDir, name)
+		zipPath := "opencode/" + name
 		if err := addFileToZip(zw, srcPath, zipPath); err != nil {
 			return err
 		}

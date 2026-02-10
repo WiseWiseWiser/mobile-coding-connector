@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
@@ -608,9 +609,15 @@ func handleAddPort(w http.ResponseWriter, r *http.Request) {
 			hostname = fmt.Sprintf("%s.%s", req.Subdomain, req.BaseDomain)
 			fmt.Printf("[handleAddPort] Constructed hostname from subdomain + baseDomain: %s\n", hostname)
 		} else {
-			// If no base domain provided but we have subdomain, use label as-is
-			// (backward compatibility - label might already be full hostname)
-			fmt.Printf("[handleAddPort] Using subdomain without baseDomain: %s\n", req.Subdomain)
+			// If no base domain provided but we have subdomain, use the first owned domain
+			ownedDomains := cloudflare.GetOwnedDomains()
+			if len(ownedDomains) > 0 {
+				hostname = fmt.Sprintf("%s.%s", req.Subdomain, ownedDomains[0])
+				fmt.Printf("[handleAddPort] Constructed hostname using first owned domain: %s\n", hostname)
+			} else {
+				// Fallback: use label as-is (backward compatibility)
+				fmt.Printf("[handleAddPort] No owned domains found, using label: %s\n", hostname)
+			}
 		}
 	} else {
 		fmt.Printf("[handleAddPort] Using label as hostname: %s (isCloudflare=%v, hasSubdomain=%v)\n", hostname, isCloudflareProvider, req.Subdomain != "")

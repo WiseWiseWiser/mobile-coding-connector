@@ -1660,6 +1660,17 @@ body:has(.mcc) {
     background: #2563eb;
 }
 
+.mcc-forward-btn:disabled {
+    background: #475569;
+    cursor: not-allowed;
+}
+
+.mcc-owned-domains-loading {
+    padding: 12px;
+    color: #94a3b8;
+    font-size: 14px;
+}
+
 /* ==================== Files ==================== */
 
 .mcc-files {
