@@ -97,6 +97,8 @@ func (c *Command) Build() *exec.Cmd {
 	}
 
 	cmd.Env = env
+	// Close stdin to prevent interactive prompts from hanging
+	cmd.Stdin = nil
 	return cmd
 }
 

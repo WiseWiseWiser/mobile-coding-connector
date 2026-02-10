@@ -336,6 +336,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 		}
 	})
 
+	// Build from source API
+	registerBuildAPI(mux)
+
 	return nil
 }
 
@@ -478,13 +481,26 @@ type buildableProject struct {
 }
 
 // findBuildableProjects scans all projects and finds those that can be built.
+// Also checks the server-configured project directory.
 func findBuildableProjects() ([]buildableProject, error) {
-	projectsFile := config.ProjectsFile
+	var buildable []buildableProject
+	seenDirs := make(map[string]bool)
 
+	// First, check the server-configured project directory
+	serverProjectDir := GetEffectiveProjectDir()
+	if serverProjectDir != "" {
+		if project := checkBuildableProject(serverProjectDir, "server", "Server Project"); project != nil {
+			buildable = append(buildable, *project)
+			seenDirs[serverProjectDir] = true
+		}
+	}
+
+	// Then check projects from projects.json
+	projectsFile := config.ProjectsFile
 	data, err := os.ReadFile(projectsFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []buildableProject{}, nil
+			return buildable, nil
 		}
 		return nil, err
 	}
@@ -498,43 +514,53 @@ func findBuildableProjects() ([]buildableProject, error) {
 		return nil, err
 	}
 
-	var buildable []buildableProject
 	for _, p := range projects {
-		if p.Dir == "" {
+		if p.Dir == "" || seenDirs[p.Dir] {
 			continue
 		}
 
-		// Check if directory exists
-		info, err := os.Stat(p.Dir)
-		if err != nil || !info.IsDir() {
-			continue
-		}
-
-		// Check for go.mod
-		hasGoMod := false
-		if _, err := os.Stat(filepath.Join(p.Dir, "go.mod")); err == nil {
-			hasGoMod = true
-		}
-
-		// Check for build script
-		hasBuildScript := false
-		buildScriptPath := filepath.Join(p.Dir, "script", "server", "build", "for-linux-amd64")
-		if _, err := os.Stat(buildScriptPath); err == nil {
-			hasBuildScript = true
-		}
-
-		if hasGoMod && hasBuildScript {
-			buildable = append(buildable, buildableProject{
-				ID:             p.ID,
-				Name:           p.Name,
-				Dir:            p.Dir,
-				HasGoMod:       true,
-				HasBuildScript: true,
-			})
+		if project := checkBuildableProject(p.Dir, p.ID, p.Name); project != nil {
+			buildable = append(buildable, *project)
+			seenDirs[p.Dir] = true
 		}
 	}
 
 	return buildable, nil
+}
+
+// checkBuildableProject checks if a directory is a buildable project.
+// Returns nil if not buildable.
+func checkBuildableProject(dir, id, name string) *buildableProject {
+	// Check if directory exists
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return nil
+	}
+
+	// Check for go.mod
+	hasGoMod := false
+	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+		hasGoMod = true
+	}
+
+	// Check for build script
+	hasBuildScript := false
+	buildScriptPath := filepath.Join(dir, "script", "server", "build", "for-linux-amd64")
+	if _, err := os.Stat(buildScriptPath); err == nil {
+		hasBuildScript = true
+	}
+
+	if hasGoMod && hasBuildScript {
+		return &buildableProject{
+			ID:             id,
+			Name:           name,
+			Dir:            dir,
+			HasGoMod:       true,
+			HasBuildScript: true,
+		}
+	}
+
+	return nil
 }
 
 // handleBuildableProjectsMain returns the list of projects that can be built from source.

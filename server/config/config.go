@@ -216,3 +216,65 @@ func (c *Config) GetAvailableProviders() []ProviderConfig {
 func (c *Config) GetAvailableModels() []ModelConfig {
 	return c.AI.Models
 }
+
+// ServerProjectConfig represents the server project configuration stored in .ai-critic/server-project.json
+type ServerProjectConfig struct {
+	ProjectDir string `json:"project_dir,omitempty"`
+}
+
+// LoadServerProjectConfig loads the server project configuration from .ai-critic/server-project.json
+func LoadServerProjectConfig() (*ServerProjectConfig, error) {
+	data, err := os.ReadFile(ServerProjectFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &ServerProjectConfig{}, nil
+		}
+		return nil, fmt.Errorf("failed to read server project config: %w", err)
+	}
+
+	var cfg ServerProjectConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse server project config: %w", err)
+	}
+
+	return &cfg, nil
+}
+
+// SaveServerProjectConfig saves the server project configuration to .ai-critic/server-project.json
+func SaveServerProjectConfig(cfg *ServerProjectConfig) error {
+	// Ensure directory exists
+	if err := os.MkdirAll(DataDir, 0755); err != nil {
+		return fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal server project config: %w", err)
+	}
+
+	if err := os.WriteFile(ServerProjectFile, data, 0644); err != nil {
+		return fmt.Errorf("failed to write server project config: %w", err)
+	}
+
+	return nil
+}
+
+// GetServerProjectDir returns the configured server project directory
+// Returns empty string if not configured
+func GetServerProjectDir() string {
+	cfg, err := LoadServerProjectConfig()
+	if err != nil {
+		return ""
+	}
+	return cfg.ProjectDir
+}
+
+// SetServerProjectDir sets and saves the server project directory
+func SetServerProjectDir(projectDir string) error {
+	cfg, err := LoadServerProjectConfig()
+	if err != nil {
+		cfg = &ServerProjectConfig{}
+	}
+	cfg.ProjectDir = projectDir
+	return SaveServerProjectConfig(cfg)
+}

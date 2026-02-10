@@ -313,9 +313,9 @@
 
 .cf-upload-btn {
     padding: 8px 16px;
-    background: #f1f5f9;
-    color: #334155;
-    border: 1px dashed #94a3b8;
+    background: #0f172a;
+    color: #e2e8f0;
+    border: 1px dashed #475569;
     border-radius: 8px;
     font-size: 13px;
     font-weight: 600;
@@ -324,7 +324,7 @@
 }
 
 .cf-upload-btn:hover:not(:disabled) {
-    background: #e2e8f0;
+    background: #1e293b;
     border-color: #64748b;
 }
 
@@ -341,15 +341,15 @@
 }
 
 .cf-upload-message.success {
-    background: #f0fdf4;
-    color: #16a34a;
-    border: 1px solid #bbf7d0;
+    background: rgba(34, 197, 94, 0.1);
+    color: #86efac;
+    border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
 .cf-upload-message.error {
-    background: #fef2f2;
-    color: #dc2626;
-    border: 1px solid #fecaca;
+    background: rgba(239, 68, 68, 0.1);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
 /* My Own Domains Section */

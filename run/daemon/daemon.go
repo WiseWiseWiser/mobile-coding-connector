@@ -209,6 +209,8 @@ func (d *Daemon) startServerWithLogging(binPath string, serverArgs []string) (*e
 	// Tee stdout/stderr to both console and log file
 	cmd.Stdout = d.logger.GetStdout()
 	cmd.Stderr = d.logger.GetStderr()
+	// Close stdin to prevent interactive prompts from hanging the server
+	cmd.Stdin = nil
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start server: %w", err)

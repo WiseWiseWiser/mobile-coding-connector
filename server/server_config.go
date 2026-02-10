@@ -4,17 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
-	"path/filepath"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
-
-var configFilePath string
-
-// SetConfigFilePath sets the path to the configuration file
-func SetConfigFilePath(path string) {
-	configFilePath = path
-}
 
 // ServerConfigResponse represents the server configuration response
 type ServerConfigResponse struct {
@@ -41,16 +33,16 @@ func GetServerConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get explicit project dir from config
-	var explicitProjectDir string
-	if cfg := config.Get(); cfg != nil {
-		explicitProjectDir = cfg.Server.ProjectDir
+	// Get explicit project dir from server-project.json
+	serverProjectCfg, err := config.LoadServerProjectConfig()
+	if err != nil {
+		serverProjectCfg = &config.ServerProjectConfig{}
 	}
 
 	resp := ServerConfigResponse{
-		ProjectDir:       explicitProjectDir,
+		ProjectDir:       serverProjectCfg.ProjectDir,
 		AutoDetectedDir:  autoDetectedDir,
-		UsingExplicitDir: explicitProjectDir != "",
+		UsingExplicitDir: serverProjectCfg.ProjectDir != "",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -88,23 +80,10 @@ func SetServerConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get current config
-	cfg := config.Get()
-	if cfg == nil {
-		// Create a new config if none exists
-		cfg = &config.Config{}
-		config.Set(cfg)
-	}
-
-	// Update the server config
-	cfg.Server.ProjectDir = req.ProjectDir
-
-	// Save to file if we have a config file path
-	if configFilePath != "" {
-		if err := saveConfigToFile(cfg, configFilePath); err != nil {
-			http.Error(w, "Failed to save configuration", http.StatusInternalServerError)
-			return
-		}
+	// Save to server-project.json
+	if err := config.SetServerProjectDir(req.ProjectDir); err != nil {
+		http.Error(w, "Failed to save configuration: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	// Update the initial directory if explicit project dir is set
@@ -116,49 +95,23 @@ func SetServerConfig(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-// saveConfigToFile saves the configuration to the specified file
-func saveConfigToFile(cfg *config.Config, path string) error {
-	// Read existing file to preserve other fields
-	var existingConfig config.Config
-	data, err := os.ReadFile(path)
-	if err == nil {
-		// File exists, parse it
-		if err := json.Unmarshal(data, &existingConfig); err == nil {
-			// Preserve AI and PortForwarding configs
-			if len(cfg.AI.Providers) == 0 && len(cfg.AI.Models) == 0 {
-				cfg.AI = existingConfig.AI
-			}
-			if len(cfg.PortForwarding.Providers) == 0 {
-				cfg.PortForwarding = existingConfig.PortForwarding
-			}
-		}
-	}
-
-	// Update server config
-	existingConfig.Server = cfg.Server
-
-	// Marshal and save
-	data, err = json.MarshalIndent(existingConfig, "", "    ")
-	if err != nil {
-		return err
-	}
-
-	// Ensure directory exists
-	dir := filepath.Dir(path)
-	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return err
-		}
-	}
-
-	return os.WriteFile(path, data, 0644)
-}
-
 // GetEffectiveProjectDir returns the effective project directory
 // Uses explicit config if set, otherwise falls back to auto-detected
 func GetEffectiveProjectDir() string {
+	// First check server-project.json
+	if projectDir := config.GetServerProjectDir(); projectDir != "" {
+		return projectDir
+	}
+	// Fall back to legacy config (for backward compatibility)
 	if cfg := config.Get(); cfg != nil && cfg.Server.ProjectDir != "" {
 		return cfg.Server.ProjectDir
 	}
 	return GetInitialDir()
+}
+
+// SetConfigFilePath sets the path to the configuration file
+// Deprecated: Server project config is now stored in .ai-critic/server-project.json
+// This function is kept for backward compatibility
+func SetConfigFilePath(path string) {
+	// No-op: config file path is no longer used for server settings
 }
