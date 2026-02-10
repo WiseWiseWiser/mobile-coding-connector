@@ -131,6 +131,10 @@
 .mcc-git-push-btn {
     flex: 1;
     min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     padding: 12px 20px;
     background: #1e293b;
     color: #e2e8f0;

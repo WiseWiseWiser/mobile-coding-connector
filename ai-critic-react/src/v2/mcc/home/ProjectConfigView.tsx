@@ -13,6 +13,7 @@ import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import { StreamingLogs } from '../../StreamingComponents';
 import { KeyIcon } from '../../icons';
 import { CustomSelect } from './CustomSelect';
+import { GitPushSection } from '../files/GitPushSection';
 import './ProjectConfigView.css';
 
 export function ProjectConfigView() {
@@ -210,6 +211,13 @@ export function ProjectConfigView() {
                     pendingMessage="Running..."
                     maxHeight={200}
                 />
+
+                {/* Git Push section - only when directory exists */}
+                {project.dir_exists && (
+                    <div style={{ marginTop: 16 }}>
+                        <GitPushSection projectDir={project.dir} sshKeyId={project.ssh_key_id} />
+                    </div>
+                )}
             </div>
 
             {/* SSH Key Section */}

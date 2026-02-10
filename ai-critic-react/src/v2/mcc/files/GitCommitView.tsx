@@ -1,15 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { getGitStatus, getDiff, stageFile, unstageFile, gitCommit, gitPushStream, getGitBranches } from '../../../api/review';
-import type { GitStatusFile, GitBranch } from '../../../api/review';
+import { getGitStatus, getDiff, stageFile, unstageFile, gitCommit } from '../../../api/review';
+import type { GitStatusFile } from '../../../api/review';
 import type { DiffFile } from '../../../components/code-review/types';
 import { DiffViewer } from '../../DiffViewer';
 import type { FileDiff, DiffHunk, DiffLine } from '../../../api/checkpoints';
 import { statusBadge } from './utils';
 import { loadGitUserConfig } from '../home/settings/gitStorage';
-import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypto';
-import { useStreamingAction } from '../../../hooks/useStreamingAction';
-import { StreamingLogs } from '../../StreamingComponents';
-import { UploadIcon } from '../../icons';
+import { GitPushSection } from './GitPushSection';
 import './FilesView.css';
 import './GitCommitView.css';
 
@@ -81,13 +78,10 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
     const [committing, setCommitting] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [encryptionError, setEncryptionError] = useState<string | null>(null);
     const [showDiffs, setShowDiffs] = useState(false);
     const [diffs, setDiffs] = useState<FileDiff[]>([]);
     const [loadingDiffs, setLoadingDiffs] = useState(false);
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
-    const [branches, setBranches] = useState<GitBranch[]>([]);
-    const [pushBranch, setPushBranch] = useState('');
     const [gitUserConfig, setGitUserConfig] = useState<{ name: string; email: string }>({ name: '', email: '' });
 
     const messageRef = useRef<HTMLTextAreaElement>(null);
@@ -102,18 +96,10 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
         setLoading(true);
         setError('');
         try {
-            const [status, branchList] = await Promise.all([
-                getGitStatus(projectDir),
-                getGitBranches(projectDir),
-            ]);
+            const status = await getGitStatus(projectDir);
             setBranch(status.branch);
             setStagedFiles(status.files.filter(f => f.isStaged));
             setUnstagedFiles(status.files.filter(f => !f.isStaged));
-            setBranches(branchList || []);
-            // Default push branch to current branch
-            if (!pushBranch && status.branch) {
-                setPushBranch(status.branch);
-            }
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Failed to get git status');
         } finally {
@@ -224,25 +210,6 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
         } finally {
             setCommitting(false);
         }
-    };
-
-    const [pushState, pushControls] = useStreamingAction();
-
-    const handlePush = () => {
-        pushControls.run(async () => {
-            setEncryptionError(null);
-            let encryptedKey: string | undefined;
-            try {
-                encryptedKey = await encryptProjectSSHKey(sshKeyId);
-            } catch (err) {
-                if (err instanceof EncryptionNotAvailableError) {
-                    setEncryptionError('Server encryption keys not configured.');
-                    throw err;
-                }
-                throw err;
-            }
-            return gitPushStream(projectDir, encryptedKey);
-        });
     };
 
     const handleFileClick = (path: string) => {
@@ -404,37 +371,10 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                             {/* Success message below commit button */}
                             {success && <div className="mcc-git-success">{success}</div>}
 
-                            {/* Push row - push button + branch selector */}
-                            <div className="mcc-git-push-row" style={{ marginTop: '12px' }}>
-                                <button
-                                    className="mcc-git-push-btn"
-                                    onClick={handlePush}
-                                    disabled={pushState.running}
-                                >
-                                    {pushState.running ? 'Pushing...' : 'Push'}
-                                    <UploadIcon size={14} style={{ verticalAlign: 'middle' }} />
-                                </button>
-                                <select
-                                    className="mcc-git-branch-select"
-                                    value={pushBranch}
-                                    onChange={(e) => setPushBranch(e.target.value)}
-                                >
-                                    {branches.map(b => (
-                                        <option key={b.name} value={b.name}>
-                                            {b.name}{b.isCurrent ? ' (current)' : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                            {/* Push section */}
+                            <div style={{ marginTop: 12 }}>
+                                <GitPushSection projectDir={projectDir} sshKeyId={sshKeyId} />
                             </div>
-                            {/* Push streaming logs below */}
-                            <StreamingLogs
-                                state={pushState}
-                                pendingMessage="Pushing..."
-                                maxHeight={200}
-                            />
-                            {encryptionError && (
-                                <div className="mcc-git-fetch-result error" style={{ marginTop: 8 }}>{encryptionError}</div>
-                            )}
                         </div>
                     </div>
                 </>

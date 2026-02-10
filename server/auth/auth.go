@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -197,6 +198,9 @@ func ImportCredentials(newTokens []string) error {
 	}
 
 	credFile := getCredentialsFile()
+	if err := os.MkdirAll(filepath.Dir(credFile), 0755); err != nil {
+		return err
+	}
 	return os.WriteFile(credFile, []byte(strings.Join(lines, "\n")+"\n"), 0600)
 }
 
@@ -266,6 +270,12 @@ func handleSetup(w http.ResponseWriter, r *http.Request) {
 
 	// Write the credential to the credentials file
 	credFile := getCredentialsFile()
+	if err := os.MkdirAll(filepath.Dir(credFile), 0755); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to create data directory"})
+		return
+	}
 	if err := os.WriteFile(credFile, []byte(req.Credential+"\n"), 0600); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
