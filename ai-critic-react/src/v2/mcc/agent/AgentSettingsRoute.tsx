@@ -1,7 +1,6 @@
 import { useParams, useOutletContext } from 'react-router-dom';
 import type { AgentOutletContext } from './AgentLayout';
 import { CursorAgentSettings } from './CursorAgentSettings';
-import { AgentPathSettings } from './AgentPathSettings';
 import { OpencodeSettings } from './OpencodeSettings';
 
 export function AgentSettingsRoute() {
@@ -14,35 +13,31 @@ export function AgentSettingsRoute() {
         return null;
     }
 
-    const session = ctx.sessions[agentId];
+    const session = ctx.sessions[agentId] || null;
+    const onBack = session
+        ? () => ctx.navigateToView(agentId)
+        : () => ctx.navigateToView('');
 
-    // If there's a running session, show the session-specific settings
-    if (session) {
-        // Use OpenCode-specific settings for opencode agent
-        if (session.agent_id === 'opencode') {
-            return (
-                <OpencodeSettings
-                    session={session}
-                    projectName={ctx.projectName}
-                    onBack={() => ctx.navigateToView(agentId)}
-                />
-            );
-        }
-        // Use Cursor-specific settings for cursor-agent (and other agents)
+    // OpenCode agent always uses OpencodeSettings
+    if (agentId === 'opencode') {
         return (
-            <CursorAgentSettings
+            <OpencodeSettings
+                agentId={agentId}
                 session={session}
                 projectName={ctx.projectName}
-                onBack={() => ctx.navigateToView(agentId)}
+                onBack={onBack}
+                onRefreshAgents={ctx.onRefreshAgents}
             />
         );
     }
 
-    // Otherwise, show the agent path configuration
+    // All other agents (cursor-agent, etc.) use CursorAgentSettings
     return (
-        <AgentPathSettings
+        <CursorAgentSettings
             agentId={agentId}
-            onBack={() => ctx.navigateToView('')}
+            session={session}
+            projectName={ctx.projectName}
+            onBack={onBack}
             onRefreshAgents={ctx.onRefreshAgents}
         />
     );
