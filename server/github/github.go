@@ -15,6 +15,7 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
@@ -371,18 +372,12 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build git clone command
-	var cmd *exec.Cmd
-
+	// Build git clone command using gitrunner to ensure proper environment
+	var keyPath string
 	if keyFile != nil {
-		// Use GIT_SSH_COMMAND to specify the key; disable terminal prompt to prevent HTTPS fallback
-		sshCmd := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", keyFile.Path)
-		cmd = exec.Command("git", "clone", "--progress", req.RepoURL, targetDir)
-		cmd.Env = append(os.Environ(), fmt.Sprintf("GIT_SSH_COMMAND=%s", sshCmd), "GIT_TERMINAL_PROMPT=0")
-	} else {
-		cmd = exec.Command("git", "clone", "--progress", req.RepoURL, targetDir)
-		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+		keyPath = keyFile.Path
 	}
+	cmd := gitrunner.Clone(req.RepoURL, targetDir, keyPath).Exec()
 
 	// Stream clone output via SSE
 	sw := sse.NewWriter(w)
@@ -477,13 +472,16 @@ func handleTestSSHKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run ssh -vT git@<host> to test connection (verbose for diagnostics)
+	// Use BatchMode=yes and SSH_ASKPASS_REQUIRE=never to prevent password prompts
 	cmd := exec.Command("ssh", "-v", "-T",
 		"-i", keyFile.Path,
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "ConnectTimeout=10",
+		"-o", "BatchMode=yes",
 		fmt.Sprintf("git@%s", req.Host),
 	)
+	cmd.Env = append(os.Environ(), "SSH_ASKPASS_REQUIRE=never")
 
 	// Track success by inspecting output lines
 	success := false

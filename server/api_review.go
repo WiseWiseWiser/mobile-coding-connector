@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/ai"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
 
@@ -213,9 +213,7 @@ func handleStageFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run git add
-	cmd := exec.Command("git", "add", req.Path)
-	cmd.Dir = dir
-	output, err := cmd.CombinedOutput()
+	output, err := gitrunner.Add(req.Path).Dir(dir).Run()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to stage file: %s", string(output))})
 		return
@@ -248,9 +246,7 @@ func handleUnstageFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := exec.Command("git", "reset", "HEAD", req.Path)
-	cmd.Dir = dir
-	output, err := cmd.CombinedOutput()
+	output, err := gitrunner.Reset(req.Path).Dir(dir).Run()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to unstage file: %s", string(output))})
 		return
@@ -293,25 +289,19 @@ func handleGitCommit(w http.ResponseWriter, r *http.Request) {
 
 	// Set git user config if provided
 	if req.UserName != "" {
-		cmd := exec.Command("git", "config", "user.name", req.UserName)
-		cmd.Dir = dir
-		if output, err := cmd.CombinedOutput(); err != nil {
+		if output, err := gitrunner.Config("user.name", req.UserName).Dir(dir).Run(); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to set git user.name: %s", string(output))})
 			return
 		}
 	}
 	if req.UserEmail != "" {
-		cmd := exec.Command("git", "config", "user.email", req.UserEmail)
-		cmd.Dir = dir
-		if output, err := cmd.CombinedOutput(); err != nil {
+		if output, err := gitrunner.Config("user.email", req.UserEmail).Dir(dir).Run(); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to set git user.email: %s", string(output))})
 			return
 		}
 	}
 
-	cmd := exec.Command("git", "commit", "-m", req.Message)
-	cmd.Dir = dir
-	output, err := cmd.CombinedOutput()
+	output, err := gitrunner.Commit(req.Message).Dir(dir).Run()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to commit: %s", string(output))})
 		return
@@ -343,10 +333,8 @@ func handleGitPush(w http.ResponseWriter, r *http.Request) {
 	acceptHeader := r.Header.Get("Accept")
 	wantStream := acceptHeader == "text/event-stream"
 
-	cmd := exec.Command("git", "push")
-	cmd.Dir = dir
-
-	// Use SSH key if provided
+	// Build git push command using gitrunner
+	var keyPath string
 	if req.SSHKey != "" {
 		keyFile, err := github.PrepareSSHKeyFile(req.SSHKey)
 		if err != nil {
@@ -362,10 +350,9 @@ func handleGitPush(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer keyFile.Cleanup()
-
-		sshCmd := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", keyFile.Path)
-		cmd.Env = append(os.Environ(), fmt.Sprintf("GIT_SSH_COMMAND=%s", sshCmd))
+		keyPath = keyFile.Path
 	}
+	cmd := gitrunner.Push(keyPath).Dir(dir).Exec()
 
 	if wantStream {
 		// Use SSE streaming
@@ -418,10 +405,8 @@ func handleGitFetch(w http.ResponseWriter, r *http.Request) {
 	acceptHeader := r.Header.Get("Accept")
 	wantStream := acceptHeader == "text/event-stream"
 
-	cmd := exec.Command("git", "pull", "--ff-only")
-	cmd.Dir = dir
-
-	// Use SSH key if provided
+	// Build git pull command using gitrunner
+	var keyPath string
 	if req.SSHKey != "" {
 		keyFile, err := github.PrepareSSHKeyFile(req.SSHKey)
 		if err != nil {
@@ -437,10 +422,9 @@ func handleGitFetch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer keyFile.Cleanup()
-
-		sshCmd := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", keyFile.Path)
-		cmd.Env = append(os.Environ(), fmt.Sprintf("GIT_SSH_COMMAND=%s", sshCmd))
+		keyPath = keyFile.Path
 	}
+	cmd := gitrunner.PullFFOnly(keyPath).Dir(dir).Exec()
 
 	if wantStream {
 		sseWriter := sse.NewWriter(w)
@@ -529,25 +513,19 @@ func resolveDir(dir string) string {
 // getGitStatus runs git status --porcelain=v1 -b and parses the output
 func getGitStatus(dir string) (*GitStatusResult, error) {
 	// Check if directory is a git repository
-	cmd := exec.Command("git", "rev-parse", "--git-dir")
-	cmd.Dir = dir
-	if err := cmd.Run(); err != nil {
+	if err := gitrunner.RevParse("--git-dir").Dir(dir).RunSilent(); err != nil {
 		return nil, fmt.Errorf("not a git repository: %s", dir)
 	}
 
 	// Get branch name
-	cmd = exec.Command("git", "branch", "--show-current")
-	cmd.Dir = dir
-	branchOutput, err := cmd.Output()
+	branchOutput, err := gitrunner.Branch("--show-current").Dir(dir).Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get branch: %v", err)
 	}
 	branch := strings.TrimSpace(string(branchOutput))
 
 	// Get status with porcelain format
-	cmd = exec.Command("git", "status", "--porcelain=v1")
-	cmd.Dir = dir
-	output, err := cmd.Output()
+	output, err := gitrunner.Status("--porcelain=v1").Dir(dir).Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get git status: %v", err)
 	}
@@ -657,13 +635,11 @@ func handleGitBranches(w http.ResponseWriter, r *http.Request) {
 // getGitBranches returns local branches sorted by most recent commit date
 func getGitBranches(dir string) ([]GitBranch, error) {
 	// Use git for-each-ref to list branches sorted by -committerdate (most recent first)
-	cmd := exec.Command("git", "for-each-ref",
+	output, err := gitrunner.ForEachRef(
 		"--sort=-committerdate",
 		"--format=%(refname:short)\t%(committerdate:iso8601)\t%(HEAD)",
 		"refs/heads/",
-	)
-	cmd.Dir = dir
-	output, err := cmd.Output()
+	).Dir(dir).Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list branches: %v", err)
 	}
@@ -691,9 +667,7 @@ func getGitBranches(dir string) ([]GitBranch, error) {
 // getGitDiff runs git diff commands and returns the results
 func getGitDiff(dir string) (*GitDiffResult, error) {
 	// Check if directory is a git repository
-	cmd := exec.Command("git", "rev-parse", "--git-dir")
-	cmd.Dir = dir
-	if err := cmd.Run(); err != nil {
+	if err := gitrunner.RevParse("--git-dir").Dir(dir).RunSilent(); err != nil {
 		return nil, fmt.Errorf("not a git repository: %s", dir)
 	}
 
@@ -702,9 +676,7 @@ func getGitDiff(dir string) (*GitDiffResult, error) {
 	}
 
 	// Get unstaged changes (working tree diff)
-	cmd = exec.Command("git", "diff")
-	cmd.Dir = dir
-	output, err := cmd.Output()
+	output, err := gitrunner.Diff().Dir(dir).Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get working tree diff: %v", err)
 	}
@@ -715,9 +687,7 @@ func getGitDiff(dir string) (*GitDiffResult, error) {
 	result.Files = append(result.Files, unstagedFiles...)
 
 	// Get staged changes
-	cmd = exec.Command("git", "diff", "--cached")
-	cmd.Dir = dir
-	output, err = cmd.Output()
+	output, err = gitrunner.DiffCached().Dir(dir).Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get staged diff: %v", err)
 	}

@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { SecuritySection } from './settings/SecuritySection';
 import { WebAccessSection } from './settings/WebAccessSection';
+import { ExposedUrlsSection } from './settings/ExposedUrlsSection';
 import { GitSettingsContent } from './settings/GitSettings';
 import { CloudflareSettingsContent } from './settings/CloudflareSettingsView';
 import { TerminalSection } from './settings/TerminalSection';
@@ -8,6 +9,7 @@ import './DiagnoseView.css'; // Shared styles: .diagnose-view, .diagnose-section
 import './settings/GitSettings.css';
 import './settings/CloudflareSettingsView.css';
 import './settings/TerminalSection.css';
+import './settings/ExposedUrlsSection.css';
 import './settings/SettingsView.css';
 
 export function SettingsView() {
@@ -21,6 +23,8 @@ export function SettingsView() {
             </div>
 
             <WebAccessSection />
+
+            <ExposedUrlsSection />
 
             <div className="diagnose-section">
                 <h3 className="diagnose-section-title">Git</h3>

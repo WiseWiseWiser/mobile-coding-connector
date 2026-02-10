@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 )
 
 // FileSnapshot stores the state of a single file at a checkpoint (metadata only).
@@ -215,17 +215,13 @@ func saveOriginalContent(cpDir, filePath, content string) error {
 // gitChangedFiles returns list of changed files in the working tree compared to HEAD.
 // Uses git diff --name-status.
 func gitChangedFiles(projectDir string) ([]ChangedFile, error) {
-	cmd := exec.Command("git", "diff", "--name-status", "HEAD")
-	cmd.Dir = projectDir
-	out, err := cmd.Output()
+	out, err := gitrunner.Diff("--name-status", "HEAD").Dir(projectDir).Output()
 	if err != nil {
 		return nil, fmt.Errorf("git diff failed: %w", err)
 	}
 
 	// Also include untracked files
-	cmdUntracked := exec.Command("git", "ls-files", "--others", "--exclude-standard")
-	cmdUntracked.Dir = projectDir
-	untrackedOut, err := cmdUntracked.Output()
+	untrackedOut, err := gitrunner.LsFiles("--others", "--exclude-standard").Dir(projectDir).Output()
 	if err != nil {
 		return nil, fmt.Errorf("git ls-files failed: %w", err)
 	}
@@ -281,9 +277,7 @@ func readFileContent(projectDir, path string) (string, error) {
 }
 
 func gitFileContent(projectDir, path string) (string, error) {
-	cmd := exec.Command("git", "show", "HEAD:"+path)
-	cmd.Dir = projectDir
-	out, err := cmd.Output()
+	out, err := gitrunner.Show("HEAD:" + path).Dir(projectDir).Output()
 	if err != nil {
 		return "", err
 	}

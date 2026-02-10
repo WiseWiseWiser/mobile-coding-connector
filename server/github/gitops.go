@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 
+	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
@@ -106,17 +106,12 @@ func runGitOp(w http.ResponseWriter, r *http.Request, gitCmd string, gitArgs ...
 		defer keyFile.Cleanup()
 	}
 
-	// Build git command
-	args := append([]string{gitCmd}, gitArgs...)
-	cmd := exec.Command("git", args...)
-	cmd.Dir = project.Dir
-
+	// Build git command using gitrunner to ensure proper environment
+	var keyPath string
 	if keyFile != nil {
-		sshCmd := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", keyFile.Path)
-		cmd.Env = append(os.Environ(), fmt.Sprintf("GIT_SSH_COMMAND=%s", sshCmd), "GIT_TERMINAL_PROMPT=0")
-	} else {
-		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+		keyPath = keyFile.Path
 	}
+	cmd := gitrunner.NewCommand(append([]string{gitCmd}, gitArgs...)...).Dir(project.Dir).WithSSHKey(keyPath).Exec()
 
 	sw.SendLog(fmt.Sprintf("$ git %s %s", gitCmd, project.Dir))
 	if keyFile != nil {

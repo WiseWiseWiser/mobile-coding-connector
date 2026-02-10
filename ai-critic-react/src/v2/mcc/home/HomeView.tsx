@@ -167,7 +167,8 @@ function ProjectCard({ project, isActive, onSelect, onOpen, onRemove, onClone, c
                 <span>{createdDate}</span>
             </div>
             <div className="mcc-port-actions" style={{ marginTop: 8 }}>
-                {dirMissing && project.repo_url ? (
+                <button className="mcc-port-action-btn" onClick={e => { e.stopPropagation(); onOpen(); }}>Open</button>
+                {dirMissing && project.repo_url && (
                     <button
                         className="mcc-port-action-btn mcc-port-clone"
                         onClick={e => { e.stopPropagation(); onClone(); }}
@@ -175,8 +176,6 @@ function ProjectCard({ project, isActive, onSelect, onOpen, onRemove, onClone, c
                     >
                         {cloning ? 'Cloning...' : 'Clone'}
                     </button>
-                ) : (
-                    <button className="mcc-port-action-btn" onClick={e => { e.stopPropagation(); onOpen(); }}>Open</button>
                 )}
                 <button className="mcc-port-action-btn mcc-port-stop" onClick={e => { e.stopPropagation(); onRemove(); }}>Remove</button>
             </div>
