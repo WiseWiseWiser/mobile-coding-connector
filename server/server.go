@@ -168,7 +168,39 @@ func Serve(port int, dev bool) error {
 		web.OpenBrowser(fmt.Sprintf("http://localhost:%d", port))
 	}()
 
-	return server.ListenAndServe()
+	// Start server in a goroutine
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- server.ListenAndServe()
+	}()
+
+	// Wait for either server error or shutdown signal
+	select {
+	case err := <-serverErr:
+		return err
+	case <-WaitForShutdown():
+		// Graceful shutdown initiated
+		fmt.Println("\nShutdown signal received, stopping server...")
+		
+		// Stop all port forwards (tunnels)
+		pfManager := portforward.GetDefaultManager()
+		for _, pf := range pfManager.List() {
+			fmt.Printf("Stopping port forward for port %d...\n", pf.LocalPort)
+			pfManager.Remove(pf.LocalPort)
+		}
+		
+		// Shutdown HTTP server with timeout
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			fmt.Printf("Server shutdown error: %v\n", err)
+			return err
+		}
+		
+		fmt.Println("Server shutdown complete")
+		return nil
+	}
 }
 
 func ProxyDev(mux *http.ServeMux) error {
@@ -338,6 +370,8 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Build from source API
 	registerBuildAPI(mux)
+	// Graceful shutdown endpoint
+	mux.HandleFunc("/api/shutdown", shutdownHandler)
 
 	return nil
 }
@@ -707,4 +741,40 @@ func parseBinVersion(binPath string) (baseName string, version int) {
 	}
 
 	return name, 0
+}
+
+// shutdownHandler handles graceful shutdown of the server
+func shutdownHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Start shutdown in background
+	go func() {
+		// Give HTTP response time to be sent
+		time.Sleep(2 * time.Second)
+		// Trigger graceful shutdown
+		ShutdownServer()
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":    "shutting_down",
+		"message":   "Server will shutdown in 2 seconds",
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+}
+
+// globalShutdownChan is used to signal server shutdown
+var globalShutdownChan = make(chan struct{})
+
+// ShutdownServer initiates server shutdown
+func ShutdownServer() {
+	close(globalShutdownChan)
+}
+
+// WaitForShutdown returns a channel that will be closed when shutdown is requested
+func WaitForShutdown() <-chan struct{} {
+	return globalShutdownChan
 }

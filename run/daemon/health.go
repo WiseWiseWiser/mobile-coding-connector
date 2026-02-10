@@ -1,8 +1,15 @@
 package daemon
 
 import (
+	"bufio"
+	"fmt"
+	"net/http"
+	"os"
 	"os/exec"
+	"strings"
 	"time"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
 // ExitReasonType represents why the health check loop exited
@@ -97,12 +104,83 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 
 // gracefulStop performs a graceful shutdown of the process
 func (hc *HealthChecker) gracefulStop(cmd *exec.Cmd) {
-	pm := NewProcessManager(hc.state)
-	pm.GracefulStopGroup(cmd)
+	// Try to call the shutdown endpoint first
+	if CallShutdownEndpoint() {
+		// Wait for server to shut down gracefully
+		Logger("Shutdown request sent to server, waiting for graceful shutdown...")
+		WaitForDone(make(chan struct{}), 30*time.Second)
+		Logger("Graceful shutdown completed")
+	} else {
+		// Fallback to process group kill
+		Logger("Shutdown endpoint unavailable, using process group kill")
+		pm := NewProcessManager(hc.state)
+		pm.GracefulStopGroup(cmd)
+	}
 }
 
 // killProcess kills the process immediately
 func (hc *HealthChecker) killProcess(cmd *exec.Cmd) {
 	pm := NewProcessManager(hc.state)
 	pm.KillProcessGroup(cmd)
+}
+
+// CallShutdownEndpoint calls the server's shutdown endpoint with auth.
+// Returns true if the request was successful.
+func CallShutdownEndpoint() bool {
+	token, err := loadFirstToken()
+	if err != nil {
+		Logger("Failed to load auth token: %v", err)
+		return false
+	}
+
+	port := config.DefaultServerPort
+	url := fmt.Sprintf("http://localhost:%d/api/shutdown", port)
+
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		Logger("Failed to create shutdown request: %v", err)
+		return false
+	}
+
+	// Add auth cookie
+	if token != "" {
+		req.AddCookie(&http.Cookie{
+			Name:  "ai-critic-token",
+			Value: token,
+		})
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		Logger("Failed to call shutdown endpoint: %v", err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		Logger("Shutdown endpoint returned success")
+		return true
+	}
+
+	Logger("Shutdown endpoint returned status: %d", resp.StatusCode)
+	return false
+}
+
+// loadFirstToken reads the first non-empty line from the credentials file.
+func loadFirstToken() (string, error) {
+	f, err := os.Open(config.CredentialsFile)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			return line, nil
+		}
+	}
+	return "", scanner.Err()
 }
