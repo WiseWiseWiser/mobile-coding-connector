@@ -406,6 +406,79 @@ export async function fetchOpencodeWebStatus(): Promise<OpencodeWebStatus> {
     return resp.json();
 }
 
+// ---- OpenCode Web Server Control ----
+
+export interface WebServerControlRequest {
+    action: 'start' | 'stop';
+}
+
+export interface WebServerControlResponse {
+    success: boolean;
+    message: string;
+    running: boolean;
+}
+
+export async function controlOpencodeWebServer(action: 'start' | 'stop'): Promise<WebServerControlResponse> {
+    const resp = await fetch('/api/agents/opencode/web-server/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || 'Failed to control web server');
+    }
+    return resp.json();
+}
+
+/** Control web server with streaming (returns Response for SSE consumption). */
+export function controlOpencodeWebServerStreaming(action: 'start' | 'stop'): Promise<Response> {
+    return fetch('/api/agents/opencode/web-server/control', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream',
+        },
+        body: JSON.stringify({ action }),
+    });
+}
+
+// ---- OpenCode Web Server Domain Mapping ----
+
+export interface MapDomainRequest {
+    provider?: string;
+}
+
+export interface MapDomainResponse {
+    success: boolean;
+    message: string;
+    public_url?: string;
+}
+
+export async function mapOpencodeDomain(provider?: string): Promise<MapDomainResponse> {
+    const resp = await fetch('/api/agents/opencode/web-server/domain-map', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider }),
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || 'Failed to map domain');
+    }
+    return resp.json();
+}
+
+export async function unmapOpencodeDomain(): Promise<MapDomainResponse> {
+    const resp = await fetch('/api/agents/opencode/web-server/domain-map', {
+        method: 'DELETE',
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || 'Failed to unmap domain');
+    }
+    return resp.json();
+}
+
 // ---- OpenCode Auth Status ----
 
 export interface OpencodeAuthProvider {

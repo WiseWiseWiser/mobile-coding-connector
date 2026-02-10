@@ -1,16 +1,22 @@
 import { useState, useEffect } from 'react';
-import { 
+import {
     fetchOpencodeAuthStatus, 
     fetchOpencodeConfig, 
     fetchOpencodeProviders, 
     fetchOpencodeSettings, 
     fetchOpencodeWebStatus,
     updateAgentConfig,
-    updateOpencodeSettings 
+    updateOpencodeSettings,
+    controlOpencodeWebServerStreaming,
+    mapOpencodeDomain,
+    unmapOpencodeDomain,
 } from '../../../api/agents';
 import type { OpencodeAuthStatus, AgentSessionInfo, OpencodeModelInfo, OpencodeSettings, OpencodeWebStatus } from '../../../api/agents';
+import { fetchProviders } from '../../../api/ports';
 import { AgentChatHeader } from './AgentChatHeader';
 import { AgentPathSettingsSection } from './AgentPathSettingsSection';
+import { useStreamingAction } from '../../../hooks/useStreamingAction';
+import { LogViewer } from '../../LogViewer';
 
 export interface OpencodeSettingsProps {
     agentId: string;
@@ -39,6 +45,25 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     const [success, setSuccess] = useState('');
     const [error, setError] = useState('');
 
+    // Web server streaming control
+    const [webServerActionState, webServerActionControls] = useStreamingAction((result) => {
+        // Refresh web status when streaming completes
+        if (!result.ok) {
+            setError(result.message);
+        } else {
+            setSuccess(result.message);
+        }
+        setTimeout(() => {
+            refreshWebStatus();
+        }, 1000);
+    });
+
+    // Domain mapping state
+    const [mappingDomain, setMappingDomain] = useState(false);
+    const [domainMapped, setDomainMapped] = useState(false);
+    const [mappedUrl, setMappedUrl] = useState<string>('');
+    const [availableProviders, setAvailableProviders] = useState<Array<{ id: string; name: string; available: boolean }>>([]);
+
     const hasChanges = selectedModel !== savedModel;
     const hasSettingsChanges = defaultDomain !== (savedSettings.default_domain || '');
 
@@ -65,6 +90,14 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
             const savedModelFromSettings = settings.model || '';
             setSavedModel(savedModelFromSettings);
             setSelectedModel(savedModelFromSettings);
+
+            // Load available providers for domain mapping
+            try {
+                const providers = await fetchProviders();
+                setAvailableProviders(providers.filter(p => p.available && (p.id === 'cloudflare_owned' || p.id === 'cloudflare_tunnel')));
+            } catch (e) {
+                // Ignore provider fetch errors
+            }
 
             // Load session-specific data if session exists
             if (session) {
@@ -156,6 +189,52 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
             setWebStatus(status);
         } catch (err) {
             console.error('Failed to refresh web status:', err);
+        }
+    };
+
+    const handleWebServerControl = async (action: 'start' | 'stop') => {
+        setError('');
+        setSuccess('');
+        await webServerActionControls.run(() => controlOpencodeWebServerStreaming(action));
+    };
+
+    const handleMapDomain = async () => {
+        setMappingDomain(true);
+        setError('');
+        setSuccess('');
+        try {
+            const resp = await mapOpencodeDomain();
+            if (resp.success) {
+                setDomainMapped(true);
+                setMappedUrl(resp.public_url || '');
+                setSuccess(resp.message);
+            } else {
+                setError(resp.message);
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to map domain');
+        } finally {
+            setMappingDomain(false);
+        }
+    };
+
+    const handleUnmapDomain = async () => {
+        setMappingDomain(true);
+        setError('');
+        setSuccess('');
+        try {
+            const resp = await unmapOpencodeDomain();
+            if (resp.success) {
+                setDomainMapped(false);
+                setMappedUrl('');
+                setSuccess(resp.message);
+            } else {
+                setError(resp.message);
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to unmap domain');
+        } finally {
+            setMappingDomain(false);
         }
     };
 
@@ -251,8 +330,51 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                                 color: webStatus?.running ? '#86efac' : '#fca5a5',
                                 fontWeight: 600,
                                 marginBottom: 8,
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
                             }}>
-                                {webStatus?.running ? '✓ Running' : '✗ Not running'}
+                                <span>{webStatus?.running ? '✓ Running' : '✗ Not running'}</span>
+                                {/* Start/Stop Control Buttons */}
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    {!webStatus?.running ? (
+                                        <button
+                                            onClick={() => handleWebServerControl('start')}
+                                            disabled={webServerActionState.running}
+                                            style={{
+                                                padding: '4px 12px',
+                                                fontSize: '12px',
+                                                background: '#22c55e',
+                                                border: 'none',
+                                                borderRadius: 4,
+                                                color: '#fff',
+                                                fontWeight: 500,
+                                                cursor: webServerActionState.running ? 'not-allowed' : 'pointer',
+                                                opacity: webServerActionState.running ? 0.6 : 1,
+                                            }}
+                                        >
+                                            {webServerActionState.running ? 'Starting...' : 'Start'}
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => handleWebServerControl('stop')}
+                                            disabled={webServerActionState.running}
+                                            style={{
+                                                padding: '4px 12px',
+                                                fontSize: '12px',
+                                                background: '#ef4444',
+                                                border: 'none',
+                                                borderRadius: 4,
+                                                color: '#fff',
+                                                fontWeight: 500,
+                                                cursor: webServerActionState.running ? 'not-allowed' : 'pointer',
+                                                opacity: webServerActionState.running ? 0.6 : 1,
+                                            }}
+                                        >
+                                            {webServerActionState.running ? 'Stopping...' : 'Stop'}
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                             <div style={{ fontSize: '13px', color: '#94a3b8' }}>
                                 <div>Port: <strong style={{ color: '#e2e8f0' }}>{webStatus?.port || 'N/A'}</strong></div>
@@ -270,6 +392,29 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                                     </div>
                                 )}
                             </div>
+                            
+                            {/* Streaming Logs */}
+                            {webServerActionState.showLogs && (
+                                <div style={{ marginTop: 12 }}>
+                                    <LogViewer 
+                                        lines={webServerActionState.logs} 
+                                        maxHeight={200}
+                                    />
+                                    {webServerActionState.result && (
+                                        <div style={{ 
+                                            marginTop: 8,
+                                            padding: '8px 12px',
+                                            borderRadius: 4,
+                                            fontSize: '13px',
+                                            background: webServerActionState.result.ok ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                            border: `1px solid ${webServerActionState.result.ok ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                                            color: webServerActionState.result.ok ? '#86efac' : '#fca5a5',
+                                        }}>
+                                            {webServerActionState.result.ok ? '✓ ' : '✗ '}{webServerActionState.result.message}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -304,6 +449,73 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                             {savedSettings.default_domain && savedSettings.default_domain !== defaultDomain && (
                                 <div style={{ marginTop: 8, fontSize: '13px', color: '#94a3b8' }}>
                                     Saved: <strong style={{ color: '#e2e8f0' }}>{savedSettings.default_domain}</strong>
+                                </div>
+                            )}
+
+                            {/* Domain Mapping Section - Only show when domain is configured and matches owned domains */}
+                            {savedSettings.default_domain && availableProviders.length > 0 && (
+                                <div style={{ marginTop: 16, padding: '12px', background: 'rgba(59, 130, 246, 0.05)', borderRadius: 8, border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                                    <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: 8 }}>
+                                        <strong style={{ color: '#60a5fa' }}>Domain Mapping Available</strong>
+                                        <div style={{ marginTop: 4 }}>
+                                            Your domain <strong style={{ color: '#e2e8f0' }}>{savedSettings.default_domain}</strong> can be mapped via Cloudflare.
+                                        </div>
+                                    </div>
+
+                                    {domainMapped || webStatus?.port_mapped ? (
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                                <span style={{ color: '#86efac', fontSize: '13px' }}>✓ Domain mapped</span>
+                                                {mappedUrl && (
+                                                    <a
+                                                        href={mappedUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{
+                                                            fontSize: '13px',
+                                                            color: '#60a5fa',
+                                                            textDecoration: 'underline',
+                                                        }}
+                                                    >
+                                                        {mappedUrl}
+                                                    </a>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={handleUnmapDomain}
+                                                disabled={mappingDomain}
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    fontSize: '12px',
+                                                    background: 'transparent',
+                                                    border: '1px solid #ef4444',
+                                                    borderRadius: 4,
+                                                    color: '#ef4444',
+                                                    cursor: mappingDomain ? 'not-allowed' : 'pointer',
+                                                    opacity: mappingDomain ? 0.6 : 1,
+                                                }}
+                                            >
+                                                {mappingDomain ? 'Removing...' : 'Remove Mapping'}
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={handleMapDomain}
+                                            disabled={mappingDomain || !webStatus?.running}
+                                            style={{
+                                                padding: '6px 12px',
+                                                fontSize: '12px',
+                                                background: webStatus?.running ? '#3b82f6' : '#475569',
+                                                border: 'none',
+                                                borderRadius: 4,
+                                                color: '#fff',
+                                                cursor: (mappingDomain || !webStatus?.running) ? 'not-allowed' : 'pointer',
+                                                opacity: (mappingDomain || !webStatus?.running) ? 0.6 : 1,
+                                            }}
+                                        >
+                                            {mappingDomain ? 'Mapping...' : webStatus?.running ? 'Map Domain via Cloudflare' : 'Start Web Server to Map Domain'}
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </div>

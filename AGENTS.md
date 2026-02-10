@@ -70,3 +70,51 @@ The server listens on port 23712 by default. In dev mode, the frontend is proxie
 - CSS uses BEM-like naming with `.mcc-` prefix for the V2 mobile workspace
 - Port forwarding providers implement the `portforward.Provider` interface
 - Configuration is JSON-based with `json` struct tags
+
+## Executing External Commands (tool_exec)
+
+When executing external commands (like `opencode`, `claude`, etc.), **always use the `tool_exec` package** instead of `os/exec` directly. This ensures:
+
+1. **Proper PATH resolution**: Searches extra install directories like `~/.local/bin`, `~/.opencode/bin`, npm global bin, etc.
+2. **User-configured paths**: Respects binary paths configured in agent settings
+3. **Consistent environment**: All commands run with the same extended PATH
+
+### Usage
+
+```go
+import "github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
+
+// Basic usage - automatic PATH resolution
+cmd, err := tool_exec.New("opencode", []string{"web", "start"}, nil)
+if err != nil {
+    return err
+}
+output, err := cmd.CombinedOutput()
+
+// With user-configured path (from agent settings)
+customPath := agents.GetAgentBinaryPath("opencode")
+cmd, err := tool_exec.New("opencode", []string{"web", "start"}, &tool_exec.Options{
+    CustomPath: customPath,
+})
+
+// With custom environment variables
+cmd, err := tool_exec.New("opencode", []string{"web", "start"}, &tool_exec.Options{
+    Env: map[string]string{"FOO": "bar"},
+})
+
+// With working directory
+cmd, err := tool_exec.New("opencode", []string{"web", "start"}, &tool_exec.Options{
+    Dir: "/path/to/project",
+})
+```
+
+### Key Features
+
+- **CustomPath**: If provided, takes priority over PATH resolution. Falls back to PATH search if invalid.
+- **Env**: Additional environment variables merged with system environment
+- **Dir**: Working directory for the command
+- The command inherits the current process environment with extended PATH including:
+  - `/usr/local/bin`, `/usr/local/go/bin`
+  - `~/.local/bin`, `~/.opencode/bin`, `~/go/bin`
+  - npm global bin directory
+  - User-configured extra paths from terminal config

@@ -170,6 +170,11 @@ func (m *Manager) RegisterProvider(p Provider) {
 // global singleton
 var defaultManager = NewManager()
 
+// GetDefaultManager returns the global port forward manager instance
+func GetDefaultManager() *Manager {
+	return defaultManager
+}
+
 // RegisterProvider registers a provider on the default manager
 func RegisterDefaultProvider(p Provider) {
 	defaultManager.RegisterProvider(p)

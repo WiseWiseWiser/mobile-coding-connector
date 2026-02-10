@@ -4,8 +4,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
 )
 
 // WebServerStatus represents the status of the OpenCode web server
@@ -30,7 +35,7 @@ func GetWebServerStatus() (*WebServerStatus, error) {
 	}
 
 	// Check if web server is running by trying to connect to its port
-	status.Running = isWebServerRunning(settings.WebServer.Port)
+	status.Running = IsWebServerRunning(settings.WebServer.Port)
 
 	// Check if port is mapped to the domain
 	if status.Running && settings.DefaultDomain != "" {
@@ -46,8 +51,8 @@ func GetWebServerStatus() (*WebServerStatus, error) {
 	return status, nil
 }
 
-// isWebServerRunning checks if the OpenCode web server is running on the given port
-func isWebServerRunning(port int) bool {
+// IsWebServerRunning checks if the OpenCode web server is running on the given port
+func IsWebServerRunning(port int) bool {
 	url := fmt.Sprintf("http://127.0.0.1:%d/global/health", port)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -106,7 +111,7 @@ func CheckPortMappingStatus(port int, domain string) string {
 		return "No domain configured"
 	}
 
-	if !isWebServerRunning(port) {
+	if !IsWebServerRunning(port) {
 		return "Web server is not running"
 	}
 
@@ -137,4 +142,303 @@ func ExtractDomainFromURL(urlStr string) string {
 	}
 
 	return urlStr
+}
+
+// getBaseDomain extracts the base domain from a full domain
+// e.g., "x.y.com" -> "y.com", "sub.example.co.uk" -> "example.co.uk"
+func getBaseDomain(domain string) string {
+	domain = strings.TrimSpace(domain)
+	if domain == "" {
+		return ""
+	}
+
+	parts := strings.Split(domain, ".")
+	if len(parts) < 2 {
+		return domain
+	}
+
+	// For domains like "example.co.uk", we need to handle them specially
+	// This is a simplified approach - returns the last 2 parts
+	// More complex logic would check against a list of public suffixes
+	if len(parts) >= 3 {
+		// Check if second-to-last part is a common second-level domain like "co", "com", "org", "gov", etc.
+		secondLevel := parts[len(parts)-2]
+		if secondLevel == "co" || secondLevel == "com" || secondLevel == "org" || secondLevel == "gov" || secondLevel == "edu" || secondLevel == "net" || secondLevel == "ac" {
+			// Include 3 parts for domains like example.co.uk
+			return strings.Join(parts[len(parts)-3:], ".")
+		}
+	}
+
+	// Default: return last 2 parts
+	return strings.Join(parts[len(parts)-2:], ".")
+}
+
+// DomainMatchesOwned checks if the configured domain's base domain matches any owned domain
+func DomainMatchesOwned(domain string) (bool, string) {
+	if domain == "" {
+		return false, ""
+	}
+
+	ownedDomains := cloudflare.GetOwnedDomains()
+	if len(ownedDomains) == 0 {
+		return false, ""
+	}
+
+	baseDomain := getBaseDomain(domain)
+	for _, owned := range ownedDomains {
+		if strings.EqualFold(baseDomain, owned) {
+			return true, owned
+		}
+	}
+
+	return false, ""
+}
+
+// WebServerControlRequest represents a request to start/stop the web server
+type WebServerControlRequest struct {
+	Action string `json:"action"` // "start" or "stop"
+}
+
+// WebServerControlResponse represents the response from a control operation
+type WebServerControlResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Running bool   `json:"running"`
+}
+
+// ControlWebServer starts or stops the OpenCode web server.
+// The customPath parameter, if provided, will be used as the opencode binary path.
+// This allows using user-configured paths from agent settings.
+func ControlWebServer(action string, customPath string) (*WebServerControlResponse, error) {
+	settings, err := LoadSettings()
+	if err != nil {
+		return nil, err
+	}
+
+	switch action {
+	case "start":
+		return startWebServer(settings, customPath)
+	case "stop":
+		return stopWebServer(settings, customPath)
+	default:
+		return nil, fmt.Errorf("invalid action: %s (must be 'start' or 'stop')", action)
+	}
+}
+
+// startWebServer attempts to start the OpenCode web server.
+// The customPath parameter allows using a user-configured binary path.
+func startWebServer(settings *Settings, customPath string) (*WebServerControlResponse, error) {
+	// Check if already running
+	if IsWebServerRunning(settings.WebServer.Port) {
+		return &WebServerControlResponse{
+			Success: true,
+			Message: fmt.Sprintf("Web server is already running on port %d", settings.WebServer.Port),
+			Running: true,
+		}, nil
+	}
+
+	// Determine which binary to use
+	binary := "opencode"
+	if customPath != "" {
+		binary = customPath
+	}
+
+	// Start the web server using opencode command
+	cmd := exec.Command(binary, "web", "start", "--port", fmt.Sprintf("%d", settings.WebServer.Port))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return &WebServerControlResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to start web server: %v\nOutput: %s", err, string(output)),
+			Running: false,
+		}, nil
+	}
+
+	// Wait a moment for the server to start
+	time.Sleep(2 * time.Second)
+
+	// Check if it's now running
+	running := IsWebServerRunning(settings.WebServer.Port)
+
+	// Update settings to mark web server as enabled
+	settings.WebServer.Enabled = true
+	SaveSettings(settings)
+
+	return &WebServerControlResponse{
+		Success: running,
+		Message: func() string {
+			if running {
+				return fmt.Sprintf("Web server started on port %d", settings.WebServer.Port)
+			}
+			return "Web server start command executed but server may not be ready yet"
+		}(),
+		Running: running,
+	}, nil
+}
+
+// stopWebServer attempts to stop the OpenCode web server.
+// The customPath parameter allows using a user-configured binary path.
+func stopWebServer(settings *Settings, customPath string) (*WebServerControlResponse, error) {
+	// Check if already stopped
+	if !IsWebServerRunning(settings.WebServer.Port) {
+		return &WebServerControlResponse{
+			Success: true,
+			Message: "Web server is already stopped",
+			Running: false,
+		}, nil
+	}
+
+	// Determine which binary to use
+	binary := "opencode"
+	if customPath != "" {
+		binary = customPath
+	}
+
+	// Stop the web server using opencode command
+	cmd := exec.Command(binary, "web", "stop")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return &WebServerControlResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to stop web server: %v\nOutput: %s", err, string(output)),
+			Running: IsWebServerRunning(settings.WebServer.Port),
+		}, nil
+	}
+
+	// Wait a moment for the server to stop
+	time.Sleep(1 * time.Second)
+
+	// Check if it's now stopped
+	running := IsWebServerRunning(settings.WebServer.Port)
+
+	// Update settings to mark web server as disabled
+	settings.WebServer.Enabled = running
+	SaveSettings(settings)
+
+	return &WebServerControlResponse{
+		Success: !running,
+		Message: func() string {
+			if !running {
+				return "Web server stopped successfully"
+			}
+			return "Web server stop command executed but server may still be running"
+		}(),
+		Running: running,
+	}, nil
+}
+
+// MapDomainRequest represents a request to map the domain via Cloudflare
+type MapDomainRequest struct {
+	Provider string `json:"provider,omitempty"` // Optional: "cloudflare_owned" or "cloudflare_tunnel"
+}
+
+// MapDomainResponse represents the response from a domain mapping operation
+type MapDomainResponse struct {
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+	PublicURL string `json:"public_url,omitempty"`
+}
+
+// MapDomainViaCloudflare maps the web server port to the configured domain using Cloudflare
+// This reuses the same portforward manager as the Ports tab
+func MapDomainViaCloudflare(provider string) (*MapDomainResponse, error) {
+	settings, err := LoadSettings()
+	if err != nil {
+		return nil, err
+	}
+
+	if settings.DefaultDomain == "" {
+		return &MapDomainResponse{
+			Success: false,
+			Message: "No default domain configured",
+		}, nil
+	}
+
+	if !IsWebServerRunning(settings.WebServer.Port) {
+		return &MapDomainResponse{
+			Success: false,
+			Message: "Web server is not running",
+		}, nil
+	}
+
+	// Check if domain matches an owned domain
+	matches, _ := DomainMatchesOwned(settings.DefaultDomain)
+	if !matches {
+		return &MapDomainResponse{
+			Success: false,
+			Message: fmt.Sprintf("Domain %s does not match any owned domain (base: %s)", settings.DefaultDomain, getBaseDomain(settings.DefaultDomain)),
+		}, nil
+	}
+
+	// Default to cloudflare_owned if not specified
+	if provider == "" {
+		provider = portforward.ProviderCloudflareOwned
+	}
+
+	// Create a label for this port forward
+	label := settings.DefaultDomain
+
+	// Use the portforward manager to create the tunnel
+	// We need to access the default manager from the portforward package
+	pf, err := portforward.GetDefaultManager().Add(settings.WebServer.Port, label, provider)
+	if err != nil {
+		return &MapDomainResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to create port forward: %v", err),
+		}, nil
+	}
+
+	// Save the exposed domain
+	settings.WebServer.ExposedDomain = pf.PublicURL
+	SaveSettings(settings)
+
+	return &MapDomainResponse{
+		Success:   pf.Status == portforward.StatusActive || pf.Status == portforward.StatusConnecting,
+		Message:   fmt.Sprintf("Domain mapping initiated via %s", provider),
+		PublicURL: pf.PublicURL,
+	}, nil
+}
+
+// UnmapDomain removes the Cloudflare mapping for the web server
+func UnmapDomain() (*MapDomainResponse, error) {
+	settings, err := LoadSettings()
+	if err != nil {
+		return nil, err
+	}
+
+	// Use the portforward manager to remove the tunnel
+	err = portforward.GetDefaultManager().Remove(settings.WebServer.Port)
+	if err != nil {
+		return &MapDomainResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to remove port forward: %v", err),
+		}, nil
+	}
+
+	// Clear the exposed domain
+	settings.WebServer.ExposedDomain = ""
+	SaveSettings(settings)
+
+	return &MapDomainResponse{
+		Success: true,
+		Message: "Domain mapping removed",
+	}, nil
+}
+
+// IsDomainMapped checks if the web server domain is currently mapped via portforward
+func IsDomainMapped() bool {
+	settings, err := LoadSettings()
+	if err != nil {
+		return false
+	}
+
+	// Check if this port is being forwarded
+	ports := portforward.GetDefaultManager().List()
+	for _, pf := range ports {
+		if pf.LocalPort == settings.WebServer.Port {
+			return pf.Status == portforward.StatusActive || pf.Status == portforward.StatusConnecting
+		}
+	}
+
+	return false
 }
