@@ -63,6 +63,12 @@ func Add(p Project) error {
 	if err != nil {
 		return err
 	}
+	// Skip if a project with the same directory already exists
+	for _, existing := range list {
+		if existing.Dir == p.Dir {
+			return nil
+		}
+	}
 	if p.ID == "" {
 		p.ID = fmt.Sprintf("%d", time.Now().UnixMilli())
 	}
@@ -145,7 +151,63 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 			respondErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		respondJSON(w, http.StatusOK, list)
+		// Enrich with dir_exists field
+		type ProjectWithStatus struct {
+			Project
+			DirExists bool `json:"dir_exists"`
+		}
+		result := make([]ProjectWithStatus, len(list))
+		for i, p := range list {
+			_, statErr := os.Stat(p.Dir)
+			result[i] = ProjectWithStatus{
+				Project:   p,
+				DirExists: statErr == nil,
+			}
+		}
+		respondJSON(w, http.StatusOK, result)
+	case http.MethodPost:
+		var req struct {
+			Name string `json:"name"`
+			Dir  string `json:"dir"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondErr(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if req.Dir == "" {
+			respondErr(w, http.StatusBadRequest, "dir is required")
+			return
+		}
+		// Resolve to absolute path
+		absDir, err := filepath.Abs(req.Dir)
+		if err != nil {
+			respondErr(w, http.StatusBadRequest, fmt.Sprintf("invalid dir: %v", err))
+			return
+		}
+		// Verify directory exists
+		info, err := os.Stat(absDir)
+		if err != nil {
+			respondErr(w, http.StatusBadRequest, fmt.Sprintf("cannot access dir: %v", err))
+			return
+		}
+		if !info.IsDir() {
+			respondErr(w, http.StatusBadRequest, "path is not a directory")
+			return
+		}
+		// Use directory basename as name if not provided
+		name := req.Name
+		if name == "" {
+			name = filepath.Base(absDir)
+		}
+		p := Project{
+			Name: name,
+			Dir:  absDir,
+		}
+		if err := Add(p); err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]string{"status": "ok", "dir": absDir, "name": name})
 	case http.MethodDelete:
 		id := r.URL.Query().Get("id")
 		if id == "" {

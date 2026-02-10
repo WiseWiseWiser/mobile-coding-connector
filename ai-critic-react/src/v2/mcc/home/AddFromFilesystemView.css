@@ -1,0 +1,96 @@
+.add-fs-view {
+    padding: 0 0 24px;
+}
+
+.add-fs-form {
+    padding: 0 16px;
+}
+
+.add-fs-section {
+    margin-top: 16px;
+}
+
+.add-fs-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #94a3b8;
+    margin-bottom: 6px;
+}
+
+.add-fs-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.add-fs-input:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.add-fs-selected-dir {
+    padding: 10px 12px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 13px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    word-break: break-all;
+    min-height: 20px;
+}
+
+.add-fs-browser-section {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.add-fs-error {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    color: #ef4444;
+    font-size: 13px;
+}
+
+.add-fs-success {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: 8px;
+    color: #22c55e;
+    font-size: 13px;
+}
+
+.add-fs-submit-btn {
+    display: block;
+    width: 100%;
+    margin-top: 16px;
+    padding: 14px;
+    background: #3b82f6;
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.add-fs-submit-btn:hover:not(:disabled) {
+    background: #2563eb;
+}
+
+.add-fs-submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

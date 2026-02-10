@@ -7,7 +7,8 @@ import type { FileDiff, DiffHunk, DiffLine } from '../../../api/checkpoints';
 import { statusBadge } from './utils';
 import { loadGitUserConfig } from '../home/settings/gitStorage';
 import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypto';
-import { StreamingActionButton } from '../../StreamingActionButton';
+import { useStreamingAction } from '../../../hooks/useStreamingAction';
+import { StreamingLogs } from '../../StreamingComponents';
 import { UploadIcon } from '../../icons';
 import './FilesView.css';
 import './GitCommitView.css';
@@ -225,19 +226,23 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
         }
     };
 
-    const createPushAction = async () => {
-        setEncryptionError(null);
-        let encryptedKey: string | undefined;
-        try {
-            encryptedKey = await encryptProjectSSHKey(sshKeyId);
-        } catch (err) {
-            if (err instanceof EncryptionNotAvailableError) {
-                setEncryptionError('Server encryption keys not configured.');
+    const [pushState, pushControls] = useStreamingAction();
+
+    const handlePush = () => {
+        pushControls.run(async () => {
+            setEncryptionError(null);
+            let encryptedKey: string | undefined;
+            try {
+                encryptedKey = await encryptProjectSSHKey(sshKeyId);
+            } catch (err) {
+                if (err instanceof EncryptionNotAvailableError) {
+                    setEncryptionError('Server encryption keys not configured.');
+                    throw err;
+                }
                 throw err;
             }
-            throw err;
-        }
-        return gitPushStream(projectDir, encryptedKey);
+            return gitPushStream(projectDir, encryptedKey);
+        });
     };
 
     const handleFileClick = (path: string) => {
@@ -262,9 +267,8 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                 <div className="mcc-files-empty">Loading...</div>
             ) : (
                 <>
-                    {/* Error / Success messages */}
+                    {/* Error message at top */}
                     {error && <div className="mcc-checkpoint-error">{error}</div>}
-                    {success && <div className="mcc-git-success">{success}</div>}
 
                     {/* Staged Files */}
                     <div className="mcc-checkpoint-section-header">
@@ -397,15 +401,19 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                             >
                                 {committing ? 'Committing...' : 'Commit'}
                             </button>
+                            {/* Success message below commit button */}
+                            {success && <div className="mcc-git-success">{success}</div>}
+
                             {/* Push row - push button + branch selector */}
                             <div className="mcc-git-push-row" style={{ marginTop: '12px' }}>
-                                <StreamingActionButton
-                                    label="Push"
-                                    runningLabel="Pushing..."
-                                    action={createPushAction}
+                                <button
                                     className="mcc-git-push-btn"
-                                    icon={<UploadIcon size={14} style={{ verticalAlign: 'middle' }} />}
-                                />
+                                    onClick={handlePush}
+                                    disabled={pushState.running}
+                                >
+                                    {pushState.running ? 'Pushing...' : 'Push'}
+                                    <UploadIcon size={14} style={{ verticalAlign: 'middle' }} />
+                                </button>
                                 <select
                                     className="mcc-git-branch-select"
                                     value={pushBranch}
@@ -418,6 +426,12 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                                     ))}
                                 </select>
                             </div>
+                            {/* Push streaming logs below */}
+                            <StreamingLogs
+                                state={pushState}
+                                pendingMessage="Pushing..."
+                                maxHeight={200}
+                            />
                             {encryptionError && (
                                 <div className="mcc-git-fetch-result error" style={{ marginTop: 8 }}>{encryptionError}</div>
                             )}

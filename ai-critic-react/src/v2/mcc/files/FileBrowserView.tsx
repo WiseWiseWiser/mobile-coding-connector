@@ -3,7 +3,8 @@ import { fetchFiles } from '../../../api/checkpoints';
 import type { FileEntry } from '../../../api/checkpoints';
 import { runGitOpByDir, GitOps } from '../../../api/projects';
 import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypto';
-import { StreamingActionButton } from '../../StreamingActionButton';
+import { useStreamingAction } from '../../../hooks/useStreamingAction';
+import { StreamingLogs } from '../../StreamingComponents';
 import './FilesView.css';
 
 export interface FileBrowserViewProps {
@@ -26,19 +27,23 @@ export function FileBrowserView({ projectDir, currentPath, sshKeyId, onNavigate,
             .catch(() => setLoading(false));
     }, [projectDir, currentPath]);
 
-    const createGitAction = (op: typeof GitOps.Pull | typeof GitOps.Push) => async () => {
-        setEncryptionError(null);
-        let encryptedKey: string | undefined;
-        try {
-            encryptedKey = await encryptProjectSSHKey(sshKeyId);
-        } catch (err) {
-            if (err instanceof EncryptionNotAvailableError) {
-                setEncryptionError('Server encryption keys not configured.');
+    const [gitState, gitControls] = useStreamingAction();
+
+    const handleGitAction = (op: typeof GitOps.Pull | typeof GitOps.Push) => {
+        gitControls.run(async () => {
+            setEncryptionError(null);
+            let encryptedKey: string | undefined;
+            try {
+                encryptedKey = await encryptProjectSSHKey(sshKeyId);
+            } catch (err) {
+                if (err instanceof EncryptionNotAvailableError) {
+                    setEncryptionError('Server encryption keys not configured.');
+                    throw err;
+                }
                 throw err;
             }
-            throw err;
-        }
-        return runGitOpByDir(op, projectDir, encryptedKey);
+            return runGitOpByDir(op, projectDir, encryptedKey);
+        });
     };
 
     const handleEntryClick = (entry: FileEntry) => {
@@ -106,19 +111,26 @@ export function FileBrowserView({ projectDir, currentPath, sshKeyId, onNavigate,
                 </div>
             )}
 
-            {/* Git Actions */}
-            <div className="mcc-git-actions">
-                <StreamingActionButton
-                    label="Git Pull"
-                    runningLabel="Pulling..."
-                    action={createGitAction(GitOps.Pull)}
+            {/* Git Actions - each on its own row */}
+            <div className="mcc-git-actions-column">
+                <button
                     className="mcc-git-commit-nav-btn mcc-git-fetch-btn"
-                />
-                <StreamingActionButton
-                    label="Git Push"
-                    runningLabel="Pushing..."
-                    action={createGitAction(GitOps.Push)}
+                    onClick={() => handleGitAction(GitOps.Pull)}
+                    disabled={gitState.running}
+                >
+                    {gitState.running ? 'Running...' : 'Git Pull'}
+                </button>
+                <button
                     className="mcc-git-commit-nav-btn"
+                    onClick={() => handleGitAction(GitOps.Push)}
+                    disabled={gitState.running}
+                >
+                    {gitState.running ? 'Running...' : 'Git Push'}
+                </button>
+                <StreamingLogs
+                    state={gitState}
+                    pendingMessage="Running..."
+                    maxHeight={200}
                 />
             </div>
             {encryptionError && (

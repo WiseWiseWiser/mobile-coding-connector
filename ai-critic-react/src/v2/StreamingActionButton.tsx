@@ -1,13 +1,9 @@
-import { useState } from 'react';
-import { consumeSSEStream } from '../api/sse';
-import { LogViewer } from './LogViewer';
-import type { LogLine } from './LogViewer';
+import { useStreamingAction } from '../hooks/useStreamingAction';
+import type { StreamingActionResult } from '../hooks/useStreamingAction';
+import { StreamingButton, StreamingLogs } from './StreamingComponents';
 import './StreamingActionButton.css';
 
-export interface StreamingActionResult {
-    ok: boolean;
-    message: string;
-}
+export type { StreamingActionResult };
 
 export interface StreamingActionButtonProps {
     /** Button label when idle */
@@ -28,6 +24,7 @@ export interface StreamingActionButtonProps {
     icon?: React.ReactNode;
 }
 
+/** Combined streaming action button with integrated log display. */
 export function StreamingActionButton({
     label,
     runningLabel,
@@ -38,73 +35,28 @@ export function StreamingActionButton({
     logMaxHeight = 150,
     icon,
 }: StreamingActionButtonProps) {
-    const [running, setRunning] = useState(false);
-    const [logs, setLogs] = useState<LogLine[]>([]);
-    const [showLogs, setShowLogs] = useState(false);
-    const [result, setResult] = useState<StreamingActionResult | null>(null);
+    const [state, controls] = useStreamingAction(onComplete);
 
-    const handleClick = async () => {
-        setRunning(true);
-        setResult(null);
-        setLogs([]);
-        setShowLogs(true);
-
-        try {
-            const response = await action();
-
-            await consumeSSEStream(response, {
-                onLog: (line) => setLogs(prev => [...prev, line]),
-                onError: (line) => setLogs(prev => [...prev, line]),
-                onDone: (message, data) => {
-                    const actionResult: StreamingActionResult = {
-                        ok: data.success === 'true',
-                        message: message || (data.success === 'true' ? 'Completed successfully' : 'Failed'),
-                    };
-                    setResult(actionResult);
-                    onComplete?.(actionResult);
-                },
-            });
-        } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Action failed';
-            const actionResult: StreamingActionResult = { ok: false, message: errorMessage };
-            setResult(actionResult);
-            onComplete?.(actionResult);
-        } finally {
-            setRunning(false);
-        }
+    const handleClick = () => {
+        controls.run(action);
     };
 
     return (
         <div className="streaming-action-button-container">
-            <button
-                className={`streaming-action-button ${className}`}
+            <StreamingButton
+                label={label}
+                runningLabel={runningLabel}
                 onClick={handleClick}
-                disabled={disabled || running}
-            >
-                {running ? runningLabel : (
-                    <>
-                        {label}
-                        {icon && <span className="streaming-action-button-icon">{icon}</span>}
-                    </>
-                )}
-            </button>
-
-            {showLogs && logs.length > 0 && (
-                <div className="streaming-action-logs">
-                    <LogViewer
-                        lines={logs}
-                        pending={running}
-                        pendingMessage={runningLabel}
-                        maxHeight={logMaxHeight}
-                    />
-                </div>
-            )}
-
-            {result && (
-                <div className={`streaming-action-result ${result.ok ? 'success' : 'error'}`}>
-                    {result.message}
-                </div>
-            )}
+                running={state.running}
+                className={className}
+                disabled={disabled}
+                icon={icon}
+            />
+            <StreamingLogs
+                state={state}
+                pendingMessage={runningLabel}
+                maxHeight={logMaxHeight}
+            />
         </div>
     );
 }

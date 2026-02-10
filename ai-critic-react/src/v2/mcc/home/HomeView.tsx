@@ -1,8 +1,14 @@
+import { useState } from 'react';
 import { Outlet, useNavigate, useOutletContext } from 'react-router-dom';
 import { deleteProject as apiDeleteProject } from '../../../api/projects';
 import type { ProjectInfo } from '../../../api/projects';
+import { cloneRepo } from '../../../api/auth';
 import { useV2Context } from '../../V2Context';
-import { PlusIcon, GitIcon, DiagnoseIcon, UploadIcon, DownloadIcon, SettingsIcon } from '../../icons';
+import { useStreamingAction } from '../../../hooks/useStreamingAction';
+import { StreamingLogs } from '../../StreamingComponents';
+import { PlusIcon, GitIcon, DiagnoseIcon, SettingsIcon, FolderIcon } from '../../icons';
+import { loadSSHKeys } from './settings/gitStorage';
+import { encryptWithServerKey } from './crypto';
 
 // Re-export sub-views for route registration
 export { DiagnoseView } from './DiagnoseView';
@@ -26,6 +32,15 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
     const outletContext = useOutletContext<HomeOutletContext | null>();
     const onSelectProject = propOnSelectProject ?? outletContext?.onSelectProject ?? (() => {});
 
+    // Clone streaming state - shared across all project cards
+    const [cloningProjectId, setCloningProjectId] = useState<string | null>(null);
+    const [cloneState, cloneControls] = useStreamingAction((result) => {
+        if (result.ok) {
+            fetchProjects();
+        }
+        setCloningProjectId(null);
+    });
+
     const handleRemoveProject = async (id: string) => {
         try {
             await apiDeleteProject(id);
@@ -33,6 +48,30 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
         } catch {
             // ignore
         }
+    };
+
+    const handleClone = async (project: ProjectInfo) => {
+        if (!project.repo_url) return;
+        setCloningProjectId(project.id);
+
+        cloneControls.run(async () => {
+            const body: Record<string, unknown> = {
+                repo_url: project.repo_url,
+                target_dir: project.dir,
+            };
+
+            if (project.use_ssh && project.ssh_key_id) {
+                const sshKeys = loadSSHKeys();
+                const key = sshKeys.find(k => k.id === project.ssh_key_id);
+                if (key) {
+                    body.ssh_key = await encryptWithServerKey(key.privateKey);
+                    body.use_ssh = true;
+                    body.ssh_key_id = project.ssh_key_id;
+                }
+            }
+
+            return cloneRepo(body);
+        });
     };
 
     return (
@@ -53,21 +92,33 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
                             isActive={project.name === currentProject?.name}
                             onSelect={() => onSelectProject(project)}
                             onOpen={() => {
-                                // Use pushView which records current path in history before navigating
-                                // The view path is relative to the tab base, so we pass the project path
-                                // This will record /home in history and navigate to /project/:name
-                                // But since /project/:name is outside the tab structure, we need to handle it differently
-                                // For now, just navigate directly - the goBack in ProjectConfigView will go to /home
                                 navigate(`/project/${encodeURIComponent(project.name)}`);
                             }}
                             onRemove={() => handleRemoveProject(project.id)}
+                            onClone={() => handleClone(project)}
+                            cloning={cloningProjectId === project.id}
+                            anyCloning={cloneState.running}
                         />
                     ))}
+                    {/* Streaming logs area - shown below all cards */}
+                    {(cloneState.showLogs || cloneState.result) && (
+                        <div style={{ marginTop: 8 }}>
+                            <StreamingLogs
+                                state={cloneState}
+                                pendingMessage="Cloning in progress..."
+                                maxHeight={200}
+                            />
+                        </div>
+                    )}
                 </div>
             )}
             <button className="mcc-new-workspace-btn" onClick={() => navigate('clone-repo')}>
                 <PlusIcon />
                 <span>Clone Repository</span>
+            </button>
+            <button className="mcc-new-workspace-btn" onClick={() => navigate('add-from-filesystem')}>
+                <FolderIcon />
+                <span>Add From Filesystem</span>
             </button>
             <button className="mcc-git-settings-btn" onClick={() => navigate('settings/git')}>
                 <GitIcon />
@@ -76,14 +127,6 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
             <button className="mcc-diagnose-btn" onClick={() => navigate('diagnose')}>
                 <DiagnoseIcon />
                 <span>System Diagnostics</span>
-            </button>
-            <button className="mcc-upload-btn" onClick={() => navigate('upload-file')}>
-                <UploadIcon />
-                <span>Upload File</span>
-            </button>
-            <button className="mcc-upload-btn" onClick={() => navigate('download-file')}>
-                <DownloadIcon />
-                <span>Download File</span>
             </button>
             <button className="mcc-diagnose-btn" onClick={() => navigate('manage-server')}>
                 <SettingsIcon />
@@ -100,16 +143,21 @@ interface ProjectCardProps {
     onSelect: () => void;
     onOpen: () => void;
     onRemove: () => void;
+    onClone: () => void;
+    cloning: boolean;
+    anyCloning: boolean;
 }
 
-function ProjectCard({ project, isActive, onSelect, onOpen, onRemove }: ProjectCardProps) {
+function ProjectCard({ project, isActive, onSelect, onOpen, onRemove, onClone, cloning, anyCloning }: ProjectCardProps) {
     const createdDate = new Date(project.created_at).toLocaleDateString();
+    const dirMissing = !project.dir_exists;
 
     return (
         <div className={`mcc-workspace-card mcc-workspace-card-clickable${isActive ? ' mcc-workspace-card-active' : ''}`} onClick={onSelect}>
             <div className="mcc-workspace-card-header">
                 <span className="mcc-workspace-name">{project.name}</span>
                 {isActive && <span className="mcc-workspace-active-badge">Working on</span>}
+                {dirMissing && <span className="mcc-workspace-missing-badge">Not cloned</span>}
             </div>
             <div className="mcc-workspace-card-meta">
                 <span>{project.dir}</span>
@@ -119,7 +167,17 @@ function ProjectCard({ project, isActive, onSelect, onOpen, onRemove }: ProjectC
                 <span>{createdDate}</span>
             </div>
             <div className="mcc-port-actions" style={{ marginTop: 8 }}>
-                <button className="mcc-port-action-btn" onClick={e => { e.stopPropagation(); onOpen(); }}>Open</button>
+                {dirMissing && project.repo_url ? (
+                    <button
+                        className="mcc-port-action-btn mcc-port-clone"
+                        onClick={e => { e.stopPropagation(); onClone(); }}
+                        disabled={anyCloning}
+                    >
+                        {cloning ? 'Cloning...' : 'Clone'}
+                    </button>
+                ) : (
+                    <button className="mcc-port-action-btn" onClick={e => { e.stopPropagation(); onOpen(); }}>Open</button>
+                )}
                 <button className="mcc-port-action-btn mcc-port-stop" onClick={e => { e.stopPropagation(); onRemove(); }}>Remove</button>
             </div>
         </div>

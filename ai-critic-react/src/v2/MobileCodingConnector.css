@@ -428,6 +428,16 @@ body:has(.mcc) {
     white-space: nowrap;
 }
 
+.mcc-workspace-missing-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.15);
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
 .mcc-workspace-card-header {
     display: flex;
     align-items: center;
@@ -1387,6 +1397,21 @@ body:has(.mcc) {
 .mcc-port-stop:hover {
     background: rgba(239, 68, 68, 0.2);
     color: #ef4444;
+}
+
+.mcc-port-clone {
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.mcc-port-clone:hover:not(:disabled) {
+    background: rgba(59, 130, 246, 0.2);
+}
+
+.mcc-port-clone:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .mcc-add-port-section {

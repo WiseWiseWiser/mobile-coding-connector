@@ -78,8 +78,16 @@ export function MobileCodingConnector() {
 
     const handleSelectProject = (project: ProjectInfo) => {
         setCurrentProject(project);
-        // Just update the URL to reflect the project selection, stay on current tab
-        navigate(`/project/${encodeURIComponent(project.name)}/home`);
+        // Stay on the current tab when switching projects
+        const savedView = tabViewHistoryRef.current[activeTab];
+        const projBase = `/project/${encodeURIComponent(project.name)}`;
+        if (activeTab === NavTabs.Home && !savedView) {
+            navigate(`${projBase}/home`);
+        } else if (savedView) {
+            navigate(`${projBase}/${activeTab}/${savedView}`);
+        } else {
+            navigate(`${projBase}/${activeTab}`);
+        }
     };
 
     const handleTabChange = (tab: NavTab) => {

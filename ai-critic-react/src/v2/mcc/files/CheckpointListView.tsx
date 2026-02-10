@@ -9,7 +9,8 @@ import type { CheckpointSummary, ChangedFile, FileDiff } from '../../../api/chec
 import { gitFetchStream } from '../../../api/review';
 import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypto';
 import { DiffViewer } from '../../DiffViewer';
-import { StreamingActionButton } from '../../StreamingActionButton';
+import { useStreamingAction } from '../../../hooks/useStreamingAction';
+import { StreamingLogs } from '../../StreamingComponents';
 import { statusBadge } from './utils';
 import './FilesView.css';
 
@@ -75,19 +76,23 @@ export function CheckpointListView({ projectName, projectDir, sshKeyId, onCreate
         setDeletingCheckpointId(null);
     };
 
-    const createGitPullAction = async () => {
-        setEncryptionError(null);
-        let encryptedKey: string | undefined;
-        try {
-            encryptedKey = await encryptProjectSSHKey(sshKeyId);
-        } catch (err) {
-            if (err instanceof EncryptionNotAvailableError) {
-                setEncryptionError('Server encryption keys not configured.');
+    const [pullState, pullControls] = useStreamingAction();
+
+    const handleGitPull = () => {
+        pullControls.run(async () => {
+            setEncryptionError(null);
+            let encryptedKey: string | undefined;
+            try {
+                encryptedKey = await encryptProjectSSHKey(sshKeyId);
+            } catch (err) {
+                if (err instanceof EncryptionNotAvailableError) {
+                    setEncryptionError('Server encryption keys not configured.');
+                    throw err;
+                }
                 throw err;
             }
-            throw err;
-        }
-        return gitFetchStream(projectDir, encryptedKey);
+            return gitFetchStream(projectDir, encryptedKey);
+        });
     };
 
     const hasChanges = currentChanges.length > 0;
@@ -172,19 +177,25 @@ export function CheckpointListView({ projectName, projectDir, sshKeyId, onCreate
                         </>
                     )}
 
-                    {/* Git action buttons */}
-                    <div className="mcc-git-actions">
+                    {/* Git action buttons - each on its own row */}
+                    <div className="mcc-git-actions-column">
                         <button
                             className="mcc-git-commit-nav-btn"
                             onClick={onGitCommit}
                         >
                             Git Commit
                         </button>
-                        <StreamingActionButton
-                            label="Git Pull"
-                            runningLabel="Pulling..."
-                            action={createGitPullAction}
+                        <button
                             className="mcc-git-commit-nav-btn mcc-git-fetch-btn"
+                            onClick={handleGitPull}
+                            disabled={pullState.running}
+                        >
+                            {pullState.running ? 'Pulling...' : 'Git Pull'}
+                        </button>
+                        <StreamingLogs
+                            state={pullState}
+                            pendingMessage="Pulling..."
+                            maxHeight={200}
                         />
                     </div>
                     {encryptionError && (

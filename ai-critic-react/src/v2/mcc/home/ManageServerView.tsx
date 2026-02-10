@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { pingKeepAlive, getKeepAliveStatus, restartServer, uploadBinary, getUploadTarget, getBuildableProjects } from '../../../api/keepalive';
 import type { KeepAliveStatus, UploadTarget, BuildableProject } from '../../../api/keepalive';
 import { consumeSSEStream } from '../../../api/sse';
-import { BackIcon } from '../../icons';
+import { BackIcon, UploadIcon, DownloadIcon } from '../../icons';
 import { LogViewer } from '../../LogViewer';
 import type { LogLine } from '../../LogViewer';
 import { useTabHistory } from '../../../hooks/useTabHistory';
@@ -13,6 +14,7 @@ import { StreamingActionButton } from '../../StreamingActionButton';
 import './ManageServerView.css';
 
 export function ManageServerView() {
+    const navigate = useNavigate();
     const { goBack } = useTabHistory(NavTabs.Home, { defaultBackPath: '/home' });
 
     const [daemonRunning, setDaemonRunning] = useState<boolean | null>(null);
@@ -404,6 +406,23 @@ export function ManageServerView() {
                     />
                 </div>
             )}
+
+            {/* File Transfer */}
+            <div className="manage-server-card" style={{ marginTop: 12 }}>
+                <div className="manage-server-card-header">
+                    <span className="manage-server-card-title">File Transfer</span>
+                </div>
+                <div className="manage-server-file-transfer">
+                    <button className="manage-server-btn manage-server-btn--file-transfer" onClick={() => navigate('../upload-file')}>
+                        <UploadIcon />
+                        <span>Upload File</span>
+                    </button>
+                    <button className="manage-server-btn manage-server-btn--file-transfer" onClick={() => navigate('../download-file')}>
+                        <DownloadIcon />
+                        <span>Download File</span>
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

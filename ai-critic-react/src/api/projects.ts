@@ -7,6 +7,7 @@ export interface ProjectInfo {
     ssh_key_id?: string;
     use_ssh: boolean;
     created_at: string;
+    dir_exists: boolean;
 }
 
 export async function fetchProjects(): Promise<ProjectInfo[]> {
@@ -17,6 +18,31 @@ export async function fetchProjects(): Promise<ProjectInfo[]> {
 
 export async function deleteProject(id: string): Promise<void> {
     await fetch(`/api/projects?id=${id}`, { method: 'DELETE' });
+}
+
+export interface AddProjectRequest {
+    name?: string;
+    dir: string;
+}
+
+export interface AddProjectResponse {
+    status: string;
+    dir: string;
+    name: string;
+    error?: string;
+}
+
+export async function addProject(req: AddProjectRequest): Promise<AddProjectResponse> {
+    const resp = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+        throw new Error(data.error || 'Failed to add project');
+    }
+    return data;
 }
 
 export interface ProjectUpdate {
