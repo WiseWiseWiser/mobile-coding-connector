@@ -366,6 +366,7 @@ export async function fetchAgentEffectivePath(agentId: string): Promise<AgentEff
 
 export interface OpencodeSettings {
     model?: string;
+    default_domain?: string;
     web_server?: {
         enabled: boolean;
         port: number;
@@ -375,6 +376,33 @@ export interface OpencodeSettings {
 
 export async function fetchOpencodeSettings(): Promise<OpencodeSettings> {
     const resp = await fetch('/api/agents/opencode/settings');
+    return resp.json();
+}
+
+export async function updateOpencodeSettings(settings: OpencodeSettings): Promise<void> {
+    const resp = await fetch('/api/agents/opencode/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || 'Failed to update settings');
+    }
+}
+
+// ---- OpenCode Web Server Status ----
+
+export interface OpencodeWebStatus {
+    running: boolean;
+    port: number;
+    domain: string;
+    port_mapped: boolean;
+    config_path: string;
+}
+
+export async function fetchOpencodeWebStatus(): Promise<OpencodeWebStatus> {
+    const resp = await fetch('/api/agents/opencode/web-status');
     return resp.json();
 }
 

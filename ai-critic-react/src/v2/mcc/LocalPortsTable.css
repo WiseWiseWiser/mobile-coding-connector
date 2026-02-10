@@ -205,6 +205,50 @@
     font-size: 13px;
 }
 
+.mcc-lp-error-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mcc-lp-error-message {
+    line-height: 1.4;
+}
+
+.mcc-lp-error-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.mcc-lp-install-btn {
+    padding: 6px 14px;
+    background: #22c55e;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, opacity 0.15s ease;
+    white-space: nowrap;
+    align-self: flex-start;
+}
+
+.mcc-lp-install-btn:hover:not(:disabled) {
+    background: #16a34a;
+}
+
+.mcc-lp-install-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.mcc-lp-install-logs {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(239, 68, 68, 0.2);
+}
+
 /* Empty state */
 .mcc-lp-empty {
     padding: 24px 16px;

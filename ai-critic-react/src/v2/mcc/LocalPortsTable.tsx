@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import type { LocalPortInfo } from '../../api/ports';
 import { PlusIcon } from '../icons';
+import { installTool } from '../../api/tools';
+import { consumeSSEStream } from '../../api/sse';
+import { LogViewer } from '../LogViewer';
+import type { LogLine } from '../LogViewer';
 import './LocalPortsTable.css';
 
 const SortFields = {
@@ -24,17 +28,49 @@ export interface LocalPortsTableProps {
     error: string | null;
     forwardedPorts: Set<number>;
     onForwardPort: (port: number) => void;
+    onLsofInstalled?: () => void;
 }
 
-export function LocalPortsTable({ 
-    ports, 
-    loading, 
-    error, 
+export function LocalPortsTable({
+    ports,
+    loading,
+    error,
     forwardedPorts,
-    onForwardPort 
+    onForwardPort,
+    onLsofInstalled,
 }: LocalPortsTableProps) {
     const [sortField, setSortField] = useState<SortField>(SortFields.Port);
     const [sortDirection, setSortDirection] = useState<SortDirection>(SortDirections.Asc);
+    const [installing, setInstalling] = useState(false);
+    const [installLogs, setInstallLogs] = useState<LogLine[]>([]);
+    const [showInstallLogs, setShowInstallLogs] = useState(false);
+
+    const isLsofError = error?.toLowerCase().includes('lsof not installed') || false;
+
+    const handleInstallLsof = async () => {
+        setInstalling(true);
+        setInstallLogs([]);
+        setShowInstallLogs(true);
+        try {
+            const resp = await installTool('lsof');
+            await consumeSSEStream(resp, {
+                onLog: (line) => setInstallLogs(prev => [...prev, line]),
+                onError: (line) => setInstallLogs(prev => [...prev, line]),
+                onDone: (message) => {
+                    setInstallLogs(prev => [...prev, { text: message }]);
+                    onLsofInstalled?.();
+                    // Reload the page after a short delay to re-establish SSE connection
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                },
+            });
+        } catch (err) {
+            setInstallLogs(prev => [...prev, { text: String(err), error: true }]);
+        } finally {
+            setInstalling(false);
+        }
+    };
 
     const handleSort = (field: SortField) => {
         if (sortField === field) {
@@ -78,7 +114,40 @@ export function LocalPortsTable({
     if (error && ports.length === 0) {
         return (
             <div className="mcc-lp-error">
-                <span>{error}</span>
+                <div className="mcc-lp-error-content">
+                    <span className="mcc-lp-error-message">{error}</span>
+                    {isLsofError && (
+                        <div className="mcc-lp-error-actions">
+                            {!showInstallLogs ? (
+                                <button
+                                    className="mcc-lp-install-btn"
+                                    onClick={handleInstallLsof}
+                                    disabled={installing}
+                                >
+                                    {installing ? 'Installing...' : 'Install lsof'}
+                                </button>
+                            ) : (
+                                <button
+                                    className="mcc-lp-install-btn"
+                                    onClick={() => setShowInstallLogs(false)}
+                                    disabled={installing}
+                                >
+                                    Hide Logs
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
+                {showInstallLogs && installLogs.length > 0 && (
+                    <div className="mcc-lp-install-logs">
+                        <LogViewer
+                            lines={installLogs}
+                            pending={installing}
+                            pendingMessage="Installing lsof..."
+                            maxHeight={200}
+                        />
+                    </div>
+                )}
             </div>
         );
     }

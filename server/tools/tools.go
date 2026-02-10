@@ -327,6 +327,20 @@ var requiredTools = []toolDef{
 		},
 		installWindows: "go install github.com/xhd2015/kool@latest",
 	},
+	{
+		name:        "lsof",
+		description: "List open files and network connections",
+		purpose:     "Detect local listening ports for port forwarding",
+		versionCmd:  []string{"lsof", "-v"},
+		installMacOS: []string{
+			"brew install lsof",
+		},
+		installLinux: []string{
+			"apt-get update",
+			"apt-get install -y lsof",
+		},
+		installWindows: "lsof is not available on Windows. Use 'netstat -an' instead.",
+	},
 }
 
 // getInstallStepsForOS returns the install steps for the current OS.
@@ -446,17 +460,17 @@ func CheckTools() *ToolsResponse {
 				cmd := exec.Command(tool.versionCmd[0], tool.versionCmd[1:]...)
 				out, err := cmd.Output()
 				if err == nil {
-			version := strings.TrimSpace(string(out))
-				// Take first line only
-				if idx := strings.Index(version, "\n"); idx > 0 {
-					version = version[:idx]
-				}
-				// Limit length to avoid overflow in UI
-				const maxVersionLen = 60
-				if len(version) > maxVersionLen {
-					version = version[:maxVersionLen] + "..."
-				}
-				info.Version = version
+					version := strings.TrimSpace(string(out))
+					// Take first line only
+					if idx := strings.Index(version, "\n"); idx > 0 {
+						version = version[:idx]
+					}
+					// Limit length to avoid overflow in UI
+					const maxVersionLen = 60
+					if len(version) > maxVersionLen {
+						version = version[:maxVersionLen] + "..."
+					}
+					info.Version = version
 				}
 			}
 		} else {

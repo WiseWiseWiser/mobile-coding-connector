@@ -19,8 +19,9 @@ type WebServerConfig struct {
 
 // Settings holds the persisted opencode configuration.
 type Settings struct {
-	Model     string          `json:"model,omitempty"`
-	WebServer WebServerConfig `json:"web_server"`
+	Model         string          `json:"model,omitempty"`
+	DefaultDomain string          `json:"default_domain,omitempty"`
+	WebServer     WebServerConfig `json:"web_server"`
 }
 
 var (
@@ -79,7 +80,8 @@ func LoadSettings() (*Settings, error) {
 // copySettings creates a copy of the settings.
 func copySettings(s *Settings) *Settings {
 	return &Settings{
-		Model: s.Model,
+		Model:         s.Model,
+		DefaultDomain: s.DefaultDomain,
 		WebServer: WebServerConfig{
 			Enabled:       s.WebServer.Enabled,
 			Port:          s.WebServer.Port,
@@ -133,6 +135,25 @@ func SetModel(model string) error {
 		s = &Settings{WebServer: WebServerConfig{Port: 4096}}
 	}
 	s.Model = model
+	return SaveSettings(s)
+}
+
+// GetDefaultDomain returns the saved default domain, or empty string if none is set.
+func GetDefaultDomain() string {
+	s, err := LoadSettings()
+	if err != nil {
+		return ""
+	}
+	return s.DefaultDomain
+}
+
+// SetDefaultDomain saves the default domain to settings.
+func SetDefaultDomain(domain string) error {
+	s, err := LoadSettings()
+	if err != nil {
+		s = &Settings{WebServer: WebServerConfig{Port: 4096}}
+	}
+	s.DefaultDomain = domain
 	return SaveSettings(s)
 }
 

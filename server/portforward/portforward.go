@@ -325,6 +325,10 @@ func getListeningPorts() ([]LocalPortInfo, error) {
 	cmd := exec.Command("lsof", "-iTCP", "-sTCP:LISTEN", "-n", "-P")
 	output, err := cmd.Output()
 	if err != nil {
+		// Check if lsof is not found in PATH
+		if execErr, ok := err.(*exec.Error); ok && execErr.Err == exec.ErrNotFound {
+			return nil, fmt.Errorf("lsof not installed: required to detect local listening ports. Install lsof (macOS: brew install lsof, Linux: apt-get install lsof)")
+		}
 		return nil, fmt.Errorf("failed to run lsof: %w", err)
 	}
 
@@ -480,7 +484,9 @@ func handleLocalPortEvents(w http.ResponseWriter, r *http.Request) {
 	// Send initial state
 	ports, err := getListeningPorts()
 	if err != nil {
-		fmt.Fprintf(w, "data: {\"error\":%q}\n\n", err.Error())
+		// Send error and close connection for critical errors like missing lsof
+		errMsg := err.Error()
+		fmt.Fprintf(w, "data: {\"error\":%q,\"fatal\":true}\n\n", errMsg)
 		flusher.Flush()
 		return
 	}

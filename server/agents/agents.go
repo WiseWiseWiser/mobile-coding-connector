@@ -128,6 +128,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/effective-path", handleAgentEffectivePath)
 	mux.HandleFunc("/api/agents/opencode/auth", handleOpencodeAuth)
 	mux.HandleFunc("/api/agents/opencode/settings", handleOpencodeSettings)
+	mux.HandleFunc("/api/agents/opencode/web-status", handleOpencodeWebStatus)
 	mux.HandleFunc("/api/agents/sessions", handleAgentSessions)
 	// Proxy: /api/agents/sessions/{sessionID}/proxy/... -> opencode server
 	mux.HandleFunc("/api/agents/sessions/", handleAgentSessionProxy)
@@ -587,6 +588,23 @@ func handleOpencodeSettings(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleOpencodeWebStatus returns the OpenCode web server status
+func handleOpencodeWebStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	status, err := opencode.GetWebServerStatus()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
 }
 
 // handleAgentEffectivePath returns the effective binary path for an agent

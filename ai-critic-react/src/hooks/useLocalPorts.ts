@@ -23,6 +23,10 @@ export function useLocalPorts(): UseLocalPortsReturn {
                 if (data.error) {
                     setError(data.error);
                     setLoading(false);
+                    // Close connection for fatal errors (like missing lsof)
+                    if (data.fatal) {
+                        es.close();
+                    }
                     return;
                 }
                 setPorts(data ?? []);
@@ -35,7 +39,8 @@ export function useLocalPorts(): UseLocalPortsReturn {
 
         es.onerror = () => {
             // EventSource auto-reconnects; just mark error if we have no data
-            if (loading) {
+            // Don't show "Connection lost" if we already have a specific error (like lsof not found)
+            if (loading && !error) {
                 setError('Connection lost, retrying...');
             }
         };
