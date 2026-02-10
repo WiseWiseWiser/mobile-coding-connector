@@ -13,6 +13,7 @@ export interface KeepAliveStatus {
     started_at?: string;
     uptime?: string;
     next_binary?: string;
+    next_health_check_time?: string;
 }
 
 export interface KeepAlivePing {

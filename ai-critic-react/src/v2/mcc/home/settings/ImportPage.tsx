@@ -369,9 +369,9 @@ export function ImportPage() {
                         <button
                             className="import-page-btn import-page-btn--primary"
                             onClick={handleConfirm}
-                            disabled={selectedCount === 0 || importing}
+                            disabled={(selectedCount === 0 && (!hasBrowserData || !importBrowserData)) || importing}
                         >
-                            {importing ? 'Importing...' : `Import ${selectedCount} Item${selectedCount !== 1 ? 's' : ''}`}
+                            {importing ? 'Importing...' : `Import ${selectedCount > 0 ? selectedCount + ' Item' + (selectedCount !== 1 ? 's' : '') : 'Browser Data'}`}
                         </button>
                         <button
                             className="import-page-btn import-page-btn--secondary"

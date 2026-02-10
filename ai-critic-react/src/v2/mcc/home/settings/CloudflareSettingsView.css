@@ -132,6 +132,8 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 .cf-cert-card {
@@ -247,6 +249,8 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 .cf-tunnel-card {
@@ -420,6 +424,8 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 .cf-domain-card {

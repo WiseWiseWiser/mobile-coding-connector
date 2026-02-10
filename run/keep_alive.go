@@ -33,12 +33,13 @@ const (
 
 // keepAliveState holds the mutable state of the keep-alive daemon, guarded by mu.
 type keepAliveState struct {
-	mu         sync.Mutex
-	binPath    string    // current binary being run
-	serverPort int       // the port the managed server listens on
-	serverPID  int       // PID of the currently running server, 0 if not running
-	startedAt  time.Time // when the current server was started
-	restartCh  chan struct{}
+	mu                  sync.Mutex
+	binPath             string    // current binary being run
+	serverPort          int       // the port the managed server listens on
+	serverPID           int       // PID of the currently running server, 0 if not running
+	startedAt           time.Time // when the current server was started
+	nextHealthCheckTime time.Time
+	restartCh           chan struct{}
 }
 
 var kaState = &keepAliveState{
@@ -238,6 +239,11 @@ func healthCheckLoop(port int, cmd *exec.Cmd, currentBinPath string) exitReasonT
 	upgradeTicker := time.NewTicker(upgradeCheckInterval)
 	defer upgradeTicker.Stop()
 
+	// Initialize next check time
+	kaState.mu.Lock()
+	kaState.nextHealthCheckTime = time.Now().Add(healthCheckInterval)
+	kaState.mu.Unlock()
+
 	consecutiveFailures := 0
 	const maxConsecutiveFailures = 2
 
@@ -255,6 +261,11 @@ func healthCheckLoop(port int, cmd *exec.Cmd, currentBinPath string) exitReasonT
 			return exitReasonRestart
 
 		case <-healthTicker.C:
+			// Update next check time
+			kaState.mu.Lock()
+			kaState.nextHealthCheckTime = time.Now().Add(healthCheckInterval)
+			kaState.mu.Unlock()
+
 			if !isPortReachable(port) {
 				consecutiveFailures++
 				fmt.Printf("[%s] Port %d health check failed (%d/%d)\n", timestamp(), port, consecutiveFailures, maxConsecutiveFailures)
@@ -461,15 +472,16 @@ func startKeepAliveHTTPServer() {
 }
 
 type keepAliveStatusResponse struct {
-	Running       bool   `json:"running"`
-	BinaryPath    string `json:"binary_path"`
-	ServerPort    int    `json:"server_port"`
-	ServerPID     int    `json:"server_pid"`
-	KeepAlivePort int    `json:"keep_alive_port"`
-	KeepAlivePID  int    `json:"keep_alive_pid"`
-	StartedAt     string `json:"started_at,omitempty"`
-	Uptime        string `json:"uptime,omitempty"`
-	NextBinary    string `json:"next_binary,omitempty"`
+	Running             bool   `json:"running"`
+	BinaryPath          string `json:"binary_path"`
+	ServerPort          int    `json:"server_port"`
+	ServerPID           int    `json:"server_pid"`
+	KeepAlivePort       int    `json:"keep_alive_port"`
+	KeepAlivePID        int    `json:"keep_alive_pid"`
+	StartedAt           string `json:"started_at,omitempty"`
+	Uptime              string `json:"uptime,omitempty"`
+	NextBinary          string `json:"next_binary,omitempty"`
+	NextHealthCheckTime string `json:"next_health_check_time,omitempty"`
 }
 
 func handleKeepAliveStatus(w http.ResponseWriter, r *http.Request) {
@@ -486,6 +498,9 @@ func handleKeepAliveStatus(w http.ResponseWriter, r *http.Request) {
 	if kaState.serverPID > 0 && !kaState.startedAt.IsZero() {
 		resp.StartedAt = kaState.startedAt.Format(time.RFC3339)
 		resp.Uptime = time.Since(kaState.startedAt).Truncate(time.Second).String()
+	}
+	if !kaState.nextHealthCheckTime.IsZero() {
+		resp.NextHealthCheckTime = kaState.nextHealthCheckTime.Format(time.RFC3339)
 	}
 	kaState.mu.Unlock()
 

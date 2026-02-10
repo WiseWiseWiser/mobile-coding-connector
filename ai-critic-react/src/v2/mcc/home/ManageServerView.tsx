@@ -24,6 +24,9 @@ export function ManageServerView() {
     const [error, setError] = useState<string | null>(null);
     const [actionMessage, setActionMessage] = useState<string | null>(null);
 
+    // Keep-alive check countdown
+    const [nextCheckCountdown, setNextCheckCountdown] = useState<string | null>(null);
+
     // Upload states
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [uploadTarget, setUploadTarget] = useState<UploadTarget | null>(null);
@@ -67,6 +70,28 @@ export function ManageServerView() {
         const interval = setInterval(fetchStatus, 10000);
         return () => clearInterval(interval);
     }, [fetchStatus]);
+
+    // Countdown timer for next health check
+    useEffect(() => {
+        if (!status?.next_health_check_time) {
+            setNextCheckCountdown(null);
+            return;
+        }
+
+        const updateCountdown = () => {
+            if (!status.next_health_check_time) return;
+            
+            const nextCheck = new Date(status.next_health_check_time).getTime();
+            const now = Date.now();
+            const diff = Math.max(0, Math.ceil((nextCheck - now) / 1000));
+            
+            setNextCheckCountdown(`${diff}s`);
+        };
+
+        updateCountdown();
+        const interval = setInterval(updateCountdown, 1000);
+        return () => clearInterval(interval);
+    }, [status?.next_health_check_time]);
 
     // Fetch buildable projects and calculate next binary path
     useEffect(() => {
@@ -266,6 +291,9 @@ export function ManageServerView() {
                         <InfoRow label="Binary" value={status.binary_path} mono />
                         {status.next_binary && (
                             <InfoRow label="Next Binary" value={status.next_binary} mono highlight />
+                        )}
+                        {nextCheckCountdown && (
+                            <InfoRow label="Next Check" value={nextCheckCountdown} />
                         )}
                         {status.uptime && <InfoRow label="Uptime" value={status.uptime} />}
                         {status.started_at && <InfoRow label="Started At" value={new Date(status.started_at).toLocaleString()} />}
