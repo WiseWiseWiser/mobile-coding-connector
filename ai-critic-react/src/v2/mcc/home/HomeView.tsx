@@ -5,10 +5,12 @@ import type { ProjectInfo } from '../../../api/projects';
 import { cloneRepo } from '../../../api/auth';
 import { useV2Context } from '../../V2Context';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
+import { validateProjectSSHKey } from '../../../hooks/useSSHKeyValidation';
 import { StreamingLogs } from '../../StreamingComponents';
 import { PlusIcon, GitIcon, DiagnoseIcon, SettingsIcon, FolderIcon } from '../../icons';
 import { loadSSHKeys } from './settings/gitStorage';
 import { encryptWithServerKey } from './crypto';
+import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
 
 // Re-export sub-views for route registration
 export { DiagnoseView } from './DiagnoseView';
@@ -151,6 +153,7 @@ interface ProjectCardProps {
 function ProjectCard({ project, isActive, onSelect, onOpen, onRemove, onClone, cloning, anyCloning }: ProjectCardProps) {
     const createdDate = new Date(project.created_at).toLocaleDateString();
     const dirMissing = !project.dir_exists;
+    const sshValidation = validateProjectSSHKey(project);
 
     return (
         <div className={`mcc-workspace-card mcc-workspace-card-clickable${isActive ? ' mcc-workspace-card-active' : ''}`} onClick={onSelect}>
@@ -166,13 +169,19 @@ function ProjectCard({ project, isActive, onSelect, onOpen, onRemove, onClone, c
                 <span>{project.repo_url}</span>
                 <span>{createdDate}</span>
             </div>
+            {dirMissing && project.repo_url && !sshValidation.hasSSHKey && (
+                <div style={{ marginTop: 8 }}>
+                    <SSHKeyRequiredHint message={sshValidation.message} style={{ marginBottom: 0 }} />
+                </div>
+            )}
             <div className="mcc-port-actions" style={{ marginTop: 8 }}>
                 <button className="mcc-port-action-btn" onClick={e => { e.stopPropagation(); onOpen(); }}>Open</button>
                 {dirMissing && project.repo_url && (
                     <button
                         className="mcc-port-action-btn mcc-port-clone"
                         onClick={e => { e.stopPropagation(); onClone(); }}
-                        disabled={anyCloning}
+                        disabled={anyCloning || !sshValidation.hasSSHKey}
+                        style={{ opacity: !sshValidation.hasSSHKey ? 0.5 : 1 }}
                     >
                         {cloning ? 'Cloning...' : 'Clone'}
                     </button>

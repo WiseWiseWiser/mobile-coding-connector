@@ -4,6 +4,7 @@ import type { GitBranch } from '../../../api/review';
 import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypto';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import { StreamingLogs } from '../../StreamingComponents';
+import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
 import { UploadIcon } from '../../icons';
 import './GitCommitView.css';
 
@@ -47,13 +48,19 @@ export function GitPushSection({ projectDir, sshKeyId }: GitPushSectionProps) {
         });
     };
 
+    const hasSSHKey = !!sshKeyId;
+
     return (
         <div>
+            {!hasSSHKey && (
+                <SSHKeyRequiredHint message="SSH key required for push operations. Configure in project settings." style={{ marginBottom: 10 }} />
+            )}
             <div className="mcc-git-push-row">
                 <button
                     className="mcc-git-push-btn"
                     onClick={handlePush}
-                    disabled={pushState.running}
+                    disabled={pushState.running || !hasSSHKey}
+                    style={{ opacity: !hasSSHKey ? 0.5 : 1 }}
                 >
                     {pushState.running ? 'Pushing...' : 'Push'}
                     <UploadIcon size={14} style={{ verticalAlign: 'middle' }} />

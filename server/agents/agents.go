@@ -672,7 +672,7 @@ func handleOpencodeWebServerControlStreaming(w http.ResponseWriter, r *http.Requ
 		sseWriter.SendLog(fmt.Sprintf("Starting OpenCode web server on port %d...", settings.WebServer.Port))
 
 		// Start the web server using opencode command with proper environment
-		cmd, err := tool_exec.New("opencode", []string{"web", "start", "--port", fmt.Sprintf("%d", settings.WebServer.Port)}, &tool_exec.Options{
+		cmd, err := tool_exec.New("opencode", []string{"web", "--port", fmt.Sprintf("%d", settings.WebServer.Port)}, &tool_exec.Options{
 			CustomPath: customPath,
 		})
 		if err != nil {
@@ -680,6 +680,13 @@ func handleOpencodeWebServerControlStreaming(w http.ResponseWriter, r *http.Requ
 			sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
 			return
 		}
+
+		// Log the full command being executed
+		cmdStr := cmd.Cmd.Path
+		for _, arg := range cmd.Cmd.Args[1:] {
+			cmdStr += " " + arg
+		}
+		sseWriter.SendLog(fmt.Sprintf("Executing: %s", cmdStr))
 
 		err = sseWriter.StreamCmd(cmd.Cmd)
 		if err != nil {
@@ -723,6 +730,13 @@ func handleOpencodeWebServerControlStreaming(w http.ResponseWriter, r *http.Requ
 			sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
 			return
 		}
+
+		// Log the full command being executed
+		cmdStr := cmd.Cmd.Path
+		for _, arg := range cmd.Cmd.Args[1:] {
+			cmdStr += " " + arg
+		}
+		sseWriter.SendLog(fmt.Sprintf("Executing: %s", cmdStr))
 
 		err = sseWriter.StreamCmd(cmd.Cmd)
 		if err != nil {

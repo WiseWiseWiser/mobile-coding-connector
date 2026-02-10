@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useV2Context } from '../../V2Context';
 import { useTabHistory } from '../../../hooks/useTabHistory';
+import { useSSHKeyValidation } from '../../../hooks/useSSHKeyValidation';
 import { NavTabs } from '../types';
 import { updateProject, runGitOp, GitOps } from '../../../api/projects';
 import type { GitOp } from '../../../api/projects';
@@ -14,6 +15,7 @@ import { StreamingLogs } from '../../StreamingComponents';
 import { KeyIcon } from '../../icons';
 import { CustomSelect } from './CustomSelect';
 import { GitPushSection } from '../files/GitPushSection';
+import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
 import './ProjectConfigView.css';
 
 export function ProjectConfigView() {
@@ -24,6 +26,7 @@ export function ProjectConfigView() {
     const { goBack } = useTabHistory(NavTabs.Home, { defaultBackPath: '/home' });
 
     const project = projectsList.find(p => p.name === projectName);
+    const sshValidation = useSSHKeyValidation(project);
     const [sshKeys, setSshKeys] = useState<SSHKey[]>([]);
     const [selectedKeyId, setSelectedKeyId] = useState('');
     const [saving, setSaving] = useState(false);
@@ -168,11 +171,14 @@ export function ProjectConfigView() {
                                 <div style={{ fontSize: '13px', color: '#f59e0b', marginBottom: 10, padding: '8px 12px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: 8 }}>
                                     Directory does not exist on filesystem. Clone the repository to create it.
                                 </div>
+                                {!sshValidation.hasSSHKey && (
+                                    <SSHKeyRequiredHint message={sshValidation.message} />
+                                )}
                                 <button
                                     className="mcc-port-action-btn"
                                     onClick={handleClone}
-                                    disabled={gitState.running}
-                                    style={{ width: '100%', padding: '10px 16px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
+                                    disabled={gitState.running || !sshValidation.hasSSHKey}
+                                    style={{ width: '100%', padding: '10px 16px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, fontSize: '14px', fontWeight: 600, cursor: 'pointer', opacity: !sshValidation.hasSSHKey ? 0.5 : 1 }}
                                 >
                                     {gitState.running ? 'Cloning...' : 'Git Clone'}
                                 </button>
@@ -185,24 +191,29 @@ export function ProjectConfigView() {
                     </div>
                 ) : (
                     /* Directory exists - show Fetch/Pull buttons on a row */
-                    <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-                        <button
-                            className="mcc-port-action-btn"
-                            onClick={() => handleGitOp(GitOps.Fetch)}
-                            disabled={gitState.running}
-                            style={{ flex: 1, padding: '10px 16px', background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
-                        >
-                            {gitState.running ? '...' : 'Git Fetch'}
-                        </button>
-                        <button
-                            className="mcc-port-action-btn"
-                            onClick={() => handleGitOp(GitOps.Pull)}
-                            disabled={gitState.running}
-                            style={{ flex: 1, padding: '10px 16px', background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
-                        >
-                            {gitState.running ? '...' : 'Git Pull'}
-                        </button>
-                    </div>
+                    <>
+                        {!sshValidation.hasSSHKey && (
+                            <SSHKeyRequiredHint message={sshValidation.message} />
+                        )}
+                        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+                            <button
+                                className="mcc-port-action-btn"
+                                onClick={() => handleGitOp(GitOps.Fetch)}
+                                disabled={gitState.running || !sshValidation.hasSSHKey}
+                                style={{ flex: 1, padding: '10px 16px', background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, fontSize: '14px', fontWeight: 600, cursor: 'pointer', opacity: !sshValidation.hasSSHKey ? 0.5 : 1 }}
+                            >
+                                {gitState.running ? '...' : 'Git Fetch'}
+                            </button>
+                            <button
+                                className="mcc-port-action-btn"
+                                onClick={() => handleGitOp(GitOps.Pull)}
+                                disabled={gitState.running || !sshValidation.hasSSHKey}
+                                style={{ flex: 1, padding: '10px 16px', background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, fontSize: '14px', fontWeight: 600, cursor: 'pointer', opacity: !sshValidation.hasSSHKey ? 0.5 : 1 }}
+                            >
+                                {gitState.running ? '...' : 'Git Pull'}
+                            </button>
+                        </div>
+                    </>
                 )}
 
                 {/* Shared streaming logs area */}

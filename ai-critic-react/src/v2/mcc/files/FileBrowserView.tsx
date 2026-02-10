@@ -5,6 +5,7 @@ import { runGitOpByDir, GitOps } from '../../../api/projects';
 import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypto';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import { StreamingLogs } from '../../StreamingComponents';
+import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
 import './FilesView.css';
 
 export interface FileBrowserViewProps {
@@ -113,17 +114,22 @@ export function FileBrowserView({ projectDir, currentPath, sshKeyId, onNavigate,
 
             {/* Git Actions - each on its own row */}
             <div className="mcc-git-actions-column">
+                {!sshKeyId && (
+                    <SSHKeyRequiredHint message="SSH key required for git operations. Configure in project settings." />
+                )}
                 <button
                     className="mcc-git-commit-nav-btn mcc-git-fetch-btn"
                     onClick={() => handleGitAction(GitOps.Pull)}
-                    disabled={gitState.running}
+                    disabled={gitState.running || !sshKeyId}
+                    style={{ opacity: !sshKeyId ? 0.5 : 1 }}
                 >
                     {gitState.running ? 'Running...' : 'Git Pull'}
                 </button>
                 <button
                     className="mcc-git-commit-nav-btn"
                     onClick={() => handleGitAction(GitOps.Push)}
-                    disabled={gitState.running}
+                    disabled={gitState.running || !sshKeyId}
+                    style={{ opacity: !sshKeyId ? 0.5 : 1 }}
                 >
                     {gitState.running ? 'Running...' : 'Git Push'}
                 </button>

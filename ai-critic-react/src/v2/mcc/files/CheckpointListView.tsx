@@ -11,6 +11,7 @@ import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypt
 import { DiffViewer } from '../../DiffViewer';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import { StreamingLogs } from '../../StreamingComponents';
+import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
 import { statusBadge } from './utils';
 import './FilesView.css';
 
@@ -185,10 +186,14 @@ export function CheckpointListView({ projectName, projectDir, sshKeyId, onCreate
                         >
                             Git Commit
                         </button>
+                        {!sshKeyId && (
+                            <SSHKeyRequiredHint message="SSH key required for git operations. Configure in project settings." />
+                        )}
                         <button
                             className="mcc-git-commit-nav-btn mcc-git-fetch-btn"
                             onClick={handleGitPull}
-                            disabled={pullState.running}
+                            disabled={pullState.running || !sshKeyId}
+                            style={{ opacity: !sshKeyId ? 0.5 : 1 }}
                         >
                             {pullState.running ? 'Pulling...' : 'Git Pull'}
                         </button>
