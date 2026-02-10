@@ -57,7 +57,7 @@
 }
 
 .exposed-url-item {
-    background: white;
+    background: var(--bg-primary, white);
     border: 1px solid var(--border-color, #e2e8f0);
     border-radius: 6px;
     padding: 12px;
@@ -215,7 +215,7 @@
 }
 
 .exposed-urls-add-form {
-    background: white;
+    background: var(--bg-primary, white);
     border: 1px solid var(--border-color, #e2e8f0);
     border-radius: 6px;
     padding: 16px;

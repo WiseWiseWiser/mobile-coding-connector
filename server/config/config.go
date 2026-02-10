@@ -13,6 +13,16 @@ type Config struct {
 
 	// PortForwarding configuration
 	PortForwarding PortForwardingConfig `json:"port_forwarding,omitempty"`
+
+	// Server configuration
+	Server ServerConfig `json:"server,omitempty"`
+}
+
+// ServerConfig represents the server configuration
+type ServerConfig struct {
+	// ProjectDir is the explicitly configured project directory.
+	// When set, this overrides the auto-detected project directory.
+	ProjectDir string `json:"project_dir,omitempty"`
 }
 
 // PortForwardingConfig represents the port forwarding configuration

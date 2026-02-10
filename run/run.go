@@ -112,6 +112,8 @@ func Run(args []string) error {
 		fmt.Printf("Loaded config from %s\n", configFile)
 		// Set the AI config in the server
 		server.SetAIConfig(cfg)
+		// Set the config file path for saving server settings
+		server.SetConfigFilePath(configFile)
 	}
 
 	if credentialsFileFlag != "" {

@@ -380,38 +380,43 @@ export function ManageServerView() {
                         </p>
 
                         {/* Build Next button */}
-                        {buildableProjects.length > 0 && (
-                            <div style={{ marginTop: 16, borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
-                                <StreamingActionButton
-                                    label="Build Next"
-                                    runningLabel="Building..."
-                                    action={handleBuildAction}
-                                    className="manage-server-btn manage-server-btn--upload"
-                                    logMaxHeight={200}
-                                    onComplete={(result) => {
-                                        if (result.ok) {
-                                            fetchStatus();
-                                        }
-                                    }}
-                                />
-                                
-                                {nextBinaryPath && (
-                                    <div className="manage-server-confirm-row" style={{ marginTop: 8, fontSize: 12 }}>
-                                        <span className="manage-server-info-label">Output:</span>
-                                        <span className="manage-server-info-value manage-server-info-value--mono" style={{ fontSize: 11 }}>
-                                            {nextBinaryPath}
-                                        </span>
-                                    </div>
-                                )}
-                                
+                        <div style={{ marginTop: 16, borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
+                            <StreamingActionButton
+                                label="Build Next"
+                                runningLabel="Building..."
+                                action={handleBuildAction}
+                                className="manage-server-btn manage-server-btn--upload"
+                                logMaxHeight={200}
+                                disabled={buildableProjects.length === 0}
+                                onComplete={(result) => {
+                                    if (result.ok) {
+                                        fetchStatus();
+                                    }
+                                }}
+                            />
+
+                            {nextBinaryPath && (
+                                <div className="manage-server-confirm-row" style={{ marginTop: 8, fontSize: 12 }}>
+                                    <span className="manage-server-info-label">Output:</span>
+                                    <span className="manage-server-info-value manage-server-info-value--mono" style={{ fontSize: 11 }}>
+                                        {nextBinaryPath}
+                                    </span>
+                                </div>
+                            )}
+
+                            {buildableProjects.length === 0 ? (
+                                <p className="manage-server-upload-hint" style={{ color: '#dc2626' }}>
+                                    No buildable projects found. Ensure the project has a script/server/build directory.
+                                </p>
+                            ) : (
                                 <p className="manage-server-upload-hint">
                                     Build the next binary from source using script/server/build/for-linux-amd64.
                                     {buildableProjects[0] && (
                                         <> Project: <strong>{buildableProjects[0].name}</strong></>
                                     )}
                                 </p>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

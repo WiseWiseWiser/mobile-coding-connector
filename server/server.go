@@ -32,6 +32,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/exposedurls"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/fileupload"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/keepalive"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
 	pfcloudflare "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/cloudflare"
 	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/localtunnel"
@@ -319,6 +320,21 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Exposed URLs API
 	exposedurls.RegisterAPI(mux)
+
+	// Keep-alive proxy API
+	keepalive.RegisterAPI(mux)
+
+	// Server config API
+	mux.HandleFunc("/api/server/config", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			GetServerConfig(w, r)
+		case http.MethodPost:
+			SetServerConfig(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 
 	return nil
 }

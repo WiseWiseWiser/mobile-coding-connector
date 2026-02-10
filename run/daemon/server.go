@@ -31,8 +31,6 @@ func (s *HTTPServer) Start() {
 	mux.HandleFunc("/api/keep-alive/upload-target", s.handleUploadTarget)
 	mux.HandleFunc("/api/keep-alive/set-binary", s.handleSetBinary)
 	mux.HandleFunc("/api/keep-alive/logs", s.handleLogs)
-	mux.HandleFunc("/api/keep-alive/buildable-projects", s.handleBuildableProjects)
-	mux.HandleFunc("/api/keep-alive/build-next", s.handleBuildNext)
 
 	addr := fmt.Sprintf(":%d", config.KeepAlivePort)
 	Logger("Keep-alive management server listening on %s", addr)
@@ -168,39 +166,4 @@ func (s *HTTPServer) handleSetBinary(w http.ResponseWriter, r *http.Request) {
 func (s *HTTPServer) handleLogs(w http.ResponseWriter, r *http.Request) {
 	// Delegate to build.go for log streaming
 	StreamLogs(w, r)
-}
-
-func (s *HTTPServer) handleBuildableProjects(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	buildable, err := FindBuildableProjects()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to find buildable projects: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(buildable)
-}
-
-func (s *HTTPServer) handleBuildNext(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Parse request
-	var req struct {
-		ProjectID string `json:"project_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	// Delegate to build.go
-	BuildNextBinary(w, r, req.ProjectID, s.state.GetBinPath())
 }
