@@ -91,6 +91,7 @@ func (c *Command) Build() *exec.Cmd {
 
 	// Always suppress git prompts in background mode
 	if c.noPrompts {
+		env = append(env, "GIT_ASKPASS=/bin/true")
 		env = append(env, "GIT_TERMINAL_PROMPT=0")
 		// Prevent SSH from asking for passwords/passphrases interactively
 		env = append(env, "SSH_ASKPASS_REQUIRE=never")
