@@ -345,23 +345,33 @@ func (p *OwnedProvider) Available() bool {
 func (p *OwnedProvider) Start(port int, hostname string) (*portforward.TunnelHandle, error) {
 	logs := portforward.NewLogBuffer()
 
+	fmt.Fprintf(logs, "[OwnedProvider.Start] Received hostname: %q (contains dot: %v)\n", hostname, strings.Contains(hostname, "."))
+
 	// Get user domains
 	userDomains := getUserDomains()
 	if len(userDomains) == 0 {
 		return nil, fmt.Errorf("no owned domains configured")
 	}
 
-	// Use provided hostname if valid, otherwise generate one
+	// Use provided hostname if valid (contains a dot indicating it's a full domain), otherwise generate one
 	if hostname == "" || !strings.Contains(hostname, ".") {
 		// Use the first owned domain
 		baseDomain := userDomains[0]
-		fmt.Fprintf(logs, "[setup] Using owned domain: %s\n", baseDomain)
+		fmt.Fprintf(logs, "[setup] No valid hostname provided, using owned domain: %s\n", baseDomain)
 
-		// Generate random subdomain
-		hostname = fmt.Sprintf("%s.%s", pick.RandomSubdomain(), baseDomain)
-		fmt.Fprintf(logs, "[setup] Generated hostname: %s\n", hostname)
+		// If hostname is empty, generate random subdomain, otherwise use provided hostname as subdomain
+		var subdomain string
+		if hostname == "" {
+			subdomain = pick.RandomSubdomain()
+			fmt.Fprintf(logs, "[setup] Generated random subdomain: %s\n", subdomain)
+		} else {
+			subdomain = hostname
+			fmt.Fprintf(logs, "[setup] Using provided value as subdomain: %s\n", subdomain)
+		}
+		hostname = fmt.Sprintf("%s.%s", subdomain, baseDomain)
+		fmt.Fprintf(logs, "[setup] Final generated hostname: %s\n", hostname)
 	} else {
-		fmt.Fprintf(logs, "[setup] Using provided hostname: %s\n", hostname)
+		fmt.Fprintf(logs, "[setup] Using provided hostname as-is: %s\n", hostname)
 	}
 
 	// Determine tunnel name based on full hostname to ensure uniqueness

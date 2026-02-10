@@ -209,6 +209,8 @@ func (m *Manager) Add(port int, label string, providerName string) (*PortForward
 	m.notifySubscribers()
 	m.mu.Unlock()
 
+	fmt.Printf("[Manager.Add] Starting tunnel with provider: %s, label: %q\n", providerName, label)
+
 	// Start the tunnel
 	handle, err := p.Start(port, label)
 	if err != nil {
@@ -568,17 +570,23 @@ func handleListPorts(w http.ResponseWriter, _ *http.Request) {
 }
 
 type addPortRequest struct {
-	Port     int    `json:"port"`
-	Label    string `json:"label"`
-	Provider string `json:"provider"`
+	Port       int    `json:"port"`
+	Label      string `json:"label"`
+	Provider   string `json:"provider"`
+	BaseDomain string `json:"baseDomain"`
+	Subdomain  string `json:"subdomain"`
 }
 
 func handleAddPort(w http.ResponseWriter, r *http.Request) {
 	var req addPortRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		fmt.Printf("[handleAddPort] ERROR decoding request: %v\n", err)
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
+
+	fmt.Printf("[handleAddPort] RECEIVED: port=%d provider=%q label=%q baseDomain=%q subdomain=%q\n",
+		req.Port, req.Provider, req.Label, req.BaseDomain, req.Subdomain)
 
 	if req.Port <= 0 || req.Port > 65535 {
 		http.Error(w, "invalid port number", http.StatusBadRequest)
@@ -588,7 +596,27 @@ func handleAddPort(w http.ResponseWriter, r *http.Request) {
 		req.Label = fmt.Sprintf("Port %d", req.Port)
 	}
 
-	pf, err := defaultManager.Add(req.Port, req.Label, req.Provider)
+	// For Cloudflare providers, if subdomain is provided, construct hostname from subdomain + baseDomain
+	hostname := req.Label
+	isCloudflareProvider := req.Provider == ProviderCloudflareOwned || req.Provider == ProviderCloudflareTunnel
+	fmt.Printf("[handleAddPort] isCloudflareProvider=%v (provider=%q, expected=%q or %q)\n",
+		isCloudflareProvider, req.Provider, ProviderCloudflareOwned, ProviderCloudflareTunnel)
+
+	if isCloudflareProvider && req.Subdomain != "" {
+		fmt.Printf("[handleAddPort] Cloudflare provider with subdomain=%q, baseDomain=%q\n", req.Subdomain, req.BaseDomain)
+		if req.BaseDomain != "" {
+			hostname = fmt.Sprintf("%s.%s", req.Subdomain, req.BaseDomain)
+			fmt.Printf("[handleAddPort] Constructed hostname from subdomain + baseDomain: %s\n", hostname)
+		} else {
+			// If no base domain provided but we have subdomain, use label as-is
+			// (backward compatibility - label might already be full hostname)
+			fmt.Printf("[handleAddPort] Using subdomain without baseDomain: %s\n", req.Subdomain)
+		}
+	} else {
+		fmt.Printf("[handleAddPort] Using label as hostname: %s (isCloudflare=%v, hasSubdomain=%v)\n", hostname, isCloudflareProvider, req.Subdomain != "")
+	}
+
+	pf, err := defaultManager.Add(req.Port, hostname, req.Provider)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return

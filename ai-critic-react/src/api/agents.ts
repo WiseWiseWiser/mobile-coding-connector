@@ -362,6 +362,22 @@ export async function fetchAgentEffectivePath(agentId: string): Promise<AgentEff
     return resp.json();
 }
 
+// ---- OpenCode Settings ----
+
+export interface OpencodeSettings {
+    model?: string;
+    web_server?: {
+        enabled: boolean;
+        port: number;
+        exposed_domain?: string;
+    };
+}
+
+export async function fetchOpencodeSettings(): Promise<OpencodeSettings> {
+    const resp = await fetch('/api/agents/opencode/settings');
+    return resp.json();
+}
+
 // ---- OpenCode Auth Status ----
 
 export interface OpencodeAuthProvider {

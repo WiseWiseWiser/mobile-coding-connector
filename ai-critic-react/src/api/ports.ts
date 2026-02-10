@@ -52,11 +52,19 @@ export async function fetchPorts(): Promise<PortForwardData[]> {
     return data ?? [];
 }
 
-export async function addPort(port: number, label: string, provider: string): Promise<void> {
+export interface AddPortRequest {
+    port: number;
+    label: string;
+    provider: string;
+    baseDomain?: string;
+    subdomain?: string;
+}
+
+export async function addPort(req: AddPortRequest): Promise<void> {
     const resp = await fetch('/api/ports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ port, label, provider }),
+        body: JSON.stringify(req),
     });
     if (!resp.ok) {
         const text = await resp.text();

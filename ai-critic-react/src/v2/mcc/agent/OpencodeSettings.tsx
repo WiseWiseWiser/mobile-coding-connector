@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchOpencodeAuthStatus, fetchOpencodeConfig, fetchOpencodeProviders, updateAgentConfig } from '../../../api/agents';
+import { fetchOpencodeAuthStatus, fetchOpencodeConfig, fetchOpencodeProviders, fetchOpencodeSettings, updateAgentConfig } from '../../../api/agents';
 import type { OpencodeAuthStatus, AgentSessionInfo, OpencodeModelInfo } from '../../../api/agents';
 import { AgentChatHeader } from './AgentChatHeader';
 
@@ -27,11 +27,18 @@ export function OpencodeSettings({ session, projectName, onBack }: OpencodeSetti
             fetchOpencodeAuthStatus(),
             fetchOpencodeConfig(session.id),
             fetchOpencodeProviders(session.id),
-        ]).then(([auth, config, providers]) => {
+            fetchOpencodeSettings(),
+        ]).then(([auth, config, providers, settings]) => {
             setAuthStatus(auth);
-            const currentModel = config.model?.modelID || '';
-            setSavedModel(currentModel);
-            setSelectedModel(currentModel);
+            
+            // Use our saved settings as the source of truth for the model
+            // Fall back to the opencode server's current config if no saved model
+            const savedModelFromSettings = settings.model || '';
+            const currentModelFromServer = config.model?.modelID || '';
+            const modelToUse = savedModelFromSettings || currentModelFromServer;
+            
+            setSavedModel(modelToUse);
+            setSelectedModel(modelToUse);
             
             // Combine all models from all providers
             const allModels: Record<string, OpencodeModelInfo> = {};

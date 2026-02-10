@@ -208,8 +208,9 @@ export function ManageServerView() {
     };
 
     // Build action that returns SSE Response
+    // Uses main server's build API (not keep-alive daemon) for proper environment setup
     const handleBuildAction = async (): Promise<Response> => {
-        return fetch('/api/keep-alive/build-next', {
+        return fetch('/api/build/build-next', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ project_id: buildableProjects[0]?.id }),

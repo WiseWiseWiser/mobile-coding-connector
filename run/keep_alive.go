@@ -780,10 +780,10 @@ func handleBuildNext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Run build script
-	buildScriptPath := filepath.Join(project.Dir, "script", "server", "build", "for-linux-amd64")
-	cmd := exec.Command(buildScriptPath, "-o", destPath)
+	// Run build script using go run to ensure environment variables are inherited
+	cmd := exec.Command("go", "run", "./script/server/build/for-linux-amd64", "-o", destPath)
 	cmd.Dir = project.Dir
+	cmd.Env = os.Environ()
 
 	err = sw.StreamCmd(cmd)
 	if err != nil {

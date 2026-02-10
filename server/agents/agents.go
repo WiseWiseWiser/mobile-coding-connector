@@ -189,7 +189,15 @@ func (m *agentSessionManager) launch(agentID, projectDir, apiKey string) (*agent
 	}
 
 	// Build the opencode serve command using the full path
-	cmd := exec.Command(cmdPath, "serve", "--port", fmt.Sprintf("%d", port))
+	args := []string{"serve", "--port", fmt.Sprintf("%d", port)}
+
+	// Add --model flag if a model is configured in our settings
+	savedModel := opencode.GetModel()
+	if savedModel != "" {
+		args = append(args, "--model", savedModel)
+	}
+
+	cmd := exec.Command(cmdPath, args...)
 	cmd.Dir = projectDir
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	cmd.Env = tool_resolve.AppendExtraPaths(cmd.Env)

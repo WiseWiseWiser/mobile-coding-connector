@@ -4,7 +4,6 @@ package opencode
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -74,6 +73,8 @@ func ProxySSE(w http.ResponseWriter, r *http.Request, port int) {
 // from object format {model: {modelID: "xxx"}} to string format {model: "xxx"}
 // which is what the opencode server expects.
 // Also persists the model to local settings.
+// Note: The model is saved locally and NOT proxied to the opencode server to avoid
+// the server creating a config.json file in the project directory.
 func ProxyConfigUpdate(w http.ResponseWriter, r *http.Request, port int) {
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -92,41 +93,19 @@ func ProxyConfigUpdate(w http.ResponseWriter, r *http.Request, port int) {
 	if modelObj, ok := body["model"].(map[string]interface{}); ok {
 		if modelID, ok := modelObj["modelID"].(string); ok {
 			body["model"] = modelID
-			// Persist the model selection
-			_ = SetModel(modelID)
+			// Persist the model selection locally
+			if err := SetModel(modelID); err != nil {
+				http.Error(w, fmt.Sprintf("failed to save model: %v", err), http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 
-	transformed, err := json.Marshal(body)
-	if err != nil {
-		http.Error(w, "failed to encode body", http.StatusInternalServerError)
-		return
-	}
-
-	targetURL := fmt.Sprintf("http://127.0.0.1:%d%s", port, r.URL.Path)
-	req, err := http.NewRequestWithContext(r.Context(), "PATCH", targetURL, bytes.NewReader(transformed))
-	if err != nil {
-		http.Error(w, "failed to create request", http.StatusInternalServerError)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, "failed to connect to agent server", http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Copy response headers and status
-	for k, v := range resp.Header {
-		for _, vv := range v {
-			w.Header().Add(k, vv)
-		}
-	}
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	// Return success without proxying to the opencode server.
+	// The model is persisted locally and applied when starting new sessions.
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 
 // ProxyMessages fetches messages from the opencode server,

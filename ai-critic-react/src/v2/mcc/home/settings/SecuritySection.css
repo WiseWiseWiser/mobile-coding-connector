@@ -95,6 +95,8 @@
     padding: 6px 10px;
     background: rgba(0, 0, 0, 0.3);
     border-radius: 6px;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .diagnose-security-credential-value {

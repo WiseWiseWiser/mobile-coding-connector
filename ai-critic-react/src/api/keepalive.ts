@@ -102,7 +102,8 @@ export interface BuildableProject {
 
 /** Get the list of projects that can be built from source. */
 export async function getBuildableProjects(): Promise<BuildableProject[]> {
-    const res = await fetch(`${API_BASE}/api/keep-alive/buildable-projects`);
+    // Use the main server's build API (not keep-alive daemon) for proper environment setup
+    const res = await fetch(`${API_BASE}/api/build/buildable-projects`);
     if (!res.ok) throw new Error(`buildable-projects failed: ${res.status}`);
     return res.json();
 }

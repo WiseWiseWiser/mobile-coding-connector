@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -15,6 +16,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -35,6 +37,7 @@ import (
 	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/localtunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tools"
@@ -314,6 +317,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Settings export/import API
 	settings.RegisterAPI(mux)
 
+	// Build from source API (runs in main server to ensure proper environment)
+	registerBuildAPI(mux)
+
 	// Keep-alive management API (proxy to keep-alive daemon)
 	keepalive.RegisterAPI(mux)
 
@@ -437,4 +443,229 @@ func FindAvailablePort(startPort int, maxAttempts int) (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("no available port found")
+}
+
+// ---- Build from Source API ----
+
+// registerBuildAPI registers the build endpoints in the main server.
+// These endpoints run in the main server (not the keep-alive daemon) to ensure
+// proper environment setup with all PATH additions from tool_resolve.
+func registerBuildAPI(mux *http.ServeMux) {
+	mux.HandleFunc("/api/build/buildable-projects", handleBuildableProjectsMain)
+	mux.HandleFunc("/api/build/build-next", handleBuildNextMain)
+}
+
+// buildableProject represents a project that can be built
+type buildableProject struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Dir            string `json:"dir"`
+	HasGoMod       bool   `json:"has_go_mod"`
+	HasBuildScript bool   `json:"has_build_script"`
+}
+
+// findBuildableProjects scans all projects and finds those that can be built.
+func findBuildableProjects() ([]buildableProject, error) {
+	projectsFile := config.ProjectsFile
+
+	data, err := os.ReadFile(projectsFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []buildableProject{}, nil
+		}
+		return nil, err
+	}
+
+	var projects []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		Dir  string `json:"dir"`
+	}
+	if err := json.Unmarshal(data, &projects); err != nil {
+		return nil, err
+	}
+
+	var buildable []buildableProject
+	for _, p := range projects {
+		if p.Dir == "" {
+			continue
+		}
+
+		// Check if directory exists
+		info, err := os.Stat(p.Dir)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+
+		// Check for go.mod
+		hasGoMod := false
+		if _, err := os.Stat(filepath.Join(p.Dir, "go.mod")); err == nil {
+			hasGoMod = true
+		}
+
+		// Check for build script
+		hasBuildScript := false
+		buildScriptPath := filepath.Join(p.Dir, "script", "server", "build", "for-linux-amd64")
+		if _, err := os.Stat(buildScriptPath); err == nil {
+			hasBuildScript = true
+		}
+
+		if hasGoMod && hasBuildScript {
+			buildable = append(buildable, buildableProject{
+				ID:             p.ID,
+				Name:           p.Name,
+				Dir:            p.Dir,
+				HasGoMod:       true,
+				HasBuildScript: true,
+			})
+		}
+	}
+
+	return buildable, nil
+}
+
+// handleBuildableProjectsMain returns the list of projects that can be built from source.
+func handleBuildableProjectsMain(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	buildable, err := findBuildableProjects()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to find buildable projects: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(buildable)
+}
+
+// handleBuildNextMain builds the next binary from a project source with SSE streaming.
+// This runs in the main server to ensure proper environment with PATH additions.
+func handleBuildNextMain(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request
+	var req struct {
+		ProjectID string `json:"project_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Find buildable projects
+	buildable, err := findBuildableProjects()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to find buildable projects: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Find the requested project or use the first available
+	var project *buildableProject
+	if req.ProjectID != "" {
+		for i := range buildable {
+			if buildable[i].ID == req.ProjectID {
+				project = &buildable[i]
+				break
+			}
+		}
+	} else if len(buildable) > 0 {
+		project = &buildable[0]
+	}
+
+	if project == nil {
+		http.Error(w, "no buildable project found", http.StatusBadRequest)
+		return
+	}
+
+	// Get the upload target path (next binary)
+	binPath, err := os.Executable()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get executable path: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	dir := filepath.Dir(binPath)
+	currentBase, currentVersion := parseBinVersion(binPath)
+	nextVersion := currentVersion + 1
+	newName := fmt.Sprintf("%s-v%d", currentBase, nextVersion)
+	destPath := filepath.Join(dir, newName)
+
+	// Create SSE writer
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Log build start
+	sw.SendLog(fmt.Sprintf("Building next binary (v%d) from project %s...", nextVersion, project.Name))
+	sw.SendLog(fmt.Sprintf("Target: %s", destPath))
+
+	// Create destination directory if needed
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		sw.SendError(fmt.Sprintf("Failed to create destination directory: %v", err))
+		return
+	}
+
+	// Run build script using go run to ensure environment variables are inherited
+	// Use the proper environment with all PATH additions
+	cmd := exec.Command("go", "run", "./script/server/build/for-linux-amd64", "-o", destPath)
+	cmd.Dir = project.Dir
+	// Set up environment with all extra paths (same as terminal)
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = tool_resolve.AppendExtraPaths(cmd.Env)
+
+	err = sw.StreamCmd(cmd)
+	if err != nil {
+		sw.SendError(fmt.Sprintf("Build failed: %v", err))
+		return
+	}
+
+	// Make binary executable
+	if err := os.Chmod(destPath, 0755); err != nil {
+		sw.SendError(fmt.Sprintf("Failed to chmod binary: %v", err))
+		return
+	}
+
+	// Get file size
+	info, err := os.Stat(destPath)
+	if err != nil {
+		sw.SendError(fmt.Sprintf("Failed to stat binary: %v", err))
+		return
+	}
+
+	// Log success
+	sw.SendLog(fmt.Sprintf("Build successful: %s (%d bytes)", destPath, info.Size()))
+
+	// Send done event with result data
+	sw.SendDone(map[string]string{
+		"success":      "true",
+		"message":      fmt.Sprintf("Built %s (%s) v%d", newName, project.Name, nextVersion),
+		"binary_path":  destPath,
+		"binary_name":  newName,
+		"version":      strconv.Itoa(nextVersion),
+		"size":         strconv.FormatInt(info.Size(), 10),
+		"project_name": project.Name,
+	})
+}
+
+// parseBinVersion extracts the base name and version from a binary path.
+func parseBinVersion(binPath string) (baseName string, version int) {
+	name := filepath.Base(binPath)
+
+	// Match -vN suffix
+	if idx := strings.LastIndex(name, "-v"); idx != -1 && idx < len(name)-2 {
+		versionStr := name[idx+2:]
+		if v, err := strconv.Atoi(versionStr); err == nil {
+			return name[:idx], v
+		}
+	}
+
+	return name, 0
 }

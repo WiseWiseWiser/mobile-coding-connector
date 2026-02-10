@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Outlet } from 'react-router-dom';
 import type { TunnelProvider } from '../../hooks/usePortForwards';
 import { TunnelProviders } from '../../hooks/usePortForwards';
@@ -6,6 +6,7 @@ import { useTabNavigate } from '../../hooks/useTabNavigate';
 import { NavTabs } from './types';
 import { useV2Context } from '../V2Context';
 import { fetchRandomDomain } from '../../api/domains';
+import type { AddPortRequest } from '../../api/ports';
 
 export interface PortsOutletContext {
     ports: ReturnType<typeof useV2Context>['portForwards']['ports'];
@@ -45,9 +46,19 @@ export function PortsLayout() {
     const [newPortBaseDomain, setNewPortBaseDomain] = useState('');
     const [portActionError, setPortActionError] = useState<string | null>(null);
 
+    // Refs to track latest state values (avoid stale closures)
+    const subdomainRef = useRef(newPortSubdomain);
+    const providerRef = useRef(newPortProvider);
+    
+    // Update refs when state changes
+    subdomainRef.current = newPortSubdomain;
+    providerRef.current = newPortProvider;
+
     const generateSubdomain = useCallback(async (baseDomain?: string) => {
         try {
-            const domain = await fetchRandomDomain(baseDomain || newPortBaseDomain || undefined);
+            // Use passed domain parameter, or fall back to current state
+            const effectiveDomain = baseDomain || newPortBaseDomain || undefined;
+            const domain = await fetchRandomDomain(effectiveDomain);
             // Extract just the subdomain part (before the first dot)
             const subdomain = domain.split('.')[0];
             setNewPortSubdomain(subdomain);
@@ -62,16 +73,45 @@ export function PortsLayout() {
         const portNum = parseInt(newPortNumber, 10);
         if (!portNum || portNum <= 0 || portNum > 65535) return;
 
-        // For Cloudflare providers, combine subdomain + base domain as label
-        let label = newPortLabel || `Port ${portNum}`;
-        if ((newPortProvider === TunnelProviders.CloudflareTunnel || newPortProvider === TunnelProviders.CloudflareOwned) && newPortSubdomain && newPortBaseDomain) {
-            label = `${newPortSubdomain}.${newPortBaseDomain}`;
+        const isCloudflareProvider = newPortProvider === TunnelProviders.CloudflareTunnel || newPortProvider === TunnelProviders.CloudflareOwned;
+        const hasSubdomain = !!newPortSubdomain;
+        const hasBaseDomain = !!newPortBaseDomain;
+
+        // Build the request with separate fields for Cloudflare providers
+        const req: AddPortRequest = {
+            port: portNum,
+            label: newPortLabel || `Port ${portNum}`,
+            provider: newPortProvider,
+        };
+
+        // For Cloudflare providers, pass subdomain and base_domain separately
+        if (isCloudflareProvider) {
+            if (hasSubdomain) {
+                req.subdomain = newPortSubdomain;
+            }
+            if (hasBaseDomain) {
+                req.baseDomain = newPortBaseDomain;
+            }
+            // If both are provided, construct the full label
+            if (hasSubdomain && hasBaseDomain) {
+                req.label = `${newPortSubdomain}.${newPortBaseDomain}`;
+            }
         }
-        const provider = newPortProvider;
+
+        console.log('[PortsLayout] Adding port:', {
+            portNum,
+            isCloudflareProvider,
+            hasSubdomain,
+            hasBaseDomain,
+            newPortSubdomain,
+            newPortBaseDomain,
+            newPortLabel,
+            req
+        });
 
         try {
             setPortActionError(null);
-            await addPort(portNum, label, provider);
+            await addPort(req);
             setShowNewPortForm(false);
             setNewPortNumber('');
             setNewPortLabel('');
@@ -101,11 +141,11 @@ export function PortsLayout() {
         onToggleNewForm: () => {
             const newValue = !showNewPortForm;
             setShowNewPortForm(newValue);
-            // Generate subdomain when opening form with Cloudflare provider and base domain already selected
-            if (newValue && (newPortProvider === TunnelProviders.CloudflareTunnel || newPortProvider === TunnelProviders.CloudflareOwned)) {
-                if (newPortBaseDomain && !newPortSubdomain) {
-                    generateSubdomain(newPortBaseDomain);
-                }
+            // Generate subdomain when opening form with Cloudflare provider
+            // Use ref to get latest provider state (avoid stale closure)
+            const currentProvider = providerRef.current;
+            if (newValue && (currentProvider === TunnelProviders.CloudflareTunnel || currentProvider === TunnelProviders.CloudflareOwned)) {
+                generateSubdomain(newPortBaseDomain || undefined);
             }
         },
         newPortNumber,
@@ -127,7 +167,10 @@ export function PortsLayout() {
         onPortBaseDomainChange: (domain: string) => {
             setNewPortBaseDomain(domain);
             // Generate subdomain when selecting a base domain for Cloudflare providers
-            if (domain && (newPortProvider === TunnelProviders.CloudflareTunnel || newPortProvider === TunnelProviders.CloudflareOwned)) {
+            // Use ref to get latest subdomain state (avoid stale closure)
+            const currentProvider = providerRef.current;
+            const currentSubdomain = subdomainRef.current;
+            if (domain && !currentSubdomain && (currentProvider === TunnelProviders.CloudflareTunnel || currentProvider === TunnelProviders.CloudflareOwned)) {
                 generateSubdomain(domain);
             }
         },

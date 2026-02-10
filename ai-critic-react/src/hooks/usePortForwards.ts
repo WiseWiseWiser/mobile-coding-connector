@@ -5,7 +5,7 @@ import {
     addPort as apiAddPort,
     removePort as apiRemovePort,
 } from '../api/ports';
-import type { ProviderInfo as ApiProviderInfo } from '../api/ports';
+import type { ProviderInfo as ApiProviderInfo, AddPortRequest } from '../api/ports';
 
 // Port forward status
 export const PortStatuses = {
@@ -44,7 +44,7 @@ export interface UsePortForwardsReturn {
     providers: ProviderInfo[];
     loading: boolean;
     error: string | null;
-    addPort: (port: number, label: string, provider?: TunnelProvider) => Promise<void>;
+    addPort: (req: AddPortRequest) => Promise<void>;
     removePort: (port: number) => Promise<void>;
 }
 
@@ -109,8 +109,8 @@ export function usePortForwards(): UsePortForwardsReturn {
         };
     }, []);
 
-    const addPort = useCallback(async (port: number, label: string, provider?: TunnelProvider) => {
-        await apiAddPort(port, label, provider || TunnelProviders.Localtunnel);
+    const addPort = useCallback(async (req: AddPortRequest) => {
+        await apiAddPort(req);
         // SSE will push the update, no need to manually refresh
     }, []);
 

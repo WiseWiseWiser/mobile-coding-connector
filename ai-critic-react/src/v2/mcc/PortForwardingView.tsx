@@ -135,6 +135,10 @@ export function PortForwardingView({
                         </div>
                         {(newPortProvider === TunnelProviders.CloudflareTunnel || newPortProvider === TunnelProviders.CloudflareOwned) && (
                             <>
+                                <OwnedDomainsHint
+                                    selectedDomain={newPortBaseDomain}
+                                    onSelectDomain={onPortBaseDomainChange}
+                                />
                                 <div className="mcc-form-field mcc-subdomain-field">
                                     <label>Subdomain</label>
                                     <div className="mcc-subdomain-input-group">
@@ -155,10 +159,6 @@ export function PortForwardingView({
                                         </button>
                                     </div>
                                 </div>
-                                <OwnedDomainsHint
-                                    selectedDomain={newPortBaseDomain}
-                                    onSelectDomain={onPortBaseDomainChange}
-                                />
                                 {newPortSubdomain && newPortBaseDomain && (
                                     <div className="mcc-domain-preview">
                                         <label>Full Domain</label>
