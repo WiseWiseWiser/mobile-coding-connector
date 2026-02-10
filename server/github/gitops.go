@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
@@ -111,9 +112,22 @@ func runGitOp(w http.ResponseWriter, r *http.Request, gitCmd string, gitArgs ...
 	if keyFile != nil {
 		keyPath = keyFile.Path
 	}
-	cmd := gitrunner.NewCommand(append([]string{gitCmd}, gitArgs...)...).Dir(project.Dir).WithSSHKey(keyPath).Exec()
 
-	sw.SendLog(fmt.Sprintf("$ git %s %s", gitCmd, project.Dir))
+	var cmd *exec.Cmd
+	if gitCmd == "push" {
+		// For push, get current branch and use explicit upstream format
+		branch, err := gitrunner.GetCurrentBranch(project.Dir)
+		if err != nil {
+			sw.SendError(fmt.Sprintf("Failed to get current branch: %v", err))
+			return
+		}
+		cmd = gitrunner.Push(branch, keyPath).Dir(project.Dir).Exec()
+		sw.SendLog(fmt.Sprintf("$ git push origin HEAD:%s %s", branch, project.Dir))
+	} else {
+		cmd = gitrunner.NewCommand(append([]string{gitCmd}, gitArgs...)...).Dir(project.Dir).WithSSHKey(keyPath).Exec()
+		sw.SendLog(fmt.Sprintf("$ git %s %s", gitCmd, project.Dir))
+	}
+
 	if keyFile != nil {
 		sw.SendLog(fmt.Sprintf("Using SSH key: %s", keyFile.KeyType))
 	}

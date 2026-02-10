@@ -333,6 +333,21 @@ func handleGitPush(w http.ResponseWriter, r *http.Request) {
 	acceptHeader := r.Header.Get("Accept")
 	wantStream := acceptHeader == "text/event-stream"
 
+	// Get current branch first
+	branch, err := gitrunner.GetCurrentBranch(dir)
+	if err != nil {
+		if wantStream {
+			sseWriter := sse.NewWriter(w)
+			if sseWriter != nil {
+				sseWriter.SendError(fmt.Sprintf("Failed to get current branch: %v", err))
+				sseWriter.SendDone(map[string]string{"success": "false"})
+			}
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to get current branch: %v", err)})
+		return
+	}
+
 	// Build git push command using gitrunner
 	var keyPath string
 	if req.SSHKey != "" {
@@ -352,7 +367,7 @@ func handleGitPush(w http.ResponseWriter, r *http.Request) {
 		defer keyFile.Cleanup()
 		keyPath = keyFile.Path
 	}
-	cmd := gitrunner.Push(keyPath).Dir(dir).Exec()
+	cmd := gitrunner.Push(branch, keyPath).Dir(dir).Exec()
 
 	if wantStream {
 		// Use SSE streaming
@@ -362,8 +377,8 @@ func handleGitPush(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		sseWriter.SendLog("Starting git push...")
-		err := sseWriter.StreamCmd(cmd)
+		sseWriter.SendLog(fmt.Sprintf("Starting git push origin HEAD:%s...", branch))
+		err = sseWriter.StreamCmd(cmd)
 		if err != nil {
 			sseWriter.SendError(fmt.Sprintf("Push failed: %v", err))
 			sseWriter.SendDone(map[string]string{"success": "false"})

@@ -163,9 +163,11 @@ func PullFFOnly(sshKeyPath ...string) *Command {
 	return cmd
 }
 
-// Push runs git push
-func Push(sshKeyPath ...string) *Command {
-	cmd := NewCommand("push", "--progress")
+// Push runs git push with explicit branch specification to avoid "no upstream branch" errors
+// Usage: Push(branch, sshKeyPath) or Push(branch) - sshKeyPath is optional
+func Push(branch string, sshKeyPath ...string) *Command {
+	// Use origin HEAD:<branch> format to push current branch to remote without requiring upstream
+	cmd := NewCommand("push", "origin", fmt.Sprintf("HEAD:%s", branch), "--progress")
 	if len(sshKeyPath) > 0 && sshKeyPath[0] != "" {
 		cmd.WithSSHKey(sshKeyPath[0])
 	}
