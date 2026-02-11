@@ -29,4 +29,5 @@ const (
 	OpencodeFile      = DataDir + "/opencode.json"
 	ProjectsDir       = DataDir + "/projects"
 	ServerProjectFile = DataDir + "/server-project.json"
+	AIModelsFile      = DataDir + "/ai-models.json"
 )

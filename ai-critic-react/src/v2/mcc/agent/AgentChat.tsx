@@ -150,7 +150,8 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
         setInput('');
         setSending(true);
         try {
-            await sendPromptAsync(session.id, opencodeSID, text);
+            const currentModel = agentConfig?.model;
+            await sendPromptAsync(session.id, opencodeSID, text, currentModel);
         } catch { /* SSE will show updates */ }
         setSending(false);
     };

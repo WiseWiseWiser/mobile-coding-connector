@@ -4,14 +4,18 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/subprocess"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
 )
+
+// WebServerProcessID is the ID used for managing the web server subprocess
+const WebServerProcessID = "opencode-web-server"
 
 // WebServerStatus represents the status of the OpenCode web server
 type WebServerStatus struct {
@@ -228,7 +232,17 @@ func ControlWebServer(action string, customPath string) (*WebServerControlRespon
 // startWebServer attempts to start the OpenCode web server.
 // The customPath parameter allows using a user-configured binary path.
 func startWebServer(settings *Settings, customPath string) (*WebServerControlResponse, error) {
-	// Check if already running
+	// Check if already running via subprocess manager
+	manager := subprocess.GetManager()
+	if manager.IsRunning(WebServerProcessID) {
+		return &WebServerControlResponse{
+			Success: true,
+			Message: fmt.Sprintf("Web server is already running on port %d", settings.WebServer.Port),
+			Running: true,
+		}, nil
+	}
+
+	// Also check via HTTP health check
 	if IsWebServerRunning(settings.WebServer.Port) {
 		return &WebServerControlResponse{
 			Success: true,
@@ -237,40 +251,47 @@ func startWebServer(settings *Settings, customPath string) (*WebServerControlRes
 		}, nil
 	}
 
-	// Determine which binary to use
-	binary := "opencode"
-	if customPath != "" {
-		binary = customPath
-	}
-
-	// Start the web server using opencode command
-	cmd := exec.Command(binary, "web", "start", "--port", fmt.Sprintf("%d", settings.WebServer.Port))
-	output, err := cmd.CombinedOutput()
+	// Create command using tool_exec for proper PATH resolution
+	cmd, err := tool_exec.New("opencode", []string{"web", "--port", fmt.Sprintf("%d", settings.WebServer.Port)}, &tool_exec.Options{
+		CustomPath: customPath,
+	})
 	if err != nil {
 		return &WebServerControlResponse{
 			Success: false,
-			Message: fmt.Sprintf("Failed to start web server: %v\nOutput: %s", err, string(output)),
+			Message: fmt.Sprintf("Failed to create web server command: %v", err),
 			Running: false,
 		}, nil
 	}
 
-	// Wait a moment for the server to start
-	time.Sleep(2 * time.Second)
+	// Health checker function
+	healthChecker := func() bool {
+		return IsWebServerRunning(settings.WebServer.Port)
+	}
 
-	// Check if it's now running
-	running := IsWebServerRunning(settings.WebServer.Port)
+	// Start the process via subprocess manager (non-blocking)
+	process, err := manager.StartProcess(WebServerProcessID, "OpenCode Web Server", cmd.Cmd, healthChecker)
+	if err != nil {
+		return &WebServerControlResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to start web server: %v", err),
+			Running: false,
+		}, nil
+	}
+
+	// Wait for the server to be ready (with timeout)
+	running := process.WaitForRunning(10 * time.Second)
 
 	// Update settings to mark web server as enabled
-	settings.WebServer.Enabled = true
+	settings.WebServer.Enabled = running
 	SaveSettings(settings)
 
 	return &WebServerControlResponse{
 		Success: running,
 		Message: func() string {
 			if running {
-				return fmt.Sprintf("Web server started on port %d", settings.WebServer.Port)
+				return fmt.Sprintf("Web server started successfully on port %d", settings.WebServer.Port)
 			}
-			return "Web server start command executed but server may not be ready yet"
+			return "Web server process started but health check failed"
 		}(),
 		Running: running,
 	}, nil
@@ -279,30 +300,23 @@ func startWebServer(settings *Settings, customPath string) (*WebServerControlRes
 // stopWebServer attempts to stop the OpenCode web server.
 // The customPath parameter allows using a user-configured binary path.
 func stopWebServer(settings *Settings, customPath string) (*WebServerControlResponse, error) {
-	// Check if already stopped
-	if !IsWebServerRunning(settings.WebServer.Port) {
-		return &WebServerControlResponse{
-			Success: true,
-			Message: "Web server is already stopped",
-			Running: false,
-		}, nil
+	manager := subprocess.GetManager()
+
+	// First try to stop via subprocess manager if it's managed
+	if manager.IsRunning(WebServerProcessID) {
+		if err := manager.StopProcess(WebServerProcessID); err != nil {
+			// If subprocess manager fails, try the opencode stop command
+			fmt.Printf("Subprocess manager stop failed: %v, trying opencode web stop\n", err)
+		}
 	}
 
-	// Determine which binary to use
-	binary := "opencode"
-	if customPath != "" {
-		binary = customPath
-	}
-
-	// Stop the web server using opencode command
-	cmd := exec.Command(binary, "web", "stop")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return &WebServerControlResponse{
-			Success: false,
-			Message: fmt.Sprintf("Failed to stop web server: %v\nOutput: %s", err, string(output)),
-			Running: IsWebServerRunning(settings.WebServer.Port),
-		}, nil
+	// Also try the standard opencode stop command
+	cmd, err := tool_exec.New("opencode", []string{"web", "stop"}, &tool_exec.Options{
+		CustomPath: customPath,
+	})
+	if err == nil {
+		// Run stop command (ignore errors, it might not be running)
+		cmd.Cmd.Run()
 	}
 
 	// Wait a moment for the server to stop

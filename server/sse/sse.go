@@ -57,6 +57,15 @@ func (s *Writer) SendDone(extra map[string]string) {
 	s.Send(data)
 }
 
+// SendStatus sends a status update event.
+func (s *Writer) SendStatus(status string, extra map[string]string) {
+	data := map[string]string{"type": "status", "status": status}
+	for k, v := range extra {
+		data[k] = v
+	}
+	s.Send(data)
+}
+
 // StreamCmd starts cmd, streams its combined stdout/stderr output as SSE log
 // events, and returns the command's exit error (nil on success).
 // The caller should call SendError/SendDone afterwards based on the returned error.

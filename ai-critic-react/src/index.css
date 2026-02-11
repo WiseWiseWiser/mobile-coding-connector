@@ -102,3 +102,10 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Prevent iOS Safari from zooming on input focus */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea {
+    font-size: 16px;
+  }
+}

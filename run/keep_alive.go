@@ -29,6 +29,7 @@ Options:
 Request Commands:
   ai-critic keep-alive request info       Get daemon status
   ai-critic keep-alive request restart    Request server restart
+  ai-critic keep-alive request fix-tunnel Fix stale Cloudflare tunnel
 `
 
 func runKeepAlive(args []string) error {
@@ -73,7 +74,7 @@ func runKeepAlive(args []string) error {
 // runKeepAliveRequest sends request commands to a running keep-alive daemon.
 func runKeepAliveRequest(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("action required: info, restart")
+		return fmt.Errorf("action required: info, restart, fix-tunnel")
 	}
 
 	action := args[0]
@@ -83,8 +84,10 @@ func runKeepAliveRequest(args []string) error {
 		return sendKeepAliveInfo()
 	case "restart":
 		return sendKeepAliveRestart()
+	case "fix-tunnel":
+		return sendKeepAliveFixTunnel()
 	default:
-		return fmt.Errorf("unknown action: %s (use 'info' or 'restart')", action)
+		return fmt.Errorf("unknown action: %s (use 'info', 'restart', or 'fix-tunnel')", action)
 	}
 }
 
@@ -162,6 +165,40 @@ func sendKeepAliveRestart() error {
 	}
 
 	fmt.Printf("Restart request sent: %s\n", result.Status)
+	return nil
+}
+
+// sendKeepAliveFixTunnel sends a request to fix stale tunnels to the keep-alive daemon.
+func sendKeepAliveFixTunnel() error {
+	url := fmt.Sprintf("http://localhost:%d/api/keep-alive/fix-tunnel", config.KeepAlivePort)
+
+	resp, err := http.Post(url, "application/json", nil)
+	if err != nil {
+		return fmt.Errorf("failed to connect to keep-alive daemon: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("keep-alive daemon returned error: %s", resp.Status)
+	}
+
+	var result struct {
+		Status  string `json:"status"`
+		Message string `json:"message,omitempty"`
+		Fixed   int    `json:"fixed,omitempty"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode response: %v", err)
+	}
+
+	fmt.Printf("Fix tunnel request: %s\n", result.Status)
+	if result.Message != "" {
+		fmt.Printf("Message: %s\n", result.Message)
+	}
+	if result.Fixed > 0 {
+		fmt.Printf("Fixed %d tunnel(s)\n", result.Fixed)
+	}
 	return nil
 }
 

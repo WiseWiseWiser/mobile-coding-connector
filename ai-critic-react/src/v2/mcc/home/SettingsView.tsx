@@ -6,6 +6,7 @@ import { GitSettingsContent } from './settings/GitSettings';
 import { CloudflareSettingsContent } from './settings/CloudflareSettingsView';
 import { TerminalSection } from './settings/TerminalSection';
 import { ServerSettingsSection } from './settings/ServerSettingsSection';
+import { AIModelsSection } from './settings/AIModelsSection';
 import './DiagnoseView.css'; // Shared styles: .diagnose-view, .diagnose-section, .diagnose-section-title, .diagnose-loading, .diagnose-error
 import './settings/GitSettings.css';
 import './settings/CloudflareSettingsView.css';
@@ -13,6 +14,7 @@ import './settings/TerminalSection.css';
 import './settings/ExposedUrlsSection.css';
 import './settings/SettingsView.css';
 import './settings/ServerSettingsSection.css';
+import './settings/AIModelsSection.css';
 
 export function SettingsView() {
     const navigate = useNavigate();
@@ -36,6 +38,8 @@ export function SettingsView() {
             <SecuritySection />
 
             <TerminalSection />
+
+            <AIModelsSection />
 
             <div className="diagnose-section">
                 <h3 className="diagnose-section-title">Cloudflare</h3>

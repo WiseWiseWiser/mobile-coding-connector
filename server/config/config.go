@@ -278,3 +278,75 @@ func SetServerProjectDir(projectDir string) error {
 	cfg.ProjectDir = projectDir
 	return SaveServerProjectConfig(cfg)
 }
+
+// AIModelsConfig represents the AI models configuration stored in .ai-critic/ai-models.json
+type AIModelsConfig struct {
+	Providers       []ProviderConfig `json:"providers"`
+	Models          []ModelConfig    `json:"models"`
+	DefaultProvider string           `json:"default_provider,omitempty"`
+	DefaultModel    string           `json:"default_model,omitempty"`
+}
+
+// AIModelsFileExists checks if the AI models config file exists
+func AIModelsFileExists() bool {
+	_, err := os.Stat(AIModelsFile)
+	return !os.IsNotExist(err)
+}
+
+// LoadAIModelsConfig loads the AI models configuration from .ai-critic/ai-models.json
+func LoadAIModelsConfig() (*AIModelsConfig, error) {
+	data, err := os.ReadFile(AIModelsFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &AIModelsConfig{
+				Providers: []ProviderConfig{},
+				Models:    []ModelConfig{},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to read AI models config: %w", err)
+	}
+
+	var cfg AIModelsConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse AI models config: %w", err)
+	}
+
+	return &cfg, nil
+}
+
+// SaveAIModelsConfig saves the AI models configuration to .ai-critic/ai-models.json
+func SaveAIModelsConfig(cfg *AIModelsConfig) error {
+	// Ensure directory exists
+	if err := os.MkdirAll(DataDir, 0755); err != nil {
+		return fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal AI models config: %w", err)
+	}
+
+	if err := os.WriteFile(AIModelsFile, data, 0644); err != nil {
+		return fmt.Errorf("failed to write AI models config: %w", err)
+	}
+
+	return nil
+}
+
+// ToAIConfig converts AIModelsConfig to AIConfig
+func (c *AIModelsConfig) ToAIConfig() AIConfig {
+	return AIConfig{
+		Providers:       c.Providers,
+		Models:          c.Models,
+		DefaultProvider: c.DefaultProvider,
+		DefaultModel:    c.DefaultModel,
+	}
+}
+
+// FromAIConfig populates AIModelsConfig from AIConfig
+func (c *AIModelsConfig) FromAIConfig(ai AIConfig) {
+	c.Providers = ai.Providers
+	c.Models = ai.Models
+	c.DefaultProvider = ai.DefaultProvider
+	c.DefaultModel = ai.DefaultModel
+}

@@ -19,8 +19,11 @@ import (
 // initialDir stores the initial directory set via --dir flag
 var initialDir string
 
-// aiConfig stores the AI configuration
+// aiConfig stores the AI configuration (legacy)
 var aiConfig *config.Config
+
+// aiConfigAdapter stores the AI configuration (new)
+var aiConfigAdapter *config.ConfigAdapter
 
 // SetInitialDir sets the initial directory for code review
 func SetInitialDir(dir string) {
@@ -32,14 +35,40 @@ func GetInitialDir() string {
 	return initialDir
 }
 
-// SetAIConfig sets the AI configuration
+// SetAIConfig sets the AI configuration (legacy, kept for backward compatibility)
 func SetAIConfig(cfg *config.Config) {
 	aiConfig = cfg
 }
 
-// GetAIConfig returns the AI configuration
+// GetAIConfig returns the AI configuration (legacy)
 func GetAIConfig() *config.Config {
 	return aiConfig
+}
+
+// SetAIConfigAdapter sets the AI configuration using the new adapter
+func SetAIConfigAdapter(adapter *config.ConfigAdapter) {
+	aiConfigAdapter = adapter
+}
+
+// GetAIConfigAdapter returns the AI configuration adapter
+func GetAIConfigAdapter() *config.ConfigAdapter {
+	return aiConfigAdapter
+}
+
+// getEffectiveAIConfig returns the effective AI config (adapter first, then legacy)
+func getEffectiveAIConfig() *config.ConfigAdapter {
+	if aiConfigAdapter != nil {
+		return aiConfigAdapter
+	}
+	if aiConfig != nil {
+		return config.NewConfigAdapter(&config.AIModelsConfig{
+			Providers:       aiConfig.AI.Providers,
+			Models:          aiConfig.AI.Models,
+			DefaultProvider: aiConfig.AI.DefaultProvider,
+			DefaultModel:    aiConfig.AI.DefaultModel,
+		})
+	}
+	return nil
 }
 
 // CodeReviewRequest represents a request to review code changes
@@ -121,20 +150,21 @@ func handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		InitialDir: initialDir,
 	}
 
-	// Add providers and models from config
-	if aiConfig != nil {
-		for _, p := range aiConfig.GetAvailableProviders() {
+	// Add providers and models from config (use adapter if available)
+	effectiveCfg := getEffectiveAIConfig()
+	if effectiveCfg != nil {
+		for _, p := range effectiveCfg.GetAvailableProviders() {
 			cfg.Providers = append(cfg.Providers, ProviderInfo{Name: p.Name})
 		}
-		for _, m := range aiConfig.GetAvailableModels() {
+		for _, m := range effectiveCfg.GetAvailableModels() {
 			cfg.Models = append(cfg.Models, ModelInfo{
 				Provider:    m.Provider,
 				Model:       m.Model,
 				DisplayName: m.DisplayName,
 			})
 		}
-		cfg.DefaultProvider = aiConfig.AI.DefaultProvider
-		cfg.DefaultModel = aiConfig.AI.DefaultModel
+		cfg.DefaultProvider = effectiveCfg.GetDefaultProvider()
+		cfg.DefaultModel = effectiveCfg.GetDefaultModel()
 	}
 
 	writeJSON(w, http.StatusOK, cfg)
@@ -849,8 +879,9 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Get AI config
 	var cfg ai.Config
-	if aiConfig != nil && req.Provider != "" && req.Model != "" {
-		provider := aiConfig.GetProvider(req.Provider)
+	effectiveCfg := getEffectiveAIConfig()
+	if effectiveCfg != nil && req.Provider != "" && req.Model != "" {
+		provider := effectiveCfg.GetProvider(req.Provider)
 		if provider == nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("Unknown provider: %s", req.Provider)})
 			return
@@ -861,8 +892,8 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 			BaseURL:  provider.BaseURL,
 			Model:    req.Model,
 		}
-	} else if aiConfig != nil {
-		baseURL, apiKey, model := aiConfig.GetDefaultAIConfig()
+	} else if effectiveCfg != nil {
+		baseURL, apiKey, model := effectiveCfg.GetDefaultAIConfig()
 		cfg = ai.Config{
 			Provider: ai.ProviderOpenAI,
 			APIKey:   apiKey,

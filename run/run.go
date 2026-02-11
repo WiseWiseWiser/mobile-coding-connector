@@ -110,11 +110,19 @@ func Run(args []string) error {
 			return fmt.Errorf("failed to load config: %v", err)
 		}
 		fmt.Printf("Loaded config from %s\n", configFile)
-		// Set the AI config in the server
-		server.SetAIConfig(cfg)
+		// Set the legacy config for non-AI settings
+		config.Set(cfg)
 		// Set the config file path for saving server settings
 		server.SetConfigFilePath(configFile)
 	}
+
+	// Load AI configuration (from new file if exists, otherwise from legacy)
+	aiCfg, err := config.GetEffectiveAIConfig(config.Get())
+	if err != nil {
+		return fmt.Errorf("failed to load AI config: %v", err)
+	}
+	// Set the AI config in the server
+	server.SetAIConfigAdapter(aiCfg)
 
 	if credentialsFileFlag != "" {
 		auth.SetCredentialsFile(credentialsFileFlag)

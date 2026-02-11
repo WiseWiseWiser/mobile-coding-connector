@@ -273,13 +273,22 @@ export async function fetchMessages(sessionId: string, opencodeSID: string): Pro
     return Array.isArray(data) ? data : [];
 }
 
-export async function sendPromptAsync(sessionId: string, opencodeSID: string, text: string): Promise<void> {
+export async function sendPromptAsync(
+    sessionId: string,
+    opencodeSID: string,
+    text: string,
+    model?: { modelID: string; providerID: string }
+): Promise<void> {
+    const body: Record<string, unknown> = {
+        parts: [{ type: 'text', text }],
+    };
+    if (model) {
+        body.model = model;
+    }
     await fetch(`${agentProxyBase(sessionId)}/session/${opencodeSID}/prompt_async`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            parts: [{ type: 'text', text }],
-        }),
+        body: JSON.stringify(body),
     });
 }
 

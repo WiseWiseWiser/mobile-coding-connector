@@ -39,6 +39,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/subprocess"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tools"
@@ -181,23 +182,27 @@ func Serve(port int, dev bool) error {
 	case <-WaitForShutdown():
 		// Graceful shutdown initiated
 		fmt.Println("\nShutdown signal received, stopping server...")
-		
+
 		// Stop all port forwards (tunnels)
 		pfManager := portforward.GetDefaultManager()
 		for _, pf := range pfManager.List() {
 			fmt.Printf("Stopping port forward for port %d...\n", pf.LocalPort)
 			pfManager.Remove(pf.LocalPort)
 		}
-		
+
+		// Stop all managed subprocesses
+		fmt.Println("Stopping all managed subprocesses...")
+		subprocess.GetManager().StopAll()
+
 		// Shutdown HTTP server with timeout
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		
+
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			fmt.Printf("Server shutdown error: %v\n", err)
 			return err
 		}
-		
+
 		fmt.Println("Server shutdown complete")
 		return nil
 	}
@@ -367,6 +372,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+
+	// AI config API
+	registerAIConfigAPI(mux)
 
 	// Build from source API
 	registerBuildAPI(mux)
