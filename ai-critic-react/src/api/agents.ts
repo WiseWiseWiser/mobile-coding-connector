@@ -143,11 +143,15 @@ export async function listOpencodeSessionsPaginated(sessionId: string, page: num
     return resp.json();
 }
 
-export async function createOpencodeSession(sessionId: string): Promise<{ id: string }> {
+export async function createOpencodeSession(sessionId: string, model?: { modelID: string; providerID: string }): Promise<{ id: string }> {
+    const body: Record<string, unknown> = {};
+    if (model) {
+        body.model = `${model.providerID}/${model.modelID}`;
+    }
     const resp = await fetch(`${agentProxyBase(sessionId)}/session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify(body),
     });
     return resp.json();
 }

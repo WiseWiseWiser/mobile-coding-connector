@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useCurrent } from '../../../hooks/useCurrent';
 import { useTabNavigate } from '../../../hooks/useTabNavigate';
@@ -46,9 +46,9 @@ export function AgentLayout() {
     // Check for existing sessions matching this project
     const projectDirRef = useCurrent(projectDir);
     const setSessionRef = useCurrent(setSession);
-    useEffect(() => {
-        if (!projectDir) return;
-        fetchAgentSessions()
+    const loadSessions = useCallback(() => {
+        if (!projectDir) return Promise.resolve();
+        return fetchAgentSessions()
             .then(allSessions => {
                 const active = allSessions.filter(
                     s => s.project_dir === projectDirRef.current &&
@@ -59,8 +59,23 @@ export function AgentLayout() {
                 }
             })
             .catch(() => {});
+    }, [projectDir]);
+
+    useEffect(() => {
+        loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectDir]);
+
+    // Also check for sessions when the tab becomes visible (e.g., when navigating back)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                loadSessions();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [loadSessions]);
 
     const handleLaunchHeadless = async (agent: AgentDef) => {
         if (!projectDir) return;

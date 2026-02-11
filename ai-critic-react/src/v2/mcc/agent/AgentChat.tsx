@@ -138,11 +138,26 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
                 const parsed = JSON.parse(event.data);
                 const eventType: string = parsed?.type;
                 const role: string = parsed?.message?.role;
+                
+                // Handle message events
                 if (role === ACPRoles.Agent) {
                     if (eventType === ACPEventTypes.MessageCreated || eventType === ACPEventTypes.MessageUpdated) {
                         setAgentProcessing(true);
                     } else if (eventType === ACPEventTypes.MessageCompleted) {
                         setAgentProcessing(false);
+                    }
+                }
+                
+                // Handle session status events to detect when agent becomes idle
+                if (eventType === 'session.idle') {
+                    setAgentProcessing(false);
+                }
+                if (eventType === 'session.status') {
+                    const status = parsed?.properties?.status?.type;
+                    if (status === 'idle') {
+                        setAgentProcessing(false);
+                    } else if (status === 'busy') {
+                        setAgentProcessing(true);
                     }
                 }
             } catch { /* ignore parse errors */ }
@@ -157,6 +172,7 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
         const text = input.trim();
         setInput('');
         setSending(true);
+        setAgentProcessing(true); // Show handling status immediately
         try {
             const currentModel = agentConfig?.model;
             await sendPromptAsync(session.id, opencodeSID, text, currentModel);

@@ -55,7 +55,11 @@ function ThinkingBlock({ parts }: { parts: ACPMessagePart[] }) {
     const [expanded, setExpanded] = useState(false);
 
     const thinkingText = parts.map(p => p.content || '').join('\n').trim();
-    if (!thinkingText) return null;
+    const hasContent = thinkingText.length > 0;
+    const isProcessing = parts.some(p => !p.content || p.content === '');
+
+    // Show thinking block even if empty (indicates processing)
+    if (!hasContent && !isProcessing) return null;
 
     const lines = thinkingText.split('\n');
     const needsExpand = lines.length > 3;
@@ -65,11 +69,13 @@ function ThinkingBlock({ parts }: { parts: ACPMessagePart[] }) {
         <div className="mcc-agent-msg-thinking">
             <div className="mcc-agent-msg-thinking-label">
                 <span className="mcc-agent-msg-thinking-icon">💭</span>
-                <span>Thinking</span>
+                <span>{isProcessing && !hasContent ? 'Thinking...' : 'Thinking'}</span>
             </div>
-            <div className={`mcc-agent-msg-thinking-content ${!expanded && needsExpand ? 'clamped' : ''}`}>
-                {previewText}
-            </div>
+            {hasContent && (
+                <div className={`mcc-agent-msg-thinking-content ${!expanded && needsExpand ? 'clamped' : ''}`}>
+                    {previewText}
+                </div>
+            )}
             {needsExpand && (
                 <button className="mcc-agent-msg-thinking-toggle" onClick={() => setExpanded(!expanded)}>
                     {expanded ? 'Show less' : 'Show more'}

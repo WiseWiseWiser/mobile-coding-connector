@@ -3,8 +3,9 @@ import { useCurrent } from '../../../hooks/useCurrent';
 import {
     fetchAgentSessions, createOpencodeSession,
     fetchMessages, AgentSessionStatuses, listOpencodeSessionsPaginated,
+    fetchOpencodeSettings,
 } from '../../../api/agents';
-import type { AgentSessionInfo } from '../../../api/agents';
+import type { AgentSessionInfo, OpencodeSettings } from '../../../api/agents';
 import { ACPRoles } from '../../../api/acp';
 import { convertMessages } from '../../../api/acp_adapter';
 import { AgentChatHeader } from './AgentChatHeader';
@@ -27,6 +28,16 @@ interface SessionPreview {
     created_at?: string;
 }
 
+// Parse saved model from settings
+function getSavedModelFromSettings(settings: OpencodeSettings | null) {
+    if (!settings?.model) return undefined;
+    const parts = settings.model.split('/');
+    if (parts.length >= 2) {
+        return { providerID: parts[0], modelID: parts[1] };
+    }
+    return undefined;
+}
+
 export function SessionList({ session, projectName, onBack, onStop, onSelectSession, onSessionUpdate, onSettings }: SessionListProps) {
     const [sessions, setSessions] = useState<SessionPreview[]>([]);
     const [loading, setLoading] = useState(true);
@@ -34,9 +45,17 @@ export function SessionList({ session, projectName, onBack, onStop, onSelectSess
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
+    const [savedSettings, setSavedSettings] = useState<OpencodeSettings | null>(null);
     const pageSize = 20;
     const onSelectSessionRef = useCurrent(onSelectSession);
     const sessionRef = useCurrent(session);
+
+    // Load saved settings for model preference
+    useEffect(() => {
+        fetchOpencodeSettings()
+            .then(settings => setSavedSettings(settings))
+            .catch(() => {});
+    }, []);
 
     // Poll session status while starting
     useEffect(() => {
@@ -69,7 +88,8 @@ export function SessionList({ session, projectName, onBack, onStop, onSelectSess
 
                 // If no sessions exist, auto-create one and navigate into it
                 if (response.total === 0) {
-                    const newSession = await createOpencodeSession(session.id);
+                    const model = getSavedModelFromSettings(savedSettings);
+                    const newSession = await createOpencodeSession(session.id, model);
                     if (!cancelled) {
                         onSelectSessionRef.current(newSession.id);
                     }
@@ -112,7 +132,8 @@ export function SessionList({ session, projectName, onBack, onStop, onSelectSess
     const handleNewChat = async () => {
         setCreating(true);
         try {
-            const newSession = await createOpencodeSession(session.id);
+            const model = getSavedModelFromSettings(savedSettings);
+            const newSession = await createOpencodeSession(session.id, model);
             onSelectSession(newSession.id);
         } catch { /* ignore */ }
         setCreating(false);
