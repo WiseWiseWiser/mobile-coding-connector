@@ -12,7 +12,7 @@ import type { ACPMessage } from '../../../api/acp';
 import { ACPEventTypes, ACPRoles } from '../../../api/acp';
 import { parseSSEEvent, convertMessages } from '../../../api/acp_adapter';
 import { AgentChatHeader } from './AgentChatHeader';
-import type { ModelOption } from './AgentChatHeader';
+import type { ModelOption } from '../components/ModelSelector';
 import { ChatMessageGroup, groupMessagesByRole } from './ChatMessage';
 
 export interface AgentChatProps {
@@ -83,11 +83,19 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
                     models.push({
                         id: modelInfo.id,
                         name: modelInfo.name,
+                        providerId: provider.id,
+                        providerName: provider.name || provider.id,
                         is_default: (modelInfo as Record<string, unknown>).is_default as boolean | undefined,
                         is_current: (modelInfo as Record<string, unknown>).is_current as boolean | undefined,
                     });
                 }
             }
+            // Sort models by provider name, then by model name
+            models.sort((a, b) => {
+                const providerCompare = a.providerName.localeCompare(b.providerName);
+                if (providerCompare !== 0) return providerCompare;
+                return a.name.localeCompare(b.name);
+            });
             setAvailableModels(models);
 
             if (!providerID || !modelID) return;
@@ -156,10 +164,10 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
         setSending(false);
     };
 
-    const handleModelChange = async (modelId: string) => {
+    const handleModelChange = async (model: { modelID: string; providerID: string }) => {
         try {
-            await updateAgentConfig(session.id, { model: { modelID: modelId } });
-            setAgentConfig(prev => prev ? { ...prev, model: { modelID: modelId, providerID: prev.model?.providerID || '' } } : prev);
+            await updateAgentConfig(session.id, { model: { modelID: model.modelID } });
+            setAgentConfig(prev => prev ? { ...prev, model: { modelID: model.modelID, providerID: model.providerID } } : prev);
         } catch (err) {
             setErrorMessage(`Failed to change model: ${err instanceof Error ? err.message : String(err)}`);
         }
@@ -216,6 +224,7 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
                 modelName={modelName}
                 contextPercent={contextPercent}
                 availableModels={availableModels}
+                currentModel={agentConfig?.model}
                 onModelChange={handleModelChange}
             />
 

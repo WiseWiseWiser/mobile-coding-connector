@@ -380,6 +380,7 @@ export interface OpencodeSettings {
         enabled: boolean;
         port: number;
         exposed_domain?: string;
+        password?: string;
     };
 }
 

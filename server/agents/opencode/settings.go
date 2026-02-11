@@ -15,6 +15,7 @@ type WebServerConfig struct {
 	Enabled       bool   `json:"enabled"`
 	Port          int    `json:"port"`
 	ExposedDomain string `json:"exposed_domain,omitempty"`
+	Password      string `json:"password,omitempty"`
 }
 
 // Settings holds the persisted opencode configuration.
@@ -86,6 +87,7 @@ func copySettings(s *Settings) *Settings {
 			Enabled:       s.WebServer.Enabled,
 			Port:          s.WebServer.Port,
 			ExposedDomain: s.WebServer.ExposedDomain,
+			Password:      s.WebServer.Password,
 		},
 	}
 }

@@ -252,9 +252,16 @@ func startWebServer(settings *Settings, customPath string) (*WebServerControlRes
 	}
 
 	// Create command using tool_exec for proper PATH resolution
-	cmd, err := tool_exec.New("opencode", []string{"web", "--port", fmt.Sprintf("%d", settings.WebServer.Port)}, &tool_exec.Options{
+	// Pass password via environment variable if configured
+	cmdOpts := &tool_exec.Options{
 		CustomPath: customPath,
-	})
+	}
+	if settings.WebServer.Password != "" {
+		cmdOpts.Env = map[string]string{
+			"OPENCODE_SERVER_PASSWORD": settings.WebServer.Password,
+		}
+	}
+	cmd, err := tool_exec.New("opencode", []string{"web", "--port", fmt.Sprintf("%d", settings.WebServer.Port)}, cmdOpts)
 	if err != nil {
 		return &WebServerControlResponse{
 			Success: false,

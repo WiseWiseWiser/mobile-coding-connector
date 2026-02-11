@@ -1,12 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
-import { BackIcon } from '../../icons';
-
-export interface ModelOption {
-    id: string;
-    name: string;
-    is_default?: boolean;
-    is_current?: boolean;
-}
+import { ModelSelector, type ModelOption } from '../components/ModelSelector';
 
 export interface AgentChatHeaderProps {
     agentName: string;
@@ -17,66 +9,44 @@ export interface AgentChatHeaderProps {
     modelName?: string;
     contextPercent?: number;
     availableModels?: ModelOption[];
-    onModelChange?: (modelId: string) => void;
+    currentModel?: { modelID: string; providerID: string };
+    onModelChange?: (model: { modelID: string; providerID: string }) => void;
 }
 
-export function AgentChatHeader({ agentName, projectName: _projectName, onStop, onBack, stopLabel = 'Stop', modelName, contextPercent, availableModels, onModelChange }: AgentChatHeaderProps) {
-    const [dropdownOpen, setDropdownOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
-    // Close dropdown on outside click
-    useEffect(() => {
-        if (!dropdownOpen) return;
-        const handler = (e: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-                setDropdownOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [dropdownOpen]);
-
+export function AgentChatHeader({ 
+    agentName, 
+    projectName: _projectName, 
+    onStop, 
+    onBack, 
+    stopLabel = 'Stop', 
+    contextPercent,
+    availableModels,
+    currentModel,
+    onModelChange 
+}: AgentChatHeaderProps) {
     const hasModels = availableModels && availableModels.length > 0 && onModelChange;
 
     return (
         <div className="mcc-agent-chat-header">
             {onBack && (
                 <button className="mcc-agent-back-btn" onClick={onBack} title="Back to agents">
-                    <BackIcon />
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
                 </button>
             )}
             <div className="mcc-agent-chat-title">
                 <span>{agentName}</span>
-                {modelName && (
-                    <div className="mcc-agent-model-info" ref={dropdownRef}>
-                        <span
-                            className={`mcc-agent-model-name${hasModels ? ' mcc-agent-model-clickable' : ''}`}
-                            onClick={hasModels ? () => setDropdownOpen(!dropdownOpen) : undefined}
-                        >
-                            {modelName}
-                            {hasModels && <span className="mcc-agent-model-chevron">▾</span>}
-                        </span>
+                {hasModels && currentModel && (
+                    <div className="mcc-agent-model-info">
+                        <ModelSelector
+                            models={availableModels}
+                            currentModel={currentModel}
+                            onSelect={onModelChange!}
+                            placeholder="Select model..."
+                        />
                         {contextPercent !== undefined && (
                             <span className="mcc-agent-context-usage">{contextPercent}%</span>
-                        )}
-                        {dropdownOpen && hasModels && (
-                            <div className="mcc-agent-model-dropdown">
-                                {availableModels.map(m => (
-                                    <button
-                                        key={m.id}
-                                        className={`mcc-agent-model-option${m.id === modelName ? ' mcc-agent-model-option-active' : ''}`}
-                                        onClick={() => {
-                                            onModelChange(m.id);
-                                            setDropdownOpen(false);
-                                        }}
-                                    >
-                                        <span className="mcc-agent-model-option-name">{m.name}</span>
-                                        <span className="mcc-agent-model-option-id">{m.id}</span>
-                                        {m.is_default && <span className="mcc-agent-model-badge">default</span>}
-                                        {m.is_current && <span className="mcc-agent-model-badge mcc-agent-model-badge-current">current</span>}
-                                    </button>
-                                ))}
-                            </div>
                         )}
                     </div>
                 )}
@@ -85,3 +55,5 @@ export function AgentChatHeader({ agentName, projectName: _projectName, onStop, 
         </div>
     );
 }
+
+export type { ModelOption } from '../components/ModelSelector';

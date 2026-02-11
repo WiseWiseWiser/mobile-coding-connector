@@ -1,0 +1,202 @@
+.mcc-model-selector {
+    position: relative;
+    display: inline-block;
+}
+
+.mcc-model-selector-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #94a3b8;
+    transition: all 0.15s ease;
+}
+
+.mcc-model-selector-trigger:hover {
+    background: rgba(148, 163, 184, 0.1);
+    border-color: rgba(148, 163, 184, 0.2);
+}
+
+.mcc-model-selector-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.mcc-model-selector-current {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-model-selector-chevron {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.mcc-model-selector-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 6px;
+    min-width: 320px;
+    max-width: 400px;
+    max-height: 400px;
+    background: #0f172a;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.mcc-model-selector-search {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mcc-model-selector-search-input {
+    flex: 1;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #e2e8f0;
+    outline: none;
+}
+
+.mcc-model-selector-search-input:focus {
+    border-color: #60a5fa;
+}
+
+.mcc-model-selector-search-input::placeholder {
+    color: #64748b;
+}
+
+.mcc-model-selector-search-count {
+    font-size: 11px;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.mcc-model-selector-list {
+    overflow-y: auto;
+    max-height: 320px;
+    padding: 4px;
+}
+
+.mcc-model-selector-empty {
+    padding: 20px;
+    text-align: center;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.mcc-model-selector-group {
+    margin-bottom: 4px;
+}
+
+.mcc-model-selector-group:last-child {
+    margin-bottom: 0;
+}
+
+.mcc-model-selector-provider {
+    padding: 8px 12px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: rgba(15, 23, 42, 0.5);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.mcc-model-selector-option {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 13px;
+    transition: background 0.15s ease;
+}
+
+.mcc-model-selector-option:hover {
+    background: rgba(96, 165, 250, 0.1);
+}
+
+.mcc-model-selector-option-active {
+    background: rgba(96, 165, 250, 0.15);
+}
+
+.mcc-model-selector-option-active .mcc-model-selector-option-name {
+    color: #60a5fa;
+}
+
+.mcc-model-selector-option-name {
+    flex: 1;
+    color: #e2e8f0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-model-selector-option-id {
+    font-size: 11px;
+    color: #64748b;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-model-selector-badge {
+    display: inline-block;
+    padding: 1px 5px;
+    font-size: 10px;
+    border-radius: 3px;
+    background: rgba(148, 163, 184, 0.12);
+    color: #94a3b8;
+    white-space: nowrap;
+}
+
+.mcc-model-selector-badge-current {
+    background: rgba(96, 165, 250, 0.15);
+    color: #60a5fa;
+}
+
+/* Scrollbar styling */
+.mcc-model-selector-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.mcc-model-selector-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.mcc-model-selector-list::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.3);
+    border-radius: 3px;
+}
+
+.mcc-model-selector-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.5);
+}

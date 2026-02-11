@@ -11,12 +11,13 @@ import {
     mapOpencodeDomain,
     unmapOpencodeDomain,
 } from '../../../api/agents';
-import type { OpencodeAuthStatus, AgentSessionInfo, OpencodeModelInfo, OpencodeSettings, OpencodeWebStatus } from '../../../api/agents';
+import type { OpencodeAuthStatus, AgentSessionInfo, OpencodeSettings, OpencodeWebStatus } from '../../../api/agents';
 import { fetchProviders } from '../../../api/ports';
 import { AgentChatHeader } from './AgentChatHeader';
 import { AgentPathSettingsSection } from './AgentPathSettingsSection';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import { LogViewer } from '../../LogViewer';
+import { ModelSelector, type ModelOption } from '../components/ModelSelector';
 
 export interface OpencodeSettingsProps {
     agentId: string;
@@ -33,11 +34,12 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     // Settings state
     const [savedSettings, setSavedSettings] = useState<OpencodeSettings>({});
     const [defaultDomain, setDefaultDomain] = useState<string>('');
+    const [password, setPassword] = useState<string>('');
 
     // Session model selection state
-    const [savedModel, setSavedModel] = useState<string>('');
-    const [selectedModel, setSelectedModel] = useState<string>('');
-    const [models, setModels] = useState<Record<string, OpencodeModelInfo>>({});
+    const [savedModel, setSavedModel] = useState<{ modelID: string; providerID: string } | null>(null);
+    const [selectedModel, setSelectedModel] = useState<{ modelID: string; providerID: string } | null>(null);
+    const [models, setModels] = useState<ModelOption[]>([]);
     const [defaultModel, setDefaultModel] = useState<string>('');
 
     const [loading, setLoading] = useState(true);
@@ -64,8 +66,8 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     const [mappedUrl, setMappedUrl] = useState<string>('');
     const [availableProviders, setAvailableProviders] = useState<Array<{ id: string; name: string; available: boolean }>>([]);
 
-    const hasChanges = selectedModel !== savedModel;
-    const hasSettingsChanges = defaultDomain !== (savedSettings.default_domain || '');
+    const hasChanges = selectedModel?.modelID !== savedModel?.modelID || selectedModel?.providerID !== savedModel?.providerID;
+    const hasSettingsChanges = defaultDomain !== (savedSettings.default_domain || '') || password !== (savedSettings.web_server?.password || '');
 
     useEffect(() => {
         loadAllData();
@@ -83,13 +85,23 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
             
             setSavedSettings(settings);
             setDefaultDomain(settings.default_domain || '');
+            setPassword(settings.web_server?.password || '');
             setWebStatus(webStat);
             setAuthStatus(auth);
 
             // Initialize model selection from saved settings
-            const savedModelFromSettings = settings.model || '';
-            setSavedModel(savedModelFromSettings);
-            setSelectedModel(savedModelFromSettings);
+            let savedModelKey: { modelID: string; providerID: string } | null = null;
+            if (settings.model) {
+                // Parse model format: "providerID/modelID" or just modelID
+                const parts = settings.model.split('/');
+                if (parts.length >= 2) {
+                    savedModelKey = { providerID: parts[0], modelID: parts[1] };
+                } else {
+                    savedModelKey = { providerID: '', modelID: settings.model };
+                }
+            }
+            setSavedModel(savedModelKey);
+            setSelectedModel(savedModelKey);
 
             // Load available providers for domain mapping
             try {
@@ -107,23 +119,37 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                 ]);
 
                 // Use server config if no saved model
-                const currentModelFromServer = config.model?.modelID || '';
-                const modelToUse = savedModelFromSettings || currentModelFromServer;
+                const currentModelFromServer: { modelID: string; providerID: string } | null = config.model?.modelID
+                    ? { modelID: config.model.modelID, providerID: config.model.providerID || '' }
+                    : null;
+                const modelToUse = savedModelKey || currentModelFromServer;
 
                 setSavedModel(modelToUse);
                 setSelectedModel(modelToUse);
 
-                // Combine all models from all providers
-                const allModels: Record<string, OpencodeModelInfo> = {};
+                // Build ModelOption array from all providers
+                const allModels: ModelOption[] = [];
                 let defModel = '';
                 for (const provider of providers.providers) {
                     for (const [id, model] of Object.entries(provider.models)) {
-                        allModels[id] = model;
+                        allModels.push({
+                            id,
+                            name: model.name || id,
+                            providerId: provider.id,
+                            providerName: provider.name || provider.id,
+                            is_default: providers.default?.[provider.id] === id,
+                        });
                     }
-                    if (providers.default[provider.id]) {
+                    if (providers.default?.[provider.id]) {
                         defModel = providers.default[provider.id];
                     }
                 }
+                // Sort models by provider name, then by model name
+                allModels.sort((a, b) => {
+                    const providerCompare = a.providerName.localeCompare(b.providerName);
+                    if (providerCompare !== 0) return providerCompare;
+                    return a.name.localeCompare(b.name);
+                });
                 setModels(allModels);
                 setDefaultModel(defModel);
             }
@@ -135,17 +161,17 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     };
 
     const handleSaveSessionModel = async () => {
-        if (!session) return;
+        if (!session || !selectedModel) return;
         setSaving(true);
         setError('');
         setSuccess('');
         try {
-            await updateAgentConfig(session.id, { model: { modelID: selectedModel } });
+            await updateAgentConfig(session.id, { model: { modelID: selectedModel.modelID } });
             setSavedModel(selectedModel);
             // Also update savedSettings to reflect the new preferred model
             setSavedSettings({
                 ...savedSettings,
-                model: selectedModel,
+                model: `${selectedModel.providerID}/${selectedModel.modelID}`,
             });
             setSuccess('Model updated successfully');
         } catch (err) {
@@ -160,13 +186,26 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
         setError('');
         setSuccess('');
         try {
+            const currentConfig = savedSettings.web_server || { enabled: false, port: 4096 };
             await updateOpencodeSettings({
                 ...savedSettings,
                 default_domain: defaultDomain,
+                web_server: {
+                    enabled: currentConfig.enabled,
+                    port: currentConfig.port,
+                    exposed_domain: currentConfig.exposed_domain,
+                    password: password,
+                },
             });
             setSavedSettings({
                 ...savedSettings,
                 default_domain: defaultDomain,
+                web_server: {
+                    enabled: currentConfig.enabled,
+                    port: currentConfig.port,
+                    exposed_domain: currentConfig.exposed_domain,
+                    password: password,
+                },
             });
             setSuccess('Settings saved successfully');
         } catch (err) {
@@ -177,8 +216,9 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     };
 
     const handleCancel = () => {
-        setSelectedModel(savedModel);
+        setSelectedModel(savedModel ? { ...savedModel } : null);
         setDefaultDomain(savedSettings.default_domain || '');
+        setPassword(savedSettings.web_server?.password || '');
         setError('');
         setSuccess('');
     };
@@ -452,6 +492,37 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                                 </div>
                             )}
 
+                            {/* Server Password Input */}
+                            <div style={{ marginTop: 16 }}>
+                                <label className="mcc-agent-settings-label">
+                                    Server Password (Optional)
+                                </label>
+                                <div className="mcc-agent-settings-hint" style={{ marginBottom: 8, fontSize: '13px', color: '#94a3b8' }}>
+                                    Password to protect the OpenCode web server with HTTP basic auth
+                                </div>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="Enter password..."
+                                    disabled={saving}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 12px',
+                                        background: '#1e293b',
+                                        border: password !== (savedSettings.web_server?.password || '') ? '1px solid #3b82f6' : '1px solid #334155',
+                                        borderRadius: 8,
+                                        color: '#e2e8f0',
+                                        fontSize: '14px',
+                                    }}
+                                />
+                                {savedSettings.web_server?.password && savedSettings.web_server.password !== password && (
+                                    <div style={{ marginTop: 8, fontSize: '13px', color: '#94a3b8' }}>
+                                        Password is saved (hidden for security)
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Domain Mapping Section - Only show when domain is configured and matches owned domains */}
                             {savedSettings.default_domain && availableProviders.length > 0 && (
                                 <div style={{ marginTop: 16, padding: '12px', background: 'rgba(59, 130, 246, 0.05)', borderRadius: 8, border: '1px solid rgba(59, 130, 246, 0.2)' }}>
@@ -578,37 +649,25 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                         <div className="mcc-agent-settings-hint" style={{ marginBottom: 8 }}>
                             Select the AI model to use for this session.
                         </div>
-                        <select
-                            value={selectedModel || defaultModel}
-                            onChange={(e) => setSelectedModel(e.target.value)}
-                            disabled={saving || Object.keys(models).length === 0}
-                            style={{
-                                width: '100%',
-                                padding: '10px 12px',
-                                background: '#1e293b',
-                                border: hasChanges ? '1px solid #3b82f6' : '1px solid #334155',
-                                borderRadius: 8,
-                                color: '#e2e8f0',
-                                fontSize: '14px',
-                                cursor: Object.keys(models).length === 0 ? 'not-allowed' : 'pointer',
-                                opacity: Object.keys(models).length === 0 ? 0.6 : 1,
-                            }}
-                        >
-                            {Object.keys(models).length === 0 ? (
-                                <option value="">Start a session to see available models</option>
-                            ) : (
-                                Object.entries(models).map(([id, model]) => (
-                                    <option key={id} value={id}>
-                                        {model.name || id}
-                                        {id === defaultModel ? ' (default)' : ''}
-                                        {id === savedModel ? ' (saved)' : ''}
-                                    </option>
-                                ))
-                            )}
-                        </select>
-                        {savedModel && savedModel !== defaultModel && Object.keys(models).length > 0 && (
+                        <div style={{
+                            border: hasChanges ? '1px solid #3b82f6' : '1px solid #334155',
+                            borderRadius: 8,
+                            padding: '2px',
+                        }}>
+                            <ModelSelector
+                                models={models}
+                                currentModel={selectedModel || undefined}
+                                onSelect={(model) => setSelectedModel(model)}
+                                placeholder={models.length === 0 ? "Start a session to see available models" : "Select a model..."}
+                                disabled={saving || models.length === 0}
+                            />
+                        </div>
+                        {savedModel && models.length > 0 && (
                             <div style={{ marginTop: 8, fontSize: '13px', color: '#94a3b8' }}>
-                                Saved: <strong style={{ color: '#e2e8f0' }}>{models[savedModel]?.name || savedModel}</strong>
+                                Saved: <strong style={{ color: '#e2e8f0' }}>
+                                    {models.find(m => m.id === savedModel.modelID && m.providerId === savedModel.providerID)?.name || savedModel.modelID}
+                                </strong>
+                                {savedModel.modelID === defaultModel && <span style={{ color: '#64748b', marginLeft: 4 }}>(default)</span>}
                             </div>
                         )}
                     </div>
