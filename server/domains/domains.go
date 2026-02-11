@@ -1,12 +1,14 @@
 package domains
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
@@ -20,6 +22,10 @@ var (
 
 	serverPortMu sync.RWMutex
 	serverPort   int
+
+	// healthCheckCancel tracks cancel functions for domain health check goroutines
+	healthCheckMu     sync.RWMutex
+	healthCheckCancel = map[string]context.CancelFunc{}
 )
 
 // Provider constants
@@ -64,7 +70,7 @@ type DomainEntry struct {
 // DomainWithStatus extends DomainEntry with runtime tunnel status
 type DomainWithStatus struct {
 	DomainEntry
-	Status    string `json:"status"`              // "stopped", "connecting", "active", "error"
+	Status    string `json:"status"`               // "stopped", "connecting", "active", "error"
 	TunnelURL string `json:"tunnel_url,omitempty"` // actual tunnel URL when active
 	Error     string `json:"error,omitempty"`
 }
@@ -139,6 +145,8 @@ func AutoStartTunnels() {
 				fmt.Printf("[domains] auto-start failed for %s: %v\n", domain, err)
 			} else {
 				fmt.Printf("[domains] tunnel started for %s\n", domain)
+				// Start health check goroutine for this domain
+				startDomainHealthCheck(domain, port, tunnelName)
 			}
 		}()
 	}
@@ -298,6 +306,9 @@ func handleTunnelStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Start health check for manually started tunnels too
+	startDomainHealthCheck(req.Domain, port, tunnelName)
+
 	sw.SendDone(map[string]string{
 		"message":    "Tunnel started successfully",
 		"status":     status.Status,
@@ -328,6 +339,9 @@ func handleTunnelStop(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to load domains: %v", err))
 		return
 	}
+
+	// Stop health check for this domain
+	stopDomainHealthCheck(req.Domain)
 
 	if err := cloudflareSettings.StopDomainTunnel(req.Domain, cfg.TunnelName); err != nil {
 		writeJSONError(w, http.StatusNotFound, err.Error())
@@ -408,4 +422,100 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+// startDomainHealthCheck starts a health check goroutine for the given domain.
+// It pings the domain's /ping endpoint every 10 seconds. If 3 consecutive pings
+// fail, it stops the tunnel and restarts it.
+func startDomainHealthCheck(domain string, port int, tunnelName string) {
+	// Cancel any existing health check for this domain
+	stopDomainHealthCheck(domain)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	healthCheckMu.Lock()
+	healthCheckCancel[domain] = cancel
+	healthCheckMu.Unlock()
+
+	go func() {
+		defer func() {
+			healthCheckMu.Lock()
+			delete(healthCheckCancel, domain)
+			healthCheckMu.Unlock()
+		}()
+
+		consecutiveFailures := 0
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		// Wait a bit before first check to allow tunnel to be ready
+		select {
+		case <-time.After(5 * time.Second):
+		case <-ctx.Done():
+			return
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if !checkDomainPing(domain) {
+					consecutiveFailures++
+					fmt.Printf("[domains] health check failed for %s (%d/3)\n", domain, consecutiveFailures)
+					if consecutiveFailures >= 3 {
+						fmt.Printf("[domains] health check failed 3 times for %s, restarting tunnel...\n", domain)
+						// Stop the tunnel
+						if err := cloudflareSettings.StopDomainTunnel(domain, tunnelName); err != nil {
+							fmt.Printf("[domains] failed to stop tunnel for %s: %v\n", domain, err)
+						}
+						// Restart the tunnel
+						logFn := func(msg string) {
+							fmt.Printf("[domains] %s: %s\n", domain, msg)
+						}
+						_, err := cloudflareSettings.StartDomainTunnel(domain, port, tunnelName, logFn)
+						if err != nil {
+							fmt.Printf("[domains] failed to restart tunnel for %s: %v\n", domain, err)
+						} else {
+							fmt.Printf("[domains] tunnel restarted for %s\n", domain)
+							// Reset failure counter after successful restart
+							consecutiveFailures = 0
+						}
+					}
+				} else {
+					if consecutiveFailures > 0 {
+						fmt.Printf("[domains] health check recovered for %s\n", domain)
+					}
+					consecutiveFailures = 0
+				}
+			}
+		}
+	}()
+}
+
+// stopDomainHealthCheck stops the health check goroutine for the given domain.
+func stopDomainHealthCheck(domain string) {
+	healthCheckMu.Lock()
+	cancel, ok := healthCheckCancel[domain]
+	if ok {
+		delete(healthCheckCancel, domain)
+	}
+	healthCheckMu.Unlock()
+	if ok {
+		cancel()
+	}
+}
+
+// checkDomainPing checks if the domain's /ping endpoint is reachable.
+// Returns true if ping succeeds, false otherwise.
+func checkDomainPing(domain string) bool {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	url := fmt.Sprintf("https://%s/ping", domain)
+	resp, err := client.Get(url)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }

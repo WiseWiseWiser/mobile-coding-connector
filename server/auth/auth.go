@@ -93,11 +93,34 @@ func Middleware(next http.Handler, skipPaths []string) http.Handler {
 			return
 		}
 
-		// Load credentials once: check initialization and token validity
-		var token string
+		// Get token from cookie
+		var cookieToken string
 		if cookie, err := r.Cookie(cookieName); err == nil {
-			token = cookie.Value
+			cookieToken = cookie.Value
 		}
+
+		// Get token from Authorization header (Bearer token)
+		var bearerToken string
+		authHeader := r.Header.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			bearerToken = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+
+		// If both cookie and bearer token are present, they must match
+		if cookieToken != "" && bearerToken != "" && cookieToken != bearerToken {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+			return
+		}
+
+		// Use whichever token is available
+		token := cookieToken
+		if token == "" {
+			token = bearerToken
+		}
+
+		// Load credentials once: check initialization and token validity
 		initialized, valid := loadAndCheckToken(token)
 
 		if !initialized {
@@ -222,6 +245,23 @@ func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(cookieName); err == nil {
 		token = cookie.Value
 	}
+
+	// Also check Authorization header for Bearer token
+	authHeader := r.Header.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		bearerToken := strings.TrimPrefix(authHeader, "Bearer ")
+		// If both cookie and bearer token are present, they must match
+		if token != "" && bearerToken != "" && token != bearerToken {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+			return
+		}
+		// Use bearer token if no cookie token
+		if token == "" {
+			token = bearerToken
+		}
+	}
+
 	initialized, valid := loadAndCheckToken(token)
 
 	if !initialized {

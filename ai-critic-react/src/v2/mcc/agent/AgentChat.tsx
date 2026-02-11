@@ -4,7 +4,7 @@ import { useAutoScroll } from '../../../hooks/useAutoScroll';
 import {
     fetchAgentSessions, fetchMessages, sendPromptAsync, agentEventUrl,
     fetchOpencodeConfig, fetchOpencodeProviders, updateAgentConfig,
-    stopAgentSession,
+    stopAgentSession, fetchOpencodeSettings,
     AgentSessionStatuses,
 } from '../../../api/agents';
 import type { AgentSessionInfo, OpencodeConfig } from '../../../api/agents';
@@ -61,21 +61,8 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
         Promise.all([
             fetchOpencodeConfig(session.id),
             fetchOpencodeProviders(session.id),
-        ]).then(([cfg, providersData]) => {
-            setAgentConfig(cfg);
-
-            let modelID = cfg.model?.modelID;
-            let providerID = cfg.model?.providerID;
-
-            if (!modelID && providersData.default) {
-                const defaults = providersData.default;
-                const firstKey = Object.keys(defaults)[0];
-                if (firstKey) {
-                    providerID = firstKey;
-                    modelID = defaults[firstKey];
-                }
-            }
-
+            fetchOpencodeSettings(),
+        ]).then(([cfg, providersData, savedSettings]) => {
             // Build available models list from all providers
             const models: ModelOption[] = [];
             for (const provider of (providersData.providers || [])) {
@@ -98,16 +85,43 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
             });
             setAvailableModels(models);
 
-            if (!providerID || !modelID) return;
+            // Get model from config, saved settings, or provider default
+            let modelID = cfg.model?.modelID;
+            let providerID = cfg.model?.providerID;
 
-            const provider = providersData.providers?.find(p => p.id === providerID);
-            const model = provider?.models?.[modelID];
-            if (model?.limit?.context) {
-                setContextLimit(model.limit.context);
+            // If no model in config, use saved preference
+            if (!modelID && savedSettings?.model) {
+                const parts = savedSettings.model.split('/');
+                if (parts.length >= 2) {
+                    providerID = parts[0];
+                    modelID = parts[1];
+                }
             }
-            if (modelID) {
-                setAgentConfig(prev => prev ? { ...prev, model: { modelID: modelID!, providerID: providerID! } } : prev);
+
+            // If still no model, fall back to provider default
+            if (!modelID && providersData.default) {
+                const defaults = providersData.default;
+                const firstKey = Object.keys(defaults)[0];
+                if (firstKey) {
+                    providerID = firstKey;
+                    modelID = defaults[firstKey];
+                }
             }
+
+            // Set context limit if we have a model
+            if (providerID && modelID) {
+                const provider = providersData.providers?.find(p => p.id === providerID);
+                const model = provider?.models?.[modelID];
+                if (model?.limit?.context) {
+                    setContextLimit(model.limit.context);
+                }
+            }
+
+            // Set config with model for UI display (NOT sent to backend)
+            setAgentConfig({
+                ...cfg,
+                model: modelID ? { modelID, providerID: providerID || '' } : cfg.model,
+            });
         }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session.id, session.status]);
@@ -116,7 +130,29 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
     useEffect(() => {
         if (!opencodeSID || session.status !== AgentSessionStatuses.Running) return;
         fetchMessages(session.id, opencodeSID)
-            .then(msgs => setMessages(convertMessages(msgs)))
+            .then(msgs => {
+                const converted = convertMessages(msgs);
+                setMessages(converted);
+                
+                // If messages exist, try to get model from last user message
+                if (converted.length > 0) {
+                    // Find last user message with a model
+                    for (let i = converted.length - 1; i >= 0; i--) {
+                        const msg = converted[i];
+                        if (msg.role === ACPRoles.User && msg.model) {
+                            // Extract provider and model from the model string (format: "provider/model")
+                            const parts = msg.model.split('/');
+                            if (parts.length >= 2) {
+                                setAgentConfig(prev => prev ? {
+                                    ...prev,
+                                    model: { modelID: parts[1], providerID: parts[0] }
+                                } : prev);
+                            }
+                            break;
+                        }
+                    }
+                }
+            })
             .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [opencodeSID, session.status]);

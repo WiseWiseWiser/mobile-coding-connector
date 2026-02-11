@@ -108,6 +108,46 @@ func ProxyConfigUpdate(w http.ResponseWriter, r *http.Request, port int) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 
+// ProxyConfigWithModel handles GET /config and injects the saved model preference
+// if no model is currently set in the opencode config.
+func ProxyConfigWithModel(w http.ResponseWriter, r *http.Request, port int) {
+	targetURL := fmt.Sprintf("http://127.0.0.1:%d/config", port)
+
+	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
+	if err != nil {
+		http.Error(w, "failed to create request", http.StatusInternalServerError)
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "failed to connect to agent server", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	var config map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{})
+		return
+	}
+
+	// If no model is set, inject the saved model preference
+	if config["model"] == nil || config["model"] == "" {
+		savedModel := GetModel()
+		if savedModel != "" {
+			config["model"] = savedModel
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(config)
+}
+
 // ProxyMessages fetches messages from the opencode server,
 // converts them to ACP format, and writes them to the response.
 func ProxyMessages(w http.ResponseWriter, r *http.Request, port int) {
