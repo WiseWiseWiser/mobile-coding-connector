@@ -7,7 +7,7 @@ import { useV2Context } from '../../V2Context';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import { validateProjectSSHKey } from '../../../hooks/useSSHKeyValidation';
 import { StreamingLogs } from '../../StreamingComponents';
-import { PlusIcon, GitIcon, DiagnoseIcon, SettingsIcon, FolderIcon } from '../../icons';
+import { PlusIcon, GitIcon, DiagnoseIcon, SettingsIcon, FolderIcon, TerminalIcon } from '../../icons';
 import { loadSSHKeys } from './settings/gitStorage';
 import { encryptWithServerKey } from './crypto';
 import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
@@ -17,6 +17,8 @@ export { DiagnoseView } from './DiagnoseView';
 export { SettingsView } from './SettingsView';
 export { GitSettings } from './settings/GitSettings';
 export { CloneRepoView } from './settings/CloneRepoView';
+export { SSHServersView } from './SSHServersView';
+export { ManageFilesView } from './ManageFilesView';
 
 interface HomeOutletContext {
     onSelectProject: (project: ProjectInfo) => void;
@@ -133,6 +135,10 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
             <button className="mcc-diagnose-btn" onClick={() => navigate('manage-server')}>
                 <SettingsIcon />
                 <span>Manage Server</span>
+            </button>
+            <button className="mcc-diagnose-btn" onClick={() => navigate('ssh-servers')}>
+                <TerminalIcon />
+                <span>Manage SSH</span>
             </button>
         </div>
     );

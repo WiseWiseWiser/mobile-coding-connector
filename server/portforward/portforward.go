@@ -14,6 +14,7 @@ import (
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 )
 
 // PortStatuses defines the possible states
@@ -72,6 +73,7 @@ type PortForward struct {
 	Status    string `json:"status"`
 	Provider  string `json:"provider"`
 	Error     string `json:"error,omitempty"`
+	Bootstrap bool   `json:"bootstrap,omitempty"` // true if started during server bootstrap (e.g., domain tunnels)
 }
 
 // tunnel represents a running tunnel
@@ -183,8 +185,36 @@ func RegisterDefaultProvider(p Provider) {
 // List returns all port forwards, sorted by local port
 func (m *Manager) List() []PortForward {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.listLocked()
+	result := m.listLocked()
+	m.mu.Unlock()
+
+	// Include domain tunnels (bootstrap port forwards)
+	serverPort := domains.GetServerPort()
+	if serverPort > 0 {
+		domainTunnels := domains.GetActiveDomainTunnels()
+		for _, dt := range domainTunnels {
+			// Map domain tunnel status to port forward status
+			status := dt.Status
+			if status == "stopped" {
+				status = StatusStopped
+			}
+
+			result = append(result, PortForward{
+				LocalPort: serverPort,
+				Label:     dt.Domain,
+				PublicURL: dt.TunnelURL,
+				Status:    status,
+				Provider:  "cloudflare_domain",
+				Error:     dt.Error,
+				Bootstrap: true,
+			})
+		}
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].LocalPort < result[j].LocalPort
+	})
+	return result
 }
 
 // Add starts a new port forward using the specified provider

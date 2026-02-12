@@ -12,11 +12,13 @@ export interface FileBrowserViewProps {
     projectDir: string;
     currentPath: string;
     sshKeyId?: string;
+    showGitOps?: boolean;
+    allowRootNavigation?: boolean;
     onNavigate: (path: string) => void;
     onViewFile: (path: string) => void;
 }
 
-export function FileBrowserView({ projectDir, currentPath, sshKeyId, onNavigate, onViewFile }: FileBrowserViewProps) {
+export function FileBrowserView({ projectDir, currentPath, sshKeyId, showGitOps = true, allowRootNavigation = false, onNavigate, onViewFile }: FileBrowserViewProps) {
     const [entries, setEntries] = useState<FileEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [encryptionError, setEncryptionError] = useState<string | null>(null);
@@ -86,60 +88,69 @@ export function FileBrowserView({ projectDir, currentPath, sshKeyId, onNavigate,
 
             {loading ? (
                 <div className="mcc-files-empty">Loading...</div>
-            ) : entries.length === 0 ? (
-                <div className="mcc-files-empty">Empty directory</div>
             ) : (
                 <div className="mcc-filebrowser-list">
-                    {/* Parent directory link */}
-                    {currentPath && (
+                    {/* Parent directory link - always show if we can go up */}
+                    {(currentPath || allowRootNavigation) && (
                         <div className="mcc-filebrowser-entry" onClick={() => {
-                            const parentPath = currentPath.includes('/') ? currentPath.substring(0, currentPath.lastIndexOf('/')) : '';
-                            onNavigate(parentPath);
+                            if (!currentPath) {
+                                // Already at root relative, try to go to actual root
+                                onNavigate('..');
+                            } else {
+                                const parentPath = currentPath.includes('/') ? currentPath.substring(0, currentPath.lastIndexOf('/')) : '';
+                                onNavigate(parentPath);
+                            }
                         }}>
                             <span className="mcc-filebrowser-icon">📁</span>
                             <span className="mcc-filebrowser-name">..</span>
                         </div>
                     )}
-                    {entries.map(entry => (
-                        <div key={entry.path} className="mcc-filebrowser-entry" onClick={() => handleEntryClick(entry)}>
-                            <span className="mcc-filebrowser-icon">{entry.is_dir ? '📁' : '📄'}</span>
-                            <span className="mcc-filebrowser-name">{entry.name}</span>
-                            {!entry.is_dir && entry.size !== undefined && (
-                                <span className="mcc-filebrowser-size">{formatSize(entry.size)}</span>
-                            )}
-                        </div>
-                    ))}
+                    {entries.length === 0 ? (
+                        <div className="mcc-files-empty">Empty directory</div>
+                    ) : (
+                        entries.map(entry => (
+                            <div key={entry.path} className="mcc-filebrowser-entry" onClick={() => handleEntryClick(entry)}>
+                                <span className="mcc-filebrowser-icon">{entry.is_dir ? '📁' : '📄'}</span>
+                                <span className="mcc-filebrowser-name">{entry.name}</span>
+                                {!entry.is_dir && entry.size !== undefined && (
+                                    <span className="mcc-filebrowser-size">{formatSize(entry.size)}</span>
+                                )}
+                            </div>
+                        ))
+                    )}
                 </div>
             )}
 
-            {/* Git Actions - each on its own row */}
-            <div className="mcc-git-actions-column">
-                {!sshKeyId && (
-                    <SSHKeyRequiredHint message="SSH key required for git operations. Configure in project settings." />
-                )}
-                <button
-                    className="mcc-git-commit-nav-btn mcc-git-fetch-btn"
-                    onClick={() => handleGitAction(GitOps.Pull)}
-                    disabled={gitState.running || !sshKeyId}
-                    style={{ opacity: !sshKeyId ? 0.5 : 1 }}
-                >
-                    {gitState.running ? 'Running...' : 'Git Pull'}
-                </button>
-                <button
-                    className="mcc-git-commit-nav-btn"
-                    onClick={() => handleGitAction(GitOps.Push)}
-                    disabled={gitState.running || !sshKeyId}
-                    style={{ opacity: !sshKeyId ? 0.5 : 1 }}
-                >
-                    {gitState.running ? 'Running...' : 'Git Push'}
-                </button>
-                <StreamingLogs
-                    state={gitState}
-                    pendingMessage="Running..."
-                    maxHeight={200}
-                />
-            </div>
-            {encryptionError && (
+            {/* Git Actions - only shown if showGitOps is true */}
+            {showGitOps && (
+                <div className="mcc-git-actions-column">
+                    {!sshKeyId && (
+                        <SSHKeyRequiredHint message="SSH key required for git operations. Configure in project settings." />
+                    )}
+                    <button
+                        className="mcc-git-commit-nav-btn mcc-git-fetch-btn"
+                        onClick={() => handleGitAction(GitOps.Pull)}
+                        disabled={gitState.running || !sshKeyId}
+                        style={{ opacity: !sshKeyId ? 0.5 : 1 }}
+                    >
+                        {gitState.running ? 'Running...' : 'Git Pull'}
+                    </button>
+                    <button
+                        className="mcc-git-commit-nav-btn"
+                        onClick={() => handleGitAction(GitOps.Push)}
+                        disabled={gitState.running || !sshKeyId}
+                        style={{ opacity: !sshKeyId ? 0.5 : 1 }}
+                    >
+                        {gitState.running ? 'Running...' : 'Git Push'}
+                    </button>
+                    <StreamingLogs
+                        state={gitState}
+                        pendingMessage="Running..."
+                        maxHeight={200}
+                    />
+                </div>
+            )}
+            {showGitOps && encryptionError && (
                 <div className="mcc-git-fetch-result error">{encryptionError}</div>
             )}
         </>

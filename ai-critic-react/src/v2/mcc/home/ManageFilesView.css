@@ -1,0 +1,45 @@
+.mcc-manage-files {
+    padding: 16px;
+}
+
+.mcc-manage-files-terminal-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: #334155;
+    color: #f1f5f9;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mcc-manage-files-terminal-toggle:hover {
+    background: #475569;
+}
+
+.mcc-manage-files-terminal-toggle.active {
+    background: #3b82f6;
+}
+
+.mcc-manage-files-terminal-toggle svg {
+    width: 18px;
+    height: 18px;
+}
+
+.mcc-manage-files-terminal {
+    margin-bottom: 12px;
+}
+
+.mcc-manage-files-browser {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px;
+}

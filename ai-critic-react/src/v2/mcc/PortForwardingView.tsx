@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { PortForward, TunnelProvider, ProviderInfo } from '../../hooks/usePortForwards';
 import { PortStatuses, TunnelProviders } from '../../hooks/usePortForwards';
-import { fetchPortLogs as apiFetchPortLogs } from '../../api/ports';
+import { fetchPortLogs as apiFetchPortLogs, fetchDomainHealthLogs } from '../../api/ports';
 import { fetchOwnedDomains } from '../../api/cloudflare';
 import { useV2Context } from '../V2Context';
 import { LogViewer } from '../LogViewer';
@@ -566,7 +566,14 @@ function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwardCardPr
 
         const fetchLogs = async () => {
             try {
-                const data = await apiFetchPortLogs(port.localPort);
+                let data: string[];
+                if (port.bootstrap) {
+                    // For bootstrap domains, fetch health check logs
+                    data = await fetchDomainHealthLogs(port.label);
+                } else {
+                    // For regular port forwards, fetch tunnel logs
+                    data = await apiFetchPortLogs(port.localPort);
+                }
                 setLogs(data);
             } catch { /* ignore */ }
         };
@@ -574,7 +581,7 @@ function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwardCardPr
         fetchLogs();
         const timer = setInterval(fetchLogs, 2000);
         return () => clearInterval(timer);
-    }, [showLogs, port.localPort]);
+    }, [showLogs, port.localPort, port.bootstrap, port.label]);
 
     return (
         <div className="mcc-port-card">
@@ -584,6 +591,11 @@ function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwardCardPr
                 <span className="mcc-port-arrow">→</span>
                 <span className="mcc-port-label">{port.label}</span>
                 <span className="mcc-port-provider-badge">{port.provider}</span>
+                {port.bootstrap && (
+                    <span className="mcc-port-bootstrap-badge" title="Started automatically during server bootstrap">
+                        Bootstrap
+                    </span>
+                )}
             </div>
             {port.publicUrl ? (
                 <div className="mcc-port-url">

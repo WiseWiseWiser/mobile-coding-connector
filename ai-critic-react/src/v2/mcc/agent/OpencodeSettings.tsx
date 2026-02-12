@@ -455,6 +455,37 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                                     )}
                                 </div>
                             )}
+
+                            {/* Server Password Input */}
+                            <div style={{ marginTop: 16 }}>
+                                <label className="mcc-agent-settings-label">
+                                    Server Password (Optional)
+                                </label>
+                                <div className="mcc-agent-settings-hint" style={{ marginBottom: 8, fontSize: '13px', color: '#94a3b8' }}>
+                                    Password to protect the OpenCode web server with HTTP basic auth
+                                </div>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="Enter password..."
+                                    disabled={saving}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 12px',
+                                        background: '#1e293b',
+                                        border: password !== (savedSettings.web_server?.password || '') ? '1px solid #3b82f6' : '1px solid #334155',
+                                        borderRadius: 8,
+                                        color: '#e2e8f0',
+                                        fontSize: '14px',
+                                    }}
+                                />
+                                {savedSettings.web_server?.password && savedSettings.web_server.password !== password && (
+                                    <div style={{ marginTop: 8, fontSize: '13px', color: '#94a3b8' }}>
+                                        Password is saved (hidden for security)
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -491,37 +522,6 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                                     Saved: <strong style={{ color: '#e2e8f0' }}>{savedSettings.default_domain}</strong>
                                 </div>
                             )}
-
-                            {/* Server Password Input */}
-                            <div style={{ marginTop: 16 }}>
-                                <label className="mcc-agent-settings-label">
-                                    Server Password (Optional)
-                                </label>
-                                <div className="mcc-agent-settings-hint" style={{ marginBottom: 8, fontSize: '13px', color: '#94a3b8' }}>
-                                    Password to protect the OpenCode web server with HTTP basic auth
-                                </div>
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    placeholder="Enter password..."
-                                    disabled={saving}
-                                    style={{
-                                        width: '100%',
-                                        padding: '10px 12px',
-                                        background: '#1e293b',
-                                        border: password !== (savedSettings.web_server?.password || '') ? '1px solid #3b82f6' : '1px solid #334155',
-                                        borderRadius: 8,
-                                        color: '#e2e8f0',
-                                        fontSize: '14px',
-                                    }}
-                                />
-                                {savedSettings.web_server?.password && savedSettings.web_server.password !== password && (
-                                    <div style={{ marginTop: 8, fontSize: '13px', color: '#94a3b8' }}>
-                                        Password is saved (hidden for security)
-                                    </div>
-                                )}
-                            </div>
 
                             {/* Domain Mapping Section - Only show when domain is configured and matches owned domains */}
                             {savedSettings.default_domain && availableProviders.length > 0 && (

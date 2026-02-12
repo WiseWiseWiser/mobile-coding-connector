@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { pingKeepAlive, getKeepAliveStatus, restartServer, uploadBinary, getUploadTarget, getBuildableProjects } from '../../../api/keepalive';
 import type { KeepAliveStatus, UploadTarget, BuildableProject } from '../../../api/keepalive';
 import { consumeSSEStream } from '../../../api/sse';
-import { BackIcon, UploadIcon, DownloadIcon } from '../../icons';
+import { BackIcon, UploadIcon, DownloadIcon, FolderIcon } from '../../icons';
 import { LogViewer } from '../../LogViewer';
 import type { LogLine } from '../../LogViewer';
 import { useTabHistory } from '../../../hooks/useTabHistory';
@@ -439,6 +439,21 @@ export function ManageServerView() {
                     />
                 </div>
             )}
+
+            {/* Manage Files */}
+            <div className="manage-server-card" style={{ marginTop: 12 }}>
+                <div className="manage-server-card-header">
+                    <span className="manage-server-card-title">File Manager</span>
+                </div>
+                <button 
+                    className="manage-server-btn manage-server-btn--file-transfer" 
+                    onClick={() => navigate('../manage-files')}
+                    style={{ width: '100%', marginBottom: 0 }}
+                >
+                    <FolderIcon />
+                    <span>Manage Files</span>
+                </button>
+            </div>
 
             {/* File Transfer */}
             <div className="manage-server-card" style={{ marginTop: 12 }}>

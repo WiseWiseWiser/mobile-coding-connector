@@ -26,7 +26,59 @@ var (
 	// healthCheckCancel tracks cancel functions for domain health check goroutines
 	healthCheckMu     sync.RWMutex
 	healthCheckCancel = map[string]context.CancelFunc{}
+
+	// healthCheckLogs stores log buffers for each domain's health check goroutine
+	healthCheckLogsMu sync.RWMutex
+	healthCheckLogs   = map[string]*healthCheckLogBuffer{}
 )
+
+const maxHealthCheckLogLines = 32
+
+// healthCheckLogBuffer is a thread-safe circular buffer for health check logs
+type healthCheckLogBuffer struct {
+	mu    sync.Mutex
+	lines []string
+}
+
+// newHealthCheckLogBuffer creates a new log buffer
+func newHealthCheckLogBuffer() *healthCheckLogBuffer {
+	return &healthCheckLogBuffer{
+		lines: make([]string, 0, maxHealthCheckLogLines),
+	}
+}
+
+// addLog adds a log line to the buffer
+func (b *healthCheckLogBuffer) addLog(line string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.lines = append(b.lines, line)
+	// Keep only last maxHealthCheckLogLines
+	if len(b.lines) > maxHealthCheckLogLines {
+		b.lines = b.lines[len(b.lines)-maxHealthCheckLogLines:]
+	}
+}
+
+// getLogs returns a copy of all stored log lines
+func (b *healthCheckLogBuffer) getLogs() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	result := make([]string, len(b.lines))
+	copy(result, b.lines)
+	return result
+}
+
+// getHealthCheckLogs retrieves the health check logs for a given domain
+func getHealthCheckLogs(domain string) []string {
+	healthCheckLogsMu.RLock()
+	buffer, ok := healthCheckLogs[domain]
+	healthCheckLogsMu.RUnlock()
+
+	if !ok || buffer == nil {
+		return []string{}
+	}
+	return buffer.getLogs()
+}
 
 // Provider constants
 const (
@@ -160,6 +212,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/domains/tunnel/stop", handleTunnelStop)
 	mux.HandleFunc("/api/domains/tunnel-name", handleTunnelName)
 	mux.HandleFunc("/api/domains/random-subdomain", handleRandomSubdomain)
+	mux.HandleFunc("/api/domains/health-logs", handleHealthCheckLogs)
 }
 
 func handleDomains(w http.ResponseWriter, r *http.Request) {
@@ -413,6 +466,22 @@ func handleRandomSubdomain(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"domain": subdomain})
 }
 
+func handleHealthCheckLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	domain := r.URL.Query().Get("domain")
+	if domain == "" {
+		writeJSONError(w, http.StatusBadRequest, "domain parameter is required")
+		return
+	}
+
+	logs := getHealthCheckLogs(domain)
+	writeJSON(w, logs)
+}
+
 func writeJSON(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
@@ -436,12 +505,20 @@ func startDomainHealthCheck(domain string, port int, tunnelName string) {
 	healthCheckCancel[domain] = cancel
 	healthCheckMu.Unlock()
 
+	// Create or get log buffer for this domain
+	healthCheckLogsMu.Lock()
+	logBuffer := newHealthCheckLogBuffer()
+	healthCheckLogs[domain] = logBuffer
+	healthCheckLogsMu.Unlock()
+
 	go func() {
 		defer func() {
 			healthCheckMu.Lock()
 			delete(healthCheckCancel, domain)
 			healthCheckMu.Unlock()
 		}()
+
+		logBuffer.addLog(fmt.Sprintf("Health check started for %s", domain))
 
 		consecutiveFailures := 0
 		ticker := time.NewTicker(10 * time.Second)
@@ -451,38 +528,51 @@ func startDomainHealthCheck(domain string, port int, tunnelName string) {
 		select {
 		case <-time.After(5 * time.Second):
 		case <-ctx.Done():
+			logBuffer.addLog("Health check stopped")
 			return
 		}
 
 		for {
 			select {
 			case <-ctx.Done():
+				logBuffer.addLog("Health check stopped")
 				return
 			case <-ticker.C:
 				if !checkDomainPing(domain) {
 					consecutiveFailures++
-					fmt.Printf("[domains] health check failed for %s (%d/3)\n", domain, consecutiveFailures)
+					logMsg := fmt.Sprintf("Health check failed (%d/3)", consecutiveFailures)
+					logBuffer.addLog(logMsg)
+					fmt.Printf("[domains] %s: %s\n", domain, logMsg)
 					if consecutiveFailures >= 3 {
+						logBuffer.addLog("Health check failed 3 times, restarting tunnel...")
 						fmt.Printf("[domains] health check failed 3 times for %s, restarting tunnel...\n", domain)
 						// Stop the tunnel
 						if err := cloudflareSettings.StopDomainTunnel(domain, tunnelName); err != nil {
-							fmt.Printf("[domains] failed to stop tunnel for %s: %v\n", domain, err)
+							errMsg := fmt.Sprintf("Failed to stop tunnel: %v", err)
+							logBuffer.addLog(errMsg)
+							fmt.Printf("[domains] %s: %s\n", domain, errMsg)
 						}
 						// Restart the tunnel
 						logFn := func(msg string) {
+							logBuffer.addLog(msg)
 							fmt.Printf("[domains] %s: %s\n", domain, msg)
 						}
 						_, err := cloudflareSettings.StartDomainTunnel(domain, port, tunnelName, logFn)
 						if err != nil {
-							fmt.Printf("[domains] failed to restart tunnel for %s: %v\n", domain, err)
+							errMsg := fmt.Sprintf("Failed to restart tunnel: %v", err)
+							logBuffer.addLog(errMsg)
+							fmt.Printf("[domains] %s: %s\n", domain, errMsg)
 						} else {
-							fmt.Printf("[domains] tunnel restarted for %s\n", domain)
+							successMsg := "Tunnel restarted successfully"
+							logBuffer.addLog(successMsg)
+							fmt.Printf("[domains] %s: %s\n", domain, successMsg)
 							// Reset failure counter after successful restart
 							consecutiveFailures = 0
 						}
 					}
 				} else {
 					if consecutiveFailures > 0 {
+						logBuffer.addLog("Health check recovered")
 						fmt.Printf("[domains] health check recovered for %s\n", domain)
 					}
 					consecutiveFailures = 0
@@ -503,6 +593,11 @@ func stopDomainHealthCheck(domain string) {
 	if ok {
 		cancel()
 	}
+
+	// Clean up log buffer
+	healthCheckLogsMu.Lock()
+	delete(healthCheckLogs, domain)
+	healthCheckLogsMu.Unlock()
 }
 
 // checkDomainPing checks if the domain's /ping endpoint is reachable.
@@ -518,4 +613,44 @@ func checkDomainPing(domain string) bool {
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
+}
+
+// DomainTunnelInfo represents information about an active domain tunnel
+type DomainTunnelInfo struct {
+	Domain    string
+	Provider  string
+	Status    string
+	TunnelURL string
+	Error     string
+}
+
+// GetActiveDomainTunnels returns all configured domains with their tunnel status.
+// This is used to include bootstrap domain tunnels in the port forwards list.
+func GetActiveDomainTunnels() []DomainTunnelInfo {
+	cfg, err := LoadDomains()
+	if err != nil {
+		return nil
+	}
+
+	var result []DomainTunnelInfo
+	for _, d := range cfg.Domains {
+		if d.Provider != ProviderCloudflare {
+			continue
+		}
+		status := cloudflareSettings.GetDomainTunnelStatus(d.Domain)
+		result = append(result, DomainTunnelInfo{
+			Domain:    d.Domain,
+			Provider:  d.Provider,
+			Status:    status.Status,
+			TunnelURL: status.TunnelURL,
+			Error:     status.Error,
+		})
+	}
+	return result
+}
+
+// GetServerPort returns the configured server port for domain tunnels.
+// Returns 0 if not set.
+func GetServerPort() int {
+	return getServerPort()
 }

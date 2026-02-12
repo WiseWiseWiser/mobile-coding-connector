@@ -1668,6 +1668,17 @@ body:has(.mcc) {
     color: #64748b;
 }
 
+/* Bootstrap badge for domain tunnels */
+.mcc-port-bootstrap-badge {
+    margin-left: 8px;
+    padding: 2px 8px;
+    background: #3b82f6;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #fff;
+    font-weight: 500;
+}
+
 .mcc-forward-btn {
     width: 100%;
     padding: 12px;

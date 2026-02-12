@@ -180,10 +180,17 @@ export interface BrowserExportData {
     git_configs?: GitConfigsExport;
 }
 
+export interface ExportZipOptions {
+    includeBrowser?: boolean;
+    includeAICritic?: boolean;
+    includeCloudflare?: boolean;
+    includeOpencode?: boolean;
+}
+
 /** Export settings as a zip file download. Optionally includes browser-data. */
-export async function exportSettingsZip(includeBrowserData: boolean): Promise<void> {
+export async function exportSettingsZip(options: ExportZipOptions): Promise<void> {
     let browserData: BrowserExportData | undefined;
-    if (includeBrowserData) {
+    if (options.includeBrowser) {
         browserData = {
             git_configs: {
                 ssh_keys: loadSSHKeys(),
@@ -194,13 +201,20 @@ export async function exportSettingsZip(includeBrowserData: boolean): Promise<vo
         };
     }
 
-    const resp = browserData
-        ? await fetch('/api/settings/export-zip', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(browserData),
-        })
-        : await fetch('/api/settings/export-zip');
+    const body: Record<string, unknown> = {
+        include_ai_critic: options.includeAICritic ?? true,
+        include_cloudflare: options.includeCloudflare ?? true,
+        include_opencode: options.includeOpencode ?? true,
+    };
+    if (browserData) {
+        body.browser_data = browserData;
+    }
+
+    const resp = await fetch('/api/settings/export-zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
 
     if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));

@@ -19,6 +19,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 
+	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
@@ -33,6 +34,7 @@ type ControlMessage struct {
 	Type string `json:"type"`
 	Cols int    `json:"cols,omitempty"`
 	Rows int    `json:"rows,omitempty"`
+	Key  string `json:"key,omitempty"` // Encrypted SSH key for SSH connections
 }
 
 // maxScrollback is the maximum number of bytes kept in the scrollback buffer per session
@@ -89,6 +91,12 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/terminal", handleTerminalWebSocket)
 	mux.HandleFunc("/api/terminal/sessions", handleSessions)
 	mux.HandleFunc("/api/terminal/config", handleConfig)
+}
+
+// SSHKeyInfo holds info about an SSH key for terminal connections
+type SSHKeyInfo struct {
+	Name       string
+	PrivateKey string
 }
 
 // ------ Session Manager ------
@@ -173,6 +181,62 @@ func (m *sessionManager) create(name, cwd string) (*session, error) {
 		id:        id,
 		name:      name,
 		cwd:       cwd,
+		createdAt: time.Now(),
+		cmd:       cmd,
+		ptmx:      ptmx,
+		done:      make(chan struct{}),
+	}
+
+	m.mu.Lock()
+	m.sessions[id] = s
+	m.mu.Unlock()
+
+	// Background goroutine: read PTY output, store in scrollback, forward to attached WS
+	go s.readLoop()
+
+	return s, nil
+}
+
+// createSSH creates a new SSH terminal session
+func (m *sessionManager) createSSH(name, host string, port int, user, sshKeyPath string) (*session, error) {
+	m.mu.Lock()
+	m.counter++
+	id := fmt.Sprintf("ssh-session-%d", m.counter)
+	m.mu.Unlock()
+
+	// Build SSH command
+	sshArgs := []string{
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+	}
+
+	if port != 0 && port != 22 {
+		sshArgs = append(sshArgs, "-p", fmt.Sprintf("%d", port))
+	}
+
+	if sshKeyPath != "" {
+		sshArgs = append(sshArgs, "-i", sshKeyPath)
+	}
+
+	sshArgs = append(sshArgs, "-t", fmt.Sprintf("%s@%s", user, host))
+
+	cmd := exec.Command("ssh", sshArgs...)
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = tool_resolve.AppendExtraPaths(cmd.Env)
+
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("start ssh pty: %w", err)
+	}
+
+	// Default terminal size
+	pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
+
+	s := &session{
+		id:        id,
+		name:      name,
+		cwd:       fmt.Sprintf("%s@%s", user, host),
 		createdAt: time.Now(),
 		cmd:       cmd,
 		ptmx:      ptmx,
@@ -452,6 +516,12 @@ func handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 		name = "Terminal"
 	}
 
+	// Check for SSH connection parameters
+	sshMode := r.URL.Query().Get("ssh") == "true"
+	sshHost := r.URL.Query().Get("host")
+	sshPortStr := r.URL.Query().Get("port")
+	sshUser := r.URL.Query().Get("user")
+
 	var s *session
 
 	// Try to reconnect to existing session
@@ -459,7 +529,96 @@ func handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 		s = manager.get(sessionID)
 	}
 
-	// Create a new session if not reconnecting
+	// For SSH mode, we need to wait for the encrypted key before creating the session
+	if sshMode && s == nil {
+		// Wait for the SSH key message from client
+		msgType, message, err := conn.ReadMessage()
+		if err != nil {
+			conn.Close()
+			return
+		}
+
+		if msgType != websocket.TextMessage {
+			conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Expected SSH key message"}`))
+			conn.Close()
+			return
+		}
+
+		var msg ControlMessage
+		if err := json.Unmarshal(message, &msg); err != nil || msg.Type != "ssh_key" {
+			conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Invalid SSH key message"}`))
+			conn.Close()
+			return
+		}
+
+		// Decrypt the SSH key
+		privateKey, err := encrypt.Decrypt(msg.Key)
+		if err != nil {
+			conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"Failed to decrypt SSH key: %s"}`, err.Error())))
+			conn.Close()
+			return
+		}
+
+		// Validate the key has proper format
+		if !strings.Contains(privateKey, "BEGIN OPENSSH PRIVATE KEY") &&
+			!strings.Contains(privateKey, "BEGIN RSA PRIVATE KEY") &&
+			!strings.Contains(privateKey, "BEGIN EC PRIVATE KEY") &&
+			!strings.Contains(privateKey, "BEGIN DSA PRIVATE KEY") {
+			conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Invalid SSH key format. Key must be a valid private key."}`))
+			conn.Close()
+			return
+		}
+
+		// Write key to temporary file
+		tmpKeyFile, err := os.CreateTemp("", "ssh-key-*")
+		if err != nil {
+			conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"Failed to create temp key file: %s"}`, err.Error())))
+			conn.Close()
+			return
+		}
+		defer os.Remove(tmpKeyFile.Name()) // Clean up key file when done
+
+		// Ensure the key ends with a newline
+		if !strings.HasSuffix(privateKey, "\n") {
+			privateKey += "\n"
+		}
+
+		if _, err := tmpKeyFile.WriteString(privateKey); err != nil {
+			tmpKeyFile.Close()
+			conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"Failed to write key file: %s"}`, err.Error())))
+			conn.Close()
+			return
+		}
+		tmpKeyFile.Close()
+
+		// Set restricted permissions on key file (required by SSH)
+		if err := os.Chmod(tmpKeyFile.Name(), 0600); err != nil {
+			conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"Failed to set key file permissions: %s"}`, err.Error())))
+			conn.Close()
+			return
+		}
+
+		// Create SSH session
+		sshPort := 22
+		if sshPortStr != "" {
+			if p, err := strconv.Atoi(sshPortStr); err == nil {
+				sshPort = p
+			}
+		}
+
+		sshName := fmt.Sprintf("%s@%s", sshUser, sshHost)
+		s, err = manager.createSSH(sshName, sshHost, sshPort, sshUser, tmpKeyFile.Name())
+		if err != nil {
+			conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"%s"}`, err.Error())))
+			conn.Close()
+			return
+		}
+
+		// Send the assigned session ID to the client
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"session_id","session_id":"%s"}`, s.id)))
+	}
+
+	// Create a new local shell session if not SSH mode and not reconnecting
 	if s == nil {
 		s, err = manager.create(name, cwd)
 		if err != nil {

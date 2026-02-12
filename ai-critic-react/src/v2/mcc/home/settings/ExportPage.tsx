@@ -250,10 +250,12 @@ export function ExportPage() {
                 }
             });
 
-            // Browser data is handled separately
-            const includeBrowserData = items.filter(i => i.category === 'browser' && i.checked).length > 0;
-
-            await exportSettingsZip(includeBrowserData);
+            await exportSettingsZip({
+                includeBrowser: selectedCategories.has('browser'),
+                includeAICritic: selectedCategories.has('ai-critic'),
+                includeCloudflare: selectedCategories.has('cloudflare'),
+                includeOpencode: selectedCategories.has('opencode'),
+            });
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
         }

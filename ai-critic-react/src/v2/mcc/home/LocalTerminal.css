@@ -1,0 +1,118 @@
+.local-terminal {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.local-terminal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+    gap: 12px;
+}
+
+.local-terminal-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.local-terminal-title {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    color: #f1f5f9;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.local-terminal-status {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+.local-terminal-status.connecting {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+}
+
+.local-terminal-status.connected {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+}
+
+.local-terminal-status.error {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.local-terminal-close-btn {
+    padding: 6px 12px;
+    background: #ef4444;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.local-terminal-close-btn:hover {
+    background: #dc2626;
+}
+
+.local-terminal-content {
+    padding: 8px;
+    height: 250px;
+    overflow: hidden;
+}
+
+/* Ensure xterm fills container */
+.local-terminal-content .xterm {
+    height: 100%;
+}
+
+.local-terminal-content .xterm-viewport {
+    background-color: #0f172a !important;
+}
+
+/* Actions at the bottom */
+.local-terminal-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    background: #1e293b;
+    border-top: 1px solid #334155;
+}
+
+.local-terminal-btn {
+    padding: 6px 12px;
+    background: #334155;
+    color: #94a3b8;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.local-terminal-btn:hover {
+    background: #475569;
+    color: #f1f5f9;
+}

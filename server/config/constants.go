@@ -30,4 +30,5 @@ const (
 	ProjectsDir       = DataDir + "/projects"
 	ServerProjectFile = DataDir + "/server-project.json"
 	AIModelsFile      = DataDir + "/ai-models.json"
+	SSHServerFile     = DataDir + "/ssh-servers.json"
 )

@@ -119,3 +119,18 @@ export async function fetchFileContent(projectDir: string, path: string): Promis
     const data = await resp.json();
     return data.content;
 }
+
+export async function fetchHomeDir(): Promise<string> {
+    const resp = await fetch('/api/files/home');
+    if (!resp.ok) throw new Error('Failed to fetch home directory');
+    const data = await resp.json();
+    return data.home_dir;
+}
+
+export async function fetchServerFiles(basePath: string, path?: string): Promise<FileEntry[]> {
+    let url = `/api/server/files?base_path=${encodeURIComponent(basePath)}`;
+    if (path) url += `&path=${encodeURIComponent(path)}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('Failed to fetch server files');
+    return resp.json();
+}

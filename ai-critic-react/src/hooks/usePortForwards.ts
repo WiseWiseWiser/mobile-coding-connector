@@ -35,6 +35,7 @@ export interface PortForward {
     status: PortStatus;
     provider: TunnelProvider;
     error?: string;
+    bootstrap?: boolean; // true if started during server bootstrap (e.g., domain tunnels)
 }
 
 export type ProviderInfo = ApiProviderInfo;

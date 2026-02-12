@@ -2,6 +2,7 @@ package settings
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,20 +14,49 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
+type exportZipRequest struct {
+	IncludeAICritic   bool            `json:"include_ai_critic"`
+	IncludeCloudflare bool            `json:"include_cloudflare"`
+	IncludeOpencode   bool            `json:"include_opencode"`
+	BrowserData       json.RawMessage `json:"browser_data"`
+}
+
 func handleExportZip(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// If POST, read optional browser-data JSON from body
-	var browserData []byte
-	if r.Method == http.MethodPost {
-		var err error
-		browserData, err = io.ReadAll(io.LimitReader(r.Body, 1<<20)) // max 1MB
+	// Parse request options
+	var req exportZipRequest
+	// Default to including all categories
+	req.IncludeAICritic = true
+	req.IncludeCloudflare = true
+	req.IncludeOpencode = true
+
+	if r.Method == http.MethodGet {
+		// Parse query parameters
+		if r.URL.Query().Get("include_ai_critic") == "false" {
+			req.IncludeAICritic = false
+		}
+		if r.URL.Query().Get("include_cloudflare") == "false" {
+			req.IncludeCloudflare = false
+		}
+		if r.URL.Query().Get("include_opencode") == "false" {
+			req.IncludeOpencode = false
+		}
+	} else if r.Method == http.MethodPost {
+		// Parse JSON body
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // max 1MB
 		if err != nil {
 			writeJSONError(w, http.StatusBadRequest, "failed to read request body")
 			return
+		}
+		if len(body) > 0 {
+			if err := json.Unmarshal(body, &req); err != nil {
+				// If parsing fails, try to parse as just browser data for backwards compatibility
+				req.BrowserData = body
+			}
 		}
 	}
 
@@ -40,35 +70,41 @@ func handleExportZip(w http.ResponseWriter, r *http.Request) {
 	defer zw.Close()
 
 	// 1. Add all files from .ai-critic/ directory, using "ai-critic" as the zip prefix
-	if err := addDirToZipWithPrefix(zw, config.DataDir, zipPrefixAICritic[:len(zipPrefixAICritic)-1]); err != nil {
-		// Headers already sent, can't change status code. Log and continue.
-		fmt.Fprintf(os.Stderr, "export-zip: error adding %s dir: %v\n", config.DataDir, err)
+	if req.IncludeAICritic {
+		if err := addDirToZipWithPrefix(zw, config.DataDir, zipPrefixAICritic[:len(zipPrefixAICritic)-1]); err != nil {
+			// Headers already sent, can't change status code. Log and continue.
+			fmt.Fprintf(os.Stderr, "export-zip: error adding %s dir: %v\n", config.DataDir, err)
+		}
 	}
 
 	// 2. Add cloudflare files from ~/.cloudflared/ into cloudflare/ prefix in the zip
-	cfDir := cloudflaredDir()
-	if cfDir != "" {
-		if err := addCloudflareFilesToZip(zw, cfDir); err != nil {
-			fmt.Fprintf(os.Stderr, "export-zip: error adding cloudflare files: %v\n", err)
+	if req.IncludeCloudflare {
+		cfDir := cloudflaredDir()
+		if cfDir != "" {
+			if err := addCloudflareFilesToZip(zw, cfDir); err != nil {
+				fmt.Fprintf(os.Stderr, "export-zip: error adding cloudflare files: %v\n", err)
+			}
 		}
 	}
 
 	// 3. Add opencode files from ~/.local/share/opencode/ into opencode/ prefix in the zip
-	opencodeDir := opencodeConfigDir()
-	if opencodeDir != "" {
-		if err := addOpencodeFilesToZip(zw, opencodeDir); err != nil {
-			fmt.Fprintf(os.Stderr, "export-zip: error adding opencode files: %v\n", err)
+	if req.IncludeOpencode {
+		opencodeDir := opencodeConfigDir()
+		if opencodeDir != "" {
+			if err := addOpencodeFilesToZip(zw, opencodeDir); err != nil {
+				fmt.Fprintf(os.Stderr, "export-zip: error adding opencode files: %v\n", err)
+			}
 		}
 	}
 
 	// 4. Add browser-data.json if provided
-	if len(browserData) > 0 {
+	if len(req.BrowserData) > 0 {
 		fw, err := zw.Create("browser-data.json")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "export-zip: error creating browser-data.json: %v\n", err)
 			return
 		}
-		if _, err := fw.Write(browserData); err != nil {
+		if _, err := fw.Write(req.BrowserData); err != nil {
 			fmt.Fprintf(os.Stderr, "export-zip: error writing browser-data.json: %v\n", err)
 		}
 	}

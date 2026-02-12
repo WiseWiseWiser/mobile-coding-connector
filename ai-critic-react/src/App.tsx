@@ -3,7 +3,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ProjectConfigView } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './App.css';
 
@@ -168,6 +168,7 @@ function App() {
                             <Route path="upload-file" element={<UploadFileView />} />
                             <Route path="download-file" element={<DownloadFileView />} />
                             <Route path="manage-server" element={<ManageServerView />} />
+                            <Route path="ssh-servers" element={<SSHServersView />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
@@ -186,6 +187,7 @@ function App() {
                                 <Route index element={<CheckpointListRoute />} />
                                 <Route path="browse" element={<FileBrowserRoute />} />
                                 <Route path="browse/*" element={<FileBrowserRoute />} />
+                                <Route path="actions" element={<ActionsRoute />} />
                             </Route>
                             <Route path="create-checkpoint" element={<CreateCheckpointRoute />} />
                             <Route path="checkpoint/:checkpointId" element={<CheckpointDetailRoute />} />
@@ -209,6 +211,8 @@ function App() {
                             <Route path="upload-file" element={<UploadFileView />} />
                             <Route path="download-file" element={<DownloadFileView />} />
                             <Route path="manage-server" element={<ManageServerView />} />
+                            <Route path="manage-files" element={<ManageFilesView />} />
+                            <Route path="ssh-servers" element={<SSHServersView />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
@@ -227,6 +231,7 @@ function App() {
                                 <Route index element={<CheckpointListRoute />} />
                                 <Route path="browse" element={<FileBrowserRoute />} />
                                 <Route path="browse/*" element={<FileBrowserRoute />} />
+                                <Route path="actions" element={<ActionsRoute />} />
                             </Route>
                             <Route path="create-checkpoint" element={<CreateCheckpointRoute />} />
                             <Route path="checkpoint/:checkpointId" element={<CheckpointDetailRoute />} />

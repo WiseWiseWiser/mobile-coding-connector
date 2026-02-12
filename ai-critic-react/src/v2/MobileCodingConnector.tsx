@@ -48,6 +48,28 @@ export function MobileCodingConnector() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectNameFromUrl, projectsLoading, projectsList]);
 
+    // Handle SSH connection from navigation state
+    useEffect(() => {
+        const state = location.state as { sshConnect?: boolean; command?: string; serverName?: string } | null;
+        if (state?.sshConnect && state?.command && terminalManagerRef.current) {
+            // Switch to terminal tab
+            if (activeTab !== NavTabs.Terminal) {
+                navigate(buildPath(NavTabs.Terminal));
+            }
+            // Create new terminal tab with SSH command
+            setTimeout(() => {
+                terminalManagerRef.current?.openTab(
+                    state.serverName || 'SSH Connection',
+                    undefined,
+                    state.command
+                );
+            }, 100);
+            // Clear the navigation state
+            navigate(location.pathname, { replace: true, state: {} });
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.state, activeTab]);
+
     // Helper: build a path for navigation
     const currentProjectRef = useCurrent(currentProject);
     const buildPath = (tab: NavTab, view?: string): string => {

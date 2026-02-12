@@ -6,6 +6,7 @@ import './FilesView.css';
 const FilesSubTabs = {
     Checkpoints: 'checkpoints',
     Browse: 'browse',
+    Actions: 'actions',
 } as const;
 
 type FilesSubTab = typeof FilesSubTabs[keyof typeof FilesSubTabs];
@@ -15,8 +16,10 @@ export function FilesTabLayout() {
     const location = useLocation();
 
     // Determine active sub-tab from URL
-    const isBrowseView = location.pathname.includes('/browse');
-    const activeSubTab: FilesSubTab = isBrowseView ? FilesSubTabs.Browse : FilesSubTabs.Checkpoints;
+    const pathname = location.pathname;
+    const isBrowseView = pathname.includes('/browse');
+    const isActionsView = pathname.includes('/actions');
+    const activeSubTab: FilesSubTab = isBrowseView ? FilesSubTabs.Browse : isActionsView ? FilesSubTabs.Actions : FilesSubTabs.Checkpoints;
 
     // Remember the last browse path so we can restore it when switching tabs
     const lastBrowsePathRef = useRef('browse');
@@ -42,6 +45,12 @@ export function FilesTabLayout() {
                     onClick={() => ctx.navigateToView(lastBrowsePathRef.current)}
                 >
                     Browse Files
+                </button>
+                <button
+                    className={`mcc-files-subtab${activeSubTab === FilesSubTabs.Actions ? ' mcc-files-subtab-active' : ''}`}
+                    onClick={() => ctx.navigateToView('actions')}
+                >
+                    Actions
                 </button>
             </div>
 

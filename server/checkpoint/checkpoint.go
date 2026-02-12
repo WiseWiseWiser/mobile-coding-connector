@@ -547,6 +547,9 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/checkpoints/", handleCheckpointByID)
 	mux.HandleFunc("/api/files", handleListFiles)
 	mux.HandleFunc("/api/files/content", handleReadFile)
+	mux.HandleFunc("/api/files/home", handleHomeDir)
+	mux.HandleFunc("/api/server/files", handleListServerFiles)
+	mux.HandleFunc("/api/server/files/content", handleServerFileContent)
 }
 
 func handleCheckpoints(w http.ResponseWriter, r *http.Request) {

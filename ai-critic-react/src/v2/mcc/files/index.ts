@@ -6,3 +6,4 @@ export { CheckpointDetailRoute } from './CheckpointDetailRoute';
 export { FileBrowserRoute } from './FileBrowserRoute';
 export { FileContentRoute } from './FileContentRoute';
 export { GitCommitRoute } from './GitCommitRoute';
+export { ActionsRoute } from './ActionsRoute';

@@ -21,6 +21,12 @@ export async function fetchPortLogs(port: number): Promise<string[]> {
     return data ?? [];
 }
 
+export async function fetchDomainHealthLogs(domain: string): Promise<string[]> {
+    const resp = await fetch(`/api/domains/health-logs?domain=${encodeURIComponent(domain)}`);
+    const data = await resp.json();
+    return data ?? [];
+}
+
 export interface ProviderInfo {
     id: string;
     name: string;

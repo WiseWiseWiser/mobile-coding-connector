@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/kool/pkgs/web"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/actions"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/checkpoint"
@@ -39,6 +40,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/sshservers"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/subprocess"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
@@ -339,6 +341,12 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Checkpoint API
 	checkpoint.RegisterAPI(mux)
+
+	// Actions API
+	actions.RegisterAPI(mux)
+
+	// SSH Servers API
+	sshservers.RegisterAPI(mux)
 
 	// Tools diagnostics API
 	tools.RegisterAPI(mux)
