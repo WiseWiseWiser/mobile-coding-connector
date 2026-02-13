@@ -95,3 +95,57 @@ export interface LocalPortInfo {
     command: string;
     cmdline: string;
 }
+
+// Port mapping names API
+
+export interface PortMappingName {
+    port: string;
+    domain: string;
+}
+
+export type PortMappingNames = Record<string, string>;
+
+export async function fetchPortMappingName(port: number): Promise<string | null> {
+    const resp = await fetch(`/api/ports/mapping-names?port=${port}`);
+    if (!resp.ok) {
+        if (resp.status === 404) return null;
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    }
+    const data = await resp.json() as PortMappingName;
+    return data.domain || null;
+}
+
+export async function fetchAllPortMappingNames(): Promise<PortMappingNames> {
+    const resp = await fetch('/api/ports/mapping-names');
+    if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    }
+    return await resp.json() as PortMappingNames;
+}
+
+export interface SavePortMappingNameRequest {
+    port: number;
+    domain: string;
+}
+
+export async function savePortMappingName(req: SavePortMappingNameRequest): Promise<void> {
+    const resp = await fetch('/api/ports/mapping-names', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text);
+    }
+}
+
+export async function deletePortMappingName(port: number): Promise<void> {
+    const resp = await fetch(`/api/ports/mapping-names?port=${port}`, {
+        method: 'DELETE',
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text);
+    }
+}

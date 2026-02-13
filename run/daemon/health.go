@@ -3,6 +3,8 @@ package daemon
 import (
 	"bufio"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -69,25 +71,41 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 			return ExitReasonRestart
 
 		case <-healthTicker.C:
+			checkStart := time.Now()
+			Logger("[health-check] Starting periodic health check for port %d (PID=%d)", port, cmd.Process.Pid)
+
 			// Update next check time
 			hc.state.SetNextHealthCheckTime(time.Now().Add(HealthCheckInterval))
+			Logger("[health-check] Next health check scheduled at %s", hc.state.GetNextHealthCheckTime().Format("2006-01-02T15:04:05"))
 
+			Logger("[health-check] Step 1/2: Checking TCP connectivity to port %d...", port)
+			tcpStart := time.Now()
 			if !IsPortReachable(port) {
+				Logger("[health-check] Step 1/2 FAILED: TCP check failed after %v", time.Since(tcpStart))
 				consecutiveFailures++
-				Logger("Port %d health check failed (%d/%d)", port, consecutiveFailures, MaxConsecutiveFailures)
+				Logger("[health-check] Consecutive failures: %d/%d", consecutiveFailures, MaxConsecutiveFailures)
 
 				if consecutiveFailures >= MaxConsecutiveFailures {
-					Logger("Port %d is not accessible after %d checks, killing server (PID=%d)...",
+					Logger("[health-check] CRITICAL: Port %d is not accessible after %d consecutive checks, killing server (PID=%d)...",
 						port, consecutiveFailures, cmd.Process.Pid)
 					hc.killProcess(cmd)
 					WaitForDone(done, 5*time.Second)
+					Logger("[health-check] Health check loop exiting with reason: %s", ExitReasonPortDead)
 					return ExitReasonPortDead
 				}
+				Logger("[health-check] Health check cycle completed in %v (FAILURE)", time.Since(checkStart))
 			} else {
+				Logger("[health-check] Step 1/2 PASSED: TCP connectivity confirmed in %v", time.Since(tcpStart))
+				Logger("[health-check] Step 2/2: Checking HTTP /ping endpoint...")
+				pingStart := time.Now()
+				pingOK := hc.checkPingEndpoint(port)
+				Logger("[health-check] Step 2/2 result: ping check completed in %v (healthy=%v)", time.Since(pingStart), pingOK)
+
 				if consecutiveFailures > 0 {
-					Logger("Port %d health check recovered", port)
+					Logger("[health-check] RECOVERY: Port %d health check recovered after previous failures", port)
 				}
 				consecutiveFailures = 0
+				Logger("[health-check] Health check cycle completed successfully in %v (PASSED)", time.Since(checkStart))
 			}
 
 		case <-upgradeTicker.C:
@@ -165,6 +183,51 @@ func CallShutdownEndpoint() bool {
 
 	Logger("Shutdown endpoint returned status: %d", resp.StatusCode)
 	return false
+}
+
+// checkPingEndpoint checks if the server's /ping endpoint returns "pong"
+func (hc *HealthChecker) checkPingEndpoint(port int) bool {
+	client := &http.Client{Timeout: 5 * time.Second}
+	url := fmt.Sprintf("http://localhost:%d/ping", port)
+	Logger("[health-check] Making HTTP GET request to %s", url)
+
+	resp, err := client.Get(url)
+	if err != nil {
+		Logger("[health-check] Ping request failed: %v", err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	Logger("[health-check] Ping response status: %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		Logger("[health-check] Failed to read ping response body: %v", err)
+		return false
+	}
+
+	bodyStr := string(body)
+	Logger("[health-check] Ping response body: %q", bodyStr)
+	return bodyStr == "pong"
+}
+
+// checkTCPConnectivity checks if a port is reachable via TCP
+func (hc *HealthChecker) checkTCPConnectivity(port int) bool {
+	address := fmt.Sprintf("localhost:%d", port)
+	Logger("[health-check] Attempting TCP connection to %s", address)
+
+	conn, err := net.DialTimeout("tcp", address, PortCheckTimeout)
+	if err != nil {
+		Logger("[health-check] TCP connection failed: %v", err)
+		return false
+	}
+	defer conn.Close()
+
+	Logger("[health-check] TCP connection established successfully")
+	return true
 }
 
 // loadFirstToken reads the first non-empty line from the credentials file.

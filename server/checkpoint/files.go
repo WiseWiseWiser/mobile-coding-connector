@@ -2,6 +2,7 @@ package checkpoint
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,24 +22,15 @@ type FileEntry struct {
 }
 
 // ListFiles lists entries in a directory within a project.
-// path is relative to projectDir (empty string = root).
-func ListFiles(projectDir string, relativePath string) ([]FileEntry, error) {
-	absPath := projectDir
-	if relativePath != "" {
-		absPath = filepath.Join(projectDir, relativePath)
-	}
+// Returns a slice of FileEntry and an error if the directory cannot be read.
+// If showHidden is true, hidden files (dot files) will be included in the result.
+func ListFiles(projectDir string, relativePath string, showHidden bool) ([]FileEntry, error) {
+	// Clean and validate the path
+	absPath := filepath.Join(projectDir, relativePath)
 
-	// Ensure we're within the project directory (prevent path traversal)
-	absPath, err := filepath.Abs(absPath)
-	if err != nil {
-		return nil, err
-	}
-	projAbs, err := filepath.Abs(projectDir)
-	if err != nil {
-		return nil, err
-	}
-	if !strings.HasPrefix(absPath, projAbs) {
-		return nil, os.ErrPermission
+	// Security: ensure the path is within projectDir
+	if !strings.HasPrefix(absPath, projectDir) {
+		return nil, fmt.Errorf("path %q is outside project directory", relativePath)
 	}
 
 	entries, err := os.ReadDir(absPath)
@@ -49,8 +41,9 @@ func ListFiles(projectDir string, relativePath string) ([]FileEntry, error) {
 	var result []FileEntry
 	for _, entry := range entries {
 		name := entry.Name()
-		// Skip hidden files/dirs
-		if strings.HasPrefix(name, ".") {
+
+		// Skip hidden files/dirs unless showHidden is true
+		if !showHidden && strings.HasPrefix(name, ".") {
 			continue
 		}
 		// Skip node_modules
@@ -129,7 +122,10 @@ func handleListFiles(w http.ResponseWriter, r *http.Request) {
 
 	path := r.URL.Query().Get("path")
 
-	entries, err := ListFiles(projectDir, path)
+	// Check if hidden files should be shown
+	showHidden := r.URL.Query().Get("hidden") == "true"
+
+	entries, err := ListFiles(projectDir, path, showHidden)
 	if err != nil {
 		respondErr(w, http.StatusInternalServerError, err.Error())
 		return

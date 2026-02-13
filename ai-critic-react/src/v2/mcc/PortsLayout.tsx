@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import type { TunnelProvider } from '../../hooks/usePortForwards';
 import { TunnelProviders } from '../../hooks/usePortForwards';
@@ -7,6 +7,7 @@ import { NavTabs } from './types';
 import { useV2Context } from '../V2Context';
 import { fetchRandomDomain } from '../../api/domains';
 import type { AddPortRequest } from '../../api/ports';
+import { fetchAllPortMappingNames, savePortMappingName, type PortMappingNames } from '../../api/ports';
 
 export interface PortsOutletContext {
     ports: ReturnType<typeof useV2Context>['portForwards']['ports'];
@@ -45,6 +46,7 @@ export function PortsLayout() {
     const [newPortSubdomain, setNewPortSubdomain] = useState('');
     const [newPortBaseDomain, setNewPortBaseDomain] = useState('');
     const [portActionError, setPortActionError] = useState<string | null>(null);
+    const [portMappingNames, setPortMappingNames] = useState<PortMappingNames>({});
 
     // Refs to track latest state values (avoid stale closures)
     const subdomainRef = useRef(newPortSubdomain);
@@ -53,6 +55,38 @@ export function PortsLayout() {
     // Update refs when state changes
     subdomainRef.current = newPortSubdomain;
     providerRef.current = newPortProvider;
+
+    // Load port mapping names on mount
+    useEffect(() => {
+        fetchAllPortMappingNames()
+            .then(names => setPortMappingNames(names))
+            .catch(() => { /* ignore errors */ });
+    }, []);
+
+    // Apply saved mapping name when port number changes (for Cloudflare providers)
+    useEffect(() => {
+        if (!newPortNumber) return;
+        
+        const portNum = parseInt(newPortNumber, 10);
+        if (!portNum || portNum <= 0) return;
+
+        const savedDomain = portMappingNames[String(portNum)];
+        if (!savedDomain) return;
+
+        // Only apply if using Cloudflare providers
+        const isCloudflareProvider = newPortProvider === TunnelProviders.CloudflareTunnel || newPortProvider === TunnelProviders.CloudflareOwned;
+        if (!isCloudflareProvider) return;
+
+        // Parse the saved domain to extract subdomain and base domain
+        const parts = savedDomain.split('.');
+        if (parts.length >= 2) {
+            const subdomain = parts[0];
+            const baseDomain = parts.slice(1).join('.');
+            
+            setNewPortSubdomain(subdomain);
+            setNewPortBaseDomain(baseDomain);
+        }
+    }, [newPortNumber, portMappingNames, newPortProvider]);
 
     const generateSubdomain = useCallback(async (baseDomain?: string) => {
         try {
@@ -114,7 +148,23 @@ export function PortsLayout() {
 
         try {
             setPortActionError(null);
+            
+            // Save the mapping name for Cloudflare providers BEFORE forwarding
+            if (isCloudflareProvider && hasSubdomain && hasBaseDomain) {
+                const fullDomain = `${newPortSubdomain}.${newPortBaseDomain}`;
+                try {
+                    await savePortMappingName({ port: portNum, domain: fullDomain });
+                    // Update local state
+                    setPortMappingNames(prev => ({ ...prev, [String(portNum)]: fullDomain }));
+                    console.log('[PortsLayout] Saved port mapping name before forwarding:', { port: portNum, domain: fullDomain });
+                } catch (e) {
+                    console.error('[PortsLayout] Failed to save port mapping name:', e);
+                    // Continue with forwarding even if saving fails
+                }
+            }
+            
             await addPort(req);
+            
             setShowNewPortForm(false);
             setNewPortNumber('');
             setNewPortLabel('');

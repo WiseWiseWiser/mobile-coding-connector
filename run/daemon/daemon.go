@@ -130,6 +130,7 @@ func (d *Daemon) Run(forever bool) error {
 	}
 
 	d.state.SetBinPath(binPath)
+	d.state.SetDaemonBinPath(binPath)
 	d.state.SetServerPort(d.port)
 
 	// Start HTTP management server
@@ -184,6 +185,7 @@ func (d *Daemon) runLoop() error {
 		exitReason := d.healthChecker.Run(d.port, cmd, currentBin, FindNewerBinary)
 
 		d.state.SetServerPID(0)
+		d.state.IncrementRestartCount()
 
 		switch exitReason {
 		case ExitReasonUpgrade, ExitReasonRestart:

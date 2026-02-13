@@ -30,6 +30,7 @@ func init() {
 			home+"/.opencode/bin",
 			home+"/go/bin",
 			home+"/.bun/bin",
+			home+"/.fzf/bin",
 		)
 	}
 	// Dynamically resolve npm's global bin directory (varies by nvm, system install, etc.)
@@ -39,6 +40,96 @@ func init() {
 			ExtraPaths = append(ExtraPaths, npmBin)
 		}
 	}
+	// Dynamically resolve node's bin directory (needed for npm-installed tools like codex, claude)
+	// Use version-aware resolution that prioritizes highest node version
+	// The GetFullSearchPATH function will handle the reordering
+	if bestNodeDir := findAllNodeVersionDirs(); len(bestNodeDir) > 0 {
+		// Add all node directories (higher versions first will be handled in PATH reordering)
+		ExtraPaths = append(ExtraPaths, bestNodeDir...)
+	}
+}
+
+// nodeVersionInfo holds info about a node installation
+type nodeVersionInfo struct {
+	version string
+	dir     string
+}
+
+// findAllNodeVersionDirs finds all node installations, groups them by directory,
+// and returns directories sorted by their highest node version (highest first)
+func findAllNodeVersionDirs() []string {
+	// Run 'which -a node' to find all node installations
+	out, err := exec.Command("which", "-a", "node").Output()
+	if err != nil {
+		// Fallback: try 'which node' without -a
+		out2, err2 := exec.Command("which", "node").Output()
+		if err2 != nil {
+			return nil
+		}
+		out = out2
+	}
+
+	paths := strings.Split(strings.TrimSpace(string(out)), "\n")
+
+	// Map to track highest version per directory
+	dirVersions := make(map[string]string)
+
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+
+		// Get the directory
+		dir := filepath.Dir(path)
+
+		// Get version from this node
+		versionOut, err := exec.Command(path, "--version").Output()
+		if err != nil {
+			continue
+		}
+
+		version := strings.TrimSpace(string(versionOut))
+		// Remove 'v' prefix if present
+		version = strings.TrimPrefix(version, "v")
+
+		// Keep track of highest version per directory
+		if existingVersion, ok := dirVersions[dir]; !ok || version > existingVersion {
+			dirVersions[dir] = version
+		}
+	}
+
+	if len(dirVersions) == 0 {
+		return nil
+	}
+
+	// Convert map to slice and sort by version (highest first)
+	type dirVersion struct {
+		dir     string
+		version string
+	}
+
+	var sorted []dirVersion
+	for dir, version := range dirVersions {
+		sorted = append(sorted, dirVersion{dir: dir, version: version})
+	}
+
+	// Sort by version descending (highest version first)
+	for i := 0; i < len(sorted)-1; i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			if sorted[j].version > sorted[i].version {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+
+	// Extract just the directories
+	var result []string
+	for _, dv := range sorted {
+		result = append(result, dv.dir)
+	}
+
+	return result
 }
 
 // userExtraPaths holds user-configured extra paths (e.g. from terminal config).
@@ -74,21 +165,89 @@ func AllExtraPaths() []string {
 	return result
 }
 
-// fullSearchPATH returns the system PATH plus all extra paths, deduplicated.
-func fullSearchPATH() string {
+// GetFullSearchPATH returns the system PATH plus all extra paths, deduplicated,
+// with node directories reordered so that directories with higher node versions come first.
+func GetFullSearchPATH() string {
 	systemPath := os.Getenv("PATH")
+
+	// Get all extra paths
 	extras := AllExtraPaths()
 
-	for _, p := range extras {
+	// First pass: collect all paths into a map to deduplicate
+	pathSet := make(map[string]bool)
+
+	// Add system PATH entries
+	for _, p := range strings.Split(systemPath, ":") {
 		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		if !pathContains(systemPath, p) {
-			systemPath = systemPath + ":" + p
+		if p != "" {
+			pathSet[p] = true
 		}
 	}
-	return systemPath
+
+	// Add extra paths
+	for _, p := range extras {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			pathSet[p] = true
+		}
+	}
+
+	// Second pass: check which directories have node and their versions
+	type dirInfo struct {
+		dir         string
+		nodeVersion string
+		hasNode     bool
+	}
+
+	var dirInfos []dirInfo
+
+	for p := range pathSet {
+		nodePath := filepath.Join(p, "node")
+		info := dirInfo{dir: p}
+
+		if isExecutable(nodePath) {
+			info.hasNode = true
+			// Get version
+			versionOut, err := exec.Command(nodePath, "--version").Output()
+			if err == nil {
+				version := strings.TrimSpace(string(versionOut))
+				version = strings.TrimPrefix(version, "v")
+				info.nodeVersion = version
+			}
+		}
+
+		dirInfos = append(dirInfos, info)
+	}
+
+	// Sort: directories with higher node versions come first
+	// Directories without node come last (maintaining original order)
+	for i := 0; i < len(dirInfos)-1; i++ {
+		for j := i + 1; j < len(dirInfos); j++ {
+			shouldSwap := false
+
+			// Both have node: higher version comes first
+			if dirInfos[i].hasNode && dirInfos[j].hasNode {
+				if dirInfos[j].nodeVersion > dirInfos[i].nodeVersion {
+					shouldSwap = true
+				}
+			} else if !dirInfos[i].hasNode && dirInfos[j].hasNode {
+				// j has node but i doesn't: swap so node dirs come first
+				shouldSwap = true
+			}
+
+			if shouldSwap {
+				dirInfos[i], dirInfos[j] = dirInfos[j], dirInfos[i]
+			}
+		}
+	}
+
+	// Build final PATH
+	var result []string
+	for _, info := range dirInfos {
+		result = append(result, info.dir)
+	}
+
+	return strings.Join(result, ":")
 }
 
 // LookPath finds the named binary by searching the system PATH plus all
@@ -101,7 +260,7 @@ func LookPath(name string) (string, error) {
 		return lookPathDirect(name)
 	}
 
-	dirs := strings.Split(fullSearchPATH(), ":")
+	dirs := strings.Split(GetFullSearchPATH(), ":")
 	for _, dir := range dirs {
 		if dir == "" {
 			continue
@@ -124,24 +283,18 @@ func IsAvailable(name string) bool {
 // to the PATH variable in the given environment slice. This is useful when
 // spawning child processes that need access to the same tool paths.
 func AppendExtraPaths(env []string) []string {
-	extras := AllExtraPaths()
+	// Get the full PATH with proper ordering
+	fullPath := GetFullSearchPATH()
+
 	for i, e := range env {
 		if len(e) > 5 && e[:5] == "PATH=" {
-			currentPath := e[5:]
-			for _, p := range extras {
-				p = strings.TrimSpace(p)
-				if p == "" {
-					continue
-				}
-				if !pathContains(currentPath, p) {
-					currentPath = currentPath + ":" + p
-				}
-			}
-			env[i] = "PATH=" + currentPath
+			env[i] = "PATH=" + fullPath
 			return env
 		}
 	}
-	return env
+
+	// If PATH not found in env, add it
+	return append(env, "PATH="+fullPath)
 }
 
 func pathContains(pathVal, dir string) bool {

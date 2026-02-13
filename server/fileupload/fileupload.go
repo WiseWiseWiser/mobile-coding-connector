@@ -211,10 +211,7 @@ func handleBrowse(w http.ResponseWriter, r *http.Request) {
 
 	entries := make([]BrowseEntry, 0, len(dirEntries))
 	for _, de := range dirEntries {
-		// Skip hidden files
-		if de.Name()[0] == '.' {
-			continue
-		}
+		// Include all files including hidden ones
 		info, err := de.Info()
 		if err != nil {
 			continue

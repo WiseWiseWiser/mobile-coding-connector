@@ -6,6 +6,7 @@ const API_BASE = '';
 export interface KeepAliveStatus {
     running: boolean;
     binary_path: string;
+    daemon_binary_path: string;
     server_port: number;
     server_pid: number;
     keep_alive_port: number;
@@ -14,6 +15,7 @@ export interface KeepAliveStatus {
     uptime?: string;
     next_binary?: string;
     next_health_check_time?: string;
+    restart_count: number;
 }
 
 export interface KeepAlivePing {
@@ -52,6 +54,19 @@ export async function restartServer(): Promise<{ status: string }> {
 /** Restart the keep-alive daemon itself with streaming logs via SSE. */
 export function restartDaemonStreaming(): Promise<Response> {
     return fetch(`${API_BASE}/api/keep-alive/restart-daemon`, {
+        method: 'POST',
+        headers: {
+            'Accept': 'text/event-stream',
+        },
+    });
+}
+
+/** Restart the main server using exec (preserves PID, replaces process).
+ * This calls the main server's /api/server/exec-restart endpoint directly
+ * instead of going through the keep-alive daemon.
+ */
+export function restartServerExecStreaming(): Promise<Response> {
+    return fetch(`${API_BASE}/api/server/exec-restart`, {
         method: 'POST',
         headers: {
             'Accept': 'text/event-stream',

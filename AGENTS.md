@@ -61,6 +61,8 @@ go run ./script/vite/run
 go run ./script/build
 ```
 
+**Note:** Never automatically kill a running server. Users will manage server lifecycle manually.
+
 The server listens on port 23712 by default. In dev mode, the frontend is proxied from the Vite dev server (port 5173).
 
 ## Coding Conventions

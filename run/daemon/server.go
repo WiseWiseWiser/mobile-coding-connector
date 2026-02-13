@@ -51,6 +51,7 @@ func (s *HTTPServer) Start() {
 type StatusResponse struct {
 	Running             bool   `json:"running"`
 	BinaryPath          string `json:"binary_path"`
+	DaemonBinaryPath    string `json:"daemon_binary_path"`
 	ServerPort          int    `json:"server_port"`
 	ServerPID           int    `json:"server_pid"`
 	KeepAlivePort       int    `json:"keep_alive_port"`
@@ -59,18 +60,21 @@ type StatusResponse struct {
 	Uptime              string `json:"uptime,omitempty"`
 	NextBinary          string `json:"next_binary,omitempty"`
 	NextHealthCheckTime string `json:"next_health_check_time,omitempty"`
+	RestartCount        int    `json:"restart_count"`
 }
 
 func (s *HTTPServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	snapshot := s.state.GetStatusSnapshot()
 
 	resp := StatusResponse{
-		Running:       snapshot.ServerPID > 0,
-		BinaryPath:    snapshot.BinPath,
-		ServerPort:    snapshot.ServerPort,
-		ServerPID:     snapshot.ServerPID,
-		KeepAlivePort: config.KeepAlivePort,
-		KeepAlivePID:  os.Getpid(),
+		Running:          snapshot.ServerPID > 0,
+		BinaryPath:       snapshot.BinPath,
+		DaemonBinaryPath: snapshot.DaemonBinPath,
+		ServerPort:       snapshot.ServerPort,
+		ServerPID:        snapshot.ServerPID,
+		KeepAlivePort:    config.KeepAlivePort,
+		KeepAlivePID:     os.Getpid(),
+		RestartCount:     snapshot.RestartCount,
 	}
 
 	if snapshot.ServerPID > 0 && !snapshot.StartedAt.IsZero() {

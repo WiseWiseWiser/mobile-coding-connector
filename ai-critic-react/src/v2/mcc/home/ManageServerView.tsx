@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { pingKeepAlive, getKeepAliveStatus, restartServer, uploadBinary, getUploadTarget, getBuildableProjects } from '../../../api/keepalive';
+import { pingKeepAlive, getKeepAliveStatus, uploadBinary, getUploadTarget, getBuildableProjects, restartServerExecStreaming } from '../../../api/keepalive';
 import type { KeepAliveStatus, UploadTarget, BuildableProject } from '../../../api/keepalive';
 import { consumeSSEStream } from '../../../api/sse';
 import { BackIcon, UploadIcon, DownloadIcon, FolderIcon } from '../../icons';
@@ -33,7 +33,6 @@ export function ManageServerView() {
     const [uploadTarget, setUploadTarget] = useState<UploadTarget | null>(null);
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<TransferProgressData | null>(null);
-    const [restarting, setRestarting] = useState(false);
 
     // Build states
     const [buildableProjects, setBuildableProjects] = useState<BuildableProject[]>([]);
@@ -174,21 +173,6 @@ export function ManageServerView() {
         };
     }, [daemonRunning]);
 
-    const handleRestart = async () => {
-        if (!confirm('Are you sure you want to restart the server?')) return;
-        setRestarting(true);
-        setActionMessage(null);
-        try {
-            const result = await restartServer();
-            setActionMessage(`Restart: ${result.status}`);
-            setTimeout(fetchStatus, 5000);
-        } catch (err: any) {
-            setActionMessage(`Restart failed: ${err.message}`);
-        } finally {
-            setRestarting(false);
-        }
-    };
-
     // Step 1: User selects a file -> fetch upload target and show confirm
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -290,6 +274,8 @@ export function ManageServerView() {
                         <InfoRow label="Keep-Alive PID" value={String(status.keep_alive_pid)} />
                         <InfoRow label="Keep-Alive Port" value={String(status.keep_alive_port)} />
                         <InfoRow label="Binary" value={status.binary_path} mono />
+                        <InfoRow label="Daemon Binary" value={status.daemon_binary_path} mono />
+                        <InfoRow label="Restart Count" value={String(status.restart_count)} />
                         {status.next_binary && (
                             <InfoRow label="Next Binary" value={status.next_binary} mono highlight />
                         )}
@@ -314,13 +300,19 @@ export function ManageServerView() {
             {/* Actions */}
             {daemonRunning && (
                 <div className="manage-server-actions">
-                    <button
+                    <StreamingActionButton
+                        label="Restart Server"
+                        runningLabel="Restarting Server..."
+                        action={restartServerExecStreaming}
                         className="manage-server-btn manage-server-btn--restart"
-                        onClick={handleRestart}
-                        disabled={restarting}
-                    >
-                        {restarting ? 'Restarting...' : 'Restart Server'}
-                    </button>
+                        logMaxHeight={200}
+                        onComplete={(result) => {
+                            if (result.ok) {
+                                // Server will restart via exec, give it time to come back
+                                setTimeout(fetchStatus, 3000);
+                            }
+                        }}
+                    />
 
                     <StreamingActionButton
                         label="Restart Daemon"

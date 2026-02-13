@@ -153,30 +153,44 @@ func WaitForDone(done <-chan struct{}, timeout time.Duration) {
 // IsPortReachable checks if a port is reachable and the /ping endpoint returns "pong"
 func IsPortReachable(port int) bool {
 	// First check if port is accessible via TCP
+	Logger("[IsPortReachable] Step 1/2: Checking TCP connectivity to localhost:%d (timeout=%v)", port, PortCheckTimeout)
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), PortCheckTimeout)
 	if err != nil {
+		Logger("[IsPortReachable] TCP connection failed: %v", err)
 		return false
 	}
 	conn.Close()
+	Logger("[IsPortReachable] TCP connection successful")
 
 	// Then verify /ping endpoint returns "pong" within 5 seconds
+	Logger("[IsPortReachable] Step 2/2: Checking HTTP /ping endpoint")
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/ping", port))
+	url := fmt.Sprintf("http://localhost:%d/ping", port)
+	Logger("[IsPortReachable] Making HTTP GET request to %s", url)
+
+	resp, err := client.Get(url)
 	if err != nil {
+		Logger("[IsPortReachable] HTTP ping request failed: %v", err)
 		return false
 	}
 	defer resp.Body.Close()
 
+	Logger("[IsPortReachable] HTTP response status: %d", resp.StatusCode)
 	if resp.StatusCode != http.StatusOK {
+		Logger("[IsPortReachable] HTTP response status is not 200 OK")
 		return false
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		Logger("[IsPortReachable] Failed to read HTTP response body: %v", err)
 		return false
 	}
 
-	return string(body) == "pong"
+	bodyStr := string(body)
+	isPong := bodyStr == "pong"
+	Logger("[IsPortReachable] HTTP response body: %q (isPong=%v)", bodyStr, isPong)
+	return isPong
 }
 
 // FindPortPID finds the PID using a specific port (for conflict detection)

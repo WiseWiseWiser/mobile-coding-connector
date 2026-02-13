@@ -106,8 +106,8 @@ func EnsureFrontendDevServer(ctx context.Context) (chan struct{}, error) {
 func Serve(port int, dev bool) error {
 	mux := http.NewServeMux()
 
-	// Wrap with auth middleware - skip login, auth check, setup, ping, and public key endpoints
-	handler := auth.Middleware(mux, []string{"/api/login", "/api/auth/check", "/api/auth/setup", "/ping", "/api/encrypt/public-key"})
+	// Wrap with auth middleware - skip login, auth check, setup, ping, public key and path-info endpoints
+	handler := auth.Middleware(mux, []string{"/api/login", "/api/auth/check", "/api/auth/setup", "/ping", "/api/encrypt/public-key", "/api/tools/path-info"})
 
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
@@ -396,6 +396,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 	registerBuildAPI(mux)
 	// Graceful shutdown endpoint
 	mux.HandleFunc("/api/shutdown", shutdownHandler)
+
+	// Exec restart endpoint - replaces process without changing PID
+	mux.HandleFunc("/api/server/exec-restart", handleExecRestart)
 
 	return nil
 }
@@ -765,6 +768,135 @@ func parseBinVersion(binPath string) (baseName string, version int) {
 	}
 
 	return name, 0
+}
+
+// handleExecRestart handles exec restart of the main server process
+// It replaces the current process with a new binary using syscall.Exec
+// This preserves the PID while updating the binary
+func handleExecRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get SSE writer for streaming progress
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	sw.SendLog("Starting exec restart...")
+
+	// Get current executable path
+	currentBin, err := os.Executable()
+	if err != nil {
+		sw.SendError(fmt.Sprintf("Failed to get current executable: %v", err))
+		sw.SendDone(map[string]string{"success": "false"})
+		return
+	}
+	sw.SendLog(fmt.Sprintf("Current binary: %s", currentBin))
+
+	// Find newer binary if available
+	newerBin := findNewerBinary(currentBin)
+	if newerBin == "" {
+		sw.SendLog("No newer binary found, using current binary")
+		newerBin = currentBin
+	} else {
+		sw.SendLog(fmt.Sprintf("Found newer binary: %s", newerBin))
+	}
+
+	// Get working directory
+	workDir, err := os.Getwd()
+	if err != nil {
+		sw.SendError(fmt.Sprintf("Failed to get working directory: %v", err))
+		sw.SendDone(map[string]string{"success": "false"})
+		return
+	}
+	sw.SendLog(fmt.Sprintf("Working directory: %s", workDir))
+
+	// Get current arguments
+	args := os.Args
+	sw.SendLog(fmt.Sprintf("Arguments: %v", args))
+
+	// Ensure binary is executable
+	if err := os.Chmod(newerBin, 0755); err != nil {
+		sw.SendError(fmt.Sprintf("Failed to make binary executable: %v", err))
+		sw.SendDone(map[string]string{"success": "false"})
+		return
+	}
+
+	sw.SendLog("Preparing to exec...")
+
+	// Trigger graceful shutdown first
+	sw.SendLog("Initiating graceful shutdown (30s max)...")
+	shutdownDone := make(chan struct{})
+	go func() {
+		ShutdownServer()
+		close(shutdownDone)
+	}()
+
+	// Wait for shutdown with timeout
+	select {
+	case <-shutdownDone:
+		sw.SendLog("Graceful shutdown completed")
+	case <-time.After(30 * time.Second):
+		sw.SendLog("Graceful shutdown timeout reached, proceeding with restart")
+	}
+
+	sw.SendDone(map[string]string{
+		"success":   "true",
+		"message":   "Server restarting via exec",
+		"binary":    newerBin,
+		"directory": workDir,
+	})
+
+	// Flush to ensure client receives the done event
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	// Small delay to allow SSE to be sent
+	time.Sleep(100 * time.Millisecond)
+
+	// Execute the new binary, replacing current process
+	// syscall.Exec never returns on success
+	err = syscall.Exec(newerBin, args, os.Environ())
+
+	// If we get here, exec failed
+	// Cannot send SSE anymore since we've already sent done, so just log
+	fmt.Fprintf(os.Stderr, "ERROR: syscall.Exec failed: %v\n", err)
+}
+
+// findNewerBinary looks for a newer version of the binary (e.g., binary-v2 when current is binary-v1)
+// Returns empty string if no newer binary found
+func findNewerBinary(currentBin string) string {
+	// Get current version
+	baseName, currentVer := parseBinVersion(filepath.Base(currentBin))
+	dir := filepath.Dir(currentBin)
+
+	// Look for higher versions
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+
+	var newestBin string
+	highestVer := currentVer
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		base, ver := parseBinVersion(name)
+		if base == baseName && ver > highestVer {
+			highestVer = ver
+			newestBin = filepath.Join(dir, name)
+		}
+	}
+
+	return newestBin
 }
 
 // shutdownHandler handles graceful shutdown of the server

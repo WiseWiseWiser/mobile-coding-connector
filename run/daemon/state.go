@@ -22,10 +22,12 @@ const (
 type State struct {
 	mu                  sync.RWMutex
 	binPath             string    // current binary being run
+	daemonBinPath       string    // the daemon's own binary path
 	serverPort          int       // the port the managed server listens on
 	serverPID           int       // PID of the currently running server, 0 if not running
 	startedAt           time.Time // when the current server was started
 	nextHealthCheckTime time.Time
+	restartCount        int // how many times the server has been restarted
 	restartCh           chan struct{}
 }
 
@@ -48,6 +50,34 @@ func (s *State) SetBinPath(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.binPath = path
+}
+
+// GetDaemonBinPath returns the daemon's own binary path (thread-safe)
+func (s *State) GetDaemonBinPath() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.daemonBinPath
+}
+
+// SetDaemonBinPath sets the daemon's own binary path (thread-safe)
+func (s *State) SetDaemonBinPath(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.daemonBinPath = path
+}
+
+// GetRestartCount returns the number of times the server has been restarted (thread-safe)
+func (s *State) GetRestartCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.restartCount
+}
+
+// IncrementRestartCount increments the restart count (thread-safe)
+func (s *State) IncrementRestartCount() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.restartCount++
 }
 
 // GetServerPort returns the server port (thread-safe)
@@ -127,20 +157,24 @@ func (s *State) GetStatusSnapshot() StatusSnapshot {
 	defer s.mu.RUnlock()
 	return StatusSnapshot{
 		BinPath:             s.binPath,
+		DaemonBinPath:       s.daemonBinPath,
 		ServerPort:          s.serverPort,
 		ServerPID:           s.serverPID,
 		StartedAt:           s.startedAt,
 		NextHealthCheckTime: s.nextHealthCheckTime,
+		RestartCount:        s.restartCount,
 	}
 }
 
 // StatusSnapshot is a read-only snapshot of daemon state
 type StatusSnapshot struct {
 	BinPath             string
+	DaemonBinPath       string
 	ServerPort          int
 	ServerPID           int
 	StartedAt           time.Time
 	NextHealthCheckTime time.Time
+	RestartCount        int
 }
 
 // GlobalState is the singleton daemon state instance

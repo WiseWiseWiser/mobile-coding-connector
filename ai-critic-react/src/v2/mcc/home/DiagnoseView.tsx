@@ -5,6 +5,7 @@ import type { ToolInfo, ToolsResponse } from '../../../api/tools';
 import { consumeSSEStream } from '../../../api/sse';
 import { LogViewer } from '../../LogViewer';
 import type { LogLine } from '../../LogViewer';
+import { EffectivePathSection } from '../../../components/EffectivePathSection';
 import './DiagnoseView.css';
 
 export function DiagnoseView() {
@@ -60,6 +61,10 @@ export function DiagnoseView() {
                         {data.tools.map(tool => (
                             <ToolCard key={tool.name} tool={tool} os={data.os} onInstalled={() => loadTools(false)} />
                         ))}
+                    </div>
+
+                    <div className="diagnose-path-section">
+                        <EffectivePathSection />
                     </div>
 
                     <button className="diagnose-refresh-btn" onClick={() => loadTools()}>

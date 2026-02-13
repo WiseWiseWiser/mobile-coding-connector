@@ -354,6 +354,20 @@ var requiredTools = []toolDef{
 		},
 		installWindows: "powershell -c \"irm bun.sh/install.ps1|iex\"",
 	},
+	{
+		name:        "chromium",
+		description: "Open-source web browser for web scraping and automation",
+		purpose:     "Headless browser for web scraping, PDF generation, and automated testing",
+		versionCmd:  []string{"chromium", "--version"},
+		installMacOS: []string{
+			"brew install chromium",
+		},
+		installLinux: []string{
+			"apt-get update",
+			"apt-get install -y chromium-browser || apt-get install -y chromium",
+		},
+		installWindows: "Download from https://www.chromium.org/getting-involved/download-chromium",
+	},
 }
 
 // getInstallStepsForOS returns the install steps for the current OS.
@@ -471,6 +485,9 @@ func CheckTools() *ToolsResponse {
 			// Get version
 			if len(tool.versionCmd) > 0 {
 				cmd := exec.Command(tool.versionCmd[0], tool.versionCmd[1:]...)
+				// Use extended PATH to ensure tools installed in non-standard locations
+				// (like npm global packages or node binaries) can be found
+				cmd.Env = tool_resolve.AppendExtraPaths(os.Environ())
 				out, err := cmd.Output()
 				if err == nil {
 					version := strings.TrimSpace(string(out))
@@ -501,6 +518,7 @@ func CheckTools() *ToolsResponse {
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/tools", handleTools)
 	mux.HandleFunc("/api/tools/install", handleInstallTool)
+	RegisterPathInfoAPI(mux)
 }
 
 func handleTools(w http.ResponseWriter, r *http.Request) {
@@ -560,6 +578,8 @@ func handleInstallTool(w http.ResponseWriter, r *http.Request) {
 	sw.SendLog(fmt.Sprintf("$ %s", strings.ReplaceAll(script, "\n", "\n$ ")))
 
 	cmd := exec.Command("bash", "-c", fullScript)
+	// Set up environment with extended PATH so npm/node can be found
+	cmd.Env = tool_resolve.AppendExtraPaths(os.Environ())
 	if err := sw.StreamCmd(cmd); err != nil {
 		sw.SendError(fmt.Sprintf("Install failed: %v", err))
 	} else {

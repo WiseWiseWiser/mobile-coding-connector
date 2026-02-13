@@ -288,12 +288,13 @@ func (utm *UnifiedTunnelManager) rebuildAndRestartLocked() error {
 		return fmt.Errorf("failed to create data directory: %v", err)
 	}
 
-	// Check if config has changed
+	// Check if config has changed or process needs to be started
 	changed := utm.hasConfigChanged(cfgPath, newConfig)
-	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: hasConfigChanged=%v\n", changed)
-	if !changed {
-		fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: config unchanged, skipping restart\n")
-		return nil // no change, skip restart
+	needsStart := !utm.running || utm.cmd == nil || utm.cmd.Process == nil
+	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: hasConfigChanged=%v, needsStart=%v\n", changed, needsStart)
+	if !changed && !needsStart {
+		fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: config unchanged and process running, skipping restart\n")
+		return nil // no change and process running, skip restart
 	}
 
 	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: config changed, BEFORE STOP - running=%v\n", utm.running)

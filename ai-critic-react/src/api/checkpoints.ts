@@ -106,7 +106,7 @@ export interface FileEntry {
 }
 
 export async function fetchFiles(projectDir: string, path?: string): Promise<FileEntry[]> {
-    let url = `/api/files?project_dir=${encodeURIComponent(projectDir)}`;
+    let url = `/api/files?project_dir=${encodeURIComponent(projectDir)}&hidden=true`;
     if (path) url += `&path=${encodeURIComponent(path)}`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error('Failed to fetch files');

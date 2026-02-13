@@ -371,3 +371,8 @@
 .diagnose-refresh-btn:active {
     background: #1d4ed8;
 }
+
+/* PATH Section Spacing */
+.diagnose-path-section {
+    margin-top: 24px;
+}

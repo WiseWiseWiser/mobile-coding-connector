@@ -682,9 +682,17 @@ func handleOpencodeWebServerControlStreaming(w http.ResponseWriter, r *http.Requ
 		sseWriter.SendLog(fmt.Sprintf("Starting OpenCode web server on port %d...", settings.WebServer.Port))
 
 		// Start the web server using opencode command with proper environment
-		cmd, err := tool_exec.New("opencode", []string{"web", "--port", fmt.Sprintf("%d", settings.WebServer.Port)}, &tool_exec.Options{
+		// Pass password via environment variable if configured
+		cmdOpts := &tool_exec.Options{
 			CustomPath: customPath,
-		})
+		}
+		if settings.WebServer.Password != "" {
+			cmdOpts.Env = map[string]string{
+				"OPENCODE_SERVER_PASSWORD": settings.WebServer.Password,
+			}
+			sseWriter.SendLog("Password configured for web server")
+		}
+		cmd, err := tool_exec.New("opencode", []string{"web", "--port", fmt.Sprintf("%d", settings.WebServer.Port)}, cmdOpts)
 		if err != nil {
 			sseWriter.SendError(fmt.Sprintf("Failed to create command: %v", err))
 			sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})

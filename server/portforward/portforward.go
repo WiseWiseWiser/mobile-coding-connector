@@ -491,6 +491,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ports/diagnostics", handleDiagnostics)
 	mux.HandleFunc("/api/ports/local", handleLocalPorts)
 	mux.HandleFunc("/api/ports/local/events", handleLocalPortEvents)
+	mux.HandleFunc("/api/ports/mapping-names", handlePortMappingNames)
 }
 
 func handleLocalPorts(w http.ResponseWriter, r *http.Request) {
@@ -930,4 +931,83 @@ func handleDiagnostics(w http.ResponseWriter, _ *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// handlePortMappingNames handles GET/POST/DELETE requests for port mapping names
+func handlePortMappingNames(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		portStr := r.URL.Query().Get("port")
+		if portStr != "" {
+			// Get specific port's mapping
+			port, err := strconv.Atoi(portStr)
+			if err != nil {
+				http.Error(w, "invalid port number", http.StatusBadRequest)
+				return
+			}
+			domain, err := config.GetPortMappingName(port)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"port": portStr, "domain": domain})
+		} else {
+			// Get all mappings
+			mappings, err := config.LoadPortMappingNames()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(mappings)
+		}
+	case http.MethodPost:
+		var req struct {
+			Port   int    `json:"port"`
+			Domain string `json:"domain"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if req.Port <= 0 || req.Port > 65535 {
+			http.Error(w, "invalid port number", http.StatusBadRequest)
+			return
+		}
+		if req.Domain == "" {
+			http.Error(w, "domain is required", http.StatusBadRequest)
+			return
+		}
+		if err := config.SetPortMappingName(req.Port, req.Domain); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"port":    req.Port,
+			"domain":  req.Domain,
+		})
+	case http.MethodDelete:
+		portStr := r.URL.Query().Get("port")
+		if portStr == "" {
+			http.Error(w, "port parameter is required", http.StatusBadRequest)
+			return
+		}
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			http.Error(w, "invalid port number", http.StatusBadRequest)
+			return
+		}
+		if err := config.DeletePortMappingName(port); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }

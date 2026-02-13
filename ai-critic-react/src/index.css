@@ -21,6 +21,20 @@
   --nav-height: 56px;
   --sidebar-width: 250px;
   --chat-panel-width: 350px;
+
+  /* Theme variables */
+  --mcc-bg-primary: #1e293b;
+  --mcc-bg-secondary: #0f172a;
+  --mcc-bg-card: #1e293b;
+  --mcc-border-color: #334155;
+  --mcc-text-primary: #e2e8f0;
+  --mcc-text-secondary: #94a3b8;
+  --mcc-text-muted: #64748b;
+  --mcc-accent-color: #8b5cf6;
+  --mcc-accent-bg: rgba(139, 92, 246, 0.15);
+  --mcc-success-color: #22c55e;
+  --mcc-warning-color: #f59e0b;
+  --mcc-error-color: #f87171;
 }
 
 /* Mobile breakpoint adjustments */
