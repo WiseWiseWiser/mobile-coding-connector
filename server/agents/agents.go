@@ -134,6 +134,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/opencode/web-status", handleOpencodeWebStatus)
 	mux.HandleFunc("/api/agents/opencode/web-server/control", handleOpencodeWebServerControl)
 	mux.HandleFunc("/api/agents/opencode/web-server/domain-map", handleOpencodeWebServerDomainMap)
+	mux.HandleFunc("/api/agents/opencode/web-server/domain-map/stream", handleOpencodeWebServerDomainMapStreaming)
 	mux.HandleFunc("/api/agents/sessions", handleAgentSessions)
 	// Proxy: /api/agents/sessions/{sessionID}/proxy/... -> opencode server
 	mux.HandleFunc("/api/agents/sessions/", handleAgentSessionProxy)
@@ -812,6 +813,19 @@ func handleOpencodeWebServerControlStreaming(w http.ResponseWriter, r *http.Requ
 		time.Sleep(1 * time.Second)
 		running := opencode.IsWebServerRunning(settings.WebServer.Port)
 
+		// If still running, use pure Go implementation to kill the process by port
+		if running {
+			sseWriter.SendLog(fmt.Sprintf("Web server still running on port %d, attempting to kill process directly...", settings.WebServer.Port))
+			if err := opencode.KillProcessByPort(settings.WebServer.Port); err != nil {
+				sseWriter.SendLog(fmt.Sprintf("Failed to kill process by port: %v", err))
+			} else {
+				sseWriter.SendLog("Sent kill signal to process, waiting for shutdown...")
+				// Wait another moment and check again
+				time.Sleep(500 * time.Millisecond)
+				running = opencode.IsWebServerRunning(settings.WebServer.Port)
+			}
+		}
+
 		// Update settings
 		settings.WebServer.Enabled = running
 		opencode.SaveSettings(settings)
@@ -869,6 +883,141 @@ func handleOpencodeWebServerDomainMap(w http.ResponseWriter, r *http.Request) {
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleOpencodeWebServerDomainMapStreaming handles domain mapping with SSE streaming support
+// Supports reconnection via session_id query parameter
+func handleOpencodeWebServerDomainMapStreaming(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check for existing session (reconnection)
+	sessionID := r.URL.Query().Get("session_id")
+	startIndex := 0
+	if idxStr := r.URL.Query().Get("log_index"); idxStr != "" {
+		if idx, err := strconv.Atoi(idxStr); err == nil {
+			startIndex = idx
+		}
+	}
+
+	// For POST requests, start a new mapping operation
+	var provider string
+	if r.Method == http.MethodPost {
+		var req opencode.MapDomainRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			req = opencode.MapDomainRequest{}
+		}
+		provider = req.Provider
+	}
+
+	// Start or get existing session
+	session, err := opencode.MapDomainViaCloudflareStreaming(provider, sessionID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Setup SSE
+	sseWriter := sse.NewWriter(w)
+	if sseWriter == nil {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Send session ID for reconnection
+	sseWriter.Send(map[string]string{
+		"type":       "session",
+		"session_id": session.ID,
+	})
+
+	// If this is a reconnection and session is already done, send completion
+	if session.IsDone() {
+		sseWriter.SendStatus(session.Status, map[string]string{
+			"public_url": session.PublicURL,
+		})
+		if session.Success {
+			sseWriter.SendDone(map[string]string{
+				"success":    "true",
+				"message":    "Domain mapping completed",
+				"public_url": session.PublicURL,
+			})
+		} else {
+			sseWriter.SendDone(map[string]string{
+				"success": "false",
+				"message": session.Error,
+			})
+		}
+		return
+	}
+
+	// Send any logs that were already generated (for reconnection)
+	if startIndex > 0 {
+		existingLogs := session.GetLogsSince(0)
+		for _, log := range existingLogs {
+			if log.IsError {
+				sseWriter.SendError(log.Message)
+			} else {
+				sseWriter.SendLog(log.Message)
+			}
+		}
+	}
+
+	// Stream logs until completion
+	currentIndex := len(session.Logs)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			// Client disconnected - they can reconnect with session_id
+			return
+
+		case <-session.WaitDone():
+			// Send any remaining logs
+			logs := session.GetLogsSince(currentIndex)
+			for _, log := range logs {
+				if log.IsError {
+					sseWriter.SendError(log.Message)
+				} else {
+					sseWriter.SendLog(log.Message)
+				}
+			}
+
+			// Send final status
+			sseWriter.SendStatus(session.Status, map[string]string{
+				"public_url": session.PublicURL,
+			})
+
+			if session.Success {
+				sseWriter.SendDone(map[string]string{
+					"success":    "true",
+					"message":    "Domain mapping completed successfully",
+					"public_url": session.PublicURL,
+				})
+			} else {
+				sseWriter.SendDone(map[string]string{
+					"success": "false",
+					"message": session.Error,
+				})
+			}
+			return
+
+		case <-ticker.C:
+			// Send new logs
+			logs := session.GetLogsSince(currentIndex)
+			for _, log := range logs {
+				if log.IsError {
+					sseWriter.SendError(log.Message)
+				} else {
+					sseWriter.SendLog(log.Message)
+				}
+			}
+			currentIndex = len(session.Logs)
+		}
 	}
 }
 

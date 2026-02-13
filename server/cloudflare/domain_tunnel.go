@@ -2,55 +2,16 @@ package cloudflare
 
 import (
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
 	"strings"
-	"sync"
-	"syscall"
-	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
-)
-
-var (
-	domainMu      sync.Mutex
-	domainIngress = map[string]IngressRule{} // hostname -> rule
-	domainCmd     *exec.Cmd
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
 // DomainTunnelStatus describes the runtime status of a domain tunnel.
 type DomainTunnelStatus struct {
-	Status    string `json:"status"`              // "stopped", "connecting", "active", "error"
+	Status    string `json:"status"`               // "stopped", "connecting", "active", "error"
 	TunnelURL string `json:"tunnel_url,omitempty"` // the public URL (https://<domain>)
 	Error     string `json:"error,omitempty"`
-}
-
-// CheckStatus returns the cloudflare installation and authentication status.
-// This is the exported version of the status check for reuse by other packages.
-func CheckStatus() StatusResponse {
-	resp := StatusResponse{}
-
-	if !tool_resolve.IsAvailable("cloudflared") {
-		resp.Error = "cloudflared is not installed"
-		return resp
-	}
-	resp.Installed = true
-
-	out, err := exec.Command("cloudflared", "tunnel", "list", "--output", "json").CombinedOutput()
-	if err != nil {
-		errStr := strings.TrimSpace(string(out))
-		if strings.Contains(errStr, "login") || strings.Contains(errStr, "auth") || strings.Contains(errStr, "certificate") {
-			resp.Error = "Not authenticated. Click Login to authenticate."
-		} else {
-			resp.Error = fmt.Sprintf("Could not verify authentication: %s", errStr)
-		}
-		return resp
-	}
-	resp.Authenticated = true
-	resp.CertFiles = ListCertFiles()
-
-	return resp
 }
 
 // ParseBaseDomain extracts the base domain from a full hostname.
@@ -65,26 +26,28 @@ func ParseBaseDomain(domain string) string {
 }
 
 // GetDomainTunnelStatus returns the current status of a domain tunnel.
+// With the unified tunnel manager, this checks if the domain is registered as a mapping.
 func GetDomainTunnelStatus(domain string) DomainTunnelStatus {
-	domainMu.Lock()
-	defer domainMu.Unlock()
+	utm := GetUnifiedTunnelManager()
 
-	if _, ok := domainIngress[domain]; !ok {
-		return DomainTunnelStatus{Status: "stopped"}
-	}
-
-	if domainCmd == nil || domainCmd.Process == nil {
-		return DomainTunnelStatus{
-			Status:    "error",
-			TunnelURL: fmt.Sprintf("https://%s", domain),
-			Error:     "tunnel process not running",
+	// Check if this domain is in the unified tunnel mappings
+	mappings := utm.ListMappings()
+	for _, m := range mappings {
+		if m.Hostname == domain {
+			if utm.IsRunning() {
+				return DomainTunnelStatus{
+					Status:    "active",
+					TunnelURL: fmt.Sprintf("https://%s", domain),
+				}
+			}
+			return DomainTunnelStatus{
+				Status:    "connecting",
+				TunnelURL: fmt.Sprintf("https://%s", domain),
+			}
 		}
 	}
 
-	return DomainTunnelStatus{
-		Status:    "active",
-		TunnelURL: fmt.Sprintf("https://%s", domain),
-	}
+	return DomainTunnelStatus{Status: "stopped"}
 }
 
 // LogFunc is a callback for streaming log messages during tunnel operations.
@@ -95,26 +58,25 @@ type LogFunc func(message string)
 // to http://localhost:<port>.
 // tunnelName is the cloudflare tunnel name to use; if empty, a default is derived from the domain.
 // logFn is an optional callback for streaming log messages.
+//
+// This function uses the unified tunnel manager, so multiple domains share
+// a single cloudflared process.
 func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc) (*DomainTunnelStatus, error) {
-	if tunnelName == "" {
-		tunnelName = DefaultTunnelName(domain)
-	}
 	if logFn == nil {
 		logFn = func(string) {}
 	}
 
-	domainMu.Lock()
-	defer domainMu.Unlock()
+	utm := GetUnifiedTunnelManager()
 
-	// Already running for this domain?
-	if _, ok := domainIngress[domain]; ok {
-		if domainCmd != nil && domainCmd.Process != nil {
-			logFn("Tunnel already running for " + domain)
-			return &DomainTunnelStatus{
-				Status:    "active",
-				TunnelURL: fmt.Sprintf("https://%s", domain),
-			}, nil
-		}
+	// Check if this domain is already running
+	status := GetDomainTunnelStatus(domain)
+	if status.Status == "active" {
+		logFn("Tunnel already running for " + domain)
+		return &status, nil
+	}
+
+	if tunnelName == "" {
+		tunnelName = DefaultTunnelName(domain)
 	}
 
 	// Find or create a tunnel
@@ -125,6 +87,20 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 	}
 	logFn("Using tunnel: " + tunnelRef)
 
+	// Get tunnel ID and credentials
+	tunnelID, credFile, err := EnsureTunnelExists(tunnelRef)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tunnel credentials: %v", err)
+	}
+	logFn(fmt.Sprintf("Got tunnel credentials: id=%s", tunnelID))
+
+	// Configure the unified tunnel manager with this tunnel's config
+	utm.SetConfig(config.CloudflareTunnelConfig{
+		TunnelName:      tunnelRef,
+		TunnelID:        tunnelID,
+		CredentialsFile: credFile,
+	})
+
 	// Create DNS route
 	logFn("Creating DNS route for " + domain + "...")
 	if err := CreateDNSRoute(tunnelRef, domain); err != nil {
@@ -132,18 +108,21 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 	}
 	logFn("DNS route created")
 
-	// Add ingress rule
+	// Add ingress rule to unified tunnel manager
 	localURL := fmt.Sprintf("http://localhost:%d", port)
-	domainIngress[domain] = IngressRule{Hostname: domain, Service: localURL}
-	logFn(fmt.Sprintf("Routing %s -> %s", domain, localURL))
-
-	// Write config and start/restart tunnel
-	logFn("Starting cloudflared tunnel process...")
-	if err := writeDomainConfigAndRestart(tunnelRef); err != nil {
-		delete(domainIngress, domain)
-		return nil, fmt.Errorf("failed to start tunnel: %v", err)
+	mappingID := fmt.Sprintf("domain-%s", domain)
+	mapping := &IngressMapping{
+		ID:       mappingID,
+		Hostname: domain,
+		Service:  localURL,
+		Source:   fmt.Sprintf("domain:%s", domain),
 	}
-	logFn("Tunnel started successfully")
+
+	logFn(fmt.Sprintf("Adding ingress rule: %s -> %s", domain, localURL))
+	if err := utm.AddMapping(mapping); err != nil {
+		return nil, fmt.Errorf("failed to add mapping to unified tunnel: %v", err)
+	}
+	logFn("Ingress rule added, tunnel started")
 
 	return &DomainTunnelStatus{
 		Status:    "active",
@@ -154,138 +133,16 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 // StopDomainTunnel stops the tunnel for the given domain.
 // tunnelName is the cloudflare tunnel name; if empty, a default is derived from the domain.
 func StopDomainTunnel(domain string, tunnelName string) error {
-	if tunnelName == "" {
-		tunnelName = DefaultTunnelName(domain)
+	_ = tunnelName // not used with unified tunnel manager, but kept for API compatibility
+
+	utm := GetUnifiedTunnelManager()
+
+	// Remove the mapping from unified tunnel manager
+	mappingID := fmt.Sprintf("domain-%s", domain)
+	if err := utm.RemoveMapping(mappingID); err != nil {
+		return fmt.Errorf("failed to remove mapping: %v", err)
 	}
 
-	domainMu.Lock()
-	defer domainMu.Unlock()
-
-	if _, ok := domainIngress[domain]; !ok {
-		return fmt.Errorf("no running tunnel for domain %q", domain)
-	}
-
-	delete(domainIngress, domain)
-
-	if len(domainIngress) == 0 {
-		// No more domains — stop the tunnel process
-		killDomainProcess()
-	} else {
-		// Restart with remaining ingress rules
-		tunnelRef, err := FindOrCreateTunnel(tunnelName)
-		if err != nil {
-			return err
-		}
-		if err := writeDomainConfigAndRestart(tunnelRef); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// killDomainProcess kills the current domain tunnel process if running.
-// Must be called with domainMu held.
-func killDomainProcess() {
-	if domainCmd == nil || domainCmd.Process == nil {
-		return
-	}
-	domainCmd.Process.Kill()
-	domainCmd.Wait()
-	domainCmd = nil
-}
-
-// killExistingCloudflaredForConfig kills any running cloudflared process
-// using the domain tunnels config file. This handles the case where the
-// server restarted but the detached cloudflared process is still running.
-func killExistingCloudflaredForConfig(cfgPath string) {
-	// Use pgrep to find cloudflared processes that reference our config
-	out, err := exec.Command("pgrep", "-f", "cloudflared.*"+cfgPath).Output()
-	if err != nil {
-		return // no matching process
-	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var pid int
-		if _, err := fmt.Sscanf(line, "%d", &pid); err == nil && pid > 0 {
-			if p, err := os.FindProcess(pid); err == nil {
-				p.Kill()
-			}
-		}
-	}
-	time.Sleep(500 * time.Millisecond)
-}
-
-// writeDomainConfigAndRestart writes the domain tunnel config and (re)starts the tunnel process.
-// Must be called with domainMu held.
-func writeDomainConfigAndRestart(tunnelRef string) error {
-	tunnelID, credFile, err := EnsureTunnelExists(tunnelRef)
-	if err != nil {
-		return err
-	}
-
-	cfgDir, err := DefaultConfigDir()
-	if err != nil {
-		return err
-	}
-	cfgPath := cfgDir + "/config-domain-tunnels.yml"
-
-	// Kill existing process (from this server session)
-	killDomainProcess()
-	// Also kill any orphaned cloudflared process from a previous server session
-	killExistingCloudflaredForConfig(cfgPath)
-
-	// Build ingress rules
-	var rules []IngressRule
-	for _, rule := range domainIngress {
-		rules = append(rules, rule)
-	}
-	rules = append(rules, IngressRule{Service: "http_status:404"})
-
-	// Write config
-	cfg := &CloudflaredConfig{
-		Tunnel:          tunnelID,
-		CredentialsFile: credFile,
-		Ingress:         rules,
-	}
-	if err := WriteCloudflaredConfig(cfgPath, cfg); err != nil {
-		return err
-	}
-
-	// Start tunnel in its own process group so it survives server restart.
-	// Dual-write output to both a log file and stdout/stderr.
-	cmd := exec.Command("cloudflared", "tunnel", "--config", cfgPath, "run", tunnelRef)
-	logFile, err := os.OpenFile(cfgPath+".log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err == nil {
-		cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
-		cmd.Stderr = io.MultiWriter(os.Stderr, logFile)
-	} else {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-		Pgid:    0,
-	}
-
-	if err := cmd.Start(); err != nil {
-		if logFile != nil {
-			logFile.Close()
-		}
-		return fmt.Errorf("failed to start cloudflared: %v", err)
-	}
-
-	domainCmd = cmd
-
-	go func() {
-		cmd.Wait()
-		if logFile != nil {
-			logFile.Close()
-		}
-	}()
-
+	// If no more mappings, the unified tunnel manager will automatically stop the process
 	return nil
 }

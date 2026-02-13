@@ -544,26 +544,18 @@ func startDomainHealthCheck(domain string, port int, tunnelName string) {
 					logBuffer.addLog(logMsg)
 					fmt.Printf("[domains] %s: %s\n", domain, logMsg)
 					if consecutiveFailures >= 3 {
-						logBuffer.addLog("Health check failed 3 times, restarting tunnel...")
-						fmt.Printf("[domains] health check failed 3 times for %s, restarting tunnel...\n", domain)
-						// Stop the tunnel
-						if err := cloudflareSettings.StopDomainTunnel(domain, tunnelName); err != nil {
-							errMsg := fmt.Sprintf("Failed to stop tunnel: %v", err)
-							logBuffer.addLog(errMsg)
-							fmt.Printf("[domains] %s: %s\n", domain, errMsg)
-						}
-						// Restart the tunnel
-						logFn := func(msg string) {
-							logBuffer.addLog(msg)
-							fmt.Printf("[domains] %s: %s\n", domain, msg)
-						}
-						_, err := cloudflareSettings.StartDomainTunnel(domain, port, tunnelName, logFn)
-						if err != nil {
-							errMsg := fmt.Sprintf("Failed to restart tunnel: %v", err)
+						logBuffer.addLog("Health check failed 3 times, restarting mapping...")
+						fmt.Printf("[domains] health check failed 3 times for %s, restarting mapping...\n", domain)
+
+						// Use unified tunnel manager to restart the mapping
+						utm := cloudflareSettings.GetUnifiedTunnelManager()
+						mappingID := fmt.Sprintf("domain-%s", domain)
+						if err := utm.RestartMapping(mappingID); err != nil {
+							errMsg := fmt.Sprintf("Failed to restart mapping: %v", err)
 							logBuffer.addLog(errMsg)
 							fmt.Printf("[domains] %s: %s\n", domain, errMsg)
 						} else {
-							successMsg := "Tunnel restarted successfully"
+							successMsg := "Mapping restarted successfully via unified tunnel"
 							logBuffer.addLog(successMsg)
 							fmt.Printf("[domains] %s: %s\n", domain, successMsg)
 							// Reset failure counter after successful restart
@@ -606,13 +598,25 @@ func checkDomainPing(domain string) bool {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
-	url := fmt.Sprintf("https://%s/ping", domain)
-	resp, err := client.Get(url)
-	if err != nil {
-		return false
+
+	urls := []string{
+		fmt.Sprintf("https://%s/", domain),
+		fmt.Sprintf("https://%s/ping", domain),
 	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+
+	for _, url := range urls {
+		resp, err := client.Get(url)
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 500 {
+			return true
+		}
+	}
+
+	return false
 }
 
 // DomainTunnelInfo represents information about an active domain tunnel

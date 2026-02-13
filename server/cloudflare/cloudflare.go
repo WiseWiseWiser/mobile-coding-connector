@@ -55,6 +55,38 @@ func cloudflaredDir() string {
 	return ""
 }
 
+// CheckStatus returns the cloudflare installation and authentication status.
+func CheckStatus() StatusResponse {
+	resp := StatusResponse{}
+
+	if !IsCommandAvailable("cloudflared") {
+		resp.Error = "cloudflared is not installed"
+		return resp
+	}
+	resp.Installed = true
+
+	out, err := exec.Command("cloudflared", "tunnel", "list", "--output", "json").CombinedOutput()
+	if err != nil {
+		errStr := strings.TrimSpace(string(out))
+		if strings.Contains(errStr, "login") || strings.Contains(errStr, "auth") || strings.Contains(errStr, "certificate") {
+			resp.Error = "Not authenticated. Run 'cloudflared tunnel login' to authenticate."
+		} else {
+			resp.Error = fmt.Sprintf("Could not verify authentication: %s", errStr)
+		}
+		return resp
+	}
+	resp.Authenticated = true
+	resp.CertFiles = ListCertFiles()
+
+	return resp
+}
+
+// IsCommandAvailable checks if a command is available in PATH
+func IsCommandAvailable(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
 // ListCertFiles discovers cloudflared credential files.
 func ListCertFiles() []CertFileInfo {
 	dir := cloudflaredDir()

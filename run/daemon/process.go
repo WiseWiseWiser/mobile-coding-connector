@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"syscall"
@@ -149,14 +150,33 @@ func WaitForDone(done <-chan struct{}, timeout time.Duration) {
 	}
 }
 
-// IsPortReachable checks if a port is reachable
+// IsPortReachable checks if a port is reachable and the /ping endpoint returns "pong"
 func IsPortReachable(port int) bool {
+	// First check if port is accessible via TCP
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), PortCheckTimeout)
 	if err != nil {
 		return false
 	}
 	conn.Close()
-	return true
+
+	// Then verify /ping endpoint returns "pong" within 5 seconds
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/ping", port))
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false
+	}
+
+	return string(body) == "pong"
 }
 
 // FindPortPID finds the PID using a specific port (for conflict detection)

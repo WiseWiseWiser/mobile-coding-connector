@@ -482,6 +482,28 @@ export async function mapOpencodeDomain(provider?: string): Promise<MapDomainRes
     return resp.json();
 }
 
+/** Map domain with streaming (returns Response for SSE consumption). Supports reconnection via sessionId */
+export function mapOpencodeDomainStreaming(provider?: string, sessionId?: string, logIndex?: number): Promise<Response> {
+    const params = new URLSearchParams();
+    if (sessionId) {
+        params.set('session_id', sessionId);
+    }
+    if (logIndex !== undefined && logIndex > 0) {
+        params.set('log_index', logIndex.toString());
+    }
+    const queryString = params.toString();
+    const url = '/api/agents/opencode/web-server/domain-map/stream' + (queryString ? `?${queryString}` : '');
+
+    return fetch(url, {
+        method: sessionId ? 'GET' : 'POST', // Use GET for reconnection, POST for new session
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream',
+        },
+        body: sessionId ? undefined : JSON.stringify({ provider }),
+    });
+}
+
 export async function unmapOpencodeDomain(): Promise<MapDomainResponse> {
     const resp = await fetch('/api/agents/opencode/web-server/domain-map', {
         method: 'DELETE',

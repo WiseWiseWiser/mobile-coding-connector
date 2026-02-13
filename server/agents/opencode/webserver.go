@@ -308,6 +308,7 @@ func startWebServer(settings *Settings, customPath string) (*WebServerControlRes
 // The customPath parameter allows using a user-configured binary path.
 func stopWebServer(settings *Settings, customPath string) (*WebServerControlResponse, error) {
 	manager := subprocess.GetManager()
+	port := settings.WebServer.Port
 
 	// First try to stop via subprocess manager if it's managed
 	if manager.IsRunning(WebServerProcessID) {
@@ -330,7 +331,19 @@ func stopWebServer(settings *Settings, customPath string) (*WebServerControlResp
 	time.Sleep(1 * time.Second)
 
 	// Check if it's now stopped
-	running := IsWebServerRunning(settings.WebServer.Port)
+	running := IsWebServerRunning(port)
+
+	// If still running, use pure Go implementation to kill the process by port
+	if running {
+		fmt.Printf("Web server still running on port %d, attempting to kill process directly...\n", port)
+		if err := KillProcessByPort(port); err != nil {
+			fmt.Printf("Failed to kill process by port: %v\n", err)
+		} else {
+			// Wait another moment and check again
+			time.Sleep(500 * time.Millisecond)
+			running = IsWebServerRunning(port)
+		}
+	}
 
 	// Update settings to mark web server as disabled
 	settings.WebServer.Enabled = running

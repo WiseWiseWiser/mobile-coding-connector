@@ -11,6 +11,7 @@ import (
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
@@ -168,6 +169,10 @@ func Run(args []string) error {
 
 	// Auto-start Cloudflare tunnels for configured domains
 	domains.AutoStartTunnels()
+
+	// Start unified tunnel manager global health checks
+	// This monitors all mappings (domains + port forwards) and restarts them after 3 failures
+	cloudflare.StartGlobalHealthChecks()
 
 	if component != "" {
 		var html string

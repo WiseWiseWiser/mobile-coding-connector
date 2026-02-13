@@ -292,3 +292,61 @@
         font-size: 12px;
     }
 }
+
+/* Zen Mode */
+.terminal-zen-btn {
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid #475569;
+    border-radius: 4px;
+    color: #64748b;
+    font-size: 11px;
+    cursor: pointer;
+    margin-left: 8px;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.terminal-zen-btn:hover {
+    background: #334155;
+    color: #f1f5f9;
+    border-color: #60a5fa;
+}
+
+.terminal-manager.zen-mode {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    background: #0f172a;
+}
+
+.terminal-manager.zen-mode .terminal-manager-header {
+    background: #0f172a;
+    border-bottom-color: #1e293b;
+}
+
+.terminal-manager.zen-mode .terminal-instance-shortcuts {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(30, 41, 59, 0.9);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    padding: 12px 16px;
+    opacity: 0.3;
+    transition: opacity 0.3s;
+}
+
+.terminal-manager.zen-mode .terminal-instance-shortcuts:hover {
+    opacity: 1;
+}
+
+.terminal-manager.zen-mode .terminal-zen-btn {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}

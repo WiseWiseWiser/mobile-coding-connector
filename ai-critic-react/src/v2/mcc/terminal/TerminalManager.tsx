@@ -211,6 +211,7 @@ export interface TerminalManagerHandle {
 
 export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManagerProps>(function TerminalManager({ isVisible, loadSessions }, ref) {
     const { currentProject } = useV2Context();
+    const [zenMode, setZenMode] = useState(false);
 
     // Use the unified terminal tabs hook
     const {
@@ -312,7 +313,7 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
     }
 
     return (
-        <div className="terminal-manager">
+        <div className={`terminal-manager ${zenMode ? 'zen-mode' : ''}`}>
             <div className="terminal-manager-header">
                 <div className="terminal-tabs-container">
                     {tabs.map(tab => (
@@ -358,6 +359,13 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
                         <span className="status-text">Reconnect</span>
                     </button>
                 )}
+                <button
+                    className="terminal-zen-btn"
+                    onClick={() => setZenMode(!zenMode)}
+                    title={zenMode ? "Exit Zen Mode" : "Enter Zen Mode"}
+                >
+                    {zenMode ? 'Exit Zen' : 'Zen'}
+                </button>
             </div>
             <div className="terminal-instances-container">
                 {tabs.map(tab => (
