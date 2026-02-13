@@ -118,45 +118,77 @@ export async function runGitOpByDir(op: GitOp, dir: string, sshKey?: string): Pr
 // ---- Todo Operations ----
 
 export async function fetchTodos(projectId: string): Promise<Todo[]> {
-    const resp = await fetch(`/api/projects/todos?project_id=${projectId}`);
-    if (!resp.ok) {
+    console.log('[fetchTodos] Loading todos for project:', projectId);
+    try {
+        const resp = await fetch(`/api/projects/todos?project_id=${projectId}`);
+        if (!resp.ok) {
+            console.warn('[fetchTodos] Failed to fetch todos, status:', resp.status);
+            return [];
+        }
+        const data = await resp.json();
+        console.log('[fetchTodos] Received data:', data);
+        return Array.isArray(data) ? data : [];
+    } catch (err) {
+        console.error('[fetchTodos] Error:', err);
         return [];
     }
-    return resp.json();
 }
 
 export async function addTodo(projectId: string, text: string): Promise<Todo> {
-    const resp = await fetch('/api/projects/todos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: projectId, text }),
-    });
-    if (!resp.ok) {
-        const data = await resp.json();
-        throw new Error(data.error || 'Failed to add todo');
+    console.log('[addTodo] Adding todo for project:', projectId, 'text:', text);
+    try {
+        const resp = await fetch('/api/projects/todos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: projectId, text }),
+        });
+        if (!resp.ok) {
+            const data = await resp.json();
+            throw new Error(data.error || 'Failed to add todo');
+        }
+        const todo = await resp.json();
+        console.log('[addTodo] Added todo successfully:', todo);
+        return todo;
+    } catch (err) {
+        console.error('[addTodo] Error:', err);
+        throw err;
     }
-    return resp.json();
 }
 
 export async function updateTodo(projectId: string, todoId: string, updates: { text?: string; done?: boolean }): Promise<Todo> {
-    const resp = await fetch(`/api/projects/todos?project_id=${projectId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: todoId, ...updates }),
-    });
-    if (!resp.ok) {
-        const data = await resp.json();
-        throw new Error(data.error || 'Failed to update todo');
+    console.log('[updateTodo] Updating todo:', todoId, 'for project:', projectId, 'updates:', updates);
+    try {
+        const resp = await fetch(`/api/projects/todos?project_id=${projectId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: todoId, ...updates }),
+        });
+        if (!resp.ok) {
+            const data = await resp.json();
+            throw new Error(data.error || 'Failed to update todo');
+        }
+        const todo = await resp.json();
+        console.log('[updateTodo] Updated todo successfully:', todo);
+        return todo;
+    } catch (err) {
+        console.error('[updateTodo] Error:', err);
+        throw err;
     }
-    return resp.json();
 }
 
 export async function deleteTodo(projectId: string, todoId: string): Promise<void> {
-    const resp = await fetch(`/api/projects/todos?project_id=${projectId}&todo_id=${todoId}`, {
-        method: 'DELETE',
-    });
-    if (!resp.ok) {
-        const data = await resp.json();
-        throw new Error(data.error || 'Failed to delete todo');
+    console.log('[deleteTodo] Deleting todo:', todoId, 'for project:', projectId);
+    try {
+        const resp = await fetch(`/api/projects/todos?project_id=${projectId}&todo_id=${todoId}`, {
+            method: 'DELETE',
+        });
+        if (!resp.ok) {
+            const data = await resp.json();
+            throw new Error(data.error || 'Failed to delete todo');
+        }
+        console.log('[deleteTodo] Deleted todo successfully');
+    } catch (err) {
+        console.error('[deleteTodo] Error:', err);
+        throw err;
     }
 }

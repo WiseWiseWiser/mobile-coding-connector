@@ -521,6 +521,7 @@ func startDomainHealthCheck(domain string, port int, tunnelName string) {
 		logBuffer.addLog(fmt.Sprintf("Health check started for %s", domain))
 
 		consecutiveFailures := 0
+		wasPaused := false // Track previous pause state for logging when resuming
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 
@@ -538,6 +539,24 @@ func startDomainHealthCheck(domain string, port int, tunnelName string) {
 				logBuffer.addLog("Health check stopped")
 				return
 			case <-ticker.C:
+				// Check if health checks are paused for this mapping (e.g., after recent restart)
+				mappingID := fmt.Sprintf("domain-%s", domain)
+				utm := cloudflareSettings.GetUnifiedTunnelManager()
+				isPaused := utm.IsHealthCheckPaused(mappingID)
+
+				// Log when coming out of pause
+				if wasPaused && !isPaused {
+					logBuffer.addLog("Health check resumed (pause period expired)")
+					fmt.Printf("[domains] %s: health check resumed, resetting failure counter\n", domain)
+					consecutiveFailures = 0 // Reset counter when resuming from pause
+				}
+				wasPaused = isPaused
+
+				if isPaused {
+					logBuffer.addLog("Health check paused (recent restart)")
+					continue
+				}
+
 				if !checkDomainPing(domain) {
 					consecutiveFailures++
 					logMsg := fmt.Sprintf("Health check failed (%d/3)", consecutiveFailures)
@@ -548,8 +567,6 @@ func startDomainHealthCheck(domain string, port int, tunnelName string) {
 						fmt.Printf("[domains] health check failed 3 times for %s, restarting mapping...\n", domain)
 
 						// Use unified tunnel manager to restart the mapping
-						utm := cloudflareSettings.GetUnifiedTunnelManager()
-						mappingID := fmt.Sprintf("domain-%s", domain)
 						if err := utm.RestartMapping(mappingID); err != nil {
 							errMsg := fmt.Sprintf("Failed to restart mapping: %v", err)
 							logBuffer.addLog(errMsg)

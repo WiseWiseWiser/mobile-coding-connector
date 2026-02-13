@@ -17,6 +17,7 @@ import { CustomSelect } from './CustomSelect';
 import { GitPushSection } from '../files/GitPushSection';
 import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
 import { ProjectTodos } from './ProjectTodos';
+import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import './ProjectConfigView.css';
 
 export function ProjectConfigView() {
@@ -330,7 +331,9 @@ export function ProjectConfigView() {
                 )}
             </div>
 
-            <ProjectTodos projectId={project.id} />
+            <ErrorBoundary>
+                <ProjectTodos projectId={project.id} />
+            </ErrorBoundary>
         </div>
     );
 }

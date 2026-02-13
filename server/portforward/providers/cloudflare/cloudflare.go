@@ -246,60 +246,23 @@ func (p *OwnedProvider) Start(port int, hostname string) (*portforward.TunnelHan
 		fmt.Fprintf(logs, "[setup] Using provided hostname as-is: %s\n", hostname)
 	}
 
-	// Determine tunnel name based on full hostname to ensure uniqueness
-	tunnelName := cfutils.DefaultTunnelName(hostname)
-	fmt.Fprintf(logs, "[setup] Using tunnel: %s\n", tunnelName)
-
-	// Find or create tunnel
-	tunnelRef, err := cfutils.FindOrCreateTunnel(tunnelName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find/create tunnel: %v", err)
-	}
-	fmt.Fprintf(logs, "[setup] Tunnel resolved: %s\n", tunnelRef)
-
-	// Get tunnel ID and credentials
-	tunnelID, credFile, err := cfutils.EnsureTunnelExists(tunnelRef)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tunnel credentials: %v", err)
-	}
-	fmt.Fprintf(logs, "[setup] Got tunnel credentials: id=%s\n", tunnelID)
-
-	// Get unified tunnel manager to use its tunnel for DNS (not the one we just created)
+	// Ensure unified tunnel has a tunnel configured (reuses existing if already set up)
 	utm := cfutils.GetUnifiedTunnelManager()
-
-	// Get the ACTUAL tunnel that will be running (from unified tunnel config)
-	actualTunnelRef := ""
-	cfg := utm.GetConfig()
-	if cfg != nil {
-		if cfg.TunnelName != "" {
-			actualTunnelRef = cfg.TunnelName
-		} else if cfg.TunnelID != "" {
-			actualTunnelRef = cfg.TunnelID
-		}
+	logWrapper := func(msg string) {
+		fmt.Fprintf(logs, "[setup] %s\n", msg)
 	}
 
-	// If unified tunnel is already configured, use its tunnel for DNS
-	// Otherwise use the one we just created
-	dnsTunnelRef := actualTunnelRef
-	if dnsTunnelRef == "" {
-		dnsTunnelRef = tunnelRef
-		fmt.Fprintf(logs, "[setup] Warning: unified tunnel not configured, using created tunnel for DNS\n")
-	} else {
-		fmt.Fprintf(logs, "[setup] Using unified tunnel %s for DNS (ignoring created tunnel %s)\n", dnsTunnelRef, tunnelRef)
+	tunnelRef, _, _, err := cfutils.EnsureUnifiedTunnelConfigured("", logWrapper)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure unified tunnel configured: %v", err)
 	}
+	fmt.Fprintf(logs, "[setup] Using unified tunnel: %s\n", tunnelRef)
 
-	// Create DNS route using the ACTUAL running tunnel
-	fmt.Fprintf(logs, "[setup] Creating DNS route: %s -> tunnel %s\n", hostname, dnsTunnelRef)
-	if err := cfutils.CreateDNSRoute(dnsTunnelRef, hostname); err != nil {
+	// Create DNS route using the unified tunnel
+	fmt.Fprintf(logs, "[setup] Creating DNS route: %s -> tunnel %s\n", hostname, tunnelRef)
+	if err := cfutils.CreateDNSRoute(tunnelRef, hostname); err != nil {
 		fmt.Fprintf(logs, "[setup] Warning: DNS route error: %v\n", err)
 	}
-
-	// Configure the unified tunnel manager - this is now ignored but kept for compatibility
-	utm.SetConfig(config.CloudflareTunnelConfig{
-		TunnelName:      tunnelRef,
-		TunnelID:        tunnelID,
-		CredentialsFile: credFile,
-	})
 
 	// Add mapping to unified tunnel manager
 	localURL := fmt.Sprintf("http://localhost:%d", port)

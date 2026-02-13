@@ -8,6 +8,8 @@ interface ProjectTodosProps {
 }
 
 export function ProjectTodos({ projectId }: ProjectTodosProps) {
+    console.log('[ProjectTodos] Initializing with projectId:', projectId);
+
     const [todos, setTodos] = useState<Todo[]>([]);
     const [loading, setLoading] = useState(true);
     const [newTodoText, setNewTodoText] = useState('');
@@ -16,44 +18,55 @@ export function ProjectTodos({ projectId }: ProjectTodosProps) {
     const [error, setError] = useState('');
 
     useEffect(() => {
+        console.log('[ProjectTodos] useEffect triggered, loading todos...');
         loadTodos();
     }, [projectId]);
 
     const loadTodos = async () => {
+        console.log('[ProjectTodos] Loading todos for project:', projectId);
         try {
             setLoading(true);
             const data = await fetchTodos(projectId);
-            setTodos(data);
+            console.log('[ProjectTodos] Loaded todos:', data);
+            setTodos(data || []);
         } catch (err) {
-            console.error('Failed to load todos:', err);
+            console.error('[ProjectTodos] Failed to load todos:', err);
+            setTodos([]);
         } finally {
             setLoading(false);
         }
     };
 
     const handleAdd = async () => {
-        if (!newTodoText.trim()) return;
+        console.log('[ProjectTodos] Adding todo:', newTodoText);
         try {
+            setError('');
             setNewTodoText('');
             const newTodo = await addTodo(projectId, newTodoText.trim());
+            console.log('[ProjectTodos] Added todo successfully:', newTodo);
             setTodos([...todos, newTodo]);
-            setError('');
         } catch (err) {
+            console.error('[ProjectTodos] Failed to add todo:', err);
             setError(err instanceof Error ? err.message : 'Failed to add todo');
+            setNewTodoText(newTodoText);
         }
     };
 
     const handleToggle = async (todo: Todo) => {
+        console.log('[ProjectTodos] Toggling todo:', todo.id, 'done:', !todo.done);
         try {
-            const updated = await updateTodo(projectId, todo.id, { done: !todo.done });
-            setTodos(todos.map(t => t.id === todo.id ? updated : t));
             setError('');
+            const updated = await updateTodo(projectId, todo.id, { done: !todo.done });
+            console.log('[ProjectTodos] Updated todo successfully:', updated);
+            setTodos(todos.map(t => t.id === todo.id ? updated : t));
         } catch (err) {
+            console.error('[ProjectTodos] Failed to update todo:', err);
             setError(err instanceof Error ? err.message : 'Failed to update todo');
         }
     };
 
     const handleEdit = (todo: Todo) => {
+        console.log('[ProjectTodos] Editing todo:', todo.id);
         setEditingId(todo.id);
         setEditText(todo.text);
     };
@@ -63,28 +76,35 @@ export function ProjectTodos({ projectId }: ProjectTodosProps) {
             setEditingId(null);
             return;
         }
+        console.log('[ProjectTodos] Saving todo edit:', id, 'text:', editText);
         try {
+            setError('');
             const updated = await updateTodo(projectId, id, { text: editText.trim() });
+            console.log('[ProjectTodos] Saved todo edit successfully:', updated);
             setTodos(todos.map(t => t.id === id ? updated : t));
             setEditingId(null);
-            setError('');
         } catch (err) {
+            console.error('[ProjectTodos] Failed to update todo:', err);
             setError(err instanceof Error ? err.message : 'Failed to update todo');
         }
     };
 
     const handleCancelEdit = () => {
+        console.log('[ProjectTodos] Cancelling edit');
         setEditingId(null);
         setEditText('');
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm('Are you sure you want to delete this todo?')) return;
+        console.log('[ProjectTodos] Deleting todo:', id);
         try {
-            await deleteTodo(projectId, id);
-            setTodos(todos.filter(t => t.id !== id));
             setError('');
+            await deleteTodo(projectId, id);
+            console.log('[ProjectTodos] Deleted todo successfully');
+            setTodos(todos.filter(t => t.id !== id));
         } catch (err) {
+            console.error('[ProjectTodos] Failed to delete todo:', err);
             setError(err instanceof Error ? err.message : 'Failed to delete todo');
         }
     };

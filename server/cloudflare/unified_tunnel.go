@@ -33,6 +33,7 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -71,13 +72,14 @@ type IngressMapping struct {
 // UnifiedTunnelManager manages a single cloudflare tunnel process
 // that handles all port forwardings and domain tunnels.
 type UnifiedTunnelManager struct {
-	mu         sync.RWMutex
-	mappings   map[string]*IngressMapping // keyed by ID
-	cmd        *exec.Cmd
-	config     *config.CloudflareTunnelConfig
-	configPath string
-	running    bool
-	paused     bool // when true, health checks are skipped
+	mu                     sync.RWMutex
+	mappings               map[string]*IngressMapping // keyed by ID
+	cmd                    *exec.Cmd
+	config                 *config.CloudflareTunnelConfig
+	configPath             string
+	running                bool
+	paused                 bool                 // when true, health checks are paused globally
+	healthCheckPausedUntil map[string]time.Time // mappingID -> time when health check should resume
 }
 
 var (
@@ -90,7 +92,8 @@ var (
 func GetUnifiedTunnelManager() *UnifiedTunnelManager {
 	unifiedManagerOnce.Do(func() {
 		unifiedManager = &UnifiedTunnelManager{
-			mappings: make(map[string]*IngressMapping),
+			mappings:               make(map[string]*IngressMapping),
+			healthCheckPausedUntil: make(map[string]time.Time),
 		}
 	})
 	return unifiedManager
@@ -268,8 +271,16 @@ func (utm *UnifiedTunnelManager) ensureDataDir() error {
 
 // rebuildAndRestartLocked rebuilds the config file and restarts the tunnel if changed
 // Must be called with utm.mu held
+// If force is true, restart the tunnel even if config hasn't changed (useful for health check recoveries)
 func (utm *UnifiedTunnelManager) rebuildAndRestartLocked() error {
-	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: starting...\n")
+	return utm.rebuildAndRestartLockedWithForce(false)
+}
+
+// rebuildAndRestartLockedWithForce rebuilds the config file and restarts the tunnel
+// Must be called with utm.mu held
+// If force is true, restart the tunnel even if config hasn't changed (useful for health check recoveries)
+func (utm *UnifiedTunnelManager) rebuildAndRestartLockedWithForce(force bool) error {
+	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: starting... force=%v\n", force)
 
 	// Build new config
 	newConfig := utm.buildConfig()
@@ -291,19 +302,20 @@ func (utm *UnifiedTunnelManager) rebuildAndRestartLocked() error {
 	// Check if config has changed or process needs to be started
 	changed := utm.hasConfigChanged(cfgPath, newConfig)
 	needsStart := !utm.running || utm.cmd == nil || utm.cmd.Process == nil
-	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: hasConfigChanged=%v, needsStart=%v\n", changed, needsStart)
-	if !changed && !needsStart {
+	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: hasConfigChanged=%v, needsStart=%v, force=%v\n", changed, needsStart, force)
+	if !changed && !needsStart && !force {
 		fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: config unchanged and process running, skipping restart\n")
 		return nil // no change and process running, skip restart
 	}
 
-	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: config changed, BEFORE STOP - running=%v\n", utm.running)
+	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: starting restart - BEFORE STOP - running=%v\n", utm.running)
 
 	// Pause health checks during restart
 	utm.paused = true
 	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: health checks paused\n")
 
 	// Stop existing process
+	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: stopping process...\n")
 	utm.stopProcessLocked()
 	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: process stopped, AFTER STOP - running=%v\n", utm.running)
 
@@ -744,6 +756,33 @@ func (utm *UnifiedTunnelManager) StartHealthChecks(callback MappingHealthCallbac
 
 				fmt.Printf("[unified-tunnel] StartHealthChecks: checking %d mappings\n", len(mappings))
 				for _, m := range mappings {
+					// Check if this mapping is paused (recently restarted)
+					utm.mu.RLock()
+					pauseUntil, isPaused := utm.healthCheckPausedUntil[m.ID]
+					utm.mu.RUnlock()
+
+					now := time.Now()
+					if isPaused && now.Before(pauseUntil) {
+						fmt.Printf("[unified-tunnel] StartHealthChecks: skipping paused mapping id=%s hostname=%s (paused until %v)\n",
+							m.ID, m.Hostname, pauseUntil.Format("2006-01-02T15:04:05"))
+						continue
+					}
+
+					// If pause period has expired, clear the pause entry
+					if isPaused && now.After(pauseUntil) {
+						utm.mu.Lock()
+						delete(utm.healthCheckPausedUntil, m.ID)
+						fmt.Printf("[unified-tunnel] StartHealthChecks: pause period expired for mapping id=%s hostname=%s, resuming health checks and resetting failure counter\n",
+							m.ID, m.Hostname)
+						utm.mu.Unlock()
+
+						// Reset failure counter since mapping is coming out of pause
+						state, exists := states[m.ID]
+						if exists {
+							state.consecutiveFailures = 0
+						}
+					}
+
 					fmt.Printf("[unified-tunnel] StartHealthChecks: checking mapping id=%s hostname=%s\n", m.ID, m.Hostname)
 					healthy := utm.checkMappingHealth(m.Hostname)
 
@@ -832,8 +871,8 @@ func (utm *UnifiedTunnelManager) RestartMapping(mappingID string) error {
 
 	utm.mu.Unlock()
 
-	fmt.Printf("[unified-tunnel] RestartMapping: calling rebuildAndRestartLocked\n")
-	err := utm.rebuildAndRestartLocked()
+	fmt.Printf("[unified-tunnel] RestartMapping: calling rebuildAndRestartLockedWithForce(force=true)\n")
+	err := utm.rebuildAndRestartLockedWithForce(true)
 
 	// Log state after restart
 	utm.mu.Lock()
@@ -844,6 +883,17 @@ func (utm *UnifiedTunnelManager) RestartMapping(mappingID string) error {
 		return -1
 	}(), err)
 	utm.mu.Unlock()
+
+	// If restart was successful, pause health checks for this mapping for 1 minute
+	// This prevents rapid restart loops due to accumulated failure counts
+	if err == nil {
+		utm.mu.Lock()
+		pauseUntil := time.Now().Add(1 * time.Minute)
+		utm.healthCheckPausedUntil[mappingID] = pauseUntil
+		fmt.Printf("[unified-tunnel] RestartMapping: paused health checks for mapping %s until %v (1 minute cooldown)\n",
+			mappingID, pauseUntil.Format("2006-01-02T15:04:05"))
+		utm.mu.Unlock()
+	}
 
 	// Run cloudflared tunnel info to check status
 	fmt.Printf("[unified-tunnel] RestartMapping: checking tunnel status...\n")
@@ -877,6 +927,29 @@ func (utm *UnifiedTunnelManager) GetMapping(mappingID string) (*IngressMapping, 
 	return m, exists
 }
 
+// IsHealthCheckPaused returns true if health checks are paused for a specific mapping
+// Health checks are paused if:
+// 1. Global pause is active (utm.paused = true)
+// 2. Per-mapping pause is active (health check was recently restarted)
+func (utm *UnifiedTunnelManager) IsHealthCheckPaused(mappingID string) bool {
+	utm.mu.RLock()
+	defer utm.mu.RUnlock()
+
+	// Check global pause
+	if utm.paused {
+		return true
+	}
+
+	// Check per-mapping pause
+	pauseUntil, exists := utm.healthCheckPausedUntil[mappingID]
+	if !exists {
+		return false
+	}
+
+	// If pause hasn't expired yet, health check is paused
+	return time.Now().Before(pauseUntil)
+}
+
 // globalHealthCheckCancel tracks the global health check cancel function
 var globalHealthCheckCancel context.CancelFunc
 var globalHealthCheckOnce sync.Once
@@ -890,6 +963,13 @@ func StartGlobalHealthChecks() {
 		fmt.Printf("[unified-tunnel] StartGlobalHealthChecks: setting up health check callback\n")
 
 		globalHealthCheckCancel = utm.StartHealthChecks(func(mappingID, hostname string, healthy bool, consecutiveFailures int) {
+			// Check if this is the opencode web server mapping - skip health checks for it
+			// since the server might start later and we don't want to restart tunnels unnecessarily
+			if isOpenCodeWebServerMapping(mappingID) {
+				fmt.Printf("[unified-tunnel] Skipping health check for opencode web server mapping %s (%s)\n", mappingID, hostname)
+				return
+			}
+
 			fmt.Printf("[unified-tunnel] healthCheckCallback: mappingID=%s hostname=%s healthy=%v failures=%d\n", mappingID, hostname, healthy, consecutiveFailures)
 			if healthy {
 				fmt.Printf("[unified-tunnel] Health check recovered for %s (%s)\n", hostname, mappingID)
@@ -916,6 +996,50 @@ func StopGlobalHealthChecks() {
 		globalHealthCheckCancel = nil
 		fmt.Println("[unified-tunnel] Global health checks stopped")
 	}
+}
+
+// isOpenCodeWebServerMapping checks if a mapping ID belongs to the opencode web server
+// We defer to the opencode package's IsWebServerMapping function
+func isOpenCodeWebServerMapping(mappingID string) bool {
+	// Since we can't directly import opencode package (circular import),
+	// we'll use a simple check based on mapping ID pattern and port parsing.
+	// For the actual implementation, users should call opencode.IsWebServerMapping
+
+	// Parse mapping ID format: "port-<port>"
+	if strings.HasPrefix(mappingID, "port-") {
+		portStr := mappingID[5:]
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			return false
+		}
+
+		// Check if this port matches the opencode web server port (default 4096)
+		// We need to read opencode settings to get the actual port
+		settingsPath := config.DataDir + "/opencode.json"
+		data, readErr := os.ReadFile(settingsPath)
+		if readErr != nil {
+			return false
+		}
+
+		var settings map[string]interface{}
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return false
+		}
+
+		webServer, ok := settings["web_server"].(map[string]interface{})
+		if !ok {
+			return false
+		}
+
+		webServerPort, ok := webServer["port"].(float64)
+		if !ok {
+			return port == 4096
+		}
+
+		return port == int(webServerPort)
+	}
+
+	return false
 }
 
 // LoadExtraMappingsFile loads all extra mappings from the JSON file

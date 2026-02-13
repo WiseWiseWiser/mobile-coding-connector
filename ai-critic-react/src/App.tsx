@@ -3,6 +3,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './logs';
@@ -147,8 +148,9 @@ function V2Layout() {
 
 function App() {
     return (
-        <Router>
-            <Routes>
+        <ErrorBoundary>
+            <Router>
+                <Routes>
                 {/* Legacy v1 routes */}
                 <Route path="/v1/*" element={<MainApp />} />
                 {/* Main routes (v2) - layout wraps all child routes */}
@@ -245,6 +247,7 @@ function App() {
                 </Route>
             </Routes>
         </Router>
+        </ErrorBoundary>
     );
 }
 

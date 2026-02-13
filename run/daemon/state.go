@@ -3,7 +3,6 @@
 package daemon
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -196,9 +195,3 @@ type StatusSnapshot struct {
 
 // GlobalState is the singleton daemon state instance
 var GlobalState = NewState()
-
-// Logger provides timestamped logging
-func Logger(format string, args ...interface{}) {
-	timestamp := time.Now().Format("2006-01-02T15:04:05")
-	fmt.Printf("[%s] %s\n", timestamp, fmt.Sprintf(format, args...))
-}

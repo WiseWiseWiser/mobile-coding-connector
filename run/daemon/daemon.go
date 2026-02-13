@@ -18,8 +18,6 @@ type Daemon struct {
 	httpServer     *HTTPServer
 	port           int
 	serverArgs     []string
-	logPath        string
-	logger         *DualLogger
 }
 
 // DualLogger writes to both stdout/stderr and a log file
@@ -89,7 +87,7 @@ func (dl *DualLogger) GetStderr() io.Writer {
 }
 
 // NewDaemon creates a new daemon instance
-func NewDaemon(port int, serverArgs []string, logPath string) *Daemon {
+func NewDaemon(port int, serverArgs []string) *Daemon {
 	state := GlobalState
 	return &Daemon{
 		state:          state,
@@ -98,21 +96,16 @@ func NewDaemon(port int, serverArgs []string, logPath string) *Daemon {
 		httpServer:     NewHTTPServer(state),
 		port:           port,
 		serverArgs:     serverArgs,
-		logPath:        logPath,
 	}
 }
 
 // Run starts the daemon and runs indefinitely
-func (d *Daemon) Run(forever bool) error {
-	// Setup dual logger
-	logger, err := NewDualLogger(d.logPath)
-	if err != nil {
+func (d *Daemon) Run(forever bool, logPath string) error {
+	// Initialize unified logger
+	if err := InitLogger(logPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to setup logger: %v\n", err)
-		// Continue without log file
-		logger, _ = NewDualLogger("")
 	}
-	d.logger = logger
-	defer d.logger.Close()
+	defer CloseLogger()
 
 	// Check if port is already in use - another keep-alive is likely running
 	// Skip this check if --forever flag is set
@@ -147,21 +140,21 @@ func (d *Daemon) runLoop() error {
 		currentBin := d.state.GetBinPath()
 
 		if newerBin := FindNewerBinary(currentBin); newerBin != "" {
-			d.logger.Log("Found newer binary: %s (upgrading from %s)",
+			Logger("Found newer binary: %s (upgrading from %s)",
 				filepath.Base(newerBin), filepath.Base(currentBin))
 			d.state.SetBinPath(newerBin)
 			currentBin = newerBin
 		}
 
-		d.logger.Log("Starting ai-critic server on port %d (binary: %s)...",
+		Logger("Starting ai-critic server on port %d (binary: %s)...",
 			d.port, filepath.Base(currentBin))
 
 		// Start the server process with dual logging
 		cmd, err := d.startServerWithLogging(currentBin, d.serverArgs)
 		if err != nil {
-			d.logger.Log("Failed to start server: %v", err)
+			Logger("Failed to start server: %v", err)
 			d.state.SetServerPID(0)
-			d.logger.Log("Restarting in %v...", RestartDelay)
+			Logger("Restarting in %v...", RestartDelay)
 			time.Sleep(RestartDelay)
 			continue
 		}
@@ -173,16 +166,16 @@ func (d *Daemon) runLoop() error {
 		// Wait for port to become ready
 		ready := d.processManager.WaitForPort(d.port, StartupTimeout, cmd)
 		if !ready {
-			d.logger.Log("ERROR: Server failed to become ready within %v", StartupTimeout)
+			Logger("ERROR: Server failed to become ready within %v", StartupTimeout)
 			d.processManager.KillProcessGroup(cmd)
 			d.state.SetServerPID(0)
 			setCurrentCommand(nil)
-			d.logger.Log("Restarting in %v...", RestartDelay)
+			Logger("Restarting in %v...", RestartDelay)
 			time.Sleep(RestartDelay)
 			continue
 		}
 
-		d.logger.Log("Server is ready (PID=%d, port=%d)", pid, d.port)
+		Logger("Server is ready (PID=%d, port=%d)", pid, d.port)
 
 		// Health check loop (also checks for binary upgrades and restart signals)
 		exitReason := d.healthChecker.Run(d.port, cmd, currentBin, FindNewerBinary)
@@ -193,12 +186,12 @@ func (d *Daemon) runLoop() error {
 
 		switch exitReason {
 		case ExitReasonUpgrade, ExitReasonRestart:
-			d.logger.Log("%s, restarting immediately...", exitReason)
+			Logger("%s, restarting immediately...", exitReason)
 		case ExitReasonDaemonRestart:
-			d.logger.Log("Daemon restart requested, stopping and waiting for exec...")
+			Logger("Daemon restart requested, stopping and waiting for exec...")
 			return nil
 		default:
-			d.logger.Log("Server exited (%s), restarting in %v...", exitReason, RestartDelay)
+			Logger("Server exited (%s), restarting in %v...", exitReason, RestartDelay)
 			time.Sleep(RestartDelay)
 		}
 	}
@@ -216,8 +209,8 @@ func (d *Daemon) startServerWithLogging(binPath string, serverArgs []string) (*e
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	// Tee stdout/stderr to both console and log file
-	cmd.Stdout = d.logger.GetStdout()
-	cmd.Stderr = d.logger.GetStderr()
+	cmd.Stdout = GetLogWriter()
+	cmd.Stderr = GetStderrWriter()
 	// Close stdin to prevent interactive prompts from hanging the server
 	cmd.Stdin = nil
 
@@ -226,7 +219,7 @@ func (d *Daemon) startServerWithLogging(binPath string, serverArgs []string) (*e
 	}
 
 	pid := cmd.Process.Pid
-	d.logger.Log("Server started (PID=%d)", pid)
+	Logger("Server started (PID=%d)", pid)
 
 	d.state.SetServerPID(pid)
 	d.state.SetStartedAt(time.Now())
@@ -236,6 +229,6 @@ func (d *Daemon) startServerWithLogging(binPath string, serverArgs []string) (*e
 
 // RunKeepAlive is the main entry point for the keep-alive daemon
 func RunKeepAlive(port int, forever bool, logPath string, serverArgs []string) error {
-	daemon := NewDaemon(port, serverArgs, logPath)
-	return daemon.Run(forever)
+	daemon := NewDaemon(port, serverArgs)
+	return daemon.Run(forever, logPath)
 }
