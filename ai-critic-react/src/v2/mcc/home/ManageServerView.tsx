@@ -283,7 +283,12 @@ export function ManageServerView() {
                             <InfoRow label="Next Check" value={nextCheckCountdown} />
                         )}
                         {status.uptime && <InfoRow label="Uptime" value={status.uptime} />}
-                        {status.started_at && <InfoRow label="Started At" value={new Date(status.started_at).toLocaleString()} />}
+                        {status.started_at && <InfoRow label="Started At" value={(() => {
+                            const d = new Date(status.started_at);
+                            const date = d.toLocaleDateString('en-CA');
+                            const time = d.toLocaleTimeString('en-US', { hour12: true });
+                            return `${date} ${time}`;
+                        })()} />}
                     </div>
                 )}
 

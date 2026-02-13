@@ -38,8 +38,16 @@ On initial login, you will be prompted to setup login password, the initial pass
 If the server panics, the process ends. To make it auto restart, add a `keep-alive` sub command:
 
 ```sh
-./ai-critic-server keep-alive
+# The keep-alive daemon must be run in the background with nohup to ensure it survives
+# terminal disconnections and continues running after you log out.
+nohup ./ai-critic-server keep-alive &
 ```
+
+**Why `nohup` and `&`?**
+- `nohup` (no hangup) prevents the process from being terminated when the terminal session ends (e.g., SSH logout)
+- `&` runs the process in the background so your shell remains available
+
+This ensures the keep-alive daemon persists across terminal sessions and can automatically restart the server if it crashes.
 
 ## Get Started with Docker
 
@@ -65,5 +73,5 @@ go run ./script/build
 The binary is built to `/tmp/ai-critic`. Run it with:
 
 ```bash
-/tmp/ai-critic keep-alive
+nohup /tmp/ai-critic keep-alive &
 ```
