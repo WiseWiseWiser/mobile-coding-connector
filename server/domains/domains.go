@@ -592,6 +592,21 @@ func stopDomainHealthCheck(domain string) {
 	healthCheckLogsMu.Unlock()
 }
 
+// StopAllDomainHealthChecks stops all domain health check goroutines.
+// This should be called during server shutdown.
+func StopAllDomainHealthChecks() {
+	healthCheckMu.Lock()
+	domains := make([]string, 0, len(healthCheckCancel))
+	for domain := range healthCheckCancel {
+		domains = append(domains, domain)
+	}
+	healthCheckMu.Unlock()
+
+	for _, domain := range domains {
+		stopDomainHealthCheck(domain)
+	}
+}
+
 // checkDomainPing checks if the domain's /ping endpoint is reachable.
 // Returns true if ping succeeds, false otherwise.
 func checkDomainPing(domain string) bool {

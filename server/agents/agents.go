@@ -704,7 +704,7 @@ func handleOpencodeWebServerControlStreaming(w http.ResponseWriter, r *http.Requ
 		}
 
 		// Start the process via subprocess manager (non-blocking)
-		process, err := manager.StartProcess(opencode.WebServerProcessID, "OpenCode Web Server", cmd.Cmd, healthChecker)
+		process, err := manager.StartProcess(opencode.WebServerProcessID, "OpenCode Web Server", cmd.Cmd, healthChecker, true)
 		if err != nil {
 			sseWriter.SendError(fmt.Sprintf("Failed to start web server: %v", err))
 			sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})

@@ -29,6 +29,7 @@ func init() {
 			home+"/.local/bin",
 			home+"/.opencode/bin",
 			home+"/go/bin",
+			home+"/.bun/bin",
 		)
 	}
 	// Dynamically resolve npm's global bin directory (varies by nvm, system install, etc.)

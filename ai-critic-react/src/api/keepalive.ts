@@ -49,6 +49,16 @@ export async function restartServer(): Promise<{ status: string }> {
     return res.json();
 }
 
+/** Restart the keep-alive daemon itself with streaming logs via SSE. */
+export function restartDaemonStreaming(): Promise<Response> {
+    return fetch(`${API_BASE}/api/keep-alive/restart-daemon`, {
+        method: 'POST',
+        headers: {
+            'Accept': 'text/event-stream',
+        },
+    });
+}
+
 /** Get the upload target path for the next binary version. */
 export async function getUploadTarget(): Promise<UploadTarget> {
     const res = await fetch(`${API_BASE}/api/keep-alive/upload-target`);

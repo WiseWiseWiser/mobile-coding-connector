@@ -77,7 +77,7 @@ func NewManager() *Manager {
 
 // StartProcess starts a new managed subprocess
 // The process will run in its own process group and won't block
-func (m *Manager) StartProcess(id string, name string, cmd *exec.Cmd, healthChecker func() bool) (*Process, error) {
+func (m *Manager) StartProcess(id string, name string, cmd *exec.Cmd, healthChecker func() bool, detach ...bool) (*Process, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

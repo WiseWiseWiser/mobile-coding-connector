@@ -185,6 +185,14 @@ func Serve(port int, dev bool) error {
 		// Graceful shutdown initiated
 		fmt.Println("\nShutdown signal received, stopping server...")
 
+		// Stop all domain health check goroutines
+		fmt.Println("Stopping domain health check goroutines...")
+		domains.StopAllDomainHealthChecks()
+
+		// Stop unified tunnel health checks
+		fmt.Println("Stopping unified tunnel health checks...")
+		cloudflareSettings.StopGlobalHealthChecks()
+
 		// Stop all port forwards (tunnels)
 		pfManager := portforward.GetDefaultManager()
 		for _, pf := range pfManager.List() {

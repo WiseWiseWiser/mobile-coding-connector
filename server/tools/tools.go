@@ -341,6 +341,19 @@ var requiredTools = []toolDef{
 		},
 		installWindows: "lsof is not available on Windows. Use 'netstat -an' instead.",
 	},
+	{
+		name:        "bun",
+		description: "Fast JavaScript all-in-one toolkit",
+		purpose:     "Run JavaScript/TypeScript with fast package management",
+		versionCmd:  []string{"bun", "--version"},
+		installMacOS: []string{
+			"curl -fsSL https://bun.sh/install | bash",
+		},
+		installLinux: []string{
+			"curl -fsSL https://bun.sh/install | bash",
+		},
+		installWindows: "powershell -c \"irm bun.sh/install.ps1|iex\"",
+	},
 }
 
 // getInstallStepsForOS returns the install steps for the current OS.

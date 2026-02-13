@@ -8,6 +8,7 @@ import { LogViewer } from '../../LogViewer';
 import type { LogLine } from '../../LogViewer';
 import { useTabHistory } from '../../../hooks/useTabHistory';
 import { NavTabs } from '../types';
+import { restartDaemonStreaming } from '../../../api/keepalive';
 import { TransferProgress } from './TransferProgress';
 import type { TransferProgressData } from './TransferProgress';
 import { StreamingActionButton } from '../../StreamingActionButton';
@@ -320,6 +321,20 @@ export function ManageServerView() {
                     >
                         {restarting ? 'Restarting...' : 'Restart Server'}
                     </button>
+
+                    <StreamingActionButton
+                        label="Restart Daemon"
+                        runningLabel="Restarting Daemon..."
+                        action={restartDaemonStreaming}
+                        className="manage-server-btn manage-server-btn--restart"
+                        logMaxHeight={200}
+                        onComplete={(result) => {
+                            if (result.ok) {
+                                // Daemon will restart, give it time to come back
+                                setTimeout(fetchStatus, 3000);
+                            }
+                        }}
+                    />
 
                     <div>
                         {/* File selection / confirm step */}
