@@ -18,10 +18,11 @@ import (
 type ExitReasonType string
 
 const (
-	ExitReasonProcessExit ExitReasonType = "process exited"
-	ExitReasonPortDead    ExitReasonType = "port unreachable"
-	ExitReasonUpgrade     ExitReasonType = "binary upgrade"
-	ExitReasonRestart     ExitReasonType = "restart requested"
+	ExitReasonProcessExit   ExitReasonType = "process exited"
+	ExitReasonPortDead      ExitReasonType = "port unreachable"
+	ExitReasonUpgrade       ExitReasonType = "binary upgrade"
+	ExitReasonRestart       ExitReasonType = "restart requested"
+	ExitReasonDaemonRestart ExitReasonType = "daemon restart requested"
 )
 
 // HealthChecker handles health checking and monitoring of the server process
@@ -69,6 +70,13 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 			hc.gracefulStop(cmd)
 			WaitForDone(done, 5*time.Second)
 			return ExitReasonRestart
+
+		case <-hc.state.GetDaemonRestartChannel():
+			// Daemon restart requested via API
+			Logger("Daemon restart requested, stopping server (PID=%d)...", cmd.Process.Pid)
+			hc.gracefulStop(cmd)
+			WaitForDone(done, 5*time.Second)
+			return ExitReasonDaemonRestart
 
 		case <-healthTicker.C:
 			checkStart := time.Now()

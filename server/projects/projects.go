@@ -14,6 +14,14 @@ import (
 
 var projectsFile = config.ProjectsFile
 
+type Todo struct {
+	ID        string `json:"id"`
+	Text      string `json:"text"`
+	Done      bool   `json:"done"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
 type Project struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -22,6 +30,7 @@ type Project struct {
 	SSHKeyID  string `json:"ssh_key_id,omitempty"`
 	UseSSH    bool   `json:"use_ssh"`
 	CreatedAt string `json:"created_at"`
+	Todos     []Todo `json:"todos,omitempty"`
 }
 
 var mu sync.RWMutex
@@ -141,6 +150,7 @@ func Update(id string, updates ProjectUpdate) (*Project, error) {
 
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/projects", handleProjects)
+	mux.HandleFunc("/api/projects/todos", handleTodos)
 }
 
 func handleProjects(w http.ResponseWriter, r *http.Request) {
@@ -249,4 +259,187 @@ func respondJSON(w http.ResponseWriter, status int, v interface{}) {
 
 func respondErr(w http.ResponseWriter, status int, msg string) {
 	respondJSON(w, status, map[string]string{"error": msg})
+}
+
+func handleTodos(w http.ResponseWriter, r *http.Request) {
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		respondErr(w, http.StatusBadRequest, "project_id is required")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		list, err := List()
+		if err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		for _, p := range list {
+			if p.ID == projectID {
+				respondJSON(w, http.StatusOK, p.Todos)
+				return
+			}
+		}
+		respondErr(w, http.StatusNotFound, "project not found")
+
+	case http.MethodPost:
+		var req struct {
+			Text string `json:"text"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondErr(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if req.Text == "" {
+			respondErr(w, http.StatusBadRequest, "text is required")
+			return
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		list, err := loadAll()
+		if err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		var projectIndex int = -1
+		for i, p := range list {
+			if p.ID == projectID {
+				projectIndex = i
+				break
+			}
+		}
+
+		if projectIndex == -1 {
+			respondErr(w, http.StatusNotFound, "project not found")
+			return
+		}
+
+		todo := Todo{
+			ID:        fmt.Sprintf("%d", time.Now().UnixMilli()),
+			Text:      req.Text,
+			Done:      false,
+			CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		}
+
+		list[projectIndex].Todos = append(list[projectIndex].Todos, todo)
+		if err := saveAll(list); err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusOK, todo)
+
+	case http.MethodPut:
+		var req struct {
+			ID   string  `json:"id"`
+			Text *string `json:"text,omitempty"`
+			Done *bool   `json:"done,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondErr(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if req.ID == "" {
+			respondErr(w, http.StatusBadRequest, "id is required")
+			return
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		list, err := loadAll()
+		if err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		var projectIndex int = -1
+		var todoIndex int = -1
+		for i, p := range list {
+			if p.ID == projectID {
+				projectIndex = i
+				for j, t := range p.Todos {
+					if t.ID == req.ID {
+						todoIndex = j
+						break
+					}
+				}
+				break
+			}
+		}
+
+		if projectIndex == -1 {
+			respondErr(w, http.StatusNotFound, "project not found")
+			return
+		}
+		if todoIndex == -1 {
+			respondErr(w, http.StatusNotFound, "todo not found")
+			return
+		}
+
+		if req.Text != nil {
+			list[projectIndex].Todos[todoIndex].Text = *req.Text
+			list[projectIndex].Todos[todoIndex].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		if req.Done != nil {
+			list[projectIndex].Todos[todoIndex].Done = *req.Done
+		}
+
+		if err := saveAll(list); err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusOK, list[projectIndex].Todos[todoIndex])
+
+	case http.MethodDelete:
+		todoID := r.URL.Query().Get("todo_id")
+		if todoID == "" {
+			respondErr(w, http.StatusBadRequest, "todo_id is required")
+			return
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		list, err := loadAll()
+		if err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		var projectIndex int = -1
+		for i, p := range list {
+			if p.ID == projectID {
+				projectIndex = i
+				break
+			}
+		}
+
+		if projectIndex == -1 {
+			respondErr(w, http.StatusNotFound, "project not found")
+			return
+		}
+
+		filteredTodos := make([]Todo, 0, len(list[projectIndex].Todos))
+		for _, t := range list[projectIndex].Todos {
+			if t.ID != todoID {
+				filteredTodos = append(filteredTodos, t)
+			}
+		}
+
+		if len(filteredTodos) == len(list[projectIndex].Todos) {
+			respondErr(w, http.StatusNotFound, "todo not found")
+			return
+		}
+
+		list[projectIndex].Todos = filteredTodos
+		if err := saveAll(list); err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }

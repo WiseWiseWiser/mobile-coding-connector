@@ -5,14 +5,32 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
+
+var currentCmd atomic.Value
+
+// setCurrentCommand stores the current server command (thread-safe)
+func setCurrentCommand(cmd *exec.Cmd) {
+	currentCmd.Store(cmd)
+}
+
+// getCurrentCommand retrieves the current server command (thread-safe)
+func getCurrentCommand() *exec.Cmd {
+	val := currentCmd.Load()
+	if val == nil {
+		return nil
+	}
+	return val.(*exec.Cmd)
+}
 
 // HTTPServer provides the HTTP management API for the keep-alive daemon
 type HTTPServer struct {
@@ -366,6 +384,27 @@ func (s *HTTPServer) fixDomainTunnel(domain string, serverPort int, token string
 	return false
 }
 
+// killProcess kills a process by PID
+func killProcess(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+
+	pgid, err := syscall.Getpgid(cmd.Process.Pid)
+	if err != nil {
+		// Fallback: kill just the process
+		Logger("Warning: could not get process group, falling back to process kill")
+		cmd.Process.Signal(syscall.SIGTERM)
+		time.Sleep(3 * time.Second)
+		cmd.Process.Signal(syscall.SIGKILL)
+		return
+	}
+
+	// Force kill the entire process group
+	Logger("Killing process group %d", pgid)
+	syscall.Kill(-pgid, syscall.SIGKILL)
+}
+
 // handleRestartDaemon handles restarting the keep-alive daemon itself using exec.
 // It streams logs via SSE, finds the newest binary, and replaces the current process.
 func (s *HTTPServer) handleRestartDaemon(w http.ResponseWriter, r *http.Request) {
@@ -381,6 +420,57 @@ func (s *HTTPServer) handleRestartDaemon(w http.ResponseWriter, r *http.Request)
 	}
 
 	sseWriter.SendLog("Restarting keep-alive daemon...")
+
+	// Request daemon restart to stop health checker
+	s.state.RequestDaemonRestart()
+	sseWriter.SendLog("Health checker stop requested, waiting for it to exit...")
+	time.Sleep(2 * time.Second)
+	sseWriter.SendLog("Health checker should be stopped now")
+
+	// Stop the running server gracefully before exec
+	cmd := getCurrentCommand()
+	if cmd != nil && cmd.Process != nil {
+		pid := cmd.Process.Pid
+		sseWriter.SendLog(fmt.Sprintf("Stopping server PID %d before restart...", pid))
+
+		// Create a channel to wait for process exit
+		done := make(chan struct{}, 1)
+		go func() {
+			cmd.Process.Wait()
+			close(done)
+		}()
+
+		// Try graceful shutdown first
+		if CallShutdownEndpoint() {
+			sseWriter.SendLog("Graceful shutdown request sent")
+			select {
+			case <-done:
+				sseWriter.SendLog("Server stopped gracefully")
+			case <-time.After(30 * time.Second):
+				sseWriter.SendLog("Graceful shutdown timeout, force killing...")
+				killProcess(cmd)
+				// Wait a bit for the process to actually die
+				select {
+				case <-done:
+					sseWriter.SendLog("Server force stopped")
+				case <-time.After(5 * time.Second):
+					sseWriter.SendLog("Warning: server may still be running")
+				}
+			}
+		} else {
+			sseWriter.SendLog("Shutdown endpoint unavailable, using direct kill")
+			killProcess(cmd)
+			select {
+			case <-done:
+				sseWriter.SendLog("Server stopped")
+			case <-time.After(5 * time.Second):
+				sseWriter.SendLog("Warning: server may still be running")
+			}
+		}
+
+		setCurrentCommand(nil)
+		s.state.SetServerPID(0)
+	}
 
 	// Get current binary and args
 	currentBin, err := os.Executable()

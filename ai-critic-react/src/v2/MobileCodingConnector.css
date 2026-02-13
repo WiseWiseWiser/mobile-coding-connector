@@ -1274,6 +1274,7 @@ body:has(.mcc) {
     align-items: center;
     gap: 8px;
     margin-bottom: 8px;
+    flex-wrap: wrap;
 }
 
 .mcc-port-status {
@@ -1660,7 +1661,6 @@ body:has(.mcc) {
 
 /* Port provider badge */
 .mcc-port-provider-badge {
-    margin-left: auto;
     padding: 2px 8px;
     background: #334155;
     border-radius: 4px;
@@ -1670,7 +1670,6 @@ body:has(.mcc) {
 
 /* Bootstrap badge for domain tunnels */
 .mcc-port-bootstrap-badge {
-    margin-left: 8px;
     padding: 2px 8px;
     background: #3b82f6;
     border-radius: 4px;

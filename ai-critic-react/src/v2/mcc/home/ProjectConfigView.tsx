@@ -16,6 +16,7 @@ import { KeyIcon } from '../../icons';
 import { CustomSelect } from './CustomSelect';
 import { GitPushSection } from '../files/GitPushSection';
 import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
+import { ProjectTodos } from './ProjectTodos';
 import './ProjectConfigView.css';
 
 export function ProjectConfigView() {
@@ -328,6 +329,8 @@ export function ProjectConfigView() {
                     </div>
                 )}
             </div>
+
+            <ProjectTodos projectId={project.id} />
         </div>
     );
 }

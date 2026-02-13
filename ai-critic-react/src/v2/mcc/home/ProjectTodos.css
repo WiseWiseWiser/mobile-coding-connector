@@ -1,0 +1,151 @@
+.mcc-todo-error {
+    padding: 10px 14px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    color: #fca5a5;
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.mcc-todo-add {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.mcc-todo-input {
+    flex: 1;
+    padding: 10px 14px;
+    background: #1e293b;
+    color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+}
+
+.mcc-todo-input:focus {
+    border-color: #3b82f6;
+}
+
+.mcc-todo-input::placeholder {
+    color: #64748b;
+}
+
+.mcc-todo-btn {
+    padding: 10px 16px;
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.mcc-todo-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.mcc-todo-empty {
+    padding: 20px;
+    text-align: center;
+    color: #64748b;
+    font-size: 13px;
+    background: rgba(148, 163, 184, 0.05);
+    border: 1px solid #334155;
+    border-radius: 8px;
+}
+
+.mcc-todo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mcc-todo-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.mcc-todo-item:hover {
+    border-color: #475569;
+}
+
+.mcc-todo-item.done {
+    opacity: 0.6;
+}
+
+.mcc-todo-item.done .mcc-todo-text {
+    text-decoration: line-through;
+    color: #64748b;
+}
+
+.mcc-todo-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #22c55e;
+}
+
+.mcc-todo-text {
+    flex: 1;
+    color: #e2e8f0;
+    font-size: 14px;
+    word-break: break-word;
+}
+
+.mcc-todo-edit-input {
+    flex: 1;
+    padding: 6px 10px;
+    background: #0f172a;
+    color: #e2e8f0;
+    border: 1px solid #475569;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+}
+
+.mcc-todo-edit-input:focus {
+    border-color: #3b82f6;
+}
+
+.mcc-todo-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.mcc-todo-icon-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mcc-todo-icon-btn:hover {
+    background: #334155;
+    color: #e2e8f0;
+    border-color: #475569;
+}
+
+.mcc-todo-icon-btn.danger:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+    border-color: rgba(239, 68, 68, 0.4);
+}

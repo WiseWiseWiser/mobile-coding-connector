@@ -168,12 +168,15 @@ func (d *Daemon) runLoop() error {
 
 		pid := cmd.Process.Pid
 
+		setCurrentCommand(cmd)
+
 		// Wait for port to become ready
 		ready := d.processManager.WaitForPort(d.port, StartupTimeout, cmd)
 		if !ready {
 			d.logger.Log("ERROR: Server failed to become ready within %v", StartupTimeout)
 			d.processManager.KillProcessGroup(cmd)
 			d.state.SetServerPID(0)
+			setCurrentCommand(nil)
 			d.logger.Log("Restarting in %v...", RestartDelay)
 			time.Sleep(RestartDelay)
 			continue
@@ -185,11 +188,15 @@ func (d *Daemon) runLoop() error {
 		exitReason := d.healthChecker.Run(d.port, cmd, currentBin, FindNewerBinary)
 
 		d.state.SetServerPID(0)
+		setCurrentCommand(nil)
 		d.state.IncrementRestartCount()
 
 		switch exitReason {
 		case ExitReasonUpgrade, ExitReasonRestart:
 			d.logger.Log("%s, restarting immediately...", exitReason)
+		case ExitReasonDaemonRestart:
+			d.logger.Log("Daemon restart requested, stopping and waiting for exec...")
+			return nil
 		default:
 			d.logger.Log("Server exited (%s), restarting in %v...", exitReason, RestartDelay)
 			time.Sleep(RestartDelay)

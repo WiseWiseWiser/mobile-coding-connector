@@ -1,3 +1,11 @@
+export interface Todo {
+    id: string;
+    text: string;
+    done: boolean;
+    created_at: string;
+    updated_at?: string;
+}
+
 // Project type from API
 export interface ProjectInfo {
     id: string;
@@ -8,6 +16,7 @@ export interface ProjectInfo {
     use_ssh: boolean;
     created_at: string;
     dir_exists: boolean;
+    todos?: Todo[];
 }
 
 export async function fetchProjects(): Promise<ProjectInfo[]> {
@@ -104,4 +113,50 @@ export async function runGitOpByDir(op: GitOp, dir: string, sshKey?: string): Pr
         },
         body: JSON.stringify(body),
     });
+}
+
+// ---- Todo Operations ----
+
+export async function fetchTodos(projectId: string): Promise<Todo[]> {
+    const resp = await fetch(`/api/projects/todos?project_id=${projectId}`);
+    if (!resp.ok) {
+        return [];
+    }
+    return resp.json();
+}
+
+export async function addTodo(projectId: string, text: string): Promise<Todo> {
+    const resp = await fetch('/api/projects/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, text }),
+    });
+    if (!resp.ok) {
+        const data = await resp.json();
+        throw new Error(data.error || 'Failed to add todo');
+    }
+    return resp.json();
+}
+
+export async function updateTodo(projectId: string, todoId: string, updates: { text?: string; done?: boolean }): Promise<Todo> {
+    const resp = await fetch(`/api/projects/todos?project_id=${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: todoId, ...updates }),
+    });
+    if (!resp.ok) {
+        const data = await resp.json();
+        throw new Error(data.error || 'Failed to update todo');
+    }
+    return resp.json();
+}
+
+export async function deleteTodo(projectId: string, todoId: string): Promise<void> {
+    const resp = await fetch(`/api/projects/todos?project_id=${projectId}&todo_id=${todoId}`, {
+        method: 'DELETE',
+    });
+    if (!resp.ok) {
+        const data = await resp.json();
+        throw new Error(data.error || 'Failed to delete todo');
+    }
 }

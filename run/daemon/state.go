@@ -29,12 +29,14 @@ type State struct {
 	nextHealthCheckTime time.Time
 	restartCount        int // how many times the server has been restarted
 	restartCh           chan struct{}
+	daemonRestartCh     chan struct{}
 }
 
 // NewState creates a new daemon state instance
 func NewState() *State {
 	return &State{
-		restartCh: make(chan struct{}, 1),
+		restartCh:       make(chan struct{}, 1),
+		daemonRestartCh: make(chan struct{}, 1),
 	}
 }
 
@@ -149,6 +151,21 @@ func (s *State) RequestRestart() bool {
 // GetRestartChannel returns the restart channel for listening
 func (s *State) GetRestartChannel() <-chan struct{} {
 	return s.restartCh
+}
+
+// RequestDaemonRestart signals the daemon to restart itself (non-blocking)
+func (s *State) RequestDaemonRestart() bool {
+	select {
+	case s.daemonRestartCh <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+// GetDaemonRestartChannel returns the daemon restart channel for listening
+func (s *State) GetDaemonRestartChannel() <-chan struct{} {
+	return s.daemonRestartCh
 }
 
 // GetStatusSnapshot returns a snapshot of current state for API responses
