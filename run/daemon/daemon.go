@@ -124,7 +124,7 @@ func (d *Daemon) Run(forever bool) error {
 		return fmt.Errorf("port %d is already in use - another keep-alive instance may be running", d.port)
 	}
 
-	binPath, err := os.Executable()
+	binPath, err := getCurrentExecutablePath()
 	if err != nil {
 		return fmt.Errorf("resolve executable path: %w", err)
 	}

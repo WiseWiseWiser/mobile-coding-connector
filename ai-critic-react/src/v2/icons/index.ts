@@ -18,3 +18,4 @@ export { EditIcon } from './EditIcon';
 export { KeyIcon } from './KeyIcon';
 export { GitHubIcon } from './GitHubIcon';
 export { LockIcon } from './LockIcon';
+export { LogsIcon } from './LogsIcon';

@@ -15,6 +15,7 @@ import './settings/ExposedUrlsSection.css';
 import './settings/SettingsView.css';
 import './settings/ServerSettingsSection.css';
 import './settings/AIModelsSection.css';
+import './settings/LogsView.css';
 
 export function SettingsView() {
     const navigate = useNavigate();

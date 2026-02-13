@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useCurrent } from '../../../hooks/useCurrent';
 import { useTabNavigate } from '../../../hooks/useTabNavigate';
@@ -22,6 +22,7 @@ export interface AgentOutletContext {
     sessions: Record<string, AgentSessionInfo>;
     setSession: (agentId: string, session: AgentSessionInfo | null) => void;
     launchError: string;
+    sessionsLoadError: string | null;
     onLaunchHeadless: (agent: AgentDef) => void;
     onStopAgent: (agentId: string) => void;
     onRefreshAgents: () => void;
@@ -44,10 +45,12 @@ export function AgentLayout() {
     const navigateToView = useTabNavigate(NavTabs.Agent);
 
     // Check for existing sessions matching this project
+    const [sessionsLoadError, setSessionsLoadError] = useState<string | null>(null);
     const projectDirRef = useCurrent(projectDir);
     const setSessionRef = useCurrent(setSession);
     const loadSessions = useCallback(() => {
         if (!projectDir) return Promise.resolve();
+        setSessionsLoadError(null);
         return fetchAgentSessions()
             .then(allSessions => {
                 const active = allSessions.filter(
@@ -58,7 +61,11 @@ export function AgentLayout() {
                     setSessionRef.current(s.agent_id, s);
                 }
             })
-            .catch(() => {});
+            .catch((err) => {
+                const errorMsg = err instanceof Error ? err.message : String(err);
+                console.error('Failed to load agent sessions:', errorMsg);
+                setSessionsLoadError(errorMsg);
+            });
     }, [projectDir]);
 
     useEffect(() => {
@@ -121,11 +128,21 @@ export function AgentLayout() {
         sessions,
         setSession,
         launchError,
+        sessionsLoadError,
         onLaunchHeadless: handleLaunchHeadless,
         onStopAgent: handleStopAgent,
         onRefreshAgents: refreshAgents,
         navigateToView,
     };
 
-    return <Outlet context={ctx} />;
+    return (
+        <>
+            {sessionsLoadError && (
+                <div className="mcc-agent-error" style={{ margin: '12px 16px', padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px' }}>
+                    <strong>Error loading sessions:</strong> {sessionsLoadError}
+                </div>
+            )}
+            <Outlet context={ctx} />
+        </>
+    );
 }

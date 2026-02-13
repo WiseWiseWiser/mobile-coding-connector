@@ -6,6 +6,7 @@ export { HomeView, WorkspaceListView } from './mcc/home/HomeView';
 export { ProjectConfigView } from './mcc/home/ProjectConfigView';
 export { DiagnoseView } from './mcc/home/DiagnoseView';
 export { SettingsView } from './mcc/home/SettingsView';
+export { LogsView } from './mcc/home/settings/LogsView';
 export { SSHServersView } from './mcc/home/SSHServersView';
 export { ManageFilesView } from './mcc/home/ManageFilesView';
 export { ExportPage } from './mcc/home/settings/ExportPage';

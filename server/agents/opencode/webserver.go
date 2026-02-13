@@ -2,6 +2,7 @@ package opencode
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -57,13 +58,12 @@ func GetWebServerStatus() (*WebServerStatus, error) {
 
 // IsWebServerRunning checks if the OpenCode web server is running on the given port
 func IsWebServerRunning(port int) bool {
-	url := fmt.Sprintf("http://127.0.0.1:%d/global/health", port)
-	resp, err := http.Get(url)
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 2*time.Second)
 	if err != nil {
 		return false
 	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	conn.Close()
+	return true
 }
 
 // isPortMappedToDomain checks if the given port is mapped to the domain

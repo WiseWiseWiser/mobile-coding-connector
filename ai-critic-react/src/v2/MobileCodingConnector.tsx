@@ -5,7 +5,7 @@ import type { ProjectInfo } from '../api/projects';
 import { useV2Context } from './V2Context';
 import { NavTabs } from './mcc/types';
 import type { NavTab } from './mcc/types';
-import { MenuIcon, SettingsIcon, ProfileIcon, HomeIcon, AgentIcon, TerminalIcon, PortsIcon, FilesIcon } from './icons';
+import { MenuIcon, SettingsIcon, ProfileIcon, HomeIcon, AgentIcon, TerminalIcon, PortsIcon, FilesIcon, LogsIcon } from './icons';
 import { NavButton } from './buttons';
 import { ProjectDropdown } from './mcc/ProjectDropdown';
 import { TerminalManager } from './mcc/terminal/TerminalManager';
@@ -162,6 +162,10 @@ export function MobileCodingConnector() {
                     <button className="mcc-drawer-item" onClick={() => handleMenuNavigate(buildPath(NavTabs.Home, 'settings'))}>
                         <SettingsIcon />
                         <span>Settings</span>
+                    </button>
+                    <button className="mcc-drawer-item" onClick={() => handleMenuNavigate(buildPath(NavTabs.Home, 'settings/logs'))}>
+                        <LogsIcon />
+                        <span>Logs</span>
                     </button>
                 </nav>
             </div>

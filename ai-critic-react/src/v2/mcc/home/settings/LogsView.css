@@ -1,0 +1,143 @@
+.logs-view {
+    padding: 16px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.logs-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.logs-filter-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.logs-filter-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.logs-level-select {
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+    cursor: pointer;
+}
+
+.logs-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.logs-action-btn {
+    padding: 8px 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: white;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.logs-action-btn:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+
+.logs-copy-btn {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+}
+
+.logs-copy-btn:hover {
+    background: #2563eb;
+    border-color: #2563eb;
+}
+
+.logs-count {
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 8px;
+}
+
+.logs-list {
+    flex: 1;
+    overflow-y: auto;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.logs-empty {
+    padding: 24px;
+    text-align: center;
+    color: #94a3b8;
+}
+
+.logs-entry {
+    display: flex;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    align-items: flex-start;
+}
+
+.logs-entry:last-child {
+    border-bottom: none;
+}
+
+.logs-time {
+    color: #94a3b8;
+    flex-shrink: 0;
+}
+
+.logs-level {
+    font-weight: 600;
+    flex-shrink: 0;
+    width: 50px;
+    text-transform: uppercase;
+}
+
+.logs-level.logs-level-error {
+    color: #ef4444;
+}
+
+.logs-level.logs-level-warn {
+    color: #f59e0b;
+}
+
+.logs-level.logs-level-info {
+    color: #3b82f6;
+}
+
+.logs-level.logs-level-debug {
+    color: #8b5cf6;
+}
+
+.logs-message {
+    flex: 1;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+.logs-entry.logs-level-error {
+    background: #fef2f2;
+}
+
+.logs-entry.logs-level-warn {
+    background: #fffbeb;
+}

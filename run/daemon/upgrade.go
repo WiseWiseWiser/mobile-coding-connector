@@ -116,3 +116,91 @@ func GetNextBinaryPath(currentBinPath string) string {
 func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
+
+// getCurrentExecutablePath returns the path to the current executable, following symlinks
+// to get the actual current binary path (not the original path if the binary was replaced)
+func getCurrentExecutablePath() (string, error) {
+	// Try os.Executable first
+	exePath, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+
+	// Check if the file exists
+	if _, err := os.Stat(exePath); err == nil {
+		// File exists, resolve symlinks if any
+		realPath, err := filepath.EvalSymlinks(exePath)
+		if err == nil {
+			return realPath, nil
+		}
+		return exePath, nil
+	}
+
+	// File doesn't exist (possibly deleted), look for the newest binary in the same directory
+	dir := filepath.Dir(exePath)
+	currentBase, _ := ParseBinVersion(exePath)
+
+	// Look for files with the same base name
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return exePath, nil
+	}
+
+	// Find the newest binary with same base (prefer non-versioned, or highest version)
+	type candidate struct {
+		path    string
+		version int
+		time    int64
+	}
+	var candidates []candidate
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		entryPath := filepath.Join(dir, name)
+
+		// Parse version
+		entryBase, entryVersion := ParseBinVersion(entryPath)
+		if entryBase != currentBase {
+			continue
+		}
+
+		// Get modification time
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		candidates = append(candidates, candidate{
+			path:    entryPath,
+			version: entryVersion,
+			time:    info.ModTime().Unix(),
+		})
+	}
+
+	if len(candidates) == 0 {
+		return exePath, nil
+	}
+
+	// Prefer higher version, if versions equal prefer newer
+	var best candidate
+	for _, c := range candidates {
+		if best.path == "" {
+			best = c
+			continue
+		}
+		// Prefer higher version
+		if c.version > best.version {
+			best = c
+			continue
+		}
+		// If same version, prefer newer
+		if c.version == best.version && c.time > best.time {
+			best = c
+		}
+	}
+
+	return best.path, nil
+}
