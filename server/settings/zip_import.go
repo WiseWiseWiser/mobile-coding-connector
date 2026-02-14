@@ -24,10 +24,12 @@ const (
 // Zip path prefixes used in the exported zip file.
 // In the zip, ".ai-critic/" files are stored under "ai-critic/" (without the dot).
 const (
-	zipPrefixAICritic   = "ai-critic/"
-	diskPrefixAICritic  = config.DataDir + "/"
-	zipPrefixCloudflare = "cloudflare/"
-	zipPrefixOpencode   = "opencode/"
+	zipPrefixAICritic        = "ai-critic/"
+	diskPrefixAICritic       = config.DataDir + "/"
+	zipPrefixCloudflare      = "cloudflare/"
+	zipPrefixOpencode        = "opencode/"
+	zipPrefixOpencodePlugins = "opencode/plugins/"
+	zipPrefixOpencodeMain    = "opencode/opencode.jsonc"
 )
 
 // ImportFilePreview describes a single file in the import preview.
@@ -188,10 +190,29 @@ func resolveDestPath(zipPath string) string {
 		return filepath.Join(dir, name)
 	}
 
+	// opencode.jsonc goes to ~/.config/opencode/opencode.jsonc
+	if zipPath == zipPrefixOpencodeMain {
+		dir := opencodeMainConfigDir()
+		if dir == "" {
+			return ""
+		}
+		return filepath.Join(dir, "opencode.jsonc")
+	}
+
 	// Files under opencode/ go to ~/.local/share/opencode/
 	if strings.HasPrefix(zipPath, zipPrefixOpencode) {
 		name := strings.TrimPrefix(zipPath, zipPrefixOpencode)
 		dir := opencodeConfigDir()
+		if dir == "" {
+			return ""
+		}
+		return filepath.Join(dir, name)
+	}
+
+	// Files under opencode/plugins/ go to ~/.config/opencode/plugins/
+	if strings.HasPrefix(zipPath, zipPrefixOpencodePlugins) {
+		name := strings.TrimPrefix(zipPath, zipPrefixOpencodePlugins)
+		dir := opencodePluginsDir()
 		if dir == "" {
 			return ""
 		}
@@ -310,7 +331,7 @@ func filePermission(zipPath string) os.FileMode {
 	if strings.HasPrefix(zipPath, zipPrefixCloudflare) {
 		return 0600
 	}
-	// Opencode files (auth.json with API keys) get restricted permissions
+	// Opencode files (auth.json, opencode.jsonc with API keys) get restricted permissions
 	if strings.HasPrefix(zipPath, zipPrefixOpencode) {
 		return 0600
 	}

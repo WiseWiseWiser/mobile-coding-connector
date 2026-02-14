@@ -268,6 +268,22 @@ func opencodeConfigDir() string {
 	return ""
 }
 
+// opencodePluginsDir returns the opencode plugins directory (~/.config/opencode/plugins).
+func opencodePluginsDir() string {
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".config", "opencode", "plugins")
+	}
+	return ""
+}
+
+// opencodeMainConfigDir returns the opencode main config directory (~/.config/opencode).
+func opencodeMainConfigDir() string {
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".config", "opencode")
+	}
+	return ""
+}
+
 func exportCloudflareAuth() (*CloudflareAuthExport, error) {
 	certFiles := cloudflareSettings.ListCertFiles()
 	var files []CloudflareFileExport

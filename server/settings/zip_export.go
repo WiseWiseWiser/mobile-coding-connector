@@ -165,7 +165,10 @@ func addCloudflareFilesToZip(zw *zip.Writer, cfDir string) error {
 
 // addOpencodeFilesToZip adds opencode config files (auth.json, settings.json, etc.)
 // from the opencode directory into a "opencode/" prefix in the zip.
+// It also adds plugins from ~/.config/opencode/plugins/ into "opencode/plugins/".
+// It also adds opencode.jsonc from ~/.config/opencode/ into "opencode/opencode.jsonc".
 func addOpencodeFilesToZip(zw *zip.Writer, opencodeDir string) error {
+	// Add config files from ~/.local/share/opencode/
 	entries, err := os.ReadDir(opencodeDir)
 	if os.IsNotExist(err) {
 		return nil
@@ -190,6 +193,45 @@ func addOpencodeFilesToZip(zw *zip.Writer, opencodeDir string) error {
 			return err
 		}
 	}
+
+	// Add opencode.jsonc from ~/.config/opencode/
+	mainConfigDir := opencodeMainConfigDir()
+	if mainConfigDir != "" {
+		mainConfigPath := filepath.Join(mainConfigDir, "opencode.jsonc")
+		if _, err := os.Stat(mainConfigPath); err == nil {
+			zipPath := "opencode/opencode.jsonc"
+			if err := addFileToZip(zw, mainConfigPath, zipPath); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Add plugins from ~/.config/opencode/plugins/
+	pluginsDir := opencodePluginsDir()
+	if pluginsDir == "" {
+		return nil
+	}
+	pluginEntries, err := os.ReadDir(pluginsDir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range pluginEntries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+
+		srcPath := filepath.Join(pluginsDir, name)
+		zipPath := "opencode/plugins/" + name
+		if err := addFileToZip(zw, srcPath, zipPath); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

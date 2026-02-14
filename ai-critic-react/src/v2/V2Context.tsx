@@ -7,8 +7,8 @@ import { fetchProjects as apiFetchProjects } from '../api/projects';
 import type { ProjectInfo } from '../api/projects';
 import { fetchDiagnostics as apiFetchDiagnostics } from '../api/ports';
 import type { DiagnosticsData } from '../api/ports';
-import { fetchAgents } from '../api/agents';
-import type { AgentDef, AgentSessionInfo } from '../api/agents';
+import { fetchAgents, fetchExternalSessions } from '../api/agents';
+import type { AgentDef, AgentSessionInfo, ExternalOpencodeSession } from '../api/agents';
 import type { NavTab } from './mcc/types';
 
 interface V2ContextValue {
@@ -35,6 +35,10 @@ interface V2ContextValue {
     setAgentSession: (agentId: string, session: AgentSessionInfo | null) => void;
     agentLaunchError: string;
     setAgentLaunchError: (error: string) => void;
+    // External agent sessions (e.g., opencode CLI/web sessions)
+    externalSessions: ExternalOpencodeSession[];
+    externalSessionsLoading: boolean;
+    refreshExternalSessions: () => void;
     // Per-tab navigation history
     tabHistories: Record<NavTab, string[]>;
     pushTabHistory: (tab: NavTab, path: string) => void;
@@ -94,6 +98,9 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
     const [agentsLoading, setAgentsLoading] = useState(true);
     const [agentSessions, setAgentSessions] = useState<Record<string, AgentSessionInfo>>({});
     const [agentLaunchError, setAgentLaunchError] = useState('');
+    // External agent sessions (opencode CLI/web sessions)
+    const [externalSessions, setExternalSessions] = useState<ExternalOpencodeSession[]>([]);
+    const [externalSessionsLoading, setExternalSessionsLoading] = useState(false);
 
     const setAgentSession = (agentId: string, session: AgentSessionInfo | null) => {
         setAgentSessions(prev => {
@@ -117,6 +124,29 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         refreshAgents();
     }, []);
+
+    // External sessions refresh
+    const refreshExternalSessions = useCallback(() => {
+        setExternalSessionsLoading(true);
+        fetchExternalSessions()
+            .then(data => {
+                if (data && data.sessions) {
+                    setExternalSessions(data.sessions);
+                } else {
+                    setExternalSessions([]);
+                }
+                setExternalSessionsLoading(false);
+            })
+            .catch(() => {
+                setExternalSessions([]);
+                setExternalSessionsLoading(false);
+            });
+    }, []);
+
+    // Fetch external sessions on mount
+    useEffect(() => {
+        refreshExternalSessions();
+    }, [refreshExternalSessions]);
 
     // Per-tab navigation history
     const [tabHistories, setTabHistories] = useState<Record<NavTab, string[]>>({} as Record<NavTab, string[]>);
@@ -167,6 +197,9 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
             setAgentSession,
             agentLaunchError,
             setAgentLaunchError,
+            externalSessions,
+            externalSessionsLoading,
+            refreshExternalSessions,
             tabHistories,
             pushTabHistory,
             popTabHistory,

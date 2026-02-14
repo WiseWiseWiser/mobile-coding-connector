@@ -137,10 +137,10 @@ export async function fetchTodos(projectId: string): Promise<Todo[]> {
 export async function addTodo(projectId: string, text: string): Promise<Todo> {
     console.log('[addTodo] Adding todo for project:', projectId, 'text:', text);
     try {
-        const resp = await fetch('/api/projects/todos', {
+        const resp = await fetch(`/api/projects/todos?project_id=${projectId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project_id: projectId, text }),
+            body: JSON.stringify({ text }),
         });
         if (!resp.ok) {
             const data = await resp.json();

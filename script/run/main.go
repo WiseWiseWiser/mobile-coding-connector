@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,7 +22,11 @@ Usage: go run ./script/run [options]
 
 Options:
   --dir DIR     Set the initial directory for code review (defaults to current working directory)
-  -h, --help    Show this help message
+  quick-test   Run in quick-test mode: no auto mapping, health checks, or external webservers.
+               - Listens on port 37651
+               - Exits after 1 minute of no requests
+               - Extends life by +1min when a new request comes in
+  -h, --help   Show this help message
 `
 
 func main() {
@@ -32,6 +38,11 @@ func main() {
 }
 
 func Handle(args []string) error {
+	// Check for quick-test subcommand first
+	if len(args) > 0 && args[0] == "quick-test" {
+		return handleQuickTest(args[1:])
+	}
+
 	var dirFlag string
 	args, err := flags.
 		String("--dir", &dirFlag).
@@ -176,4 +187,71 @@ func checkPort(port int) bool {
 	}
 	conn.Close()
 	return true
+}
+
+const quickTestPort = 37651
+
+func handleQuickTest(args []string) error {
+	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Print(help)
+		return nil
+	}
+
+	// Kill previous process on the port
+	fmt.Printf("Checking for existing server on port %d...\n", quickTestPort)
+	prevPid, err := getPidOnPort(quickTestPort)
+	if err == nil && prevPid != 0 {
+		fmt.Printf("Killing previous server (PID: %d)...\n", prevPid)
+		err := syscall.Kill(prevPid, syscall.SIGKILL)
+		if err != nil {
+			fmt.Printf("Warning: failed to kill previous process: %v\n", err)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Build the Go server with quick-test flag
+	fmt.Println("Building Go server...")
+	err = cmd.Debug().Run("go", "build", "-o", "/tmp/ai-critic-quick", "./")
+	if err != nil {
+		return fmt.Errorf("failed to build Go server: %v", err)
+	}
+
+	// Start the server in quick-test mode
+	fmt.Printf("Starting server in quick-test mode on port %d...\n", quickTestPort)
+	serverCmd := exec.Command("/tmp/ai-critic-quick", "--quick-test")
+	serverCmd.Stdout = os.Stdout
+	serverCmd.Stderr = os.Stderr
+	serverCmd.Stdin = os.Stdin
+	if err := serverCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start Go server: %v", err)
+	}
+
+	fmt.Printf("Server started with PID: %d\n", serverCmd.Process.Pid)
+	fmt.Println("Server will exit after 1 minute of inactivity.")
+	fmt.Println("Press Ctrl+C to stop manually.")
+
+	// Wait for the server process
+	err = serverCmd.Wait()
+	if err != nil {
+		return fmt.Errorf("server exited with error: %v", err)
+	}
+	return nil
+}
+
+func getPidOnPort(port int) (int, error) {
+	cmd := exec.Command("lsof", "-t", "-i", fmt.Sprintf(":%d", port))
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("no process found on port %d", port)
+	}
+	pidStr := string(output)
+	pidStr = strings.TrimSpace(pidStr)
+	if pidStr == "" {
+		return 0, fmt.Errorf("no process found on port %d", port)
+	}
+	pid, err := strconv.Atoi(pidStr)
+	if err != nil {
+		return 0, err
+	}
+	return pid, nil
 }

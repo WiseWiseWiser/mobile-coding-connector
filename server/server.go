@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -49,6 +50,23 @@ import (
 
 var distFS embed.FS
 var templateHTML string
+var quickTestMode bool
+var quickTestQuitChan chan struct{}
+
+func SetQuickTestMode(enabled bool) {
+	quickTestMode = enabled
+	if enabled {
+		quickTestQuitChan = make(chan struct{})
+	}
+}
+
+func IsQuickTestMode() bool {
+	return quickTestMode
+}
+
+func GetQuickTestQuitChan() <-chan struct{} {
+	return quickTestQuitChan
+}
 
 func Init(fs embed.FS, tmpl string) {
 	distFS = fs
@@ -109,6 +127,11 @@ func Serve(port int, dev bool) error {
 	// Wrap with auth middleware - skip login, auth check, setup, ping, public key and path-info endpoints
 	handler := auth.Middleware(mux, []string{"/api/login", "/api/auth/check", "/api/auth/setup", "/ping", "/api/encrypt/public-key", "/api/tools/path-info"})
 
+	// Wrap with quick-test mode handler if enabled
+	if quickTestMode {
+		handler = wrapQuickTestHandler(handler)
+	}
+
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
 		ReadTimeout:  30 * time.Second,
@@ -163,13 +186,18 @@ func Serve(port int, dev bool) error {
 		return err
 	}
 
-	fmt.Printf("Serving directory preview at http://localhost:%d\n", port)
-	printTunnelHints(port)
+	// Only print tunnel hints in non-quick-test mode
+	if !quickTestMode {
+		fmt.Printf("Serving directory preview at http://localhost:%d\n", port)
+		printTunnelHints(port)
 
-	go func() {
-		time.Sleep(1 * time.Second)
-		web.OpenBrowser(fmt.Sprintf("http://localhost:%d", port))
-	}()
+		go func() {
+			time.Sleep(1 * time.Second)
+			web.OpenBrowser(fmt.Sprintf("http://localhost:%d", port))
+		}()
+	} else {
+		fmt.Printf("Serving quick-test server at http://localhost:%d\n", port)
+	}
 
 	// Start server in a goroutine
 	serverErr := make(chan error, 1)
@@ -181,6 +209,11 @@ func Serve(port int, dev bool) error {
 	select {
 	case err := <-serverErr:
 		return err
+	case <-GetQuickTestQuitChan():
+		// Quick-test mode: exit after timeout
+		fmt.Println("\n[quick-test] Shutting down server...")
+		server.Shutdown(context.Background())
+		return nil
 	case <-WaitForShutdown():
 		// Graceful shutdown initiated
 		fmt.Println("\nShutdown signal received, stopping server...")
@@ -192,6 +225,10 @@ func Serve(port int, dev bool) error {
 		// Stop unified tunnel health checks
 		fmt.Println("Stopping unified tunnel health checks...")
 		cloudflareSettings.StopGlobalHealthChecks()
+
+		// Stop agents health checks (but leave opencode running)
+		fmt.Println("Stopping agents module...")
+		agents.Shutdown()
 
 		// Stop all port forwards (tunnels)
 		pfManager := portforward.GetDefaultManager()
@@ -377,6 +414,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Keep-alive proxy API
 	keepalive.RegisterAPI(mux)
 
+	// Server status API
+	RegisterServerStatusAPI(mux)
+
 	// Server config API
 	mux.HandleFunc("/api/server/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -428,6 +468,35 @@ func printTunnelHints(port int) {
 
 func handlePing(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("pong"))
+}
+
+func wrapQuickTestHandler(next http.Handler) http.Handler {
+	var (
+		mu      sync.Mutex
+		timer   *time.Timer
+		timeout = 1 * time.Minute
+	)
+
+	resetTimer := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if timer != nil {
+			timer.Stop()
+		}
+		timer = time.AfterFunc(timeout, func() {
+			fmt.Println("[quick-test] No requests for 1 minute, shutting down...")
+			if quickTestQuitChan != nil {
+				close(quickTestQuitChan)
+			}
+		})
+	}
+
+	resetTimer()
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resetTimer()
+		next.ServeHTTP(w, r)
+	})
 }
 
 // mimeTypeHandler wraps an http.Handler and sets proper MIME types

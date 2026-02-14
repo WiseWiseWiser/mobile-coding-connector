@@ -7,7 +7,7 @@ import {
     fetchAgentSessions, launchAgentSession, stopAgentSession,
     AgentSessionStatuses,
 } from '../../../api/agents';
-import type { AgentDef, AgentSessionInfo } from '../../../api/agents';
+import type { AgentDef, AgentSessionInfo, ExternalOpencodeSession } from '../../../api/agents';
 import { useV2Context } from '../../V2Context';
 import { AgentEmptyIcon } from '../../icons';
 import { loadCursorAPIKey } from './cursorStorage';
@@ -27,6 +27,9 @@ export interface AgentOutletContext {
     onStopAgent: (agentId: string) => void;
     onRefreshAgents: () => void;
     navigateToView: (view: string) => void;
+    // External sessions from CLI/web opencode
+    externalSessions: ExternalOpencodeSession[];
+    externalSessionsLoading: boolean;
 }
 
 export function AgentLayout() {
@@ -39,6 +42,8 @@ export function AgentLayout() {
         setAgentSession: setSession,
         agentLaunchError: launchError,
         setAgentLaunchError: setLaunchError,
+        externalSessions,
+        externalSessionsLoading,
     } = useV2Context();
     const projectDir = currentProject?.dir ?? null;
     const projectName = currentProject?.name ?? null;
@@ -133,6 +138,8 @@ export function AgentLayout() {
         onStopAgent: handleStopAgent,
         onRefreshAgents: refreshAgents,
         navigateToView,
+        externalSessions,
+        externalSessionsLoading,
     };
 
     return (

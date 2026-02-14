@@ -138,6 +138,17 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/sessions", handleAgentSessions)
 	// Proxy: /api/agents/sessions/{sessionID}/proxy/... -> opencode server
 	mux.HandleFunc("/api/agents/sessions/", handleAgentSessionProxy)
+	// External opencode sessions (from CLI/web)
+	mux.HandleFunc("/api/agents/external-sessions", handleExternalSessions)
+
+	// Start opencode health check on server startup
+	opencode.StartHealthCheck()
+}
+
+// Shutdown stops the agents module (stops health checks, but leaves opencode running)
+func Shutdown() {
+	fmt.Println("Stopping opencode health check...")
+	opencode.StopHealthCheck()
 }
 
 // ------ Agent Session Manager ------
@@ -1115,6 +1126,59 @@ func handleAgentConfig(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleExternalSessions returns sessions from external opencode servers (CLI/web)
+func handleExternalSessions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get or start the opencode server
+	server, err := opencode.GetOrStartOpencodeServer()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch sessions from opencode server
+	url := fmt.Sprintf("http://127.0.0.1:%d/session", server.Port)
+	resp, err := http.Get(url)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Accept both 200 (no auth) and 401 (requires auth) as valid responses
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusUnauthorized {
+		http.Error(w, fmt.Sprintf("opencode server returned status %d", resp.StatusCode), http.StatusInternalServerError)
+		return
+	}
+
+	// If 401, return empty sessions (user needs to authenticate)
+	if resp.StatusCode == http.StatusUnauthorized {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"sessions": []interface{}{},
+			"port":     server.Port,
+			"auth":     true,
+		})
+		return
+	}
+
+	var sessions []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"sessions": sessions,
+		"port":     server.Port,
+	})
 }
 
 func handleAgentSessions(w http.ResponseWriter, r *http.Request) {

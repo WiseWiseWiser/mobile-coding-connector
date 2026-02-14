@@ -1,6 +1,7 @@
 import { Routes, Route, useNavigate, useParams, Link } from 'react-router-dom';
 import { MobileWorkspace } from './MobileWorkspace';
 import { MobileCodingConnector } from './v2';
+import { ServerFiles } from './ServerFiles';
 import './MockupsPage.css';
 
 interface MockupItem {
@@ -22,6 +23,12 @@ const mockups: MockupItem[] = [
         name: 'Mobile Coding Connector (v2)',
         description: 'Full mobile coding agent with workspace management, AI chat, terminal, and port forwarding',
         component: MobileCodingConnector,
+    },
+    {
+        id: 'server-files',
+        name: 'Server Files',
+        description: 'Redesigned mobile-first file browser with tree view, file actions, and navigation',
+        component: ServerFiles,
     },
 ];
 

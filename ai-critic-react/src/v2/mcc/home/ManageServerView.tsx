@@ -12,6 +12,7 @@ import { restartDaemonStreaming } from '../../../api/keepalive';
 import { TransferProgress } from './TransferProgress';
 import type { TransferProgressData } from './TransferProgress';
 import { StreamingActionButton } from '../../StreamingActionButton';
+import { getServerStatus, type ServerStatus } from '../../../api/serverStatus';
 import './ManageServerView.css';
 
 export function ManageServerView() {
@@ -42,6 +43,10 @@ export function ManageServerView() {
     const [logLines, setLogLines] = useState<LogLine[]>([]);
     const [logStreaming, setLogStreaming] = useState(false);
 
+    // Server status states
+    const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
+    const [serverStatusLoading, setServerStatusLoading] = useState(true);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -70,6 +75,23 @@ export function ManageServerView() {
         const interval = setInterval(fetchStatus, 10000);
         return () => clearInterval(interval);
     }, [fetchStatus]);
+
+    const fetchServerStatus = useCallback(async () => {
+        try {
+            const st = await getServerStatus();
+            setServerStatus(st);
+        } catch {
+            setServerStatus(null);
+        } finally {
+            setServerStatusLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchServerStatus();
+        const interval = setInterval(fetchServerStatus, 10000);
+        return () => clearInterval(interval);
+    }, [fetchServerStatus]);
 
     // Countdown timer for next health check
     useEffect(() => {
@@ -433,6 +455,39 @@ export function ManageServerView() {
                 </div>
             )}
 
+            {/* Server Status */}
+            <div className="manage-server-card" style={{ marginTop: 12 }}>
+                <div className="manage-server-card-header">
+                    <span className="manage-server-card-title">Server Status</span>
+                </div>
+                {serverStatusLoading ? (
+                    <div style={{ padding: 16, color: '#6b7280' }}>Loading...</div>
+                ) : serverStatus ? (
+                    <div className="manage-server-info">
+                        <InfoRow label="OS" value={serverStatus.os_info.os} />
+                        <InfoRow label="Arch" value={serverStatus.os_info.arch} />
+                        <InfoRow label="Kernel" value={serverStatus.os_info.kernel} />
+                        <InfoRow label="CPU Cores" value={String(serverStatus.cpu.num_cpu)} />
+                        <InfoRow label="CPU Usage" value={`${serverStatus.cpu.used_percent.toFixed(1)}%`} />
+                        <InfoRow label="Total Memory" value={formatBytes(serverStatus.memory.total)} />
+                        <InfoRow label="Used Memory" value={`${formatBytes(serverStatus.memory.used)} (${serverStatus.memory.used_percent.toFixed(1)}%)`} />
+                        {serverStatus.disk.map((d, i) => (
+                            <InfoRow key={i} label={`Disk ${d.mount_point}`} value={`${formatBytes(d.used)} / ${formatBytes(d.size)} (${d.use_percent.toFixed(1)}%)`} />
+                        ))}
+                        <div style={{ marginTop: 12, fontWeight: 600, fontSize: 13, color: '#374151' }}>Top CPU Processes</div>
+                        {serverStatus.top_cpu.map((p, i) => (
+                            <InfoRow key={i} label={`${p.name} (PID: ${p.pid})`} value={`CPU: ${p.cpu} | Mem: ${p.mem}`} mono />
+                        ))}
+                        <div style={{ marginTop: 12, fontWeight: 600, fontSize: 13, color: '#374151' }}>Top Memory Processes</div>
+                        {serverStatus.top_mem.map((p, i) => (
+                            <InfoRow key={i} label={`${p.name} (PID: ${p.pid})`} value={`CPU: ${p.cpu} | Mem: ${p.mem}`} mono />
+                        ))}
+                    </div>
+                ) : (
+                    <div style={{ padding: 16, color: '#6b7280' }}>Unable to load server status</div>
+                )}
+            </div>
+
             {/* Server Logs */}
             {daemonRunning && (
                 <div className="manage-server-card" style={{ marginTop: 12 }}>
@@ -499,5 +554,7 @@ function InfoRow({ label, value, mono, highlight }: { label: string; value: stri
 function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes < 1024 * 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    return `${(bytes / (1024 * 1024 * 1024 * 1024)).toFixed(1)} TB`;
 }

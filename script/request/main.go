@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
@@ -24,12 +25,14 @@ Automatically includes auth cookie from %s.
 Arguments:
   path    API path (e.g. /api/checkpoints?project=myproject)
   body    Optional JSON body; if provided, sends POST; otherwise sends GET
+  --port  Port to use (defaults to %d)
 
 Examples:
   go run ./script/request /api/checkpoints?project=lifelog-private
   go run ./script/request /api/checkpoints '{"project_dir":"/path","name":"test","file_paths":["a.txt"]}'
   go run ./script/request /api/auth/check
-`, lib.DefaultServerPort, credentialsFile)
+  go run ./script/request --port 37651 /api/server/status
+`, lib.DefaultServerPort, credentialsFile, lib.DefaultServerPort)
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -44,6 +47,26 @@ func run(args []string) error {
 		return nil
 	}
 
+	// Parse --port flag
+	port := lib.DefaultServerPort
+	remainingArgs := []string{}
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if arg == "--port" && i+1 < len(args) {
+			p, err := strconv.Atoi(args[i+1])
+			if err != nil {
+				return fmt.Errorf("invalid port: %s", args[i+1])
+			}
+			port = p
+			i += 2
+			continue
+		}
+		remainingArgs = append(remainingArgs, arg)
+		i++
+	}
+	args = remainingArgs
+
 	path := args[0]
 	body := ""
 	if len(args) > 1 {
@@ -51,7 +74,7 @@ func run(args []string) error {
 	}
 
 	// Build URL
-	url := fmt.Sprintf("http://localhost:%d%s", lib.DefaultServerPort, path)
+	url := fmt.Sprintf("http://localhost:%d%s", port, path)
 
 	// Determine HTTP method
 	method := http.MethodGet

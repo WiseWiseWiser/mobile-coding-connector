@@ -9,10 +9,8 @@ import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './logs';
 import './App.css';
 
-// Conditionally import mockups only in dev mode
-const MockupsPage = import.meta.env.DEV
-    ? lazy(() => import('../mockups/MockupsPage').then(m => ({ default: m.MockupsPage })))
-    : null;
+// Always enable mockups for design review (no server requests)
+const MockupsPage = lazy(() => import('../mockups/MockupsPage').then(m => ({ default: m.MockupsPage })));
 
 function Home() {
     return (
@@ -151,6 +149,17 @@ function App() {
         <ErrorBoundary>
             <Router>
                 <Routes>
+                {/* Mockups - top level route for design review */}
+                {MockupsPage && (
+                    <Route 
+                        path="/mockups/*" 
+                        element={
+                            <Suspense fallback={<div style={{ padding: 20, textAlign: 'center' }}>Loading mockups...</div>}>
+                                <MockupsPage />
+                            </Suspense>
+                        } 
+                    />
+                )}
                 {/* Legacy v1 routes */}
                 <Route path="/v1/*" element={<MainApp />} />
                 {/* Main routes (v2) - layout wraps all child routes */}

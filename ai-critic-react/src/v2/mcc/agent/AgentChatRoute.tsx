@@ -23,6 +23,7 @@ export function AgentChatRoute() {
                 onOpenSessions={(aid) => ctx.navigateToView(aid)}
                 onStopAgent={ctx.onStopAgent}
                 onConfigureAgent={(aid) => ctx.navigateToView(`${aid}/settings`)}
+                externalSessions={ctx.externalSessions}
             />
         );
     }

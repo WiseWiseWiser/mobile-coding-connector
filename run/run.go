@@ -20,6 +20,10 @@ import (
 	"github.com/xhd2015/less-gen/flags"
 )
 
+var quickTestMode bool
+
+const quickTestPort = 37651
+
 var help = fmt.Sprintf(`
 Usage: ai-critic [options]
        ai-critic keep-alive [options]            Auto-restart server with health checking
@@ -29,6 +33,10 @@ Usage: ai-critic [options]
 
 Options:
   --dev                   Run in development mode
+  --quick-test           Run in quick-test mode: no auto mapping, health checks, or external webservers.
+                        - Listens on port 37651
+                        - Exits after 1 minute of no requests
+                        - Extends life by +1min when a new request comes in
   --dir DIR               Set the initial directory for code review (defaults to current working directory)
   --port PORT             Port to listen on (defaults to auto-find starting from %d)
   --config-file FILE      Path to configuration file (JSON)
@@ -82,6 +90,7 @@ func Run(args []string) error {
 	var portFlag int
 	args, err := flags.
 		Bool("--dev", &devFlag).
+		Bool("--quick-test", &quickTestMode).
 		String("--component", &component).
 		String("--dir", &dirFlag).
 		Int("--port", &portFlag).
@@ -153,7 +162,9 @@ func Run(args []string) error {
 
 	// Determine port to use
 	port := portFlag
-	if port <= 0 {
+	if quickTestMode {
+		port = quickTestPort
+	} else if port <= 0 {
 		port = config.DefaultServerPort
 	}
 	// Check if port is already in use
@@ -168,17 +179,25 @@ func Run(args []string) error {
 	// Set server port for domains tunnel management
 	domains.SetServerPort(port)
 
-	// Auto-start Cloudflare tunnels for configured domains
-	fmt.Println("[run] Calling domains.AutoStartTunnels()")
-	domains.AutoStartTunnels()
+	// Set quick-test mode in server if enabled
+	if quickTestMode {
+		server.SetQuickTestMode(true)
+	}
 
-	// Auto-start opencode web server if a domain mapping is configured
-	fmt.Println("[run] Calling opencode.AutoStartWebServer()")
-	opencode.AutoStartWebServer()
+	// Skip auto-start operations in quick-test mode
+	if !quickTestMode {
+		// Auto-start Cloudflare tunnels for configured domains
+		fmt.Println("[run] Calling domains.AutoStartTunnels()")
+		domains.AutoStartTunnels()
 
-	// Start unified tunnel manager global health checks
-	// This monitors all mappings (domains + port forwards) and restarts them after 3 failures
-	cloudflare.StartGlobalHealthChecks()
+		// Auto-start opencode web server if a domain mapping is configured
+		fmt.Println("[run] Calling opencode.AutoStartWebServer()")
+		opencode.AutoStartWebServer()
+
+		// Start unified tunnel manager global health checks
+		// This monitors all mappings (domains + port forwards) and restarts them after 3 failures
+		cloudflare.StartGlobalHealthChecks()
+	}
 
 	if component != "" {
 		var html string

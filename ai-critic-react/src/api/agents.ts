@@ -59,6 +59,41 @@ export async function fetchAgents(): Promise<AgentDef[]> {
     return Array.isArray(data) ? data : [];
 }
 
+export interface ExternalSessionsResponse {
+    sessions: ExternalOpencodeSession[];
+    port: number;
+    auth?: boolean;
+}
+
+export interface ExternalOpencodeSession {
+    id: string;
+    slug: string;
+    version: string;
+    projectID: string;
+    directory: string;
+    title: string;
+    time: {
+        created: number;
+        updated: number;
+    };
+    summary?: {
+        additions: number;
+        deletions: number;
+        files: number;
+    };
+    parentID?: string;
+}
+
+export async function fetchExternalSessions(): Promise<ExternalSessionsResponse | null> {
+    try {
+        const resp = await fetch('/api/agents/external-sessions');
+        if (!resp.ok) return null;
+        return await resp.json();
+    } catch {
+        return null;
+    }
+}
+
 export async function fetchAgentSessions(page?: number, pageSize?: number): Promise<AgentSessionInfo[]> {
     const params = new URLSearchParams();
     if (page) params.set('page', page.toString());

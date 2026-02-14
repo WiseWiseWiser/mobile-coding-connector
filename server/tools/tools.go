@@ -328,6 +328,19 @@ var requiredTools = []toolDef{
 		installWindows: "go install github.com/xhd2015/kool@latest",
 	},
 	{
+		name:        "kilocode",
+		description: "Kilo Code AI-powered coding assistant CLI",
+		purpose:     "AI coding agent for code generation and editing",
+		versionCmd:  []string{"kilocode", "--version"},
+		installMacOS: []string{
+			"npm install -g @kilocode/cli",
+		},
+		installLinux: []string{
+			"npm install -g @kilocode/cli",
+		},
+		installWindows: "npm install -g @kilocode/cli",
+	},
+	{
 		name:        "lsof",
 		description: "List open files and network connections",
 		purpose:     "Detect local listening ports for port forwarding",

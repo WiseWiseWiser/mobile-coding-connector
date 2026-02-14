@@ -156,11 +156,21 @@
     display: flex;
     gap: 6px;
     padding: 8px 12px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
     background: #1e293b;
     border-top: 1px solid #334155;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     flex-shrink: 0;
+}
+
+/* iOS Safari keyboard handling - ensure quick actions stay visible above keyboard */
+@supports (-webkit-touch-callout: none) {
+    .terminal-instance-shortcuts {
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+    }
 }
 
 .term-shortcut-btn {

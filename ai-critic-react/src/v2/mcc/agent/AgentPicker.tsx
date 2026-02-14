@@ -10,9 +10,11 @@ export interface AgentPickerProps {
     onOpenSessions: (agentId: string) => void;
     onStopAgent: (agentId: string) => void;
     onConfigureAgent: (agentId: string) => void;
+    // External sessions from CLI/web opencode
+    externalSessions?: { id: string }[];
 }
 
-export function AgentPicker({ agents, loading, launchError, sessions, onLaunchHeadless, onOpenSessions, onStopAgent, onConfigureAgent }: AgentPickerProps) {
+export function AgentPicker({ agents, loading, launchError, sessions, onLaunchHeadless, onOpenSessions, onStopAgent, onConfigureAgent, externalSessions = [] }: AgentPickerProps) {
     return (
         <div className="mcc-agent-view">
             <div className="mcc-agent-header">
@@ -65,7 +67,16 @@ export function AgentPicker({ agents, loading, launchError, sessions, onLaunchHe
                                         </button>
                                     </>
                                 )}
-                                {agent.headless && agent.installed && !agentSession && (
+                                {/* Show Open Sessions for opencode when external sessions exist (even without internal session) */}
+                                {agent.headless && agent.installed && !agentSession && agent.id === 'opencode' && externalSessions.length > 0 && (
+                                    <button
+                                        className="mcc-forward-btn mcc-agent-launch-btn"
+                                        onClick={() => onOpenSessions(agent.id)}
+                                    >
+                                        Open Sessions ({externalSessions.length})
+                                    </button>
+                                )}
+                                {agent.headless && agent.installed && !agentSession && !(agent.id === 'opencode' && externalSessions.length > 0) && (
                                     <button
                                         className="mcc-forward-btn mcc-agent-launch-btn"
                                         onClick={() => onLaunchHeadless(agent)}
