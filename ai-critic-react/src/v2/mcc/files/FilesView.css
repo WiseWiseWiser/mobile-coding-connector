@@ -138,6 +138,15 @@
     cursor: not-allowed;
 }
 
+.mcc-create-checkpoint-btn-secondary {
+    background: #475569;
+    margin: 0 16px 16px;
+}
+
+.mcc-create-checkpoint-btn-secondary:hover:not(:disabled) {
+    background: #64748b;
+}
+
 /* Back Button */
 .mcc-back-btn {
     background: none;

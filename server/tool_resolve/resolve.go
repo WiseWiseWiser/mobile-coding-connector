@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -94,7 +95,7 @@ func findAllNodeVersionDirs() []string {
 		version = strings.TrimPrefix(version, "v")
 
 		// Keep track of highest version per directory
-		if existingVersion, ok := dirVersions[dir]; !ok || version > existingVersion {
+		if existingVersion, ok := dirVersions[dir]; !ok || CompareVersions(version, existingVersion) {
 			dirVersions[dir] = version
 		}
 	}
@@ -117,7 +118,7 @@ func findAllNodeVersionDirs() []string {
 	// Sort by version descending (highest version first)
 	for i := 0; i < len(sorted)-1; i++ {
 		for j := i + 1; j < len(sorted); j++ {
-			if sorted[j].version > sorted[i].version {
+			if CompareVersions(sorted[j].version, sorted[i].version) {
 				sorted[i], sorted[j] = sorted[j], sorted[i]
 			}
 		}
@@ -130,6 +131,29 @@ func findAllNodeVersionDirs() []string {
 	}
 
 	return result
+}
+
+// CompareVersions compares two version strings (e.g., "22.0.0" vs "16.17.1")
+// Returns true if v1 > v2
+func CompareVersions(v1, v2 string) bool {
+	// Extract major version numbers
+	major1 := ExtractMajorVersion(v1)
+	major2 := ExtractMajorVersion(v2)
+
+	return major1 > major2
+}
+
+// ExtractMajorVersion extracts the major version number from a version string
+func ExtractMajorVersion(version string) int {
+	// Remove 'v' prefix if present
+	version = strings.TrimPrefix(version, "v")
+	// Split by '.' and get the first part
+	parts := strings.Split(version, ".")
+	if len(parts) == 0 {
+		return 0
+	}
+	major, _ := strconv.Atoi(parts[0])
+	return major
 }
 
 // userExtraPaths holds user-configured extra paths (e.g. from terminal config).
@@ -227,7 +251,7 @@ func GetFullSearchPATH() string {
 
 			// Both have node: higher version comes first
 			if dirInfos[i].hasNode && dirInfos[j].hasNode {
-				if dirInfos[j].nodeVersion > dirInfos[i].nodeVersion {
+				if CompareVersions(dirInfos[j].nodeVersion, dirInfos[i].nodeVersion) {
 					shouldSwap = true
 				}
 			} else if !dirInfos[i].hasNode && dirInfos[j].hasNode {

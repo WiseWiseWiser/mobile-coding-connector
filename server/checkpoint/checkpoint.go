@@ -545,11 +545,59 @@ func GetCurrentChanges(projectName, projectDir string) ([]ChangedFile, error) {
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/checkpoints", handleCheckpoints)
 	mux.HandleFunc("/api/checkpoints/", handleCheckpointByID)
+	mux.HandleFunc("/api/checkpoints/diff", handleCurrentDiff)
+	mux.HandleFunc("/api/checkpoints/diff/file", handleSingleFileDiff)
 	mux.HandleFunc("/api/files", handleListFiles)
 	mux.HandleFunc("/api/files/content", handleReadFile)
 	mux.HandleFunc("/api/files/home", handleHomeDir)
 	mux.HandleFunc("/api/server/files", handleListServerFiles)
 	mux.HandleFunc("/api/server/files/content", handleServerFileContent)
+}
+
+func handleCurrentDiff(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectDir := r.URL.Query().Get("project_dir")
+	if projectDir == "" {
+		respondErr(w, http.StatusBadRequest, "project_dir is required")
+		return
+	}
+
+	diffs, err := GetCurrentDiff(projectDir)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, diffs)
+}
+
+func handleSingleFileDiff(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectDir := r.URL.Query().Get("project_dir")
+	if projectDir == "" {
+		respondErr(w, http.StatusBadRequest, "project_dir is required")
+		return
+	}
+
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		respondErr(w, http.StatusBadRequest, "path is required")
+		return
+	}
+
+	diff, err := GetSingleFileDiff(projectDir, filePath)
+	if err != nil {
+		respondErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, diff)
 }
 
 func handleCheckpoints(w http.ResponseWriter, r *http.Request) {

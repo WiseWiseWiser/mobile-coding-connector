@@ -180,7 +180,7 @@ func prioritizeNodeVersions(firstPassPATH string, installations []NodeInstallati
 	// Group installations by directory and find highest version per directory
 	dirVersions := make(map[string]string)
 	for _, inst := range installations {
-		if existingVersion, ok := dirVersions[inst.Dir]; !ok || inst.Version > existingVersion {
+		if existingVersion, ok := dirVersions[inst.Dir]; !ok || tool_resolve.CompareVersions(inst.Version, existingVersion) {
 			dirVersions[inst.Dir] = inst.Version
 		}
 	}
@@ -212,7 +212,7 @@ func prioritizeNodeVersions(firstPassPATH string, installations []NodeInstallati
 	// Sort paths with node by version (highest first)
 	for i := 0; i < len(withNode)-1; i++ {
 		for j := i + 1; j < len(withNode); j++ {
-			if withNode[j].nodeVersion > withNode[i].nodeVersion {
+			if tool_resolve.CompareVersions(withNode[j].nodeVersion, withNode[i].nodeVersion) {
 				withNode[i], withNode[j] = withNode[j], withNode[i]
 			}
 		}

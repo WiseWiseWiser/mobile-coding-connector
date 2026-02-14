@@ -20,6 +20,8 @@ export function CreateCheckpointView({ projectName, projectDir, onBack, onCreate
     const [changedFiles, setChangedFiles] = useState<ChangedFile[]>([]);
     const [diffs, setDiffs] = useState<FileDiff[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadingDiffs, setLoadingDiffs] = useState(false);
+    const [showDiffs, setShowDiffs] = useState(false);
     const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
     const [checkpointName, setCheckpointName] = useState('');
     const [checkpointMessage, setCheckpointMessage] = useState('');
@@ -28,20 +30,31 @@ export function CreateCheckpointView({ projectName, projectDir, onBack, onCreate
 
     useEffect(() => {
         setLoading(true);
-        Promise.all([
-            fetchCurrentChanges(projectName, projectDir),
-            fetchCurrentDiff(projectName, projectDir),
-        ])
-            .then(([files, diffData]) => {
+        fetchCurrentChanges(projectName, projectDir)
+            .then(files => {
                 const fileList = files || [];
                 setChangedFiles(fileList);
-                setDiffs(diffData || []);
                 // Select all by default
                 setSelectedPaths(new Set(fileList.map(f => f.path)));
                 setLoading(false);
             })
             .catch(() => setLoading(false));
     }, [projectName, projectDir]);
+
+    const loadDiffs = () => {
+        if (diffs.length > 0 || loadingDiffs) {
+            setShowDiffs(!showDiffs);
+            return;
+        }
+        setLoadingDiffs(true);
+        fetchCurrentDiff(projectName, projectDir)
+            .then(diffData => {
+                setDiffs(diffData || []);
+                setShowDiffs(true);
+                setLoadingDiffs(false);
+            })
+            .catch(() => setLoadingDiffs(false));
+    };
 
     const toggleFile = (path: string) => {
         setSelectedPaths(prev => {
@@ -119,8 +132,16 @@ export function CreateCheckpointView({ projectName, projectDir, onBack, onCreate
                         ))}
                     </div>
 
+                    <button
+                        className="mcc-create-checkpoint-btn mcc-create-checkpoint-btn-secondary"
+                        onClick={loadDiffs}
+                        disabled={loadingDiffs}
+                    >
+                        {loadingDiffs ? 'Loading diffs...' : showDiffs ? 'Hide Diffs' : 'Show Diffs'}
+                    </button>
+
                     {/* Show diffs for selected files */}
-                    {diffs.length > 0 && (
+                    {showDiffs && diffs.length > 0 && (
                         <div className="mcc-create-checkpoint-diffs">
                             <div className="mcc-checkpoint-section-label">File Diffs</div>
                             <DiffViewer diffs={diffs.filter(d => selectedPaths.has(d.path))} />
