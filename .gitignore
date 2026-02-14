@@ -20,5 +20,7 @@ dist
 .ai-critic/
 .settings/
 
+/server/static
+
 /maintest
 /test-working-dir
