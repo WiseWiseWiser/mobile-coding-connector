@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { LocalPortInfo } from '../../api/ports';
+import { fetchProtectedPorts, addProtectedPort, removeProtectedPort } from '../../api/ports';
 import { PlusIcon } from '../icons';
 import { installTool } from '../../api/tools';
 import { consumeSSEStream } from '../../api/sse';
@@ -46,6 +47,31 @@ export function LocalPortsTable({
     const [installLogs, setInstallLogs] = useState<LogLine[]>([]);
     const [showInstallLogs, setShowInstallLogs] = useState(false);
     const [killModalPort, setKillModalPort] = useState<LocalPortInfo | null>(null);
+    const [protectedPorts, setProtectedPorts] = useState<number[]>([]);
+
+    useEffect(() => {
+        fetchProtectedPorts()
+            .then(setProtectedPorts)
+            .catch(() => {});
+    }, []);
+
+    const handleProtect = async (port: number) => {
+        try {
+            await addProtectedPort(port);
+            setProtectedPorts(prev => [...prev, port]);
+        } catch (err) {
+            console.error('Failed to protect port:', err);
+        }
+    };
+
+    const handleUnprotect = async (port: number) => {
+        try {
+            await removeProtectedPort(port);
+            setProtectedPorts(prev => prev.filter(p => p !== port));
+        } catch (err) {
+            console.error('Failed to unprotect port:', err);
+        }
+    };
 
     const isLsofError = error?.toLowerCase().includes('lsof not installed') || false;
 
@@ -181,18 +207,38 @@ export function LocalPortsTable({
                     <div className="mcc-lp-list">
                         {sortedPorts.map((port) => {
                             const isForwarded = forwardedPorts.has(port.port);
+                            const isProtected = protectedPorts.includes(port.port);
+                            const isPidOne = port.pid === 1;
                             return (
                                 <div key={`${port.port}-${port.pid}`} className="mcc-lp-row">
                                     <div className="mcc-lp-row-main">
                                         <code className="mcc-lp-port-num">{port.port}</code>
                                         <span className="mcc-lp-command">{port.command}</span>
                                         <button 
-                                            className="mcc-lp-kill-btn"
+                                            className={`mcc-lp-kill-btn ${isPidOne || isProtected ? 'mcc-lp-kill-btn-disabled' : ''}`}
                                             onClick={() => setKillModalPort(port)}
-                                            title={`Kill process ${port.pid}`}
+                                            title={isPidOne ? 'Cannot kill init process' : isProtected ? 'Port is protected' : `Kill process ${port.pid}`}
+                                            disabled={isPidOne || isProtected}
                                         >
                                             ✕
                                         </button>
+                                        {isProtected ? (
+                                            <button 
+                                                className="mcc-lp-protect-btn mcc-lp-protect-btn-active"
+                                                onClick={() => handleUnprotect(port.port)}
+                                                title={`Unprotect port ${port.port}`}
+                                            >
+                                                🛡
+                                            </button>
+                                        ) : (
+                                            <button 
+                                                className="mcc-lp-protect-btn"
+                                                onClick={() => handleProtect(port.port)}
+                                                title={`Protect port ${port.port}`}
+                                            >
+                                                <span style={{ opacity: 0.5 }}>🛡</span>
+                                            </button>
+                                        )}
                                         {isForwarded ? (
                                             <span className="mcc-lp-forwarded-badge">Forwarded</span>
                                         ) : (
@@ -219,6 +265,7 @@ export function LocalPortsTable({
                     {killModalPort && (
                         <KillProcessModal
                             port={killModalPort}
+                            protectedPorts={protectedPorts}
                             onClose={() => setKillModalPort(null)}
                             onKilled={() => setKillModalPort(null)}
                         />

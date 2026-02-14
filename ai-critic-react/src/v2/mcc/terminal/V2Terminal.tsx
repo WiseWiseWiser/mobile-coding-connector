@@ -1,5 +1,5 @@
 import '@xterm/xterm/css/xterm.css';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTerminal } from '../../../hooks/useTerminal';
 import './V2Terminal.css';
 
@@ -33,8 +33,36 @@ interface V2TerminalProps {
 }
 
 export function V2Terminal({ className }: V2TerminalProps) {
-    const { terminalRef, connected, sendKey } = useTerminal(true, { theme: v2Theme });
+    const { terminalRef, connected, sendKey, reconnect } = useTerminal(true, { theme: v2Theme });
     const [ctrlPressed, setCtrlPressed] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const wasDisconnectedRef = useRef(false);
+
+    // Auto-reconnect when terminal regains focus if disconnected
+    useEffect(() => {
+        const handleFocus = () => {
+            if (!connected && wasDisconnectedRef.current) {
+                reconnect();
+            }
+            wasDisconnectedRef.current = !connected;
+        };
+
+        const handleVisibilityChange = () => {
+            if (!document.hidden && !connected && wasDisconnectedRef.current) {
+                reconnect();
+            }
+            wasDisconnectedRef.current = !connected;
+        };
+
+        const container = containerRef.current;
+        container?.addEventListener('focus', handleFocus);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            container?.removeEventListener('focus', handleFocus);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [connected, reconnect]);
 
     const handleSendKey = useCallback((key: string) => {
         if (ctrlPressed) {
@@ -67,7 +95,7 @@ export function V2Terminal({ className }: V2TerminalProps) {
     const handleArrowRight = () => sendKey('\x1b[C');
 
     return (
-        <div className={`v2-terminal ${className || ''}`}>
+        <div className={`v2-terminal ${className || ''}`} ref={containerRef} tabIndex={0}>
             <div className="v2-terminal-header">
                 <div className="v2-terminal-tabs">
                     <button className="v2-terminal-tab active">Terminal</button>

@@ -192,6 +192,50 @@
     border-color: rgba(239, 68, 68, 0.4);
 }
 
+.mcc-lp-kill-btn-disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.mcc-lp-kill-btn-disabled:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.25);
+}
+
+/* Protect button */
+.mcc-lp-protect-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 6px;
+    color: #3b82f6;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    font-size: 12px;
+}
+
+.mcc-lp-protect-btn:hover {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.4);
+}
+
+.mcc-lp-protect-btn-active {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.25);
+    color: #22c55e;
+}
+
+.mcc-lp-protect-btn-active:hover {
+    background: rgba(34, 197, 94, 0.2);
+    border-color: rgba(34, 197, 94, 0.4);
+}
+
 /* Forwarded badge */
 .mcc-lp-forwarded-badge {
     font-size: 11px;

@@ -73,6 +73,17 @@
     line-height: 1.5;
 }
 
+.mcc-modal-warning {
+    margin: 0 0 16px;
+    font-size: 14px;
+    color: #f59e0b;
+    line-height: 1.5;
+    padding: 10px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: 6px;
+}
+
 .mcc-modal-info {
     background: rgba(0, 0, 0, 0.2);
     border-radius: 8px;

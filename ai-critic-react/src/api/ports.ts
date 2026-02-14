@@ -150,9 +150,43 @@ export async function deletePortMappingName(port: number): Promise<void> {
     }
 }
 
-export async function killProcess(pid: number): Promise<void> {
-    const resp = await fetch(`/api/ports/local/kill?pid=${pid}`, {
+export async function killProcess(pid: number, port?: number): Promise<void> {
+    let url = `/api/ports/local/kill?pid=${pid}`;
+    if (port !== undefined) {
+        url += `&port=${port}`;
+    }
+    const resp = await fetch(url, {
         method: 'POST',
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text);
+    }
+}
+
+export async function fetchProtectedPorts(): Promise<number[]> {
+    const resp = await fetch('/api/ports/protected');
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text);
+    }
+    const data = await resp.json();
+    return data.protected_ports || [];
+}
+
+export async function addProtectedPort(port: number): Promise<void> {
+    const resp = await fetch(`/api/ports/protected?port=${port}`, {
+        method: 'POST',
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text);
+    }
+}
+
+export async function removeProtectedPort(port: number): Promise<void> {
+    const resp = await fetch(`/api/ports/protected?port=${port}`, {
+        method: 'DELETE',
     });
     if (!resp.ok) {
         const text = await resp.text();

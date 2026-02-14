@@ -565,6 +565,9 @@ func fetchProcessDetails(pidSet map[int]struct{}) (ppidMap map[int]int, cmdlineM
 
 // RegisterAPI registers the port forwarding API endpoints
 func RegisterAPI(mux *http.ServeMux) {
+	// Load protected ports on startup
+	loadProtectedPorts()
+
 	mux.HandleFunc("/api/ports", handlePorts)
 	mux.HandleFunc("/api/ports/events", handlePortEvents)
 	mux.HandleFunc("/api/ports/providers", handleProviders)
@@ -573,6 +576,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ports/local", handleLocalPorts)
 	mux.HandleFunc("/api/ports/local/kill", handleKillProcess)
 	mux.HandleFunc("/api/ports/local/events", handleLocalPortEvents)
+	mux.HandleFunc("/api/ports/protected", handleProtectedPorts)
 	mux.HandleFunc("/api/ports/mapping-names", handlePortMappingNames)
 }
 
@@ -594,15 +598,27 @@ func handleKillProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pidStr := r.URL.Query().Get("pid")
-	if pidStr == "" {
-		http.Error(w, "pid is required", http.StatusBadRequest)
-		return
-	}
+	portStr := r.URL.Query().Get("port")
 
 	pid, err := strconv.Atoi(pidStr)
 	if err != nil {
 		http.Error(w, "invalid pid", http.StatusBadRequest)
 		return
+	}
+
+	// Check if PID is 1 (init process - cannot kill)
+	if pid == 1 {
+		http.Error(w, "cannot kill init process (PID 1)", http.StatusForbidden)
+		return
+	}
+
+	// Check if port is protected
+	if portStr != "" {
+		port, err := strconv.Atoi(portStr)
+		if err == nil && isPortProtected(port) {
+			http.Error(w, "port is protected", http.StatusForbidden)
+			return
+		}
 	}
 
 	cmd := exec.Command("kill", strconv.Itoa(pid))
@@ -614,6 +630,55 @@ func handleKillProcess(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func handleProtectedPorts(w http.ResponseWriter, r *http.Request) {
+	protectedPortsMu.RLock()
+	protected := make([]int, 0, len(protectedPorts))
+	for port := range protectedPorts {
+		protected = append(protected, port)
+	}
+	protectedPortsMu.RUnlock()
+	sort.Ints(protected)
+
+	switch r.Method {
+	case http.MethodGet:
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string][]int{"protected_ports": protected})
+
+	case http.MethodPost:
+		portStr := r.URL.Query().Get("port")
+		if portStr == "" {
+			http.Error(w, "port is required", http.StatusBadRequest)
+			return
+		}
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			http.Error(w, "invalid port", http.StatusBadRequest)
+			return
+		}
+		addProtectedPort(port)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+
+	case http.MethodDelete:
+		portStr := r.URL.Query().Get("port")
+		if portStr == "" {
+			http.Error(w, "port is required", http.StatusBadRequest)
+			return
+		}
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			http.Error(w, "invalid port", http.StatusBadRequest)
+			return
+		}
+		removeProtectedPort(port)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 // handleLocalPortEvents streams local listening ports via SSE, polling every 3 seconds.

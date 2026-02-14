@@ -318,6 +318,19 @@ var requiredTools = []toolDef{
 		installWindows: "npm install -g @anthropic-ai/claude-code",
 	},
 	{
+		name:        "cline",
+		description: "Cline CLI - Autonomous coding agent",
+		purpose:     "Run Cline autonomous coding agent for code generation and editing",
+		versionCmd:  []string{"cline", "version"},
+		installMacOS: []string{
+			"npm install -g cline",
+		},
+		installLinux: []string{
+			"npm install -g cline",
+		},
+		installWindows: "npm install -g cline",
+	},
+	{
 		name:        "whats_next",
 		description: "Task tracking and planning CLI tool",
 		purpose:     "Track tasks and plan next steps",
