@@ -215,7 +215,7 @@ export function ExposedUrlsSection() {
                                                     type="text"
                                                     value={editInternalURL}
                                                     onChange={(e) => setEditInternalURL(e.target.value)}
-                                                    placeholder="e.g., http://localhost:3000"
+                                                    placeholder="e.g., http://localhost:3000 or tcp://my.squid.com:3128"
                                                     required
                                                 />
                                             </div>
@@ -338,10 +338,10 @@ export function ExposedUrlsSection() {
                                     type="text"
                                     value={newInternalURL}
                                     onChange={(e) => setNewInternalURL(e.target.value)}
-                                    placeholder="e.g., http://localhost:3000"
+                                    placeholder="e.g., http://localhost:3000 or tcp://my.squid.com:3128"
                                     required
                                 />
-                                <small>The internal service URL (can be localhost or any internal address)</small>
+                                <small>Internal service (use tcp:// for proxy servers)</small>
                             </div>
                             <div className="exposed-urls-add-actions">
                                 <button type="submit" className="exposed-url-btn save">Add URL</button>
