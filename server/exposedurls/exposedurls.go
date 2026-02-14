@@ -1,12 +1,13 @@
 package exposedurls
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/jsonfile"
 )
 
 // ExposedURL represents a single exposed URL configuration
@@ -32,10 +33,10 @@ type Config struct {
 
 // Manager handles exposed URLs configuration and runtime state
 type Manager struct {
-	mu         sync.RWMutex
-	configPath string
-	urls       map[string]*ExposedURLWithStatus
-	running    map[string]*runningTunnel
+	jsonFile *jsonfile.JSONFile[Config]
+	mu       sync.RWMutex
+	urls     map[string]*ExposedURLWithStatus
+	running  map[string]*runningTunnel
 }
 
 type runningTunnel struct {
@@ -60,13 +61,26 @@ func GetManager() *Manager {
 
 // NewManager creates a new exposed URLs manager
 func NewManager(configPath string) *Manager {
-	m := &Manager{
-		configPath: configPath,
-		urls:       make(map[string]*ExposedURLWithStatus),
-		running:    make(map[string]*runningTunnel),
+	jf := jsonfile.New[Config](configPath)
+	if err := jf.Load(); err != nil {
+		fmt.Printf("Warning: failed to load exposed URLs config: %v\n", err)
 	}
-	// Load existing config
-	m.load()
+
+	m := &Manager{
+		jsonFile: jf,
+		urls:     make(map[string]*ExposedURLWithStatus),
+		running:  make(map[string]*runningTunnel),
+	}
+
+	// Load existing config into memory
+	cfg, _ := jf.Get()
+	for _, url := range cfg.URLs {
+		m.urls[url.ID] = &ExposedURLWithStatus{
+			ExposedURL: url,
+			Status:     "stopped",
+		}
+	}
+
 	return m
 }
 
@@ -75,65 +89,6 @@ func getConfigDir() string {
 		return filepath.Join(home, ".ai-critic")
 	}
 	return ".ai-critic"
-}
-
-// load reads the configuration from disk
-func (m *Manager) load() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	data, err := os.ReadFile(m.configPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("failed to read config: %w", err)
-	}
-
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return fmt.Errorf("failed to parse config: %w", err)
-	}
-
-	for _, url := range cfg.URLs {
-		m.urls[url.ID] = &ExposedURLWithStatus{
-			ExposedURL: url,
-			Status:     "stopped",
-		}
-	}
-
-	return nil
-}
-
-// save writes the configuration to disk
-func (m *Manager) save() error {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	cfg := Config{
-		URLs: make([]ExposedURL, 0, len(m.urls)),
-	}
-
-	for _, url := range m.urls {
-		cfg.URLs = append(cfg.URLs, url.ExposedURL)
-	}
-
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-
-	// Ensure directory exists
-	dir := filepath.Dir(m.configPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	if err := os.WriteFile(m.configPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
-	}
-
-	return nil
 }
 
 // List returns all exposed URLs with their current status
@@ -189,7 +144,12 @@ func (m *Manager) Add(externalDomain, internalURL string) (*ExposedURLWithStatus
 		Status:     "stopped",
 	}
 
-	if err := m.save(); err != nil {
+	// Update config file
+	err := m.jsonFile.Update(func(cfg *Config) error {
+		cfg.URLs = append(cfg.URLs, url)
+		return nil
+	})
+	if err != nil {
 		delete(m.urls, id)
 		return nil, err
 	}
@@ -210,7 +170,18 @@ func (m *Manager) Update(id, externalDomain, internalURL string) (*ExposedURLWit
 	url.ExternalDomain = externalDomain
 	url.InternalURL = internalURL
 
-	if err := m.save(); err != nil {
+	// Update config file
+	err := m.jsonFile.Update(func(cfg *Config) error {
+		for i := range cfg.URLs {
+			if cfg.URLs[i].ID == id {
+				cfg.URLs[i].ExternalDomain = externalDomain
+				cfg.URLs[i].InternalURL = internalURL
+				break
+			}
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -234,7 +205,17 @@ func (m *Manager) Remove(id string) error {
 
 	delete(m.urls, id)
 
-	return m.save()
+	// Update config file
+	return m.jsonFile.Update(func(cfg *Config) error {
+		newURLs := make([]ExposedURL, 0)
+		for _, u := range cfg.URLs {
+			if u.ID != id {
+				newURLs = append(newURLs, u)
+			}
+		}
+		cfg.URLs = newURLs
+		return nil
+	})
 }
 
 // StartTunnel starts a Cloudflare tunnel for the given exposed URL

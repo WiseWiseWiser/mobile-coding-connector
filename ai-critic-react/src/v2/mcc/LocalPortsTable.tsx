@@ -48,6 +48,7 @@ export function LocalPortsTable({
     const [showInstallLogs, setShowInstallLogs] = useState(false);
     const [killModalPort, setKillModalPort] = useState<LocalPortInfo | null>(null);
     const [protectedPorts, setProtectedPorts] = useState<number[]>([]);
+    const [protectingPorts, setProtectingPorts] = useState<Set<number>>(new Set());
 
     useEffect(() => {
         fetchProtectedPorts()
@@ -56,20 +57,36 @@ export function LocalPortsTable({
     }, []);
 
     const handleProtect = async (port: number) => {
+        if (protectingPorts.has(port)) return;
+        setProtectingPorts(prev => new Set(prev).add(port));
         try {
             await addProtectedPort(port);
             setProtectedPorts(prev => [...prev, port]);
         } catch (err) {
             console.error('Failed to protect port:', err);
+        } finally {
+            setProtectingPorts(prev => {
+                const next = new Set(prev);
+                next.delete(port);
+                return next;
+            });
         }
     };
 
     const handleUnprotect = async (port: number) => {
+        if (protectingPorts.has(port)) return;
+        setProtectingPorts(prev => new Set(prev).add(port));
         try {
             await removeProtectedPort(port);
             setProtectedPorts(prev => prev.filter(p => p !== port));
         } catch (err) {
             console.error('Failed to unprotect port:', err);
+        } finally {
+            setProtectingPorts(prev => {
+                const next = new Set(prev);
+                next.delete(port);
+                return next;
+            });
         }
     };
 
@@ -209,6 +226,7 @@ export function LocalPortsTable({
                             const isForwarded = forwardedPorts.has(port.port);
                             const isProtected = protectedPorts.includes(port.port);
                             const isPidOne = port.pid === 1;
+                            const isLoading = protectingPorts.has(port.port);
                             return (
                                 <div key={`${port.port}-${port.pid}`} className="mcc-lp-row">
                                     <div className="mcc-lp-row-main">
@@ -227,14 +245,18 @@ export function LocalPortsTable({
                                                 className="mcc-lp-protect-btn mcc-lp-protect-btn-active"
                                                 onClick={() => handleUnprotect(port.port)}
                                                 title={`Unprotect port ${port.port}`}
+                                                disabled={isLoading}
                                             >
-                                                🛡
+                                                {isLoading ? '...' : '🛡'}
                                             </button>
                                         ) : (
                                             <button 
                                                 className="mcc-lp-protect-btn"
                                                 onClick={() => handleProtect(port.port)}
                                                 title={`Protect port ${port.port}`}
+                                                disabled={isLoading}
+                                            >
+                                                {isLoading ? '...' : <span style={{ opacity: 0.5 }}>🛡</span>}
                                             >
                                                 <span style={{ opacity: 0.5 }}>🛡</span>
                                             </button>
