@@ -25,6 +25,7 @@ import (
 	"github.com/xhd2015/kool/pkgs/web"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/actions"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/checkpoint"
 	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
@@ -381,8 +382,11 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Projects API
 	projects.RegisterAPI(mux)
 
-	// Agents API
+	// Agents API (skip health check in quick-test mode)
 	agents.RegisterAPI(mux)
+	if !quickTestMode {
+		opencode.StartHealthCheck()
+	}
 
 	// Checkpoint API
 	checkpoint.RegisterAPI(mux)

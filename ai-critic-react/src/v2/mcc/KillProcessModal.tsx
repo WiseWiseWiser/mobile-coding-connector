@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { killProcess } from '../../api/ports';
 import { ConfirmModal } from './ConfirmModal';
 import type { LocalPortInfo } from './ConfirmModal';
@@ -16,10 +17,20 @@ export function KillProcessModal({ port, protectedPorts, onClose, onKilled }: Ki
 
     const command = `kill ${port.pid}`;
 
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
     const handleConfirm = async () => {
         if (!canKill) return;
-        await killProcess(port.pid, port.port);
-        onKilled();
+        setLoading(true);
+        setError(null);
+        try {
+            await killProcess(port.pid, port.port);
+            onKilled();
+        } catch (err) {
+            setError(String(err));
+            setLoading(false);
+        }
     };
 
     if (!canKill) {
@@ -56,6 +67,8 @@ export function KillProcessModal({ port, protectedPorts, onClose, onKilled }: Ki
             confirmVariant="danger"
             onConfirm={handleConfirm}
             onClose={onClose}
+            loading={loading}
+            error={error}
         />
     );
 }

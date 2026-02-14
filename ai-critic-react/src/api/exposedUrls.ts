@@ -4,6 +4,7 @@ export interface ExposedURL {
     id: string;
     external_domain: string;
     internal_url: string;
+    enabled: boolean;
     created_at: string;
 }
 
@@ -64,6 +65,19 @@ export async function deleteExposedURL(id: string): Promise<void> {
         const data = await resp.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to delete exposed URL');
     }
+}
+
+export async function toggleExposedURL(id: string, enabled: boolean): Promise<ExposedURLWithStatus> {
+    const resp = await fetch('/api/exposed-urls/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, enabled }),
+    });
+    if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to toggle exposed URL');
+    }
+    return resp.json();
 }
 
 export async function fetchExposedURLsCloudflareStatus(): Promise<CloudflareStatus> {

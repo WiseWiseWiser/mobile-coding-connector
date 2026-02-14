@@ -4,6 +4,7 @@ import {
     addExposedURL,
     updateExposedURL,
     deleteExposedURL,
+    toggleExposedURL,
     fetchExposedURLsCloudflareStatus,
     startExposedURLTunnel,
     stopExposedURLTunnel,
@@ -134,6 +135,17 @@ export function ExposedUrlsSection() {
         }
     };
 
+    const handleToggle = async (id: string, enabled: boolean) => {
+        setError(null);
+        try {
+            await toggleExposedURL(id, enabled);
+            const data = await fetchExposedURLs();
+            setUrls(data);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err));
+        }
+    };
+
     const getStatusClass = (status: string) => {
         switch (status) {
             case 'active': return 'status-active';
@@ -255,6 +267,16 @@ export function ExposedUrlsSection() {
                                                         <span className="exposed-url-error">{url.error}</span>
                                                     </div>
                                                 )}
+                                            </div>
+                                            <div className="exposed-url-toggle">
+                                                <label>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={url.enabled !== false}
+                                                        onChange={(e) => handleToggle(url.id, e.target.checked)}
+                                                    />
+                                                    <span>Enabled</span>
+                                                </label>
                                             </div>
                                             <div className="exposed-url-actions">
                                                 {url.status === 'active' ? (

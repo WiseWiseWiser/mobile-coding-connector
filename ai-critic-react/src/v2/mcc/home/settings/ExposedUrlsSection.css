@@ -144,6 +144,27 @@
     flex-shrink: 0;
 }
 
+.exposed-url-toggle {
+    display: flex;
+    align-items: center;
+    padding: 4px 0;
+}
+
+.exposed-url-toggle label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary, #64748b);
+}
+
+.exposed-url-toggle input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
 .exposed-url-btn {
     padding: 6px 12px;
     border-radius: 4px;

@@ -12,6 +12,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/exposed-urls/add", handleAdd)
 	mux.HandleFunc("/api/exposed-urls/update", handleUpdate)
 	mux.HandleFunc("/api/exposed-urls/delete", handleDelete)
+	mux.HandleFunc("/api/exposed-urls/toggle", handleToggle)
 	mux.HandleFunc("/api/exposed-urls/status", handleStatus)
 	mux.HandleFunc("/api/exposed-urls/tunnel/start", handleTunnelStart)
 	mux.HandleFunc("/api/exposed-urls/tunnel/stop", handleTunnelStop)
@@ -151,6 +152,43 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+}
+
+type toggleRequest struct {
+	ID      string `json:"id"`
+	Enabled bool   `json:"enabled"`
+}
+
+func handleToggle(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req toggleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.ID == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+
+	manager := GetManager()
+	url, err := manager.Toggle(req.ID, req.Enabled)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(url)
 }
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {

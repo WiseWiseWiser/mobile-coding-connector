@@ -18,6 +18,15 @@ var templateHTML string
 func main() {
 	server.Init(distFS, templateHTML)
 
+	// Check for --quick-test flag before running and set it in server
+	// This needs to be set BEFORE run.Run() since RegisterAPI checks quickTestMode
+	for _, arg := range os.Args[1:] {
+		if arg == "--quick-test" {
+			server.SetQuickTestMode(true)
+			break
+		}
+	}
+
 	err := run.Run(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

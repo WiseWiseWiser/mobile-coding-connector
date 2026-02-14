@@ -19,6 +19,8 @@ export interface ConfirmModalProps {
     onConfirm: () => Promise<void>;
     onClose: () => void;
     warning?: string;
+    loading?: boolean;
+    error?: string | null;
 }
 
 export function ConfirmModal({
@@ -31,19 +33,28 @@ export function ConfirmModal({
     onConfirm,
     onClose,
     warning,
+    loading: externalLoading,
+    error: externalError,
 }: ConfirmModalProps) {
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [internalLoading, setInternalLoading] = useState(false);
+    const [internalError, setInternalError] = useState<string | null>(null);
+
+    const loading = externalLoading ?? internalLoading;
+    const error = externalError ?? internalError;
 
     const handleConfirm = async () => {
-        setLoading(true);
-        setError(null);
+        if (externalLoading !== undefined) {
+            await onConfirm();
+            return;
+        }
+        setInternalLoading(true);
+        setInternalError(null);
         try {
             await onConfirm();
         } catch (err) {
-            setError(String(err));
+            setInternalError(String(err));
         } finally {
-            setLoading(false);
+            setInternalLoading(false);
         }
     };
 

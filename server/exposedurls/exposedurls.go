@@ -16,6 +16,7 @@ type ExposedURL struct {
 	ID             string `json:"id"`
 	ExternalDomain string `json:"external_domain"`
 	InternalURL    string `json:"internal_url"`
+	Enabled        bool   `json:"enabled"`
 	CreatedAt      string `json:"created_at"`
 }
 
@@ -126,7 +127,7 @@ func (m *Manager) Get(id string) (*ExposedURLWithStatus, error) {
 	return url, nil
 }
 
-// Add creates a new exposed URL
+// Add creates a new exposed URL and adds it to the unified tunnel if enabled
 func (m *Manager) Add(externalDomain, internalURL string) (*ExposedURLWithStatus, error) {
 	id := generateID()
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -134,6 +135,7 @@ func (m *Manager) Add(externalDomain, internalURL string) (*ExposedURLWithStatus
 		ID:             id,
 		ExternalDomain: externalDomain,
 		InternalURL:    internalURL,
+		Enabled:        true,
 		CreatedAt:      now,
 	}
 
@@ -142,7 +144,7 @@ func (m *Manager) Add(externalDomain, internalURL string) (*ExposedURLWithStatus
 
 	m.urls[id] = &ExposedURLWithStatus{
 		ExposedURL: url,
-		Status:     "stopped",
+		Status:     "active",
 	}
 
 	// Update config file
@@ -155,10 +157,25 @@ func (m *Manager) Add(externalDomain, internalURL string) (*ExposedURLWithStatus
 		return nil, err
 	}
 
+	// Add to unified tunnel automatically
+	utm := cf.GetUnifiedTunnelManager()
+	mappingID := fmt.Sprintf("exposed-%s", id)
+	mapping := &cf.IngressMapping{
+		ID:       mappingID,
+		Hostname: externalDomain,
+		Service:  internalURL,
+		Source:   fmt.Sprintf("exposed-url:%s", externalDomain),
+	}
+	if err := utm.AddMapping(mapping); err != nil {
+		fmt.Printf("[exposed-urls] Failed to add mapping for %s: %v\n", externalDomain, err)
+	} else {
+		fmt.Printf("[exposed-urls] Auto-added mapping: %s -> %s\n", externalDomain, internalURL)
+	}
+
 	return m.urls[id], nil
 }
 
-// Update modifies an existing exposed URL
+// Update modifies an existing exposed URL and updates the tunnel mapping
 func (m *Manager) Update(id, externalDomain, internalURL string) (*ExposedURLWithStatus, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -168,6 +185,7 @@ func (m *Manager) Update(id, externalDomain, internalURL string) (*ExposedURLWit
 		return nil, fmt.Errorf("exposed URL not found: %s", id)
 	}
 
+	oldDomain := url.ExternalDomain
 	url.ExternalDomain = externalDomain
 	url.InternalURL = internalURL
 
@@ -186,15 +204,93 @@ func (m *Manager) Update(id, externalDomain, internalURL string) (*ExposedURLWit
 		return nil, err
 	}
 
+	// Update tunnel mapping if enabled
+	if url.Enabled {
+		utm := cf.GetUnifiedTunnelManager()
+		mappingID := fmt.Sprintf("exposed-%s", id)
+
+		// Remove old mapping
+		if oldDomain != externalDomain {
+			if err := utm.RemoveMapping(mappingID); err != nil {
+				fmt.Printf("[exposed-urls] Warning: failed to remove old mapping: %v\n", err)
+			}
+		}
+
+		// Add new mapping
+		mapping := &cf.IngressMapping{
+			ID:       mappingID,
+			Hostname: externalDomain,
+			Service:  internalURL,
+			Source:   fmt.Sprintf("exposed-url:%s", externalDomain),
+		}
+		if err := utm.AddMapping(mapping); err != nil {
+			fmt.Printf("[exposed-urls] Failed to update mapping for %s: %v\n", externalDomain, err)
+		} else {
+			fmt.Printf("[exposed-urls] Updated mapping: %s -> %s\n", externalDomain, internalURL)
+		}
+	}
+
 	return url, nil
 }
 
-// Remove deletes an exposed URL and stops any running tunnel
-func (m *Manager) Remove(id string) error {
+// Toggle enables or disables an exposed URL
+func (m *Manager) Toggle(id string, enabled bool) (*ExposedURLWithStatus, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, ok := m.urls[id]; !ok {
+	url, ok := m.urls[id]
+	if !ok {
+		return nil, fmt.Errorf("exposed URL not found: %s", id)
+	}
+
+	url.Enabled = enabled
+
+	// Update config file
+	err := m.jsonFile.Update(func(cfg *Config) error {
+		for i := range cfg.URLs {
+			if cfg.URLs[i].ID == id {
+				cfg.URLs[i].Enabled = enabled
+				break
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// If disabling, remove from unified tunnel
+	if !enabled {
+		utm := cf.GetUnifiedTunnelManager()
+		mappingID := fmt.Sprintf("exposed-%s", id)
+		if err := utm.RemoveMapping(mappingID); err != nil {
+			fmt.Printf("[exposed-urls] warning: failed to remove mapping on disable: %v\n", err)
+		}
+	} else if enabled && url.Status == "active" {
+		// If enabling and was active, re-add to unified tunnel
+		utm := cf.GetUnifiedTunnelManager()
+		mappingID := fmt.Sprintf("exposed-%s", id)
+		mapping := &cf.IngressMapping{
+			ID:       mappingID,
+			Hostname: url.ExternalDomain,
+			Service:  url.InternalURL,
+			Source:   fmt.Sprintf("exposed-url:%s", url.ExternalDomain),
+		}
+		if err := utm.AddMapping(mapping); err != nil {
+			fmt.Printf("[exposed-urls] warning: failed to add mapping on enable: %v\n", err)
+		}
+	}
+
+	return url, nil
+}
+
+// Remove deletes an exposed URL and removes it from the tunnel
+func (m *Manager) Remove(id string) error {
+	m.mu.Lock()
+
+	url, ok := m.urls[id]
+	if !ok {
+		m.mu.Unlock()
 		return fmt.Errorf("exposed URL not found: %s", id)
 	}
 
@@ -204,7 +300,18 @@ func (m *Manager) Remove(id string) error {
 		delete(m.running, id)
 	}
 
+	// Remove from tunnel mapping
+	utm := cf.GetUnifiedTunnelManager()
+	mappingID := fmt.Sprintf("exposed-%s", id)
+	if err := utm.RemoveMapping(mappingID); err != nil {
+		fmt.Printf("[exposed-urls] Warning: failed to remove mapping: %v\n", err)
+	} else {
+		fmt.Printf("[exposed-urls] Removed mapping for %s\n", url.ExternalDomain)
+	}
+
 	delete(m.urls, id)
+
+	m.mu.Unlock()
 
 	// Update config file
 	return m.jsonFile.Update(func(cfg *Config) error {
@@ -340,15 +447,41 @@ func (m *Manager) StopTunnel(id string) error {
 // InitExposedURLTunnels adds all exposed URLs to the unified tunnel on server startup.
 func InitExposedURLTunnels() {
 	m := GetManager()
+
+	// First, migrate old URLs that don't have explicit enabled field to enabled
+	m.mu.Lock()
+	needsSave := false
+	for _, url := range m.urls {
+		if !url.Enabled {
+			url.Enabled = true
+			needsSave = true
+		}
+	}
+	if needsSave {
+		m.jsonFile.Update(func(cfg *Config) error {
+			for i := range cfg.URLs {
+				if !cfg.URLs[i].Enabled {
+					cfg.URLs[i].Enabled = true
+				}
+			}
+			return nil
+		})
+		fmt.Printf("[exposed-urls] Migrated URLs to enabled\n")
+	}
+	m.mu.Unlock()
+
+	// Now get enabled URLs
 	m.mu.RLock()
 	urls := make([]ExposedURL, 0, len(m.urls))
 	for _, url := range m.urls {
-		urls = append(urls, url.ExposedURL)
+		if url.Enabled {
+			urls = append(urls, url.ExposedURL)
+		}
 	}
 	m.mu.RUnlock()
 
 	if len(urls) == 0 {
-		fmt.Printf("[exposed-urls] No exposed URLs configured, skipping tunnel initialization\n")
+		fmt.Printf("[exposed-urls] No enabled exposed URLs, skipping tunnel initialization\n")
 		return
 	}
 

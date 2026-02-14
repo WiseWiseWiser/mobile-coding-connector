@@ -1016,10 +1016,15 @@ func StartGlobalHealthChecks() {
 		fmt.Printf("[unified-tunnel] StartGlobalHealthChecks: setting up health check callback\n")
 
 		globalHealthCheckCancel = utm.StartHealthChecks(func(mappingID, hostname string, healthy bool, consecutiveFailures int) {
-			// Check if this is the opencode web server mapping - skip health checks for it
-			// since the server might start later and we don't want to restart tunnels unnecessarily
+			// Skip health checks for opencode web server mapping
 			if isOpenCodeWebServerMapping(mappingID) {
 				fmt.Printf("[unified-tunnel] Skipping health check for opencode web server mapping %s (%s)\n", mappingID, hostname)
+				return
+			}
+
+			// Skip health checks for exposed URLs (mapping IDs starting with "exposed-")
+			if strings.HasPrefix(mappingID, "exposed-") {
+				fmt.Printf("[unified-tunnel] Skipping health check for exposed URL mapping %s (%s)\n", mappingID, hostname)
 				return
 			}
 
