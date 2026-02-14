@@ -16,6 +16,10 @@ export interface ProjectInfo {
     use_ssh: boolean;
     created_at: string;
     dir_exists: boolean;
+    git_status?: {
+        is_clean: boolean;
+        uncommitted: number;
+    };
     todos?: Todo[];
 }
 

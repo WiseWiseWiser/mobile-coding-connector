@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getGitStatus, getDiff, stageFile, unstageFile, gitCommit } from '../../../api/review';
+import { getGitStatus, getDiff, stageFile, unstageFile, gitCommit, gitCheckout, gitRemove } from '../../../api/review';
 import type { GitStatusFile } from '../../../api/review';
 import type { DiffFile } from '../../../components/code-review/types';
 import { DiffViewer } from '../../DiffViewer';
@@ -7,6 +7,7 @@ import type { FileDiff, DiffHunk, DiffLine } from '../../../api/checkpoints';
 import { statusBadge } from './utils';
 import { loadGitUserConfig } from '../home/settings/gitStorage';
 import { GitPushSection } from './GitPushSection';
+import { ConfirmModal } from '../ConfirmModal';
 import './FilesView.css';
 import './GitCommitView.css';
 
@@ -83,6 +84,10 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
     const [loadingDiffs, setLoadingDiffs] = useState(false);
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [gitUserConfig, setGitUserConfig] = useState<{ name: string; email: string }>({ name: '', email: '' });
+    const [modalState, setModalState] = useState<{
+        type: 'discard' | 'remove';
+        file: GitStatusFile;
+    } | null>(null);
 
     const messageRef = useRef<HTMLTextAreaElement>(null);
 
@@ -148,6 +153,34 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
             }
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Failed to unstage file');
+        }
+    };
+
+    const handleDiscard = async () => {
+        if (!modalState || modalState.type !== 'discard') return;
+        const file = modalState.file;
+        try {
+            await gitCheckout(file.path, projectDir);
+            setModalState(null);
+            await refresh();
+            if (showDiffs) {
+                setShowDiffs(false);
+                setTimeout(() => setShowDiffs(true), 100);
+            }
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Failed to discard changes');
+        }
+    };
+
+    const handleRemove = async () => {
+        if (!modalState || modalState.type !== 'remove') return;
+        const file = modalState.file;
+        try {
+            await gitRemove(file.path, projectDir);
+            setModalState(null);
+            await refresh();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Failed to remove file');
         }
     };
 
@@ -294,12 +327,39 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                                 >
                                     {statusBadge(f.status === 'untracked' ? 'added' : f.status)}
                                     <span className="mcc-changed-file-path">{f.path}</span>
-                                    <button
-                                        className="mcc-git-file-action"
-                                        onClick={(e) => { e.stopPropagation(); handleStage(f.path); }}
-                                    >
-                                        +
-                                    </button>
+                                    {f.status === 'untracked' ? (
+                                        <>
+                                            <button
+                                                className="mcc-git-file-action mcc-git-file-action-remove"
+                                                title={`Remove ${f.path}`}
+                                                onClick={(e) => { e.stopPropagation(); setModalState({ type: 'remove', file: f }); }}
+                                            >
+                                                ×
+                                            </button>
+                                            <button
+                                                className="mcc-git-file-action"
+                                                onClick={(e) => { e.stopPropagation(); handleStage(f.path); }}
+                                            >
+                                                +
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button
+                                                className="mcc-git-file-action mcc-git-file-action-discard"
+                                                title={`Discard changes to ${f.path}`}
+                                                onClick={(e) => { e.stopPropagation(); setModalState({ type: 'discard', file: f }); }}
+                                            >
+                                                ↩
+                                            </button>
+                                            <button
+                                                className="mcc-git-file-action"
+                                                onClick={(e) => { e.stopPropagation(); handleStage(f.path); }}
+                                            >
+                                                +
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -377,6 +437,39 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                             </div>
                         </div>
                     </div>
+
+                    {/* Confirm Modal for Discard/Remove */}
+                    {modalState && (
+                        modalState.type === 'discard' ? (
+                            <ConfirmModal
+                                title="Discard Changes"
+                                message={`Are you sure you want to discard changes to "${modalState.file.path}"?`}
+                                info={{
+                                    File: modalState.file.path,
+                                    Status: modalState.file.status,
+                                }}
+                                command={`git checkout -- "${modalState.file.path}"`}
+                                confirmLabel="Discard Changes"
+                                confirmVariant="danger"
+                                onConfirm={handleDiscard}
+                                onClose={() => setModalState(null)}
+                            />
+                        ) : (
+                            <ConfirmModal
+                                title="Remove File"
+                                message={`Are you sure you want to remove "${modalState.file.path}"?`}
+                                info={{
+                                    File: modalState.file.path,
+                                    Status: modalState.file.status,
+                                }}
+                                command={`rm -f "${modalState.file.path}"`}
+                                confirmLabel="Remove File"
+                                confirmVariant="danger"
+                                onConfirm={handleRemove}
+                                onClose={() => setModalState(null)}
+                            />
+                        )
+                    )}
                 </>
             )}
         </div>

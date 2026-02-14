@@ -438,6 +438,16 @@ body:has(.mcc) {
     white-space: nowrap;
 }
 
+.mcc-workspace-uncommitted-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
 .mcc-workspace-card-header {
     display: flex;
     align-items: center;

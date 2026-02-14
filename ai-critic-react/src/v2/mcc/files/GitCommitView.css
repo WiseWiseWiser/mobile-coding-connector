@@ -70,6 +70,30 @@
     color: #60a5fa;
 }
 
+/* Discard button (revert changes) */
+.mcc-git-file-action-discard {
+    color: #f59e0b;
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.mcc-git-file-action-discard:hover {
+    border-color: #f59e0b;
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+}
+
+/* Remove button (delete untracked file) */
+.mcc-git-file-action-remove {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.mcc-git-file-action-remove:hover {
+    border-color: #ef4444;
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
 /* Selected file highlight */
 .mcc-changed-file-item-selected {
     background: rgba(96, 165, 250, 0.08);

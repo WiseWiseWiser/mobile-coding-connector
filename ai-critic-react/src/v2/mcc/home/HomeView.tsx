@@ -160,13 +160,16 @@ function ProjectCard({ project, isActive, onSelect, onOpen, onRemove, onClone, c
     const createdDate = new Date(project.created_at).toLocaleDateString();
     const dirMissing = !project.dir_exists;
     const sshValidation = validateProjectSSHKey(project);
+    const gitStatus = project.git_status;
+    const hasUncommitted = gitStatus && !gitStatus.is_clean && gitStatus.uncommitted > 0;
 
     return (
-        <div className={`mcc-workspace-card mcc-workspace-card-clickable${isActive ? ' mcc-workspace-card-active' : ''}`} onClick={onSelect}>
+        <div className={`mcc-workspace-card mcc-workspace-card-clickable${isActive ? ' 'mcc-workspace-card-active' : ''}`} onClick={onSelect}>
             <div className="mcc-workspace-card-header">
                 <span className="mcc-workspace-name">{project.name}</span>
                 {isActive && <span className="mcc-workspace-active-badge">Working on</span>}
                 {dirMissing && <span className="mcc-workspace-missing-badge">Not cloned</span>}
+                {hasUncommitted && <span className="mcc-workspace-uncommitted-badge">{gitStatus.uncommitted} files uncommitted</span>}
             </div>
             <div className="mcc-workspace-card-meta">
                 <span>{project.dir}</span>

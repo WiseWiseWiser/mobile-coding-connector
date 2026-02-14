@@ -45,6 +45,32 @@ export async function unstageFile(path: string, dir?: string): Promise<void> {
     }
 }
 
+// Discard changes in working tree using git checkout --
+export async function gitCheckout(path: string, dir?: string): Promise<void> {
+    const response = await fetch('/api/review/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, dir }),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to checkout file');
+    }
+}
+
+// Remove an untracked file using rm -f
+export async function gitRemove(path: string, dir?: string): Promise<void> {
+    const response = await fetch('/api/review/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, dir }),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to remove file');
+    }
+}
+
 // Git status file entry
 export interface GitStatusFile {
     path: string;

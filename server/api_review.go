@@ -116,6 +116,8 @@ func registerReviewAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/review/chat", handleChat)
 	mux.HandleFunc("/api/review/stage", handleStageFile)
 	mux.HandleFunc("/api/review/unstage", handleUnstageFile)
+	mux.HandleFunc("/api/review/checkout", handleGitCheckout)
+	mux.HandleFunc("/api/review/remove", handleGitRemove)
 	mux.HandleFunc("/api/review/commit", handleGitCommit)
 	mux.HandleFunc("/api/review/push", handleGitPush)
 	mux.HandleFunc("/api/review/fetch", handleGitFetch)
@@ -279,6 +281,78 @@ func handleUnstageFile(w http.ResponseWriter, r *http.Request) {
 	output, err := gitrunner.Reset(req.Path).Dir(dir).Run()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to unstage file: %s", string(output))})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleGitCheckout handles requests to discard changes in working tree using git checkout --
+func handleGitCheckout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var req StageFileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	dir := resolveDir(req.Dir)
+	if dir == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
+		return
+	}
+
+	if req.Path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "File path is required"})
+		return
+	}
+
+	output, err := gitrunner.Checkout(req.Path).Dir(dir).Run()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to checkout file: %s", string(output))})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// RemoveFileRequest represents a request to remove a file
+type RemoveFileRequest struct {
+	Dir  string `json:"dir"`  // Directory to run rm in
+	Path string `json:"path"` // File path to remove
+}
+
+// handleGitRemove handles requests to remove an untracked file using rm -f
+func handleGitRemove(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var req RemoveFileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	dir := resolveDir(req.Dir)
+	if dir == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
+		return
+	}
+
+	if req.Path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "File path is required"})
+		return
+	}
+
+	filePath := filepath.Join(dir, req.Path)
+	if err := os.Remove(filePath); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to remove file: %v", err)})
 		return
 	}
 

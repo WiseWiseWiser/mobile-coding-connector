@@ -254,3 +254,9 @@ func GetCurrentBranch(dir string) (string, error) {
 	}
 	return strings.TrimSpace(string(out)), nil
 }
+
+// Checkout runs git checkout -- <paths> to discard changes in working tree
+func Checkout(paths ...string) *Command {
+	args := append([]string{"checkout", "--"}, paths...)
+	return NewCommand(args...)
+}

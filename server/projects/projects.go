@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 )
 
 var projectsFile = config.ProjectsFile
@@ -31,6 +33,38 @@ type Project struct {
 	UseSSH    bool   `json:"use_ssh"`
 	CreatedAt string `json:"created_at"`
 	Todos     []Todo `json:"todos,omitempty"`
+}
+
+// GitStatusInfo holds git status information for a project
+type GitStatusInfo struct {
+	IsClean     bool `json:"is_clean"`
+	Uncommitted int  `json:"uncommitted"`
+}
+
+func getGitStatus(projectDir string) GitStatusInfo {
+	// Check if it's a git repository
+	if err := gitrunner.RevParse("--git-dir").Dir(projectDir).RunSilent(); err != nil {
+		return GitStatusInfo{IsClean: true, Uncommitted: 0}
+	}
+
+	// Get status with porcelain format
+	output, err := gitrunner.Status("--porcelain=v1").Dir(projectDir).Output()
+	if err != nil {
+		return GitStatusInfo{IsClean: true, Uncommitted: 0}
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	count := 0
+	for _, line := range lines {
+		if len(line) >= 2 {
+			count++
+		}
+	}
+
+	return GitStatusInfo{
+		IsClean:     count == 0,
+		Uncommitted: count,
+	}
 }
 
 var mu sync.RWMutex
@@ -161,17 +195,20 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 			respondErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		// Enrich with dir_exists field
+		// Enrich with dir_exists and git status fields
 		type ProjectWithStatus struct {
 			Project
-			DirExists bool `json:"dir_exists"`
+			DirExists bool          `json:"dir_exists"`
+			GitStatus GitStatusInfo `json:"git_status"`
 		}
 		result := make([]ProjectWithStatus, len(list))
 		for i, p := range list {
 			_, statErr := os.Stat(p.Dir)
+			gitStatus := getGitStatus(p.Dir)
 			result[i] = ProjectWithStatus{
 				Project:   p,
 				DirExists: statErr == nil,
+				GitStatus: gitStatus,
 			}
 		}
 		respondJSON(w, http.StatusOK, result)
