@@ -5,6 +5,7 @@ import { installTool } from '../../api/tools';
 import { consumeSSEStream } from '../../api/sse';
 import { LogViewer } from '../LogViewer';
 import type { LogLine } from '../LogViewer';
+import { KillProcessModal } from './KillProcessModal';
 import './LocalPortsTable.css';
 
 const SortFields = {
@@ -44,6 +45,7 @@ export function LocalPortsTable({
     const [installing, setInstalling] = useState(false);
     const [installLogs, setInstallLogs] = useState<LogLine[]>([]);
     const [showInstallLogs, setShowInstallLogs] = useState(false);
+    const [killModalPort, setKillModalPort] = useState<LocalPortInfo | null>(null);
 
     const isLsofError = error?.toLowerCase().includes('lsof not installed') || false;
 
@@ -184,6 +186,13 @@ export function LocalPortsTable({
                                     <div className="mcc-lp-row-main">
                                         <code className="mcc-lp-port-num">{port.port}</code>
                                         <span className="mcc-lp-command">{port.command}</span>
+                                        <button 
+                                            className="mcc-lp-kill-btn"
+                                            onClick={() => setKillModalPort(port)}
+                                            title={`Kill process ${port.pid}`}
+                                        >
+                                            ✕
+                                        </button>
                                         {isForwarded ? (
                                             <span className="mcc-lp-forwarded-badge">Forwarded</span>
                                         ) : (
@@ -207,6 +216,13 @@ export function LocalPortsTable({
                             );
                         })}
                     </div>
+                    {killModalPort && (
+                        <KillProcessModal
+                            port={killModalPort}
+                            onClose={() => setKillModalPort(null)}
+                            onKilled={() => setKillModalPort(null)}
+                        />
+                    )}
                 </>
             )}
         </div>

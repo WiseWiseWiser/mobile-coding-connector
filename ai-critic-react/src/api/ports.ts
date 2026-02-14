@@ -149,3 +149,13 @@ export async function deletePortMappingName(port: number): Promise<void> {
         throw new Error(text);
     }
 }
+
+export async function killProcess(pid: number): Promise<void> {
+    const resp = await fetch(`/api/ports/local/kill?pid=${pid}`, {
+        method: 'POST',
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text);
+    }
+}

@@ -490,6 +490,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ports/logs", handlePortLogs)
 	mux.HandleFunc("/api/ports/diagnostics", handleDiagnostics)
 	mux.HandleFunc("/api/ports/local", handleLocalPorts)
+	mux.HandleFunc("/api/ports/local/kill", handleKillProcess)
 	mux.HandleFunc("/api/ports/local/events", handleLocalPortEvents)
 	mux.HandleFunc("/api/ports/mapping-names", handlePortMappingNames)
 }
@@ -503,6 +504,35 @@ func handleLocalPorts(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ports)
+}
+
+func handleKillProcess(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	pidStr := r.URL.Query().Get("pid")
+	if pidStr == "" {
+		http.Error(w, "pid is required", http.StatusBadRequest)
+		return
+	}
+
+	pid, err := strconv.Atoi(pidStr)
+	if err != nil {
+		http.Error(w, "invalid pid", http.StatusBadRequest)
+		return
+	}
+
+	cmd := exec.Command("kill", strconv.Itoa(pid))
+	err = cmd.Run()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to kill process %d: %v", pid, err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // handleLocalPortEvents streams local listening ports via SSE, polling every 3 seconds.

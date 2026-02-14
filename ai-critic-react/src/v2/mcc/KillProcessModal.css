@@ -1,0 +1,178 @@
+.mcc-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.mcc-modal {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.mcc-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #334155;
+}
+
+.mcc-modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+.mcc-modal-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: #64748b;
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.mcc-modal-close:hover:not(:disabled) {
+    background: rgba(100, 116, 139, 0.2);
+    color: #94a3b8;
+}
+
+.mcc-modal-close:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.mcc-modal-body {
+    padding: 20px;
+}
+
+.mcc-modal-body p {
+    margin: 0 0 16px;
+    font-size: 14px;
+    color: #e2e8f0;
+    line-height: 1.5;
+}
+
+.mcc-modal-info {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 16px;
+}
+
+.mcc-modal-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.mcc-modal-row:last-child {
+    margin-bottom: 0;
+}
+
+.mcc-modal-label {
+    font-size: 12px;
+    color: #64748b;
+    min-width: 70px;
+}
+
+.mcc-modal-value {
+    font-size: 13px;
+    color: #e2e8f0;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    word-break: break-all;
+}
+
+.mcc-modal-command {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.mcc-modal-command .mcc-modal-label {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.mcc-modal-command code {
+    display: block;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 13px;
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.1);
+    padding: 8px 10px;
+    border-radius: 6px;
+    word-break: break-all;
+}
+
+.mcc-modal-error {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 6px;
+    color: #f87171;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.mcc-modal-footer {
+    display: flex;
+    gap: 12px;
+    padding: 16px 20px;
+    border-top: 1px solid #334155;
+}
+
+.mcc-modal-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: none;
+}
+
+.mcc-modal-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.mcc-modal-btn-cancel {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+.mcc-modal-btn-cancel:hover:not(:disabled) {
+    background: #475569;
+}
+
+.mcc-modal-btn-kill {
+    background: #ef4444;
+    color: #fff;
+}
+
+.mcc-modal-btn-kill:hover:not(:disabled) {
+    background: #dc2626;
+}
