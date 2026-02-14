@@ -96,6 +96,12 @@ export async function fetchCurrentDiff(project: string, projectDir: string): Pro
     return resp.json();
 }
 
+export async function fetchSingleFileDiff(projectDir: string, path: string): Promise<FileDiff> {
+    const resp = await fetch(`/api/checkpoints/diff/file?project_dir=${encodeURIComponent(projectDir)}&path=${encodeURIComponent(path)}`);
+    if (!resp.ok) throw new Error('Failed to fetch file diff');
+    return resp.json();
+}
+
 // --- File Browser API ---
 
 export interface FileEntry {

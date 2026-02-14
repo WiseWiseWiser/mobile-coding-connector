@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     createCheckpoint,
     fetchCurrentChanges,
-    fetchCurrentDiff,
+    fetchSingleFileDiff,
 } from '../../../api/checkpoints';
 import type { ChangedFile, FileDiff } from '../../../api/checkpoints';
 import { DiffViewer } from '../../DiffViewer';
@@ -18,15 +18,15 @@ export interface CreateCheckpointViewProps {
 
 export function CreateCheckpointView({ projectName, projectDir, onBack, onCreated }: CreateCheckpointViewProps) {
     const [changedFiles, setChangedFiles] = useState<ChangedFile[]>([]);
-    const [diffs, setDiffs] = useState<FileDiff[]>([]);
+    const [diffs, setDiffs] = useState<Map<string, FileDiff>>(new Map());
+    const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
-    const [loadingDiffs, setLoadingDiffs] = useState(false);
-    const [showDiffs, setShowDiffs] = useState(false);
     const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
     const [checkpointName, setCheckpointName] = useState('');
     const [checkpointMessage, setCheckpointMessage] = useState('');
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -34,27 +34,47 @@ export function CreateCheckpointView({ projectName, projectDir, onBack, onCreate
             .then(files => {
                 const fileList = files || [];
                 setChangedFiles(fileList);
-                // Select all by default
                 setSelectedPaths(new Set(fileList.map(f => f.path)));
                 setLoading(false);
             })
             .catch(() => setLoading(false));
     }, [projectName, projectDir]);
 
-    const loadDiffs = () => {
-        if (diffs.length > 0 || loadingDiffs) {
-            setShowDiffs(!showDiffs);
-            return;
+    const loadFileDiff = useCallback(async (path: string) => {
+        if (diffs.has(path) || expandedFiles.has(path)) return;
+        
+        try {
+            const diff = await fetchSingleFileDiff(projectDir, path);
+            setDiffs(prev => new Map(prev).set(path, diff));
+            setExpandedFiles(prev => new Set(prev).add(path));
+        } catch (err) {
+            console.error('Failed to load diff for', path, err);
         }
-        setLoadingDiffs(true);
-        fetchCurrentDiff(projectName, projectDir)
-            .then(diffData => {
-                setDiffs(diffData || []);
-                setShowDiffs(true);
-                setLoadingDiffs(false);
-            })
-            .catch(() => setLoadingDiffs(false));
-    };
+    }, [projectDir, diffs, expandedFiles]);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const path = entry.target.getAttribute('data-file-path');
+                        if (path) {
+                            loadFileDiff(path);
+                        }
+                    }
+                });
+            },
+            { rootMargin: '100px' }
+        );
+
+        const container = containerRef.current;
+        if (container) {
+            const fileItems = container.querySelectorAll('[data-file-path]');
+            fileItems.forEach(item => observer.observe(item));
+        }
+
+        return () => observer.disconnect();
+    }, [changedFiles, loadFileDiff]);
 
     const toggleFile = (path: string) => {
         setSelectedPaths(prev => {
@@ -63,6 +83,19 @@ export function CreateCheckpointView({ projectName, projectDir, onBack, onCreate
                 next.delete(path);
             } else {
                 next.add(path);
+            }
+            return next;
+        });
+    };
+
+    const toggleExpand = (path: string) => {
+        setExpandedFiles(prev => {
+            const next = new Set(prev);
+            if (next.has(path)) {
+                next.delete(path);
+            } else {
+                next.add(path);
+                loadFileDiff(path);
             }
             return next;
         });
@@ -118,35 +151,32 @@ export function CreateCheckpointView({ projectName, projectDir, onBack, onCreate
                             <span>Select all ({changedFiles.length} file{changedFiles.length !== 1 ? 's' : ''})</span>
                         </label>
                     </div>
-                    <div className="mcc-changed-files-list">
+                    <div className="mcc-changed-files-list" ref={containerRef}>
                         {changedFiles.map(f => (
-                            <label key={f.path} className="mcc-changed-file-item">
-                                <input
-                                    type="checkbox"
-                                    checked={selectedPaths.has(f.path)}
-                                    onChange={() => toggleFile(f.path)}
-                                />
-                                {statusBadge(f.status)}
-                                <span className="mcc-changed-file-path">{f.path}</span>
-                            </label>
+                            <div key={f.path} data-file-path={f.path} className="mcc-changed-file-wrapper">
+                                <label className="mcc-changed-file-item">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedPaths.has(f.path)}
+                                        onChange={() => toggleFile(f.path)}
+                                    />
+                                    {statusBadge(f.status)}
+                                    <span className="mcc-changed-file-path">{f.path}</span>
+                                </label>
+                                <button 
+                                    className="mcc-changed-file-expand"
+                                    onClick={() => toggleExpand(f.path)}
+                                >
+                                    {expandedFiles.has(f.path) ? '▼' : '▶'}
+                                </button>
+                                {expandedFiles.has(f.path) && diffs.get(f.path) && (
+                                    <div className="mcc-changed-file-diff">
+                                        <DiffViewer diffs={[diffs.get(f.path)!]} />
+                                    </div>
+                                )}
+                            </div>
                         ))}
                     </div>
-
-                    <button
-                        className="mcc-create-checkpoint-btn mcc-create-checkpoint-btn-secondary"
-                        onClick={loadDiffs}
-                        disabled={loadingDiffs}
-                    >
-                        {loadingDiffs ? 'Loading diffs...' : showDiffs ? 'Hide Diffs' : 'Show Diffs'}
-                    </button>
-
-                    {/* Show diffs for selected files */}
-                    {showDiffs && diffs.length > 0 && (
-                        <div className="mcc-create-checkpoint-diffs">
-                            <div className="mcc-checkpoint-section-label">File Diffs</div>
-                            <DiffViewer diffs={diffs.filter(d => selectedPaths.has(d.path))} />
-                        </div>
-                    )}
                 </>
             )}
 

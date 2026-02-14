@@ -111,6 +111,39 @@
     background: #475569;
 }
 
+/* Changed file expand */
+.mcc-changed-file-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+.mcc-changed-file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.mcc-changed-file-expand {
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 10px;
+    flex-shrink: 0;
+}
+
+.mcc-changed-file-expand:hover {
+    color: #94a3b8;
+}
+
+.mcc-changed-file-diff {
+    margin: 8px 0 8px 24px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
 /* Create Checkpoint Button */
 .mcc-create-checkpoint-btn {
     display: flex;

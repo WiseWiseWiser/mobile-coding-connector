@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 )
 
 // FileDiff represents the unified diff for a single file.
@@ -87,6 +89,70 @@ func GetCheckpointDiff(projectName string, id int) ([]FileDiff, error) {
 	}
 
 	return diffs, nil
+}
+
+// GetSingleFileDiff computes diff for a single file.
+func GetSingleFileDiff(projectDir, filePath string) (*FileDiff, error) {
+	// Get the status of this specific file
+	status, err := gitFileStatus(projectDir, filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	if status == "" {
+		// File is not changed, return empty diff
+		return &FileDiff{
+			Path:   filePath,
+			Status: "unchanged",
+			Hunks:  nil,
+		}, nil
+	}
+
+	var oldContent, newContent string
+
+	// Get git HEAD content for modified/deleted files
+	if status == "modified" || status == "deleted" {
+		content, err := gitFileContent(projectDir, filePath)
+		if err == nil {
+			oldContent = content
+		}
+	}
+
+	// Get current disk content for added/modified files
+	if status != "deleted" {
+		content, err := readFileContent(projectDir, filePath)
+		if err == nil {
+			newContent = content
+		}
+	}
+
+	hunks := computeUnifiedDiff(oldContent, newContent)
+	return &FileDiff{
+		Path:   filePath,
+		Status: status,
+		Hunks:  hunks,
+	}, nil
+}
+
+// gitFileStatus returns the status of a single file.
+func gitFileStatus(projectDir, filePath string) (string, error) {
+	out, err := gitrunner.Diff("--name-status", "HEAD", "--", filePath).Dir(projectDir).Output()
+	if err != nil {
+		// No changes in this file
+		return "", nil
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		return "", nil
+	}
+
+	parts := strings.SplitN(lines[0], "\t", 2)
+	if len(parts) != 2 {
+		return "", nil
+	}
+
+	return parseGitStatus(parts[0]), nil
 }
 
 // GetCurrentDiff computes diffs for current working tree changes against git HEAD.

@@ -172,30 +172,29 @@ func (m *Manager) Get(id string) (*ExposedURLWithStatus, error) {
 
 // Add creates a new exposed URL
 func (m *Manager) Add(externalDomain, internalURL string) (*ExposedURLWithStatus, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	id := generateID()
+	now := time.Now().UTC().Format(time.RFC3339)
 	url := ExposedURL{
 		ID:             id,
 		ExternalDomain: externalDomain,
 		InternalURL:    internalURL,
-		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+		CreatedAt:      now,
 	}
 
-	urlWithStatus := &ExposedURLWithStatus{
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.urls[id] = &ExposedURLWithStatus{
 		ExposedURL: url,
 		Status:     "stopped",
 	}
-
-	m.urls[id] = urlWithStatus
 
 	if err := m.save(); err != nil {
 		delete(m.urls, id)
 		return nil, err
 	}
 
-	return urlWithStatus, nil
+	return m.urls[id], nil
 }
 
 // Update modifies an existing exposed URL
@@ -241,15 +240,16 @@ func (m *Manager) Remove(id string) error {
 // StartTunnel starts a Cloudflare tunnel for the given exposed URL
 func (m *Manager) StartTunnel(id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	url, ok := m.urls[id]
 	if !ok {
+		m.mu.Unlock()
 		return fmt.Errorf("exposed URL not found: %s", id)
 	}
 
 	// Check if already running
 	if rt, ok := m.running[id]; ok && rt.status == "active" {
+		m.mu.Unlock()
 		return fmt.Errorf("tunnel already running")
 	}
 
@@ -259,18 +259,24 @@ func (m *Manager) StartTunnel(id string) error {
 		status: "connecting",
 	}
 
+	// Capture id for goroutine
+	tunnelID := id
+	m.mu.Unlock()
+
 	// TODO: Implement actual Cloudflare tunnel start
 	// This would spawn cloudflared process with proper configuration
 	// For now, we'll mark it as active for demonstration
 	go func() {
 		time.Sleep(2 * time.Second)
 		m.mu.Lock()
-		if rt, ok := m.running[id]; ok {
+		defer m.mu.Unlock()
+		if rt, ok := m.running[tunnelID]; ok {
 			rt.status = "active"
-			url.Status = "active"
-			url.TunnelURL = fmt.Sprintf("https://%s", url.ExternalDomain)
+			if url, ok := m.urls[tunnelID]; ok {
+				url.Status = "active"
+				url.TunnelURL = fmt.Sprintf("https://%s", url.ExternalDomain)
+			}
 		}
-		m.mu.Unlock()
 	}()
 
 	return nil
