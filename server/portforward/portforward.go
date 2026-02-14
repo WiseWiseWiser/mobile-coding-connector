@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +17,86 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 )
+
+// PortProtectionConfig holds the list of protected ports
+type PortProtectionConfig struct {
+	ProtectedPorts map[int]bool `json:"protected_ports"`
+}
+
+var (
+	protectedPorts     = make(map[int]bool)
+	protectedPortsMu   sync.RWMutex
+	protectedPortsFile = filepath.Join(config.DataDir, "port-protection.json")
+)
+
+// loadProtectedPorts loads protected ports from file
+func loadProtectedPorts() {
+	protectedPortsMu.Lock()
+	defer protectedPortsMu.Unlock()
+
+	data, err := os.ReadFile(protectedPortsFile)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			fmt.Printf("Warning: failed to load protected ports: %v\n", err)
+		}
+		return
+	}
+
+	var cfg PortProtectionConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		fmt.Printf("Warning: failed to parse protected ports: %v\n", err)
+		return
+	}
+
+	protectedPorts = cfg.ProtectedPorts
+}
+
+// saveProtectedPorts saves protected ports to file
+func saveProtectedPorts() {
+	protectedPortsMu.RLock()
+	cfg := PortProtectionConfig{ProtectedPorts: protectedPorts}
+	protectedPortsMu.RUnlock()
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		fmt.Printf("Error: failed to marshal protected ports: %v\n", err)
+		return
+	}
+
+	// Ensure directory exists
+	dir := filepath.Dir(protectedPortsFile)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Printf("Error: failed to create config directory: %v\n", err)
+		return
+	}
+
+	if err := os.WriteFile(protectedPortsFile, data, 0644); err != nil {
+		fmt.Printf("Error: failed to save protected ports: %v\n", err)
+	}
+}
+
+// isPortProtected returns true if the port is protected
+func isPortProtected(port int) bool {
+	protectedPortsMu.RLock()
+	defer protectedPortsMu.RUnlock()
+	return protectedPorts[port]
+}
+
+// addProtectedPort adds a port to protected list
+func addProtectedPort(port int) {
+	protectedPortsMu.Lock()
+	defer protectedPortsMu.Unlock()
+	protectedPorts[port] = true
+	saveProtectedPorts()
+}
+
+// removeProtectedPort removes a port from protected list
+func removeProtectedPort(port int) {
+	protectedPortsMu.Lock()
+	defer protectedPortsMu.Unlock()
+	delete(protectedPorts, port)
+	saveProtectedPorts()
+}
 
 // PortStatuses defines the possible states
 const (

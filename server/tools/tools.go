@@ -180,17 +180,33 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "node",
-		description: "Node.js JavaScript runtime (includes npm/npx)",
+		description: "Node.js JavaScript runtime v22+ (includes npm/npx)",
 		purpose:     "Run frontend dev server, build React app, run localtunnel via npx",
 		versionCmd:  []string{"node", "--version"},
 		installMacOS: []string{
-			"brew install node",
+			"brew install nvm",
+			"source ~/.nvm/nvm.sh",
+			"nvm install 22",
+			"nvm alias default 22",
 		},
 		installLinux: []string{
-			"apt-get update",
+			"curl -fsSL https://deb.nodesource.com/setup_22.x | bash -",
 			"apt-get install -y nodejs",
 		},
 		installWindows: "Download from https://nodejs.org/",
+	},
+	{
+		name:        "npm",
+		description: "Node.js package manager (comes with node)",
+		purpose:     "Install JavaScript packages, run scripts",
+		versionCmd:  []string{"npm", "--version"},
+		installMacOS: []string{
+			"Already included with node - install node instead",
+		},
+		installLinux: []string{
+			"Already included with node - install node instead",
+		},
+		installWindows: "Already included with node - install node instead",
 	},
 	{
 		name:        "python3",

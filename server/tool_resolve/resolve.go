@@ -48,6 +48,59 @@ func init() {
 		// Add all node directories (higher versions first will be handled in PATH reordering)
 		ExtraPaths = append(ExtraPaths, bestNodeDir...)
 	}
+
+	// Also check for npm in common node directories that might not be in PATH
+	// This catches cases where node is found but npm is in a sibling directory (e.g., bin vs bin2)
+	addNpmFromNodeDirs()
+}
+
+// addNpmFromNodeDirs checks for npm in common node installation directories
+func addNpmFromNodeDirs() {
+	// Check for npm in each extra path that might have a sibling bin2 directory
+	for _, dir := range ExtraPaths {
+		// Skip if already a bin directory
+		if strings.HasSuffix(dir, "/bin") {
+			npmPath := filepath.Join(dir, "npm")
+			if isExecutable(npmPath) {
+				continue // npm already found via PATH
+			}
+			// Check sibling bin2 directory
+			bin2Dir := strings.TrimSuffix(dir, "/bin") + "/bin2"
+			if info, err := os.Stat(bin2Dir); err == nil && info.IsDir() {
+				npmPath := filepath.Join(bin2Dir, "npm")
+				if isExecutable(npmPath) {
+					ExtraPaths = append(ExtraPaths, bin2Dir)
+					break // Found npm, no need to continue
+				}
+			}
+		}
+	}
+
+	// Also check specific known node installations
+	knownNodeDirs := []string{
+		"/consumerloan-codelensadmin/node/bin",
+		"/consumerloan-codelensadmin/node/bin2",
+		"/root/node/bin",
+	}
+
+	for _, dir := range knownNodeDirs {
+		checkAndAddNpm(dir)
+	}
+}
+
+func checkAndAddNpm(dir string) {
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		npmPath := filepath.Join(dir, "npm")
+		if isExecutable(npmPath) {
+			// Check if already in ExtraPaths
+			for _, p := range ExtraPaths {
+				if p == dir {
+					return
+				}
+			}
+			ExtraPaths = append(ExtraPaths, dir)
+		}
+	}
 }
 
 // nodeVersionInfo holds info about a node installation
