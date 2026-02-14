@@ -685,6 +685,59 @@ func GetActiveDomainTunnels() []DomainTunnelInfo {
 	return result
 }
 
+// InitDomainTunnels adds all configured Cloudflare domains to the unified tunnel on server startup.
+func InitDomainTunnels() {
+	cfg, err := LoadDomains()
+	if err != nil {
+		fmt.Printf("[domains] Failed to load domains: %v\n", err)
+		return
+	}
+
+	if len(cfg.Domains) == 0 {
+		fmt.Printf("[domains] No domains configured, skipping tunnel initialization\n")
+		return
+	}
+
+	// Ensure unified tunnel is configured
+	utm := cloudflareSettings.GetUnifiedTunnelManager()
+	logFn := func(msg string) {
+		fmt.Printf("[domains] %s\n", msg)
+	}
+	tunnelRef, _, _, err := cloudflareSettings.EnsureUnifiedTunnelConfigured("", logFn)
+	if err != nil {
+		fmt.Printf("[domains] Failed to configure unified tunnel: %v\n", err)
+		return
+	}
+	fmt.Printf("[domains] Using unified tunnel: %s\n", tunnelRef)
+
+	// Add each Cloudflare domain as a mapping
+	for _, d := range cfg.Domains {
+		if d.Provider != ProviderCloudflare {
+			continue
+		}
+
+		// Determine the local URL based on the domain or use default server port
+		localURL := fmt.Sprintf("http://localhost:%d", GetServerPort())
+		if localURL == "http://localhost:0" || GetServerPort() == 0 {
+			localURL = "http://localhost:23712"
+		}
+
+		mappingID := fmt.Sprintf("domain-%s", d.Domain)
+		mapping := &cloudflareSettings.IngressMapping{
+			ID:       mappingID,
+			Hostname: d.Domain,
+			Service:  localURL,
+			Source:   fmt.Sprintf("domain:%s", d.Domain),
+		}
+
+		if err := utm.AddMapping(mapping); err != nil {
+			fmt.Printf("[domains] Failed to add mapping for %s: %v\n", d.Domain, err)
+		} else {
+			fmt.Printf("[domains] Added domain mapping: %s -> %s\n", d.Domain, localURL)
+		}
+	}
+}
+
 // GetServerPort returns the configured server port for domain tunnels.
 // Returns 0 if not set.
 func GetServerPort() int {

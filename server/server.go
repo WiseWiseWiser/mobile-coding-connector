@@ -411,6 +411,18 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Exposed URLs API
 	exposedurls.RegisterAPI(mux)
 
+	// Initialize unified tunnel with existing mappings from config
+	go func() {
+		// Wait a bit for server to fully start
+		time.Sleep(2 * time.Second)
+
+		// Add existing domains to unified tunnel
+		domains.InitDomainTunnels()
+
+		// Add existing exposed URLs to unified tunnel
+		exposedurls.InitExposedURLTunnels()
+	}()
+
 	// Keep-alive proxy API
 	keepalive.RegisterAPI(mux)
 

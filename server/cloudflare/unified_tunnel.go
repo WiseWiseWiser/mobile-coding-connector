@@ -336,6 +336,13 @@ func (utm *UnifiedTunnelManager) rebuildAndRestartLockedWithForce(force bool) er
 	}
 	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: process started successfully, AFTER START - running=%v\n", utm.running)
 
+	// Create DNS routes for all mappings after tunnel starts
+	go func() {
+		// Wait for tunnel to stabilize
+		time.Sleep(5 * time.Second)
+		utm.createDNSRoutesForMappings()
+	}()
+
 	// Resume health checks after a delay to allow tunnel to stabilize
 	go func() {
 		time.Sleep(15 * time.Second)
@@ -707,6 +714,52 @@ func (utm *UnifiedTunnelManager) CreateDNSRoutes() error {
 	}
 
 	return nil
+}
+
+// createDNSRoutesForMappings creates DNS routes for all current mappings (server + extra).
+// This is called after tunnel restart to ensure all domains have DNS entries.
+func (utm *UnifiedTunnelManager) createDNSRoutesForMappings() {
+	utm.mu.RLock()
+	defer utm.mu.RUnlock()
+
+	if utm.config == nil {
+		fmt.Printf("[unified-tunnel] createDNSRoutesForMappings: no tunnel config, skipping\n")
+		return
+	}
+
+	tunnelRef := utm.config.TunnelName
+	if tunnelRef == "" {
+		tunnelRef = utm.config.TunnelID
+	}
+
+	// Create DNS for server mappings
+	for _, m := range utm.mappings {
+		if err := CreateDNSRoute(tunnelRef, m.Hostname); err != nil {
+			fmt.Printf("[unified-tunnel] createDNSRoutesForMappings: failed to create DNS for %s: %v\n", m.Hostname, err)
+		} else {
+			fmt.Printf("[unified-tunnel] createDNSRoutesForMappings: created DNS for %s\n", m.Hostname)
+		}
+	}
+
+	// Create DNS for extra mappings (only if not in server mappings)
+	extraMappings := utm.loadExtraMappings()
+	for _, em := range extraMappings {
+		existsInServerMappings := false
+		for _, m := range utm.mappings {
+			if m.Hostname == em.Domain {
+				existsInServerMappings = true
+				break
+			}
+		}
+		if existsInServerMappings {
+			continue
+		}
+		if err := CreateDNSRoute(tunnelRef, em.Domain); err != nil {
+			fmt.Printf("[unified-tunnel] createDNSRoutesForMappings: failed to create DNS for extra mapping %s: %v\n", em.Domain, err)
+		} else {
+			fmt.Printf("[unified-tunnel] createDNSRoutesForMappings: created DNS for extra mapping %s\n", em.Domain)
+		}
+	}
 }
 
 // MappingHealthCallback is called when a mapping's health status changes

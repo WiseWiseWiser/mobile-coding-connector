@@ -410,6 +410,20 @@ var requiredTools = []toolDef{
 		},
 		installWindows: "Download from https://www.chromium.org/getting-involved/download-chromium",
 	},
+	{
+		name:        "dig",
+		description: "DNS lookup utility",
+		purpose:     "Query DNS records for diagnosing domain and network issues",
+		versionCmd:  []string{"dig", "+version"},
+		installMacOS: []string{
+			"brew install bind",
+		},
+		installLinux: []string{
+			"apt-get update",
+			"apt-get install -y dnsutils",
+		},
+		installWindows: "Download from https://www.isc.org/bind/",
+	},
 }
 
 // getInstallStepsForOS returns the install steps for the current OS.

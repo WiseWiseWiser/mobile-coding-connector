@@ -337,6 +337,51 @@ func (m *Manager) StopTunnel(id string) error {
 	return nil
 }
 
+// InitExposedURLTunnels adds all exposed URLs to the unified tunnel on server startup.
+func InitExposedURLTunnels() {
+	m := GetManager()
+	m.mu.RLock()
+	urls := make([]ExposedURL, 0, len(m.urls))
+	for _, url := range m.urls {
+		urls = append(urls, url.ExposedURL)
+	}
+	m.mu.RUnlock()
+
+	if len(urls) == 0 {
+		fmt.Printf("[exposed-urls] No exposed URLs configured, skipping tunnel initialization\n")
+		return
+	}
+
+	// Ensure unified tunnel is configured
+	utm := cf.GetUnifiedTunnelManager()
+	logFn := func(msg string) {
+		fmt.Printf("[exposed-urls] %s\n", msg)
+	}
+	tunnelRef, _, _, err := cf.EnsureUnifiedTunnelConfigured("", logFn)
+	if err != nil {
+		fmt.Printf("[exposed-urls] Failed to configure unified tunnel: %v\n", err)
+		return
+	}
+	fmt.Printf("[exposed-urls] Using unified tunnel: %s\n", tunnelRef)
+
+	// Add each exposed URL as a mapping
+	for _, url := range urls {
+		mappingID := fmt.Sprintf("exposed-%s", url.ID)
+		mapping := &cf.IngressMapping{
+			ID:       mappingID,
+			Hostname: url.ExternalDomain,
+			Service:  url.InternalURL,
+			Source:   fmt.Sprintf("exposed-url:%s", url.ExternalDomain),
+		}
+
+		if err := utm.AddMapping(mapping); err != nil {
+			fmt.Printf("[exposed-urls] Failed to add mapping for %s: %v\n", url.ExternalDomain, err)
+		} else {
+			fmt.Printf("[exposed-urls] Added exposed URL mapping: %s -> %s\n", url.ExternalDomain, url.InternalURL)
+		}
+	}
+}
+
 // CheckCloudflareStatus checks if Cloudflare is properly configured
 func (m *Manager) CheckCloudflareStatus() (installed, authenticated bool, err error) {
 	// Check if cloudflared is installed
