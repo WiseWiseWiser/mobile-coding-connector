@@ -291,12 +291,14 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                                 >
                                     {statusBadge(f.status)}
                                     <span className="mcc-changed-file-path">{f.path}</span>
-                                    <button
-                                        className="mcc-git-file-action"
-                                        onClick={(e) => { e.stopPropagation(); handleUnstage(f.path); }}
-                                    >
-                                        −
-                                    </button>
+                                    <span className="mcc-git-file-actions">
+                                        <button
+                                            className="mcc-git-file-action"
+                                            onClick={(e) => { e.stopPropagation(); handleUnstage(f.path); }}
+                                        >
+                                            −
+                                        </button>
+                                    </span>
                                 </div>
                             ))}
                         </div>
@@ -327,39 +329,41 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                                 >
                                     {statusBadge(f.status === 'untracked' ? 'added' : f.status)}
                                     <span className="mcc-changed-file-path">{f.path}</span>
-                                    {f.status === 'untracked' ? (
-                                        <>
-                                            <button
-                                                className="mcc-git-file-action mcc-git-file-action-remove"
-                                                title={`Remove ${f.path}`}
-                                                onClick={(e) => { e.stopPropagation(); setModalState({ type: 'remove', file: f }); }}
-                                            >
-                                                ×
-                                            </button>
-                                            <button
-                                                className="mcc-git-file-action"
-                                                onClick={(e) => { e.stopPropagation(); handleStage(f.path); }}
-                                            >
-                                                +
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <button
-                                                className="mcc-git-file-action mcc-git-file-action-discard"
-                                                title={`Discard changes to ${f.path}`}
-                                                onClick={(e) => { e.stopPropagation(); setModalState({ type: 'discard', file: f }); }}
-                                            >
-                                                ↩
-                                            </button>
-                                            <button
-                                                className="mcc-git-file-action"
-                                                onClick={(e) => { e.stopPropagation(); handleStage(f.path); }}
-                                            >
-                                                +
-                                            </button>
-                                        </>
-                                    )}
+                                    <span className="mcc-git-file-actions">
+                                        {f.status === 'untracked' ? (
+                                            <>
+                                                <button
+                                                    className="mcc-git-file-action mcc-git-file-action-remove"
+                                                    title={`Remove ${f.path}`}
+                                                    onClick={(e) => { e.stopPropagation(); setModalState({ type: 'remove', file: f }); }}
+                                                >
+                                                    ×
+                                                </button>
+                                                <button
+                                                    className="mcc-git-file-action"
+                                                    onClick={(e) => { e.stopPropagation(); handleStage(f.path); }}
+                                                >
+                                                    +
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    className="mcc-git-file-action mcc-git-file-action-discard"
+                                                    title={`Discard changes to ${f.path}`}
+                                                    onClick={(e) => { e.stopPropagation(); setModalState({ type: 'discard', file: f }); }}
+                                                >
+                                                    ↩
+                                                </button>
+                                                <button
+                                                    className="mcc-git-file-action"
+                                                    onClick={(e) => { e.stopPropagation(); handleStage(f.path); }}
+                                                >
+                                                    +
+                                                </button>
+                                            </>
+                                        )}
+                                    </span>
                                 </div>
                             ))}
                         </div>

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	cf "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/jsonfile"
 )
 
@@ -218,7 +219,7 @@ func (m *Manager) Remove(id string) error {
 	})
 }
 
-// StartTunnel starts a Cloudflare tunnel for the given exposed URL
+// StartTunnel starts a Cloudflare tunnel for the given exposed URL using the unified tunnel manager
 func (m *Manager) StartTunnel(id string) error {
 	m.mu.Lock()
 
@@ -240,22 +241,63 @@ func (m *Manager) StartTunnel(id string) error {
 		status: "connecting",
 	}
 
-	// Capture id for goroutine
+	// Capture values for goroutine
 	tunnelID := id
+	externalDomain := url.ExternalDomain
+	internalURL := url.InternalURL
 	m.mu.Unlock()
 
-	// TODO: Implement actual Cloudflare tunnel start
-	// This would spawn cloudflared process with proper configuration
-	// For now, we'll mark it as active for demonstration
+	// Ensure unified tunnel is configured before adding mapping
+	utm := cf.GetUnifiedTunnelManager()
+	logFn := func(msg string) {
+		fmt.Printf("[exposed-urls] %s\n", msg)
+	}
+	_, _, _, err := cf.EnsureUnifiedTunnelConfigured("", logFn)
+	if err != nil {
+		m.mu.Lock()
+		if rt, ok := m.running[tunnelID]; ok {
+			rt.status = "error"
+		}
+		if url, ok := m.urls[tunnelID]; ok {
+			url.Status = "error"
+			url.Error = fmt.Sprintf("failed to configure unified tunnel: %v", err)
+		}
+		m.mu.Unlock()
+		return fmt.Errorf("failed to configure unified tunnel: %v", err)
+	}
+
+	// Add mapping to unified tunnel manager
+	mappingID := fmt.Sprintf("exposed-%s", tunnelID)
+	mapping := &cf.IngressMapping{
+		ID:       mappingID,
+		Hostname: externalDomain,
+		Service:  internalURL,
+		Source:   fmt.Sprintf("exposed-url:%s", externalDomain),
+	}
+
+	if err := utm.AddMapping(mapping); err != nil {
+		m.mu.Lock()
+		if rt, ok := m.running[tunnelID]; ok {
+			rt.status = "error"
+		}
+		if url, ok := m.urls[tunnelID]; ok {
+			url.Status = "error"
+			url.Error = fmt.Sprintf("failed to add mapping: %v", err)
+		}
+		m.mu.Unlock()
+		return fmt.Errorf("failed to add mapping to unified tunnel: %v", err)
+	}
+
+	// Update status to active after a brief delay to allow tunnel to establish
 	go func() {
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if rt, ok := m.running[tunnelID]; ok {
 			rt.status = "active"
 			if url, ok := m.urls[tunnelID]; ok {
 				url.Status = "active"
-				url.TunnelURL = fmt.Sprintf("https://%s", url.ExternalDomain)
+				url.TunnelURL = fmt.Sprintf("https://%s", externalDomain)
 			}
 		}
 	}()
@@ -266,15 +308,24 @@ func (m *Manager) StartTunnel(id string) error {
 // StopTunnel stops the Cloudflare tunnel for the given exposed URL
 func (m *Manager) StopTunnel(id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	url, ok := m.urls[id]
 	if !ok {
+		m.mu.Unlock()
 		return fmt.Errorf("exposed URL not found: %s", id)
 	}
 
+	// Remove mapping from unified tunnel
+	utm := cf.GetUnifiedTunnelManager()
+	mappingID := fmt.Sprintf("exposed-%s", id)
+	if err := utm.RemoveMapping(mappingID); err != nil {
+		fmt.Printf("[exposed-urls] warning: failed to remove mapping: %v\n", err)
+	}
+
 	if rt, ok := m.running[id]; ok {
-		rt.stop()
+		if rt.stop != nil {
+			rt.stop()
+		}
 		delete(m.running, id)
 	}
 
@@ -282,6 +333,7 @@ func (m *Manager) StopTunnel(id string) error {
 	url.TunnelURL = ""
 	url.Error = ""
 
+	m.mu.Unlock()
 	return nil
 }
 

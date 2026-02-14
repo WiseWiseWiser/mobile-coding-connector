@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -943,39 +944,80 @@ func handleDiagnostics(w http.ResponseWriter, _ *http.Request) {
 		}
 	}
 
-	// 3. Check if authenticated (has tunnel list access)
+	// 3. Check if authenticated (has tunnel list access OR has cert.pem)
 	if IsCommandAvailable("cloudflared") {
+		// First try tunnel list
 		out, err := exec.Command("cloudflared", "tunnel", "list", "--output", "json").CombinedOutput()
-		if err != nil {
-			errStr := strings.TrimSpace(string(out))
-			if strings.Contains(errStr, "login") || strings.Contains(errStr, "auth") || strings.Contains(errStr, "certificate") {
-				checks = append(checks, diagnosticCheck{
-					ID:          "authenticated",
-					Label:       "Cloudflare authenticated",
-					Status:      "error",
-					Description: "Not authenticated. Run 'cloudflared tunnel login' to authenticate.",
-				})
-				if overall != "error" {
-					overall = "error"
-				}
-			} else {
-				checks = append(checks, diagnosticCheck{
-					ID:          "authenticated",
-					Label:       "Cloudflare authenticated",
-					Status:      "warning",
-					Description: fmt.Sprintf("Could not verify authentication: %s", errStr),
-				})
-				if overall == "ok" {
-					overall = "warning"
-				}
-			}
-		} else {
+		if err == nil {
 			checks = append(checks, diagnosticCheck{
 				ID:          "authenticated",
 				Label:       "Cloudflare authenticated",
 				Status:      "ok",
 				Description: "Authenticated and can list tunnels.",
 			})
+		} else {
+			// Tunnel list failed, check for cert.pem as fallback
+			homeDir, homeErr := os.UserHomeDir()
+			if homeErr == nil {
+				certPath := filepath.Join(homeDir, ".cloudflared", "cert.pem")
+				if _, certErr := os.Stat(certPath); certErr == nil {
+					// User has cert.pem, so authenticated
+					checks = append(checks, diagnosticCheck{
+						ID:          "authenticated",
+						Label:       "Cloudflare authenticated",
+						Status:      "ok",
+						Description: "Authenticated via cert.pem (no tunnels yet).",
+					})
+				} else {
+					// No cert.pem, not authenticated
+					errStr := strings.TrimSpace(string(out))
+					if strings.Contains(errStr, "login") || strings.Contains(errStr, "auth") || strings.Contains(errStr, "certificate") {
+						checks = append(checks, diagnosticCheck{
+							ID:          "authenticated",
+							Label:       "Cloudflare authenticated",
+							Status:      "error",
+							Description: "Not authenticated. Run 'cloudflared tunnel login' to authenticate.",
+						})
+						if overall != "error" {
+							overall = "error"
+						}
+					} else {
+						checks = append(checks, diagnosticCheck{
+							ID:          "authenticated",
+							Label:       "Cloudflare authenticated",
+							Status:      "warning",
+							Description: fmt.Sprintf("Could not verify authentication: %s", errStr),
+						})
+						if overall == "ok" {
+							overall = "warning"
+						}
+					}
+				}
+			} else {
+				// Can't determine home dir, not authenticated
+				errStr := strings.TrimSpace(string(out))
+				if strings.Contains(errStr, "login") || strings.Contains(errStr, "auth") || strings.Contains(errStr, "certificate") {
+					checks = append(checks, diagnosticCheck{
+						ID:          "authenticated",
+						Label:       "Cloudflare authenticated",
+						Status:      "error",
+						Description: "Not authenticated. Run 'cloudflared tunnel login' to authenticate.",
+					})
+					if overall != "error" {
+						overall = "error"
+					}
+				} else {
+					checks = append(checks, diagnosticCheck{
+						ID:          "authenticated",
+						Label:       "Cloudflare authenticated",
+						Status:      "warning",
+						Description: fmt.Sprintf("Could not verify authentication: %s", errStr),
+					})
+					if overall == "ok" {
+						overall = "warning"
+					}
+				}
+			}
 		}
 	}
 

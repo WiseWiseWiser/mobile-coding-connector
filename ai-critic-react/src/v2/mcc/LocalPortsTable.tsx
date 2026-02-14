@@ -257,8 +257,6 @@ export function LocalPortsTable({
                                                 disabled={isLoading}
                                             >
                                                 {isLoading ? '...' : <span style={{ opacity: 0.5 }}>🛡</span>}
-                                            >
-                                                <span style={{ opacity: 0.5 }}>🛡</span>
                                             </button>
                                         )}
                                         {isForwarded ? (

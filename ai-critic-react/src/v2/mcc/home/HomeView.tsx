@@ -164,7 +164,7 @@ function ProjectCard({ project, isActive, onSelect, onOpen, onRemove, onClone, c
     const hasUncommitted = gitStatus && !gitStatus.is_clean && gitStatus.uncommitted > 0;
 
     return (
-        <div className={`mcc-workspace-card mcc-workspace-card-clickable${isActive ? ' 'mcc-workspace-card-active' : ''}`} onClick={onSelect}>
+        <div className={`mcc-workspace-card mcc-workspace-card-clickable${isActive ? ' mcc-workspace-card-active' : ''}`} onClick={onSelect}>
             <div className="mcc-workspace-card-header">
                 <span className="mcc-workspace-name">{project.name}</span>
                 {isActive && <span className="mcc-workspace-active-badge">Working on</span>}

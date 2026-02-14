@@ -62,12 +62,18 @@
     justify-content: center;
     flex-shrink: 0;
     transition: all 0.2s;
-    margin-left: auto;
 }
 
 .mcc-git-file-action:hover {
     border-color: #60a5fa;
     color: #60a5fa;
+}
+
+/* Container for file action buttons */
+.mcc-git-file-actions {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
 }
 
 /* Discard button (revert changes) */

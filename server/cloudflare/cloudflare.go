@@ -64,21 +64,44 @@ func CheckStatus() StatusResponse {
 		return resp
 	}
 	resp.Installed = true
-
-	out, err := exec.Command("cloudflared", "tunnel", "list", "--output", "json").CombinedOutput()
-	if err != nil {
-		errStr := strings.TrimSpace(string(out))
-		if strings.Contains(errStr, "login") || strings.Contains(errStr, "auth") || strings.Contains(errStr, "certificate") {
-			resp.Error = "Not authenticated. Run 'cloudflared tunnel login' to authenticate."
-		} else {
-			resp.Error = fmt.Sprintf("Could not verify authentication: %s", errStr)
-		}
-		return resp
-	}
-	resp.Authenticated = true
 	resp.CertFiles = ListCertFiles()
 
+	// First check if tunnel list command succeeds (most reliable indicator)
+	out, err := exec.Command("cloudflared", "tunnel", "list", "--output", "json").CombinedOutput()
+	if err == nil {
+		// Tunnel list succeeded - user is authenticated
+		resp.Authenticated = true
+		return resp
+	}
+
+	// Tunnel list failed - check if cert.pem exists as fallback
+	// The tunnel list command can fail for reasons other than authentication:
+	// - No tunnels created yet (user just authenticated)
+	// - Network issues
+	// - Permissions issues
+	// So we check if cert.pem exists as a reliable indicator of authentication
+	errStr := strings.TrimSpace(string(out))
+	if hasCertFile() {
+		// User has cert.pem, so they are authenticated
+		resp.Authenticated = true
+		resp.Error = ""
+		return resp
+	}
+
+	// No cert.pem - not authenticated
+	if strings.Contains(errStr, "login") || strings.Contains(errStr, "auth") || strings.Contains(errStr, "certificate") {
+		resp.Error = "Not authenticated. Run 'cloudflared tunnel login' to authenticate."
+	} else {
+		resp.Error = fmt.Sprintf("Could not verify authentication: %s", errStr)
+	}
 	return resp
+}
+
+// hasCertFile checks if the user has a Cloudflare certificate file
+func hasCertFile() bool {
+	certPath := filepath.Join(cloudflaredDir(), "cert.pem")
+	_, err := os.Stat(certPath)
+	return err == nil
 }
 
 // IsCommandAvailable checks if a command is available in PATH
