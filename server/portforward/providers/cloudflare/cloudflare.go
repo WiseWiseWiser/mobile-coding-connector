@@ -96,9 +96,9 @@ type TunnelProvider struct {
 var _ portforward.Provider = (*TunnelProvider)(nil)
 
 func NewTunnelProvider(cfg config.CloudflareTunnelConfig) *TunnelProvider {
-	// Configure the unified tunnel manager
-	utm := cfutils.GetUnifiedTunnelManager()
-	utm.SetConfig(cfg)
+	// Configure the extension tunnel group
+	tg := cfutils.GetTunnelGroupManager().GetExtensionGroup()
+	tg.SetConfig(cfg)
 
 	return &TunnelProvider{cfg: cfg}
 }
@@ -112,9 +112,9 @@ func (p *TunnelProvider) DisplayName() string {
 }
 func (p *TunnelProvider) Description() string {
 	if p.cfg.BaseDomain != "" {
-		return fmt.Sprintf("Uses unified tunnel manager with tunnel '%s'. Generates random-words.%s subdomains.", p.cfg.TunnelName, p.cfg.BaseDomain)
+		return fmt.Sprintf("Uses extension tunnel group with tunnel '%s'. Generates random-words.%s subdomains.", p.cfg.TunnelName, p.cfg.BaseDomain)
 	}
-	return "Uses unified tunnel manager for all port forwards."
+	return "Uses extension tunnel group for all port forwards."
 }
 func (p *TunnelProvider) Available() bool {
 	if !portforward.IsCommandAvailable("cloudflared") {
@@ -169,8 +169,9 @@ func (p *TunnelProvider) Start(port int, hostname string) (*portforward.TunnelHa
 	}
 
 	fmt.Fprintf(logs, "[setup] Adding ingress rule: %s -> %s\n", hostname, localURL)
-	if err := cfutils.GetUnifiedTunnelManager().AddMapping(mapping); err != nil {
-		return nil, fmt.Errorf("failed to add mapping to unified tunnel: %v", err)
+	tg := cfutils.GetTunnelGroupManager().GetExtensionGroup()
+	if err := tg.AddMapping(mapping); err != nil {
+		return nil, fmt.Errorf("failed to add mapping to extension tunnel: %v", err)
 	}
 
 	publicURL := fmt.Sprintf("https://%s", hostname)
@@ -187,7 +188,7 @@ func (p *TunnelProvider) Start(port int, hostname string) (*portforward.TunnelHa
 		Logs:   logs,
 		Stop: func() {
 			fmt.Fprintf(logs, "[cleanup] Removing ingress rule for port %d\n", port)
-			if err := cfutils.GetUnifiedTunnelManager().RemoveMapping(mappingID); err != nil {
+			if err := tg.RemoveMapping(mappingID); err != nil {
 				fmt.Fprintf(logs, "[cleanup] Warning: failed to remove mapping: %v\n", err)
 			}
 		},
@@ -246,25 +247,25 @@ func (p *OwnedProvider) Start(port int, hostname string) (*portforward.TunnelHan
 		fmt.Fprintf(logs, "[setup] Using provided hostname as-is: %s\n", hostname)
 	}
 
-	// Ensure unified tunnel has a tunnel configured (reuses existing if already set up)
-	utm := cfutils.GetUnifiedTunnelManager()
+	// Ensure extension tunnel group has a tunnel configured (reuses existing if already set up)
+	tg := cfutils.GetTunnelGroupManager().GetExtensionGroup()
 	logWrapper := func(msg string) {
 		fmt.Fprintf(logs, "[setup] %s\n", msg)
 	}
 
-	tunnelRef, _, _, err := cfutils.EnsureUnifiedTunnelConfigured("", logWrapper)
+	tunnelRef, _, _, err := cfutils.EnsureGroupTunnelConfigured(cfutils.GroupExtension, "", logWrapper)
 	if err != nil {
-		return nil, fmt.Errorf("failed to ensure unified tunnel configured: %v", err)
+		return nil, fmt.Errorf("failed to ensure extension tunnel configured: %v", err)
 	}
-	fmt.Fprintf(logs, "[setup] Using unified tunnel: %s\n", tunnelRef)
+	fmt.Fprintf(logs, "[setup] Using extension tunnel: %s\n", tunnelRef)
 
-	// Create DNS route using the unified tunnel
+	// Create DNS route using the extension tunnel
 	fmt.Fprintf(logs, "[setup] Creating DNS route: %s -> tunnel %s\n", hostname, tunnelRef)
 	if err := cfutils.CreateDNSRoute(tunnelRef, hostname); err != nil {
 		fmt.Fprintf(logs, "[setup] Warning: DNS route error: %v\n", err)
 	}
 
-	// Add mapping to unified tunnel manager
+	// Add mapping to extension tunnel group
 	localURL := fmt.Sprintf("http://localhost:%d", port)
 	mappingID := fmt.Sprintf("owned-port-%d", port)
 	mapping := &cfutils.IngressMapping{
@@ -275,8 +276,8 @@ func (p *OwnedProvider) Start(port int, hostname string) (*portforward.TunnelHan
 	}
 
 	fmt.Fprintf(logs, "[setup] Adding ingress rule: %s -> %s\n", hostname, localURL)
-	if err := utm.AddMapping(mapping); err != nil {
-		return nil, fmt.Errorf("failed to add mapping to unified tunnel: %v", err)
+	if err := tg.AddMapping(mapping); err != nil {
+		return nil, fmt.Errorf("failed to add mapping to extension tunnel: %v", err)
 	}
 
 	publicURL := fmt.Sprintf("https://%s", hostname)
@@ -293,7 +294,7 @@ func (p *OwnedProvider) Start(port int, hostname string) (*portforward.TunnelHan
 		Logs:   logs,
 		Stop: func() {
 			fmt.Fprintf(logs, "[cleanup] Removing ingress rule for port %d\n", port)
-			if err := utm.RemoveMapping(mappingID); err != nil {
+			if err := tg.RemoveMapping(mappingID); err != nil {
 				fmt.Fprintf(logs, "[cleanup] Warning: failed to remove mapping: %v\n", err)
 			}
 		},

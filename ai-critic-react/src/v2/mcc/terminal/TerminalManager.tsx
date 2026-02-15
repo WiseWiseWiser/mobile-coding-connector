@@ -75,6 +75,30 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
 }, ref) {
     const [ctrlActive, setCtrlActive] = useState(false);
     const autoFocusHandledRef = useRef(false);
+    const shortcutsRef = useRef<HTMLDivElement>(null);
+
+    // iOS Safari keyboard detection using visualViewport API
+    useEffect(() => {
+        const visualViewport = (window as any).visualViewport;
+        if (!visualViewport) return;
+
+        const handleResize = () => {
+            const viewport = visualViewport;
+            const windowHeight = window.innerHeight;
+            const keyboardHeight = windowHeight - viewport.height;
+            
+            if (shortcutsRef.current) {
+                if (keyboardHeight > 100) {
+                    shortcutsRef.current.style.bottom = `${keyboardHeight + (window.innerHeight > 700 ? 8 : 20)}px`;
+                } else {
+                    shortcutsRef.current.style.bottom = '';
+                }
+            }
+        };
+
+        visualViewport.addEventListener('resize', handleResize);
+        return () => visualViewport.removeEventListener('resize', handleResize);
+    }, []);
 
     // Terminal is always active since parent keeps us mounted
     const { terminalRef, connected, sendKey, reconnect, fit, focus, ctrlModeRef } = useTerminal(true, {
@@ -161,7 +185,7 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
             data-terminal-id={id}
         >
             <div className="terminal-instance-content" ref={terminalRef} />
-            <div className="terminal-instance-shortcuts">
+            <div className="terminal-instance-shortcuts" ref={shortcutsRef}>
                 <button className="term-shortcut-btn" onClick={handleTab}>Tab</button>
                 <button className="term-shortcut-btn" onClick={handleArrowLeft}>←</button>
                 <button className="term-shortcut-btn" onClick={handleArrowRight}>→</button>

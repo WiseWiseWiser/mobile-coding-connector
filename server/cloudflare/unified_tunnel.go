@@ -50,6 +50,18 @@ const (
 	CloudflareExtraMappingFile = config.DataDir + "/cloudflare-extra-mapping.json"
 )
 
+func GetGroupConfigPath(group string) string {
+	return config.DataDir + "/cloudflare-tunnel-gen-" + group + ".yml"
+}
+
+func GetGroupExtraMappingPath(group string) string {
+	return config.DataDir + "/cloudflare-extra-mapping-" + group + ".json"
+}
+
+func GetGroupLogPath(group string) string {
+	return config.DataDir + "/cloudflare-tunnel-gen-" + group + ".yml.log"
+}
+
 // ExtraMapping represents a single extra mapping from the JSON file
 type ExtraMapping struct {
 	Domain   string `json:"domain"`
@@ -73,6 +85,7 @@ type IngressMapping struct {
 // that handles all port forwardings and domain tunnels.
 type UnifiedTunnelManager struct {
 	mu                     sync.RWMutex
+	group                  string                     // group name (e.g., "core", "extension")
 	mappings               map[string]*IngressMapping // keyed by ID
 	cmd                    *exec.Cmd
 	config                 *config.CloudflareTunnelConfig
@@ -97,6 +110,15 @@ func GetUnifiedTunnelManager() *UnifiedTunnelManager {
 		}
 	})
 	return unifiedManager
+}
+
+// NewUnifiedTunnelManager creates a new UnifiedTunnelManager instance for a specific group
+func NewUnifiedTunnelManager(group string) *UnifiedTunnelManager {
+	return &UnifiedTunnelManager{
+		group:                  group,
+		mappings:               make(map[string]*IngressMapping),
+		healthCheckPausedUntil: make(map[string]time.Time),
+	}
 }
 
 // SetConfig configures the tunnel manager with the cloudflare tunnel configuration
@@ -233,17 +255,24 @@ func (utm *UnifiedTunnelManager) ListAllMappings() []*IngressMapping {
 
 // GetConfigPath returns the path to the auto-generated tunnel config file
 func (utm *UnifiedTunnelManager) GetConfigPath() string {
+	if utm.group != "" {
+		return GetGroupConfigPath(utm.group)
+	}
 	return CloudflareTunnelGenConfig
 }
 
 // GetExtraMappingsPath returns the path to the extra mappings JSON file
 func (utm *UnifiedTunnelManager) GetExtraMappingsPath() string {
+	if utm.group != "" {
+		return GetGroupExtraMappingPath(utm.group)
+	}
 	return CloudflareExtraMappingFile
 }
 
 // loadExtraMappings loads extra mappings from the JSON file
 func (utm *UnifiedTunnelManager) loadExtraMappings() []ExtraMapping {
-	data, err := os.ReadFile(CloudflareExtraMappingFile)
+	extraMappingPath := utm.GetExtraMappingsPath()
+	data, err := os.ReadFile(extraMappingPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -261,6 +290,9 @@ func (utm *UnifiedTunnelManager) loadExtraMappings() []ExtraMapping {
 
 // GetLogPath returns the path to the tunnel log file
 func (utm *UnifiedTunnelManager) GetLogPath() string {
+	if utm.group != "" {
+		return GetGroupLogPath(utm.group)
+	}
 	return CloudflareTunnelGenConfig + ".log"
 }
 

@@ -167,9 +167,15 @@
 /* iOS Safari keyboard handling - ensure quick actions stay visible above keyboard */
 @supports (-webkit-touch-callout: none) {
     .terminal-instance-shortcuts {
-        position: sticky;
-        bottom: 0;
-        z-index: 10;
+        position: fixed;
+        bottom: env(safe-area-inset-bottom, 0);
+        left: 0;
+        right: 0;
+        z-index: 9999;
+    }
+    
+    .terminal-manager {
+        padding-bottom: 50px;
     }
 }
 

@@ -541,8 +541,8 @@ func startDomainHealthCheck(domain string, port int, tunnelName string) {
 			case <-ticker.C:
 				// Check if health checks are paused for this mapping (e.g., after recent restart)
 				mappingID := fmt.Sprintf("domain-%s", domain)
-				utm := cloudflareSettings.GetUnifiedTunnelManager()
-				isPaused := utm.IsHealthCheckPaused(mappingID)
+				tg := cloudflareSettings.GetTunnelGroupManager().GetCoreGroup()
+				isPaused := tg.IsHealthCheckPaused(mappingID)
 
 				// Log when coming out of pause
 				if wasPaused && !isPaused {
@@ -566,13 +566,13 @@ func startDomainHealthCheck(domain string, port int, tunnelName string) {
 						logBuffer.addLog("Health check failed 3 times, restarting mapping...")
 						fmt.Printf("[domains] health check failed 3 times for %s, restarting mapping...\n", domain)
 
-						// Use unified tunnel manager to restart the mapping
-						if err := utm.RestartMapping(mappingID); err != nil {
+						// Use core tunnel group to restart the mapping
+						if err := tg.RestartMapping(mappingID); err != nil {
 							errMsg := fmt.Sprintf("Failed to restart mapping: %v", err)
 							logBuffer.addLog(errMsg)
 							fmt.Printf("[domains] %s: %s\n", domain, errMsg)
 						} else {
-							successMsg := "Mapping restarted successfully via unified tunnel"
+							successMsg := "Mapping restarted successfully via core tunnel group"
 							logBuffer.addLog(successMsg)
 							fmt.Printf("[domains] %s: %s\n", domain, successMsg)
 							// Reset failure counter after successful restart
@@ -698,17 +698,17 @@ func InitDomainTunnels() {
 		return
 	}
 
-	// Ensure unified tunnel is configured
-	utm := cloudflareSettings.GetUnifiedTunnelManager()
+	// Ensure core tunnel group is configured
+	tg := cloudflareSettings.GetTunnelGroupManager().GetCoreGroup()
 	logFn := func(msg string) {
 		fmt.Printf("[domains] %s\n", msg)
 	}
-	tunnelRef, _, _, err := cloudflareSettings.EnsureUnifiedTunnelConfigured("", logFn)
+	tunnelRef, _, _, err := cloudflareSettings.EnsureGroupTunnelConfigured(cloudflareSettings.GroupCore, "", logFn)
 	if err != nil {
-		fmt.Printf("[domains] Failed to configure unified tunnel: %v\n", err)
+		fmt.Printf("[domains] Failed to configure core tunnel: %v\n", err)
 		return
 	}
-	fmt.Printf("[domains] Using unified tunnel: %s\n", tunnelRef)
+	fmt.Printf("[domains] Using core tunnel: %s\n", tunnelRef)
 
 	// Add each Cloudflare domain as a mapping
 	for _, d := range cfg.Domains {
@@ -730,7 +730,7 @@ func InitDomainTunnels() {
 			Source:   fmt.Sprintf("domain:%s", d.Domain),
 		}
 
-		if err := utm.AddMapping(mapping); err != nil {
+		if err := tg.AddMapping(mapping); err != nil {
 			fmt.Printf("[domains] Failed to add mapping for %s: %v\n", d.Domain, err)
 		} else {
 			fmt.Printf("[domains] Added domain mapping: %s -> %s\n", d.Domain, localURL)

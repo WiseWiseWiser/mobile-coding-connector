@@ -157,8 +157,8 @@ func (m *Manager) Add(externalDomain, internalURL string) (*ExposedURLWithStatus
 		return nil, err
 	}
 
-	// Add to unified tunnel automatically
-	utm := cf.GetUnifiedTunnelManager()
+	// Add to extension tunnel group automatically
+	tg := cf.GetTunnelGroupManager().GetExtensionGroup()
 	mappingID := fmt.Sprintf("exposed-%s", id)
 	mapping := &cf.IngressMapping{
 		ID:       mappingID,
@@ -166,7 +166,7 @@ func (m *Manager) Add(externalDomain, internalURL string) (*ExposedURLWithStatus
 		Service:  internalURL,
 		Source:   fmt.Sprintf("exposed-url:%s", externalDomain),
 	}
-	if err := utm.AddMapping(mapping); err != nil {
+	if err := tg.AddMapping(mapping); err != nil {
 		fmt.Printf("[exposed-urls] Failed to add mapping for %s: %v\n", externalDomain, err)
 	} else {
 		fmt.Printf("[exposed-urls] Auto-added mapping: %s -> %s\n", externalDomain, internalURL)
@@ -206,12 +206,12 @@ func (m *Manager) Update(id, externalDomain, internalURL string) (*ExposedURLWit
 
 	// Update tunnel mapping if enabled
 	if url.Enabled {
-		utm := cf.GetUnifiedTunnelManager()
+		tg := cf.GetTunnelGroupManager().GetExtensionGroup()
 		mappingID := fmt.Sprintf("exposed-%s", id)
 
 		// Remove old mapping
 		if oldDomain != externalDomain {
-			if err := utm.RemoveMapping(mappingID); err != nil {
+			if err := tg.RemoveMapping(mappingID); err != nil {
 				fmt.Printf("[exposed-urls] Warning: failed to remove old mapping: %v\n", err)
 			}
 		}
@@ -223,7 +223,7 @@ func (m *Manager) Update(id, externalDomain, internalURL string) (*ExposedURLWit
 			Service:  internalURL,
 			Source:   fmt.Sprintf("exposed-url:%s", externalDomain),
 		}
-		if err := utm.AddMapping(mapping); err != nil {
+		if err := tg.AddMapping(mapping); err != nil {
 			fmt.Printf("[exposed-urls] Failed to update mapping for %s: %v\n", externalDomain, err)
 		} else {
 			fmt.Printf("[exposed-urls] Updated mapping: %s -> %s\n", externalDomain, internalURL)
@@ -259,16 +259,16 @@ func (m *Manager) Toggle(id string, enabled bool) (*ExposedURLWithStatus, error)
 		return nil, err
 	}
 
-	// If disabling, remove from unified tunnel
+	// If disabling, remove from extension tunnel group
 	if !enabled {
-		utm := cf.GetUnifiedTunnelManager()
+		tg := cf.GetTunnelGroupManager().GetExtensionGroup()
 		mappingID := fmt.Sprintf("exposed-%s", id)
-		if err := utm.RemoveMapping(mappingID); err != nil {
+		if err := tg.RemoveMapping(mappingID); err != nil {
 			fmt.Printf("[exposed-urls] warning: failed to remove mapping on disable: %v\n", err)
 		}
 	} else if enabled && url.Status == "active" {
-		// If enabling and was active, re-add to unified tunnel
-		utm := cf.GetUnifiedTunnelManager()
+		// If enabling and was active, re-add to extension tunnel group
+		tg := cf.GetTunnelGroupManager().GetExtensionGroup()
 		mappingID := fmt.Sprintf("exposed-%s", id)
 		mapping := &cf.IngressMapping{
 			ID:       mappingID,
@@ -276,7 +276,7 @@ func (m *Manager) Toggle(id string, enabled bool) (*ExposedURLWithStatus, error)
 			Service:  url.InternalURL,
 			Source:   fmt.Sprintf("exposed-url:%s", url.ExternalDomain),
 		}
-		if err := utm.AddMapping(mapping); err != nil {
+		if err := tg.AddMapping(mapping); err != nil {
 			fmt.Printf("[exposed-urls] warning: failed to add mapping on enable: %v\n", err)
 		}
 	}
@@ -301,9 +301,9 @@ func (m *Manager) Remove(id string) error {
 	}
 
 	// Remove from tunnel mapping
-	utm := cf.GetUnifiedTunnelManager()
+	tg := cf.GetTunnelGroupManager().GetExtensionGroup()
 	mappingID := fmt.Sprintf("exposed-%s", id)
-	if err := utm.RemoveMapping(mappingID); err != nil {
+	if err := tg.RemoveMapping(mappingID); err != nil {
 		fmt.Printf("[exposed-urls] Warning: failed to remove mapping: %v\n", err)
 	} else {
 		fmt.Printf("[exposed-urls] Removed mapping for %s\n", url.ExternalDomain)
@@ -354,12 +354,12 @@ func (m *Manager) StartTunnel(id string) error {
 	internalURL := url.InternalURL
 	m.mu.Unlock()
 
-	// Ensure unified tunnel is configured before adding mapping
-	utm := cf.GetUnifiedTunnelManager()
+	// Ensure extension tunnel group is configured before adding mapping
+	tg := cf.GetTunnelGroupManager().GetExtensionGroup()
 	logFn := func(msg string) {
 		fmt.Printf("[exposed-urls] %s\n", msg)
 	}
-	_, _, _, err := cf.EnsureUnifiedTunnelConfigured("", logFn)
+	_, _, _, err := cf.EnsureGroupTunnelConfigured(cf.GroupExtension, "", logFn)
 	if err != nil {
 		m.mu.Lock()
 		if rt, ok := m.running[tunnelID]; ok {
@@ -367,13 +367,13 @@ func (m *Manager) StartTunnel(id string) error {
 		}
 		if url, ok := m.urls[tunnelID]; ok {
 			url.Status = "error"
-			url.Error = fmt.Sprintf("failed to configure unified tunnel: %v", err)
+			url.Error = fmt.Sprintf("failed to configure extension tunnel: %v", err)
 		}
 		m.mu.Unlock()
-		return fmt.Errorf("failed to configure unified tunnel: %v", err)
+		return fmt.Errorf("failed to configure extension tunnel: %v", err)
 	}
 
-	// Add mapping to unified tunnel manager
+	// Add mapping to extension tunnel group
 	mappingID := fmt.Sprintf("exposed-%s", tunnelID)
 	mapping := &cf.IngressMapping{
 		ID:       mappingID,
@@ -382,7 +382,7 @@ func (m *Manager) StartTunnel(id string) error {
 		Source:   fmt.Sprintf("exposed-url:%s", externalDomain),
 	}
 
-	if err := utm.AddMapping(mapping); err != nil {
+	if err := tg.AddMapping(mapping); err != nil {
 		m.mu.Lock()
 		if rt, ok := m.running[tunnelID]; ok {
 			rt.status = "error"
@@ -392,7 +392,7 @@ func (m *Manager) StartTunnel(id string) error {
 			url.Error = fmt.Sprintf("failed to add mapping: %v", err)
 		}
 		m.mu.Unlock()
-		return fmt.Errorf("failed to add mapping to unified tunnel: %v", err)
+		return fmt.Errorf("failed to add mapping to extension tunnel: %v", err)
 	}
 
 	// Update status to active after a brief delay to allow tunnel to establish
@@ -422,10 +422,10 @@ func (m *Manager) StopTunnel(id string) error {
 		return fmt.Errorf("exposed URL not found: %s", id)
 	}
 
-	// Remove mapping from unified tunnel
-	utm := cf.GetUnifiedTunnelManager()
+	// Remove mapping from extension tunnel group
+	tg := cf.GetTunnelGroupManager().GetExtensionGroup()
 	mappingID := fmt.Sprintf("exposed-%s", id)
-	if err := utm.RemoveMapping(mappingID); err != nil {
+	if err := tg.RemoveMapping(mappingID); err != nil {
 		fmt.Printf("[exposed-urls] warning: failed to remove mapping: %v\n", err)
 	}
 
@@ -485,17 +485,17 @@ func InitExposedURLTunnels() {
 		return
 	}
 
-	// Ensure unified tunnel is configured
-	utm := cf.GetUnifiedTunnelManager()
+	// Ensure extension tunnel group is configured
+	tg := cf.GetTunnelGroupManager().GetExtensionGroup()
 	logFn := func(msg string) {
 		fmt.Printf("[exposed-urls] %s\n", msg)
 	}
-	tunnelRef, _, _, err := cf.EnsureUnifiedTunnelConfigured("", logFn)
+	tunnelRef, _, _, err := cf.EnsureGroupTunnelConfigured(cf.GroupExtension, "", logFn)
 	if err != nil {
-		fmt.Printf("[exposed-urls] Failed to configure unified tunnel: %v\n", err)
+		fmt.Printf("[exposed-urls] Failed to configure extension tunnel: %v\n", err)
 		return
 	}
-	fmt.Printf("[exposed-urls] Using unified tunnel: %s\n", tunnelRef)
+	fmt.Printf("[exposed-urls] Using extension tunnel: %s\n", tunnelRef)
 
 	// Add each exposed URL as a mapping
 	for _, url := range urls {
@@ -507,7 +507,7 @@ func InitExposedURLTunnels() {
 			Source:   fmt.Sprintf("exposed-url:%s", url.ExternalDomain),
 		}
 
-		if err := utm.AddMapping(mapping); err != nil {
+		if err := tg.AddMapping(mapping); err != nil {
 			fmt.Printf("[exposed-urls] Failed to add mapping for %s: %v\n", url.ExternalDomain, err)
 		} else {
 			fmt.Printf("[exposed-urls] Added exposed URL mapping: %s -> %s\n", url.ExternalDomain, url.InternalURL)

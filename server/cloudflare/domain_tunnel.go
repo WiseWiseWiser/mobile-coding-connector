@@ -28,15 +28,18 @@ func ParseBaseDomain(domain string) string {
 }
 
 // GetDomainTunnelStatus returns the current status of a domain tunnel.
-// With the unified tunnel manager, this checks if the domain is registered as a mapping.
+// With the tunnel group, this checks if the domain is registered as a mapping in the core group.
 func GetDomainTunnelStatus(domain string) DomainTunnelStatus {
-	utm := GetUnifiedTunnelManager()
+	tg := GetTunnelGroupManager().GetCoreGroup()
+	if tg == nil {
+		return DomainTunnelStatus{Status: "stopped"}
+	}
 
-	// Check if this domain is in the unified tunnel mappings
-	mappings := utm.ListMappings()
+	// Check if this domain is in the core tunnel group mappings
+	mappings := tg.ListMappings()
 	for _, m := range mappings {
 		if m.Hostname == domain {
-			if utm.IsRunning() {
+			if tg.IsRunning() {
 				return DomainTunnelStatus{
 					Status:    "active",
 					TunnelURL: fmt.Sprintf("https://%s", domain),
@@ -164,13 +167,67 @@ func EnsureUnifiedTunnelConfigured(tunnelName string, logFn LogFunc) (tunnelRef 
 	return tunnelRef, tunnelID, credFile, nil
 }
 
+// EnsureGroupTunnelConfigured ensures the tunnel group has a tunnel configured.
+// It checks if a tunnel is already configured and reuses it.
+// If not, it creates a new tunnel using the provided name.
+// If tunnelName is empty, it generates a tunnel name using the group name.
+// Returns the tunnel reference, tunnel ID, and credentials file path.
+func EnsureGroupTunnelConfigured(group string, tunnelName string, logFn LogFunc) (tunnelRef string, tunnelID string, credFile string, err error) {
+	if logFn == nil {
+		logFn = func(string) {}
+	}
+
+	tg := GetTunnelGroupManager().GetGroup(group)
+	if tg == nil {
+		return "", "", "", fmt.Errorf("unknown tunnel group: %s", group)
+	}
+
+	utm := tg.tunnelMgr
+
+	existingConfig := utm.GetConfig()
+	if existingConfig != nil {
+		tunnelRef = existingConfig.TunnelName
+		tunnelID = existingConfig.TunnelID
+		credFile = existingConfig.CredentialsFile
+		logFn(fmt.Sprintf("Reusing existing tunnel for group %s: %s (id=%s)", group, tunnelRef, tunnelID))
+		return tunnelRef, tunnelID, credFile, nil
+	}
+
+	if tunnelName == "" {
+		tunnelName = GenerateTunnelName(group)
+		logFn(fmt.Sprintf("Generated tunnel name for group %s: %s", group, tunnelName))
+	}
+
+	logFn(fmt.Sprintf("No existing tunnel configured for group %s, creating new tunnel '%s'...", group, tunnelName))
+	tunnelRef, err = FindOrCreateTunnel(tunnelName)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to find/create tunnel: %v", err)
+	}
+	logFn("Created/found tunnel: " + tunnelRef)
+
+	tunnelID, credFile, err = EnsureTunnelExists(tunnelRef)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to get tunnel credentials: %v", err)
+	}
+	logFn(fmt.Sprintf("Got tunnel credentials: id=%s", tunnelID))
+
+	utm.SetConfig(config.CloudflareTunnelConfig{
+		TunnelName:      tunnelRef,
+		TunnelID:        tunnelID,
+		CredentialsFile: credFile,
+	})
+	logFn(fmt.Sprintf("Tunnel group %s configured with: %s", group, tunnelRef))
+
+	return tunnelRef, tunnelID, credFile, nil
+}
+
 // StartDomainTunnel starts a cloudflare named tunnel for the given domain.
 // The domain is routed via DNS to the tunnel, and an ingress rule maps it
 // to http://localhost:<port>.
 // tunnelName is the cloudflare tunnel name to use if no tunnel is already configured.
 // logFn is an optional callback for streaming log messages.
 //
-// This function uses the unified tunnel manager, so multiple domains share
+// This function uses the core tunnel group, so multiple domains share
 // a single cloudflared process. If a tunnel is already configured, it reuses it.
 func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc) (*DomainTunnelStatus, error) {
 	if logFn == nil {
@@ -184,8 +241,8 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 		return &status, nil
 	}
 
-	// Ensure unified tunnel has a tunnel configured (reuses existing or creates new)
-	tunnelRef, _, _, err := EnsureUnifiedTunnelConfigured(tunnelName, logFn)
+	// Ensure core tunnel group has a tunnel configured (reuses existing or creates new)
+	tunnelRef, _, _, err := EnsureGroupTunnelConfigured(GroupCore, tunnelName, logFn)
 	if err != nil {
 		return nil, err
 	}
@@ -197,8 +254,8 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 	}
 	logFn("DNS route created")
 
-	// Add ingress rule to unified tunnel manager
-	utm := GetUnifiedTunnelManager()
+	// Add ingress rule to core tunnel group
+	tg := GetTunnelGroupManager().GetCoreGroup()
 	localURL := fmt.Sprintf("http://localhost:%d", port)
 	mappingID := fmt.Sprintf("domain-%s", domain)
 	mapping := &IngressMapping{
@@ -209,8 +266,8 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 	}
 
 	logFn(fmt.Sprintf("Adding ingress rule: %s -> %s", domain, localURL))
-	if err := utm.AddMapping(mapping); err != nil {
-		return nil, fmt.Errorf("failed to add mapping to unified tunnel: %v", err)
+	if err := tg.AddMapping(mapping); err != nil {
+		return nil, fmt.Errorf("failed to add mapping to core tunnel: %v", err)
 	}
 	logFn("Ingress rule added, tunnel started")
 
@@ -223,16 +280,16 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 // StopDomainTunnel stops the tunnel for the given domain.
 // tunnelName is the cloudflare tunnel name; if empty, a default is derived from the domain.
 func StopDomainTunnel(domain string, tunnelName string) error {
-	_ = tunnelName // not used with unified tunnel manager, but kept for API compatibility
+	_ = tunnelName // not used with tunnel group, but kept for API compatibility
 
-	utm := GetUnifiedTunnelManager()
+	tg := GetTunnelGroupManager().GetCoreGroup()
 
-	// Remove the mapping from unified tunnel manager
+	// Remove the mapping from core tunnel group
 	mappingID := fmt.Sprintf("domain-%s", domain)
-	if err := utm.RemoveMapping(mappingID); err != nil {
+	if err := tg.RemoveMapping(mappingID); err != nil {
 		return fmt.Errorf("failed to remove mapping: %v", err)
 	}
 
-	// If no more mappings, the unified tunnel manager will automatically stop the process
+	// If no more mappings, the tunnel group will automatically stop the process
 	return nil
 }

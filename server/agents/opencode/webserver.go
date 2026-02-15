@@ -507,15 +507,15 @@ func AutoStartWebServer() {
 	isRunning := IsWebServerRunning(port)
 	fmt.Printf("[opencode] AutoStartWebServer: web server running on port %d? %v\n", port, isRunning)
 
-	// Ensure unified tunnel has a tunnel configured (reuses existing if domains already created one)
-	utm := cloudflare.GetUnifiedTunnelManager()
+	// Ensure extension tunnel group has a tunnel configured (reuses existing if domains already created one)
+	tg := cloudflare.GetTunnelGroupManager().GetExtensionGroup()
 	logFn := func(msg string) {
 		fmt.Printf("[opencode] AutoStartWebServer: %s\n", msg)
 	}
 
-	tunnelRef, _, _, err := cloudflare.EnsureUnifiedTunnelConfigured("", logFn)
+	tunnelRef, _, _, err := cloudflare.EnsureGroupTunnelConfigured(cloudflare.GroupExtension, "", logFn)
 	if err != nil {
-		fmt.Printf("[opencode] AutoStartWebServer: failed to ensure unified tunnel configured: %v\n", err)
+		fmt.Printf("[opencode] AutoStartWebServer: failed to ensure extension tunnel configured: %v\n", err)
 		return
 	}
 
@@ -527,8 +527,8 @@ func AutoStartWebServer() {
 		fmt.Printf("[opencode] AutoStartWebServer: DNS route created or already exists\n")
 	}
 
-	utmMappings := utm.ListMappings()
-	fmt.Printf("[opencode] AutoStartWebServer: unified tunnel has %d mappings\n", len(utmMappings))
+	utmMappings := tg.ListMappings()
+	fmt.Printf("[opencode] AutoStartWebServer: extension tunnel group has %d mappings\n", len(utmMappings))
 	for i, m := range utmMappings {
 		fmt.Printf("[opencode] AutoStartWebServer:   mapping[%d] ID=%s, Hostname=%s, Service=%s\n", i, m.ID, m.Hostname, m.Service)
 	}
@@ -561,8 +561,8 @@ func AutoStartWebServer() {
 		}
 		fmt.Printf("[opencode] AutoStartWebServer: adding mapping ID=%s, Hostname=%s, Service=%s\n",
 			mapping.ID, mapping.Hostname, mapping.Service)
-		if err := utm.AddMapping(mapping); err != nil {
-			fmt.Printf("[opencode] AutoStartWebServer: failed to add mapping to unified tunnel: %v\n", err)
+		if err := tg.AddMapping(mapping); err != nil {
+			fmt.Printf("[opencode] AutoStartWebServer: failed to add mapping to extension tunnel: %v\n", err)
 			return
 		}
 		fmt.Printf("[opencode] AutoStartWebServer: mapping added successfully\n")

@@ -411,6 +411,32 @@ var requiredTools = []toolDef{
 		installWindows: "Download from https://www.chromium.org/getting-involved/download-chromium",
 	},
 	{
+		name:        "puppeteer",
+		description: "Node.js library for headless Chrome/Chromium control",
+		purpose:     "Programmatic browser automation, web scraping, and screenshot generation",
+		versionCmd:  []string{"npx", "puppeteer", "--version"},
+		installMacOS: []string{
+			"npm install -g puppeteer",
+		},
+		installLinux: []string{
+			"npm install -g puppeteer",
+		},
+		installWindows: "npm install -g puppeteer",
+	},
+	{
+		name:        "playwright",
+		description: "Node.js library for browser automation and testing",
+		purpose:     "Cross-browser automation, web testing, and scraping with multiple browser engines",
+		versionCmd:  []string{"npx", "playwright", "--version"},
+		installMacOS: []string{
+			"npm install -g playwright",
+		},
+		installLinux: []string{
+			"npm install -g playwright",
+		},
+		installWindows: "npm install -g playwright",
+	},
+	{
 		name:        "dig",
 		description: "DNS lookup utility",
 		purpose:     "Query DNS records for diagnosing domain and network issues",
