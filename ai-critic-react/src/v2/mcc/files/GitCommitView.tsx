@@ -8,6 +8,7 @@ import { statusBadge, getFileIcon, formatFileSize, getFileSuffix } from './utils
 import { loadGitUserConfig } from '../home/settings/gitStorage';
 import { GitPushSection } from './GitPushSection';
 import { ConfirmModal } from '../ConfirmModal';
+import { NoZoomingInput } from '../components/NoZoomingInput';
 import './FilesView.css';
 import './GitCommitView.css';
 
@@ -424,14 +425,16 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                     <div className="mcc-git-commit-section">
                         <div className="mcc-checkpoint-section-label">Commit Message</div>
                         <div className="mcc-git-commit-form">
-                            <textarea
-                                ref={messageRef}
-                                className="mcc-checkpoint-message-input"
-                                placeholder="Enter commit message..."
-                                value={commitMessage}
-                                onChange={(e) => setCommitMessage(e.target.value)}
-                                rows={3}
-                            />
+                            <NoZoomingInput>
+                                <textarea
+                                    ref={messageRef}
+                                    className="mcc-checkpoint-message-input"
+                                    placeholder="Enter commit message..."
+                                    value={commitMessage}
+                                    onChange={(e) => setCommitMessage(e.target.value)}
+                                    rows={3}
+                                />
+                            </NoZoomingInput>
                             {/* Commit button - standalone row */}
                             <button
                                 className="mcc-git-commit-btn"

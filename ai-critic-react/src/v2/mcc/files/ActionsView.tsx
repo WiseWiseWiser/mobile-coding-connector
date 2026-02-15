@@ -3,6 +3,7 @@ import { fetchActions, createAction, updateAction, deleteAction, runAction, fetc
 import type { Action, ActionStatus } from '../../../api/actions';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import type { LogLine } from '../../LogViewer';
+import { NoZoomingInput } from '../components/NoZoomingInput';
 import './ActionsView.css';
 
 interface ActionsViewProps {
@@ -201,13 +202,15 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
                         <div className="mcc-actions-form">
                             <div className="mcc-actions-form-row">
                                 <label className="mcc-actions-form-label">Name</label>
-                                <input
-                                    type="text"
-                                    className="mcc-actions-form-input"
-                                    value={formName}
-                                    onChange={(e) => setFormName(e.target.value)}
-                                    placeholder="e.g., Build Project"
-                                />
+                                <NoZoomingInput>
+                                    <input
+                                        type="text"
+                                        className="mcc-actions-form-input"
+                                        value={formName}
+                                        onChange={(e) => setFormName(e.target.value)}
+                                        placeholder="e.g., Build Project"
+                                    />
+                                </NoZoomingInput>
                             </div>
 
                             <div className="mcc-actions-form-row">
@@ -227,13 +230,15 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
 
                             <div className="mcc-actions-form-row">
                                 <label className="mcc-actions-form-label">Script</label>
-                                <textarea
-                                    className="mcc-actions-form-textarea"
-                                    value={formScript}
-                                    onChange={(e) => setFormScript(e.target.value)}
-                                    placeholder="e.g., npm run build&#10;or&#10;go build ./..."
-                                    rows={4}
-                                />
+                                <NoZoomingInput>
+                                    <textarea
+                                        className="mcc-actions-form-textarea"
+                                        value={formScript}
+                                        onChange={(e) => setFormScript(e.target.value)}
+                                        placeholder="e.g., npm run build&#10;or&#10;go build ./..."
+                                        rows={4}
+                                    />
+                                </NoZoomingInput>
                             </div>
 
                             <div className="mcc-actions-form-buttons">

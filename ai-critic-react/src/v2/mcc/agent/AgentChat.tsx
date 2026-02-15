@@ -14,6 +14,7 @@ import { parseSSEEvent, convertMessages } from '../../../api/acp_adapter';
 import { AgentChatHeader } from './AgentChatHeader';
 import type { ModelOption } from '../components/ModelSelector';
 import { ChatMessageGroup, groupMessagesByRole } from './ChatMessage';
+import { NoZoomingInput } from '../components/NoZoomingInput';
 
 export interface AgentChatProps {
     session: AgentSessionInfo;
@@ -313,15 +314,17 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
             )}
 
             <div className="mcc-agent-input-area">
-                <textarea
-                    className="mcc-agent-input"
-                    placeholder="Type a message..."
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    rows={2}
-                    disabled={sending || agentProcessing || connecting}
-                />
+                <NoZoomingInput>
+                    <textarea
+                        className="mcc-agent-input"
+                        placeholder="Type a message..."
+                        value={input}
+                        onChange={e => setInput(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        rows={2}
+                        disabled={sending || agentProcessing || connecting}
+                    />
+                </NoZoomingInput>
                 {agentProcessing ? (
                     <button
                         className="mcc-agent-send-btn mcc-agent-stop-btn"

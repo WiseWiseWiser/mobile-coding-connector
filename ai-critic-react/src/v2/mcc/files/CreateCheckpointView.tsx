@@ -7,6 +7,7 @@ import {
 import type { ChangedFile, FileDiff } from '../../../api/checkpoints';
 import { DiffViewer } from '../../DiffViewer';
 import { statusBadge } from './utils';
+import { NoZoomingInput } from '../components/NoZoomingInput';
 import './FilesView.css';
 
 export interface CreateCheckpointViewProps {
@@ -181,20 +182,24 @@ export function CreateCheckpointView({ projectName, projectDir, onBack, onCreate
             )}
 
             <div className="mcc-checkpoint-form">
-                <input
-                    className="mcc-checkpoint-name-input"
-                    type="text"
-                    placeholder="Checkpoint name (optional)"
-                    value={checkpointName}
-                    onChange={e => setCheckpointName(e.target.value)}
-                />
-                <textarea
-                    className="mcc-checkpoint-message-input"
-                    placeholder="Message (optional)"
-                    value={checkpointMessage}
-                    onChange={e => setCheckpointMessage(e.target.value)}
-                    rows={3}
-                />
+                <NoZoomingInput>
+                    <input
+                        className="mcc-checkpoint-name-input"
+                        type="text"
+                        placeholder="Checkpoint name (optional)"
+                        value={checkpointName}
+                        onChange={e => setCheckpointName(e.target.value)}
+                    />
+                </NoZoomingInput>
+                <NoZoomingInput>
+                    <textarea
+                        className="mcc-checkpoint-message-input"
+                        placeholder="Message (optional)"
+                        value={checkpointMessage}
+                        onChange={e => setCheckpointMessage(e.target.value)}
+                        rows={3}
+                    />
+                </NoZoomingInput>
             </div>
 
             {error && <div className="mcc-checkpoint-error">{error}</div>}
