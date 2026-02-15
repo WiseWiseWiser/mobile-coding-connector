@@ -219,36 +219,60 @@ func Serve(port int, dev bool) error {
 		// Graceful shutdown initiated
 		fmt.Println("\nShutdown signal received, stopping server...")
 
-		// Stop all domain health check goroutines
-		fmt.Println("Stopping domain health check goroutines...")
-		domains.StopAllDomainHealthChecks()
+		// Create a timeout for all cleanup operations
+		cleanupTimeout := 30 * time.Second
+		cleanupDone := make(chan struct{})
 
-		// Stop unified tunnel health checks
-		fmt.Println("Stopping unified tunnel health checks...")
-		cloudflareSettings.StopGlobalHealthChecks()
+		go func() {
+			// Stop all domain health check goroutines
+			fmt.Println("Stopping domain health check goroutines...")
+			domains.StopAllDomainHealthChecks()
 
-		// Stop agents health checks (but leave opencode running)
-		fmt.Println("Stopping agents module...")
-		agents.Shutdown()
+			// Stop unified tunnel health checks
+			fmt.Println("Stopping unified tunnel health checks...")
+			cloudflareSettings.StopGlobalHealthChecks()
 
-		// Stop all port forwards (tunnels)
-		pfManager := portforward.GetDefaultManager()
-		for _, pf := range pfManager.List() {
-			fmt.Printf("Stopping port forward for port %d...\n", pf.LocalPort)
-			pfManager.Remove(pf.LocalPort)
+			// Stop agents health checks (but leave opencode running)
+			fmt.Println("Stopping agents module...")
+			agents.Shutdown()
+
+			// Stop all port forwards (tunnels)
+			pfManager := portforward.GetDefaultManager()
+			for _, pf := range pfManager.List() {
+				fmt.Printf("Stopping port forward for port %d...\n", pf.LocalPort)
+				pfManager.Remove(pf.LocalPort)
+			}
+
+			// Stop all managed subprocesses
+			fmt.Println("Stopping all managed subprocesses...")
+			subprocess.GetManager().StopAll()
+
+			// Shutdown HTTP server
+			fmt.Println("Shutting down HTTP server...")
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+			defer cancel()
+
+			if err := server.Shutdown(shutdownCtx); err != nil {
+				fmt.Printf("Server shutdown error: %v\n", err)
+			}
+
+			fmt.Println("All cleanup operations completed")
+			close(cleanupDone)
+		}()
+
+		// Wait for cleanup with timeout
+		select {
+		case <-cleanupDone:
+			fmt.Println("Graceful shutdown completed within timeout")
+		case <-time.After(cleanupTimeout):
+			fmt.Printf("Warning: Cleanup timeout (%v) reached, forcing %s\n", cleanupTimeout, shutdownMode)
 		}
 
-		// Stop all managed subprocesses
-		fmt.Println("Stopping all managed subprocesses...")
-		subprocess.GetManager().StopAll()
-
-		// Shutdown HTTP server with timeout
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			fmt.Printf("Server shutdown error: %v\n", err)
-			return err
+		// Check if this is a restart (exec) or shutdown
+		if shutdownMode == "restart" {
+			fmt.Println("Restart mode: proceeding with exec restart")
+			// execRestart should have already been called, this is a fallback
+			return nil
 		}
 
 		fmt.Println("Server shutdown complete")
@@ -913,6 +937,9 @@ func handleExecRestart(w http.ResponseWriter, r *http.Request) {
 
 	sw.SendLog("Preparing to exec...")
 
+	// Set shutdown mode to restart so the shutdown flow knows to proceed with exec
+	SetShutdownMode("restart")
+
 	// Trigger graceful shutdown first
 	sw.SendLog("Initiating graceful shutdown (30s max)...")
 	shutdownDone := make(chan struct{})
@@ -1009,6 +1036,14 @@ func shutdownHandler(w http.ResponseWriter, r *http.Request) {
 
 // globalShutdownChan is used to signal server shutdown
 var globalShutdownChan = make(chan struct{})
+
+// shutdownMode tracks whether the server is shutting down or restarting
+var shutdownMode string // "" = shutdown, "restart" = restart via exec
+
+// SetShutdownMode sets the shutdown mode
+func SetShutdownMode(mode string) {
+	shutdownMode = mode
+}
 
 // ShutdownServer initiates server shutdown
 func ShutdownServer() {

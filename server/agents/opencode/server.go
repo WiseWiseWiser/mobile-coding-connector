@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
@@ -20,6 +21,16 @@ var (
 	healthCheckStopChan chan struct{}
 	healthCheckRunning  int32 // atomic: 0 = not running, 1 = running
 )
+
+// isProcessAlive checks if a process is actually running
+func isProcessAlive(cmd *exec.Cmd) bool {
+	if cmd == nil || cmd.Process == nil {
+		return false
+	}
+	// Sending signal 0 to a process checks if it exists without actually signaling it
+	err := syscall.Kill(cmd.Process.Pid, 0)
+	return err == nil
+}
 
 // OpencodeServer holds the state of a running opencode server
 type OpencodeServer struct {
@@ -34,10 +45,12 @@ func GetOrStartOpencodeServer() (*OpencodeServer, error) {
 	serverMutex.Lock()
 	defer serverMutex.Unlock()
 
-	if serverInstance != nil && serverInstance.Cmd != nil && serverInstance.Cmd.Process != nil {
+	// Check if server instance exists and process is actually alive
+	if serverInstance != nil && isProcessAlive(serverInstance.Cmd) {
 		return serverInstance, nil
 	}
 
+	// Server is not running, clean up if there's an old instance
 	if serverInstance != nil && serverInstance.StopChan != nil {
 		select {
 		case <-serverInstance.StopChan:

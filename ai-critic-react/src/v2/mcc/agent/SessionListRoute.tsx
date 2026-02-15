@@ -15,15 +15,20 @@ export function SessionListRoute() {
     const hasExternalSessions = agentId === 'opencode' && ctx.externalSessions.length > 0;
     
     if (!session && hasExternalSessions) {
+        const agent = ctx.agents.find(a => a.id === agentId);
         return (
             <ExternalSessionList
                 projectName={ctx.projectName}
                 onBack={() => ctx.navigateToView('')}
                 onSelectSession={(sessionId) => {
-                    // For external sessions, we need to open them in a new tab/window
-                    // since we can't proxy through the agent session
-                    const baseUrl = window.location.origin;
-                    window.open(`${baseUrl}/agent/opencode/${sessionId}`, '_blank');
+                    // Navigate to the session within the same window
+                    ctx.navigateToView(`${agentId}/${sessionId}`);
+                }}
+                onNewSession={() => {
+                    // Launch headless to create an internal session
+                    if (agent) {
+                        ctx.onLaunchHeadless(agent);
+                    }
                 }}
             />
         );

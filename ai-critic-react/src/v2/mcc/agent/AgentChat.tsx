@@ -22,9 +22,10 @@ export interface AgentChatProps {
     onStop: () => void;
     onBack: () => void;
     onSessionUpdate: (session: AgentSessionInfo) => void;
+    connecting?: boolean;
 }
 
-export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, onSessionUpdate }: AgentChatProps) {
+export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, onSessionUpdate, connecting }: AgentChatProps) {
     const [messages, setMessages] = useState<ACPMessage[]>([]);
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
@@ -281,18 +282,27 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
             />
 
             <div className="mcc-agent-messages" ref={messagesContainerRef}>
-                <div className="mcc-agent-msg mcc-agent-msg-assistant">
-                    <div className="mcc-agent-msg-avatar">🤖</div>
-                    <div className="mcc-agent-msg-content">
-                        <div className="mcc-agent-msg-text">
-                            Hi! I'm {session.agent_name}. I'm ready to help with your project. What would you like to work on?
-                        </div>
+                {connecting && (
+                    <div className="mcc-agent-loading" style={{ padding: '16px', textAlign: 'center' }}>
+                        Connecting to session...
                     </div>
-                </div>
+                )}
+                {!connecting && (
+                    <>
+                        <div className="mcc-agent-msg mcc-agent-msg-assistant">
+                            <div className="mcc-agent-msg-avatar">🤖</div>
+                            <div className="mcc-agent-msg-content">
+                                <div className="mcc-agent-msg-text">
+                                    Hi! I'm {session.agent_name}. I'm ready to help with your project. What would you like to work on?
+                                </div>
+                            </div>
+                        </div>
 
-                {groupMessagesByRole(messages).map((group, idx) => (
-                    <ChatMessageGroup key={group[0].id || idx} messages={group} />
-                ))}
+                        {groupMessagesByRole(messages).map((group, idx) => (
+                            <ChatMessageGroup key={group[0].id || idx} messages={group} />
+                        ))}
+                    </>
+                )}
             </div>
 
             {errorMessage && (
@@ -310,7 +320,7 @@ export function AgentChat({ session, projectName, opencodeSID, onStop, onBack, o
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     rows={2}
-                    disabled={sending || agentProcessing}
+                    disabled={sending || agentProcessing || connecting}
                 />
                 {agentProcessing ? (
                     <button

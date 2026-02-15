@@ -149,6 +149,55 @@ func (d *Daemon) runLoop() error {
 		Logger("Starting ai-critic server on port %d (binary: %s)...",
 			d.port, filepath.Base(currentBin))
 
+		// Check if port is already in use - server may already be running (e.g., after exec-restart)
+		if IsPortReachable(d.port) {
+			Logger("Port %d is already in use, server may already be running (e.g., after exec-restart)", d.port)
+			// Server appears to be running, try to connect to it
+			// We'll create a dummy cmd to pass to health check - it will detect the running server
+			// Find the PID of the process using the port
+			pid := FindPortPID(d.port)
+			if pid != "" {
+				Logger("Found existing server process (PID=%s) on port %d", pid, d.port)
+				// Create a command reference to the existing process
+				cmd, err := d.reconnectToServer(pid, currentBin)
+				if err != nil {
+					Logger("Failed to reconnect to server: %v", err)
+					Logger("Restarting in %v...", RestartDelay)
+					time.Sleep(RestartDelay)
+					continue
+				}
+				setCurrentCommand(cmd)
+				d.state.SetServerPID(cmd.Process.Pid)
+				d.state.SetStartedAt(time.Now())
+				Logger("Reconnected to server (PID=%d)", cmd.Process.Pid)
+
+				// Pause health checks temporarily to give the server time to stabilize after exec-restart
+				d.state.PauseHealthChecks(HealthCheckPauseDelay)
+				Logger("Health checks paused for %v after exec-restart", HealthCheckPauseDelay)
+
+				// Run health check to monitor the existing server
+				exitReason := d.healthChecker.Run(d.port, cmd, currentBin, FindNewerBinary)
+
+				d.state.SetServerPID(0)
+				setCurrentCommand(nil)
+				d.state.IncrementRestartCount()
+
+				// After health check, loop will restart or continue
+				switch exitReason {
+				case ExitReasonUpgrade, ExitReasonRestart:
+					Logger("%s, restarting immediately...", exitReason)
+				case ExitReasonDaemonRestart:
+					Logger("Daemon restart requested, stopping and waiting for exec...")
+					return nil
+				default:
+					Logger("Server exited (%s), restarting in %v...", exitReason, RestartDelay)
+					time.Sleep(RestartDelay)
+				}
+				continue
+			}
+			Logger("Port in use but could not find PID, will attempt to start new server")
+		}
+
 		// Start the server process with dual logging
 		cmd, err := d.startServerWithLogging(currentBin, d.serverArgs)
 		if err != nil {
@@ -183,6 +232,30 @@ func (d *Daemon) runLoop() error {
 		d.state.SetServerPID(0)
 		setCurrentCommand(nil)
 		d.state.IncrementRestartCount()
+
+		// After health check exits, check if server is still running (e.g., after exec-restart)
+		// If it's still running, don't restart - the exec replaced the process
+		if exitReason == ExitReasonUpgrade {
+			Logger("Checking if server is still running after upgrade...")
+			// Wait a bit for the new server to bind to the port (after exec-restart)
+			time.Sleep(2 * time.Second)
+			if IsPortReachable(d.port) {
+				Logger("Server still running after upgrade (exec-restart succeeded), reconnecting...")
+				// Re-run the health check - it will find the running server and monitor it
+				// Need to re-check for newer binary and run health check again
+				currentBin = d.state.GetBinPath()
+				if newerBin := FindNewerBinary(currentBin); newerBin != "" {
+					d.state.SetBinPath(newerBin)
+					currentBin = newerBin
+				}
+				// Create a dummy cmd to pass to health check - it will use the existing process
+				// Actually, we need to re-detect the process. Let's just continue the loop
+				// and let it start fresh but with port check
+				Logger("Reconnecting to running server on port %d...", d.port)
+				continue
+			}
+			Logger("Server not reachable after upgrade, starting new process...")
+		}
 
 		switch exitReason {
 		case ExitReasonUpgrade, ExitReasonRestart:
@@ -224,6 +297,35 @@ func (d *Daemon) startServerWithLogging(binPath string, serverArgs []string) (*e
 	d.state.SetServerPID(pid)
 	d.state.SetStartedAt(time.Now())
 
+	return cmd, nil
+}
+
+// reconnectToServer creates an exec.Cmd reference to an already running server process.
+// This is used when the server is already running (e.g., after exec-restart) and we
+// want to monitor it without starting a new process.
+func (d *Daemon) reconnectToServer(pid string, binPath string) (*exec.Cmd, error) {
+	pidNum := 0
+	_, err := fmt.Sscanf(pid, "%d", &pidNum)
+	if err != nil {
+		return nil, fmt.Errorf("invalid PID: %w", err)
+	}
+
+	// Create a command that references the existing process
+	// We use the findNewerBinary to get the correct binary path
+	actualBinPath := binPath
+	if newerBin := FindNewerBinary(binPath); newerBin != "" {
+		actualBinPath = newerBin
+		d.state.SetBinPath(newerBin)
+	}
+
+	// Create a command structure - we won't start it, just use it for state tracking
+	cmd := exec.Command(actualBinPath, d.serverArgs...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// Attach to existing process
+	cmd.Process = &os.Process{Pid: pidNum}
+
+	Logger("Reconnected to server process (PID=%d, binary=%s)", pidNum, filepath.Base(actualBinPath))
 	return cmd, nil
 }
 

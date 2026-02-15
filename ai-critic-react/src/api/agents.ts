@@ -94,6 +94,21 @@ export async function fetchExternalSessions(): Promise<ExternalSessionsResponse 
     }
 }
 
+export interface OpencodeServerInfo {
+    port: number;
+    running: boolean;
+}
+
+export async function fetchOpencodeServer(): Promise<OpencodeServerInfo | null> {
+    try {
+        const resp = await fetch('/api/agents/opencode/server');
+        if (!resp.ok) return null;
+        return await resp.json();
+    } catch {
+        return null;
+    }
+}
+
 export async function fetchAgentSessions(page?: number, pageSize?: number): Promise<AgentSessionInfo[]> {
     const params = new URLSearchParams();
     if (page) params.set('page', page.toString());

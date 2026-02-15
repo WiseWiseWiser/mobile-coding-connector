@@ -132,6 +132,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/opencode/auth", handleOpencodeAuth)
 	mux.HandleFunc("/api/agents/opencode/settings", handleOpencodeSettings)
 	mux.HandleFunc("/api/agents/opencode/web-status", handleOpencodeWebStatus)
+	mux.HandleFunc("/api/agents/opencode/server", handleOpencodeServer)
 	mux.HandleFunc("/api/agents/opencode/web-server/control", handleOpencodeWebServerControl)
 	mux.HandleFunc("/api/agents/opencode/web-server/domain-map", handleOpencodeWebServerDomainMap)
 	mux.HandleFunc("/api/agents/opencode/web-server/domain-map/stream", handleOpencodeWebServerDomainMapStreaming)
@@ -621,6 +622,28 @@ func handleOpencodeWebStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
+}
+
+// handleOpencodeServer returns info about the opencode server (port, running status)
+// This is used for external session chat
+func handleOpencodeServer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get or start the opencode server
+	server, err := opencode.GetOrStartOpencodeServer()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"port":    server.Port,
+		"running": server.Cmd != nil && server.Cmd.Process != nil,
+	})
 }
 
 // handleOpencodeWebServerControl handles start/stop operations for the web server

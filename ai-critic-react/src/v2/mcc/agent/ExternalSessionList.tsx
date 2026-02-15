@@ -8,6 +8,7 @@ export interface ExternalSessionListProps {
     projectName: string | null;
     onBack: () => void;
     onSelectSession: (sessionId: string) => void;
+    onNewSession?: () => void;
 }
 
 interface SessionPreview {
@@ -17,7 +18,7 @@ interface SessionPreview {
     created_at?: string;
 }
 
-export function ExternalSessionList({ projectName, onBack, onSelectSession }: ExternalSessionListProps) {
+export function ExternalSessionList({ projectName, onBack, onSelectSession, onNewSession }: ExternalSessionListProps) {
     const [sessions, setSessions] = useState<SessionPreview[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -51,6 +52,11 @@ export function ExternalSessionList({ projectName, onBack, onSelectSession }: Ex
                 <h2>External Sessions</h2>
             </div>
             <div className="mcc-agent-new-chat-row">
+                {onNewSession && (
+                    <button className="mcc-agent-new-chat-btn" onClick={onNewSession}>
+                        + New Session
+                    </button>
+                )}
                 <span className="mcc-agent-card-note">Sessions from CLI or Web</span>
             </div>
             {loading ? (

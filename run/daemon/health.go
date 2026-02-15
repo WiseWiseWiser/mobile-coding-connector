@@ -79,6 +79,14 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 			return ExitReasonDaemonRestart
 
 		case <-healthTicker.C:
+			// Check if health checks are paused (e.g., after exec-restart)
+			if hc.state.IsHealthChecksPaused() {
+				Logger("[health-check] Health checks paused, skipping this check")
+				// Update next check time
+				hc.state.SetNextHealthCheckTime(time.Now().Add(HealthCheckInterval))
+				continue
+			}
+
 			checkStart := time.Now()
 			Logger("[health-check] Starting periodic health check for port %d (PID=%d)", port, cmd.Process.Pid)
 
@@ -118,8 +126,30 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 
 		case <-upgradeTicker.C:
 			if newerBin := findNewerBinary(currentBinPath); newerBin != "" {
-				Logger("Detected newer binary: %s, stopping current server for upgrade...", newerBin)
+				Logger("Detected newer binary: %s, triggering exec restart...", newerBin)
 				hc.state.SetBinPath(newerBin)
+				// Call the server's exec-restart endpoint which will:
+				// 1. Perform graceful shutdown
+				// 2. Use syscall.Exec to replace with new binary (preserving PID)
+				if callExecRestartEndpoint() {
+					// Wait a bit for the exec to complete
+					Logger("Waiting for server to exec with new binary...")
+					WaitForDone(done, 35*time.Second)
+
+					// Check if exec was successful by verifying:
+					// 1. Server process is still alive
+					// 2. /ping endpoint returns "pong"
+					if hc.checkProcessAlive(port) {
+						Logger("Exec-restart succeeded: server is still running with new binary")
+						return ExitReasonUpgrade
+					}
+					// Fallback: exec didn't work, need to start fresh
+					Logger("Exec-restart verification failed, falling back to kill+start...")
+				} else {
+					Logger("Exec-restart request failed, falling back to graceful stop and restart...")
+				}
+				// Fallback to old behavior
+				Logger("Falling back: killing old process and starting new one...")
 				hc.gracefulStop(cmd)
 				WaitForDone(done, 5*time.Second)
 				return ExitReasonUpgrade
@@ -148,6 +178,52 @@ func (hc *HealthChecker) gracefulStop(cmd *exec.Cmd) {
 func (hc *HealthChecker) killProcess(cmd *exec.Cmd) {
 	pm := NewProcessManager(hc.state)
 	pm.KillProcessGroup(cmd)
+}
+
+// callExecRestartEndpoint calls the server's /api/server/exec-restart endpoint
+// which performs a graceful shutdown and then uses syscall.Exec to replace
+// the current process with the new binary (preserving PID).
+// Returns true if the request was successful (the server will exec and not return).
+func callExecRestartEndpoint() bool {
+	token, err := loadFirstToken()
+	if err != nil {
+		Logger("Failed to load auth token: %v", err)
+		return false
+	}
+
+	port := config.DefaultServerPort
+	url := fmt.Sprintf("http://localhost:%d/api/server/exec-restart", port)
+
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		Logger("Failed to create exec-restart request: %v", err)
+		return false
+	}
+
+	// Add auth cookie
+	if token != "" {
+		req.AddCookie(&http.Cookie{
+			Name:  "ai-critic-token",
+			Value: token,
+		})
+	}
+
+	// Use a short timeout since the server will exec and not respond normally
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		Logger("Failed to call exec-restart endpoint: %v", err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		Logger("Exec-restart request accepted (server will restart)")
+		return true
+	}
+
+	Logger("Exec-restart endpoint returned status: %d", resp.StatusCode)
+	return false
 }
 
 // CallShutdownEndpoint calls the server's shutdown endpoint with auth.
@@ -220,6 +296,26 @@ func (hc *HealthChecker) checkPingEndpoint(port int) bool {
 	bodyStr := string(body)
 	Logger("[health-check] Ping response body: %q", bodyStr)
 	return bodyStr == "pong"
+}
+
+// checkProcessAlive verifies that the server process is still running and responsive.
+// Returns true if the server is alive and responding, false otherwise.
+// This is used to verify if exec-restart was successful.
+func (hc *HealthChecker) checkProcessAlive(port int) bool {
+	// First check TCP connectivity
+	if !IsPortReachable(port) {
+		Logger("[exec-check] Port %d is not reachable", port)
+		return false
+	}
+
+	// Then check /ping endpoint
+	if !hc.checkPingEndpoint(port) {
+		Logger("[exec-check] /ping endpoint not responding")
+		return false
+	}
+
+	Logger("[exec-check] Server is alive and responding")
+	return true
 }
 
 // checkTCPConnectivity checks if a port is reachable via TCP

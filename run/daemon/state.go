@@ -15,6 +15,7 @@ const (
 	PortCheckTimeout       = 2 * time.Second
 	UpgradeCheckInterval   = 30 * time.Second
 	MaxConsecutiveFailures = 2
+	HealthCheckPauseDelay  = 1 * time.Minute // Pause health check after exec-restart
 )
 
 // State represents the daemon's mutable state with thread-safe access
@@ -29,6 +30,8 @@ type State struct {
 	restartCount        int // how many times the server has been restarted
 	restartCh           chan struct{}
 	daemonRestartCh     chan struct{}
+	healthCheckPaused   bool      // if true, health check is temporarily paused
+	healthCheckResumeAt time.Time // time when health check should resume
 }
 
 // NewState creates a new daemon state instance
@@ -165,6 +168,31 @@ func (s *State) RequestDaemonRestart() bool {
 // GetDaemonRestartChannel returns the daemon restart channel for listening
 func (s *State) GetDaemonRestartChannel() <-chan struct{} {
 	return s.daemonRestartCh
+}
+
+// PauseHealthChecks pauses health checks for the specified duration
+func (s *State) PauseHealthChecks(duration time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.healthCheckPaused = true
+	s.healthCheckResumeAt = time.Now().Add(duration)
+	Logger("Health checks paused until %s", s.healthCheckResumeAt.Format("15:04:05"))
+}
+
+// IsHealthChecksPaused returns true if health checks are currently paused
+func (s *State) IsHealthChecksPaused() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.healthCheckPaused {
+		return false
+	}
+	// Check if pause has expired
+	if time.Now().After(s.healthCheckResumeAt) {
+		s.healthCheckPaused = false
+		Logger("Health checks resumed (pause period ended)")
+		return false
+	}
+	return true
 }
 
 // GetStatusSnapshot returns a snapshot of current state for API responses
