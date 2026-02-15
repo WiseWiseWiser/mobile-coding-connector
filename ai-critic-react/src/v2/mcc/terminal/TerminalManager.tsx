@@ -80,23 +80,56 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
     // iOS Safari keyboard detection using visualViewport API
     useEffect(() => {
         const visualViewport = (window as any).visualViewport;
-        if (!visualViewport) return;
+        if (!visualViewport) {
+            console.log('[iOS] No visualViewport API');
+            return;
+        }
 
         const handleResize = () => {
             const viewport = visualViewport;
             const windowHeight = window.innerHeight;
-            const keyboardHeight = windowHeight - viewport.height;
+            const viewportHeight = viewport.height;
+            const keyboardHeight = windowHeight - viewportHeight;
             
+            console.log('[iOS] viewport resize:', { windowHeight, viewportHeight, keyboardHeight });
+            
+            // Update shortcuts position
             if (shortcutsRef.current) {
                 if (keyboardHeight > 100) {
+                    console.log('[iOS] Moving shortcuts up by:', keyboardHeight);
+                    shortcutsRef.current.style.position = 'fixed';
                     shortcutsRef.current.style.bottom = `${keyboardHeight + (window.innerHeight > 700 ? 8 : 20)}px`;
+                    shortcutsRef.current.style.left = '0';
+                    shortcutsRef.current.style.right = '0';
+                    shortcutsRef.current.style.zIndex = '9999';
                 } else {
+                    console.log('[iOS] Resetting shortcuts position');
+                    shortcutsRef.current.style.position = '';
                     shortcutsRef.current.style.bottom = '';
+                    shortcutsRef.current.style.left = '';
+                    shortcutsRef.current.style.right = '';
+                    shortcutsRef.current.style.zIndex = '';
+                }
+            }
+            
+            // Scroll terminal to keep cursor visible above keyboard
+            if (keyboardHeight > 100) {
+                const xtermViewport = document.querySelector('.terminal-instance.active .xterm-viewport') as HTMLElement;
+                if (xtermViewport) {
+                    console.log('[iOS] Scrolling terminal to bottom, scrollHeight:', xtermViewport.scrollHeight);
+                    setTimeout(() => {
+                        xtermViewport.scrollTop = xtermViewport.scrollHeight;
+                        console.log('[iOS] After scroll, scrollTop:', xtermViewport.scrollTop);
+                    }, 100);
+                } else {
+                    console.log('[iOS] No xtermViewport found');
                 }
             }
         };
 
         visualViewport.addEventListener('resize', handleResize);
+        // Also trigger once on mount
+        setTimeout(handleResize, 500);
         return () => visualViewport.removeEventListener('resize', handleResize);
     }, []);
 
@@ -184,8 +217,8 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
             className={`terminal-instance ${isActive ? 'active' : ''}`}
             data-terminal-id={id}
         >
-            <div className="terminal-instance-content" ref={terminalRef} />
-            <div className="terminal-instance-shortcuts" ref={shortcutsRef}>
+            <div className="terminal-instance-content" ref={terminalRef}>
+                <div className="terminal-instance-shortcuts" ref={shortcutsRef}>
                 <button className="term-shortcut-btn" onClick={handleTab}>Tab</button>
                 <button className="term-shortcut-btn" onClick={handleArrowLeft}>←</button>
                 <button className="term-shortcut-btn" onClick={handleArrowRight}>→</button>
@@ -219,6 +252,7 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
                 <button className="term-shortcut-btn" onClick={handleCtrlR}>^R</button>
                 <button className="term-shortcut-btn" onClick={handleCtrlL}>^L</button>
                 <button className="term-shortcut-btn" onClick={handlePaste}>Paste</button>
+            </div>
             </div>
         </div>
     );

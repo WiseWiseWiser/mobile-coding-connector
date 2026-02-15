@@ -114,23 +114,26 @@
 
 .terminal-instance-content {
     flex: 1;
-    padding: 8px;
-    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     min-height: 0;
     width: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* Ensure xterm fills the container */
 .terminal-instance-content .xterm {
     height: 100%;
     width: 100%;
+    flex-shrink: 0;
+    padding: 8px;
+    box-sizing: border-box;
 }
 
 .terminal-instance-content .xterm-viewport {
     overflow-y: auto !important;
     width: 100% !important;
-    -webkit-overflow-scrolling: touch !important;
-    touch-action: pan-y !important;
 }
 
 /* Enable text selection on the terminal */
@@ -162,21 +165,14 @@
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     flex-shrink: 0;
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
 }
 
-/* iOS Safari keyboard handling - ensure quick actions stay visible above keyboard */
+/* iOS Safari keyboard handling - handled via JS with visualViewport API */
 @supports (-webkit-touch-callout: none) {
-    .terminal-instance-shortcuts {
-        position: fixed;
-        bottom: env(safe-area-inset-bottom, 0);
-        left: 0;
-        right: 0;
-        z-index: 9999;
-    }
-    
-    .terminal-manager {
-        padding-bottom: 50px;
-    }
+    /* Removed - using JS to handle positioning instead */
 }
 
 .term-shortcut-btn {

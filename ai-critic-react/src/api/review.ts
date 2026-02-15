@@ -76,6 +76,7 @@ export interface GitStatusFile {
     path: string;
     status: string;
     isStaged: boolean;
+    size: number;
 }
 
 // Git status result

@@ -578,6 +578,7 @@ type GitStatusFile struct {
 	Path     string `json:"path"`
 	Status   string `json:"status"`   // "added", "modified", "deleted", "renamed", "untracked"
 	IsStaged bool   `json:"isStaged"` // Whether the change is staged
+	Size     int64  `json:"size"`     // File size in bytes
 }
 
 // GitStatusResult represents the result of git status
@@ -669,6 +670,9 @@ func getGitStatus(dir string) (*GitStatusResult, error) {
 			filePath = filePath[idx+4:]
 		}
 
+		// Get file size
+		size := getFileSize(dir, filePath)
+
 		// Staged change
 		if indexStatus != ' ' && indexStatus != '?' {
 			status := parseStatusChar(indexStatus)
@@ -676,6 +680,7 @@ func getGitStatus(dir string) (*GitStatusResult, error) {
 				Path:     filePath,
 				Status:   status,
 				IsStaged: true,
+				Size:     size,
 			})
 		}
 
@@ -689,11 +694,22 @@ func getGitStatus(dir string) (*GitStatusResult, error) {
 				Path:     filePath,
 				Status:   status,
 				IsStaged: false,
+				Size:     size,
 			})
 		}
 	}
 
 	return result, nil
+}
+
+// getFileSize returns the size of a file in bytes
+func getFileSize(dir, filePath string) int64 {
+	fullPath := filepath.Join(dir, filePath)
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
 }
 
 // parseStatusChar converts a git status character to a human-readable status

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,12 +9,9 @@ import (
 	"strings"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
-const cookieName = "ai-critic-token"
-
-var credentialsFile = config.CredentialsFile
+const cookieName = lib.CookieName
 
 var help = fmt.Sprintf(`Usage: go run ./script/request <path> [body]
 
@@ -32,7 +28,7 @@ Examples:
   go run ./script/request /api/checkpoints '{"project_dir":"/path","name":"test","file_paths":["a.txt"]}'
   go run ./script/request /api/auth/check
   go run ./script/request --port 37651 /api/server/status
-`, lib.DefaultServerPort, credentialsFile, lib.DefaultServerPort)
+`, lib.DefaultServerPort, lib.CredentialsFile, lib.DefaultServerPort)
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -94,7 +90,7 @@ func run(args []string) error {
 	}
 
 	// Load auth token from credentials file
-	token, err := loadFirstToken()
+	token, err := lib.LoadFirstTokenFromHome()
 	if err == nil && token != "" {
 		req.AddCookie(&http.Cookie{
 			Name:  cookieName,
@@ -119,22 +115,4 @@ func run(args []string) error {
 	fmt.Println()
 
 	return nil
-}
-
-// loadFirstToken reads the first non-empty line from the credentials file.
-func loadFirstToken() (string, error) {
-	f, err := os.Open(credentialsFile)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			return line, nil
-		}
-	}
-	return "", scanner.Err()
 }

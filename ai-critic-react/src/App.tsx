@@ -10,7 +10,7 @@ import './logs';
 import './App.css';
 
 // Always enable mockups for design review (no server requests)
-const MockupsPage = lazy(() => import('../mockups/MockupsPage').then(m => ({ default: m.MockupsPage })));
+const MockupsPage = lazy(() => import('./mockups/MockupsPage').then(m => ({ default: m.MockupsPage })));
 
 function Home() {
     return (

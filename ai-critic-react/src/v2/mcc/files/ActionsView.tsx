@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { fetchActions, createAction, updateAction, deleteAction, runAction } from '../../../api/actions';
-import type { Action } from '../../../api/actions';
+import { fetchActions, createAction, updateAction, deleteAction, runAction, fetchActionStatus, stopAction } from '../../../api/actions';
+import type { Action, ActionStatus } from '../../../api/actions';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
-import { StreamingLogs } from '../../StreamingComponents';
+import type { LogLine } from '../../LogViewer';
 import './ActionsView.css';
 
 interface ActionsViewProps {
@@ -10,7 +10,6 @@ interface ActionsViewProps {
     projectDir: string;
 }
 
-// Icon options for actions
 const ICON_OPTIONS = [
     { value: '🔨', label: 'Hammer (Build)' },
     { value: '📋', label: 'Clipboard (Lint)' },
@@ -32,18 +31,26 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
     const [error, setError] = useState('');
     const [editingAction, setEditingAction] = useState<Action | null>(null);
     const [isCreating, setIsCreating] = useState(false);
-    const [runningActionId, setRunningActionId] = useState<string | null>(null);
+    const [actionStatuses, setActionStatuses] = useState<Record<string, ActionStatus>>({});
+    const [expandedActionId, setExpandedActionId] = useState<string | null>(null);
 
-    // Form state
     const [formName, setFormName] = useState('');
     const [formIcon, setFormIcon] = useState('▶️');
     const [formScript, setFormScript] = useState('');
 
     const [runState, runControls] = useStreamingAction();
+    const [currentRunningId, setCurrentRunningId] = useState<string | null>(null);
 
     useEffect(() => {
         loadActions();
+        loadStatuses();
     }, [projectName]);
+
+    useEffect(() => {
+        if (currentRunningId) {
+            setExpandedActionId(currentRunningId);
+        }
+    }, [currentRunningId]);
 
     const loadActions = async () => {
         setLoading(true);
@@ -55,6 +62,17 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
             setError(e instanceof Error ? e.message : 'Failed to load actions');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const loadStatuses = async () => {
+        try {
+            const statuses = await fetchActionStatus(projectName);
+            if (statuses && typeof statuses === 'object') {
+                setActionStatuses(statuses as Record<string, ActionStatus>);
+            }
+        } catch (e) {
+            console.error('Failed to load action statuses:', e);
         }
     };
 
@@ -122,24 +140,48 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
     };
 
     const handleRun = async (action: Action) => {
-        setRunningActionId(action.id);
+        setCurrentRunningId(action.id);
+        runControls.reset();
         try {
             await runControls.run(async () => {
                 return runAction({
                     project_dir: projectDir,
                     script: action.script,
+                    action_id: action.id,
                 });
             });
         } finally {
-            setRunningActionId(null);
+            setCurrentRunningId(null);
+            loadStatuses();
+        }
+    };
+
+    const handleStop = async (actionId: string) => {
+        try {
+            await stopAction(actionId);
+            setCurrentRunningId(null);
+            loadStatuses();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Failed to stop action');
         }
     };
 
     const isEditing = isCreating || editingAction !== null;
 
+    const isRunning = (actionId: string) => {
+        return currentRunningId === actionId || actionStatuses[actionId]?.running;
+    };
+
+    const getActionLogs = (actionId: string): LogLine[] => {
+        if (currentRunningId === actionId) {
+            return runState.logs;
+        }
+        const logs = actionStatuses[actionId]?.logs || [];
+        return logs.map((text: string) => ({ text, error: false }));
+    };
+
     return (
         <div className="mcc-actions-view">
-            {/* Header */}
             <div className="mcc-actions-header">
                 <h3 className="mcc-actions-title">Actions</h3>
                 {!isEditing && (
@@ -155,7 +197,6 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
                 <>
                     {error && <div className="mcc-actions-error">{error}</div>}
 
-                    {/* Edit Form */}
                     {isEditing && (
                         <div className="mcc-actions-form">
                             <div className="mcc-actions-form-row">
@@ -206,7 +247,6 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
                         </div>
                     )}
 
-                    {/* Actions List */}
                     {!isEditing && (
                         <>
                             {actions.length === 0 ? (
@@ -215,53 +255,87 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
                                 </div>
                             ) : (
                                 <div className="mcc-actions-list">
-                                    {actions.map((action) => (
-                                        <div key={action.id} className="mcc-action-item">
-                                            <div className="mcc-action-main">
-                                                <button
-                                                    className="mcc-action-run-btn"
-                                                    onClick={() => handleRun(action)}
-                                                    disabled={runningActionId === action.id || runState.running}
-                                                >
-                                                    <span className="mcc-action-icon">{action.icon || '▶️'}</span>
-                                                    <span className="mcc-action-name">{action.name}</span>
-                                                    {runningActionId === action.id && (
-                                                        <span className="mcc-action-running">Running...</span>
-                                                    )}
-                                                </button>
-                                                <div className="mcc-action-controls">
-                                                    <button
-                                                        className="mcc-action-edit-btn"
-                                                        onClick={() => handleStartEdit(action)}
-                                                        title="Edit"
-                                                    >
-                                                        ✎
-                                                    </button>
-                                                    <button
-                                                        className="mcc-action-delete-btn"
-                                                        onClick={() => handleDelete(action.id)}
-                                                        title="Delete"
-                                                    >
-                                                        ×
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <div className="mcc-action-script-preview">
-                                                <code>{action.script}</code>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                                    {actions.map((action) => {
+                                        const running = isRunning(action.id);
+                                        const logs = getActionLogs(action.id);
+                                        const expanded = expandedActionId === action.id;
 
-                            {/* Streaming Logs */}
-                            {(runState.running || runState.logs.length > 0) && (
-                                <div className="mcc-actions-logs">
-                                    <StreamingLogs
-                                        state={runState}
-                                        pendingMessage="Running action..."
-                                        maxHeight={200}
-                                    />
+                                        return (
+                                            <div key={action.id} className={`mcc-action-item ${running ? 'running' : ''}`}>
+                                                <div className="mcc-action-main">
+                                                    <button
+                                                        className="mcc-action-run-btn"
+                                                        onClick={() => handleRun(action)}
+                                                        disabled={running}
+                                                    >
+                                                        <span className="mcc-action-icon">{action.icon || '▶️'}</span>
+                                                        <span className="mcc-action-name">{action.name}</span>
+                                                        {running && (
+                                                            <span className="mcc-action-running">Running</span>
+                                                        )}
+                                                    </button>
+                                                    
+                                                    {running && (
+                                                        <button
+                                                            className="mcc-action-stop-btn"
+                                                            onClick={() => handleStop(action.id)}
+                                                            title="Stop"
+                                                        >
+                                                            ⏹
+                                                        </button>
+                                                    )}
+
+                                                    <div className="mcc-action-controls">
+                                                        <button
+                                                            className="mcc-action-expand-btn"
+                                                            onClick={() => setExpandedActionId(expanded ? null : action.id)}
+                                                            title={expanded ? 'Collapse' : 'Expand'}
+                                                        >
+                                                            {expanded ? '▼' : '▶'}
+                                                        </button>
+                                                        <button
+                                                            className="mcc-action-edit-btn"
+                                                            onClick={() => handleStartEdit(action)}
+                                                            title="Edit"
+                                                        >
+                                                            ✎
+                                                        </button>
+                                                        <button
+                                                            className="mcc-action-delete-btn"
+                                                            onClick={() => handleDelete(action.id)}
+                                                            title="Delete"
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mcc-action-script-row">
+                                                    <code className="mcc-action-script">{action.script}</code>
+                                                </div>
+
+                                                {expanded && (
+                                                    <div className="mcc-action-logs-section">
+                                                        <div className="mcc-action-logs-header">
+                                                            {running ? 'Running...' : logs.length > 0 ? 'Logs' : 'No logs'}
+                                                            {actionStatuses[action.id]?.exit_code !== undefined && !running && (
+                                                                <span className={`mcc-action-exit-code ${actionStatuses[action.id].exit_code === 0 ? 'success' : 'error'}`}>
+                                                                    Exit: {actionStatuses[action.id].exit_code}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {logs.length > 0 && (
+                                                            <div className="mcc-action-logs">
+                                                                {logs.map((log, i) => (
+                                                                    <div key={i} className={`mcc-action-log-line ${log.error ? 'error' : ''}`}>{log.text}</div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </>

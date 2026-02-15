@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useCurrent } from '../../src/hooks/useCurrent';
+import { useCurrent } from '../../hooks/useCurrent';
 import './MobileCodingConnector.css';
 
 // Navigation tabs

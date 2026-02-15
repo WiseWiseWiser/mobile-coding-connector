@@ -19,7 +19,6 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/subprocess"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
@@ -698,116 +697,30 @@ func handleOpencodeWebServerControlStreaming(w http.ResponseWriter, r *http.Requ
 
 	switch action {
 	case "start":
-		// Check if already running via subprocess manager
-		manager := subprocess.GetManager()
-		if manager.IsRunning(opencode.WebServerProcessID) {
-			sseWriter.SendLog("Web server is already running (managed)")
-			sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server is already running", "running": "true"})
-			return
-		}
-
-		// Also check via HTTP health check
-		if opencode.IsWebServerRunning(settings.WebServer.Port) {
-			sseWriter.SendLog("Web server is already running")
-			sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server is already running", "running": "true"})
-			return
-		}
-
-		sseWriter.SendLog(fmt.Sprintf("Starting OpenCode web server on port %d...", settings.WebServer.Port))
-
-		// Start the web server using opencode command with proper environment
-		// Pass password via environment variable if configured
-		cmdOpts := &tool_exec.Options{
-			CustomPath: customPath,
-		}
-		if settings.WebServer.Password != "" {
-			cmdOpts.Env = map[string]string{
-				"OPENCODE_SERVER_PASSWORD": settings.WebServer.Password,
-			}
-			sseWriter.SendLog("Password configured for web server")
-		}
-		cmd, err := tool_exec.New("opencode", []string{"web", "--port", fmt.Sprintf("%d", settings.WebServer.Port)}, cmdOpts)
-		if err != nil {
-			sseWriter.SendError(fmt.Sprintf("Failed to create command: %v", err))
-			sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
-			return
-		}
-
-		// Log the full command being executed
-		cmdStr := cmd.Cmd.Path
-		for _, arg := range cmd.Cmd.Args[1:] {
-			cmdStr += " " + arg
-		}
-		sseWriter.SendLog(fmt.Sprintf("Executing: %s", cmdStr))
-
-		// Health checker function
-		healthChecker := func() bool {
-			return opencode.IsWebServerRunning(settings.WebServer.Port)
-		}
-
-		// Start the process via subprocess manager (non-blocking)
-		process, err := manager.StartProcess(opencode.WebServerProcessID, "OpenCode Web Server", cmd.Cmd, healthChecker, true)
+		// Use GetOrStartOpencodeServer for single instance
+		sseWriter.SendLog("Starting OpenCode web server...")
+		server, err := opencode.GetOrStartOpencodeServer()
 		if err != nil {
 			sseWriter.SendError(fmt.Sprintf("Failed to start web server: %v", err))
 			sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
 			return
 		}
 
-		sseWriter.SendLog("Process started, waiting for health check...")
-		sseWriter.SendStatus("starting", map[string]string{"port": fmt.Sprintf("%d", settings.WebServer.Port)})
-
-		// Wait for the server to be ready with periodic status updates
-		running := false
-		checkInterval := 500 * time.Millisecond
-		timeout := 10 * time.Second
-		deadline := time.Now().Add(timeout)
-		checkCount := 0
-
-		for time.Now().Before(deadline) {
-			checkCount++
-			if process.HealthChecker != nil && process.HealthChecker() {
-				running = true
-				break
-			}
-
-			// Send periodic status update every 2 checks (1 second)
-			if checkCount%2 == 0 {
-				elapsed := time.Since(process.StartTime).Seconds()
-				sseWriter.SendStatus("waiting", map[string]string{
-					"elapsed": fmt.Sprintf("%.1f", elapsed),
-					"port":    fmt.Sprintf("%d", settings.WebServer.Port),
-				})
-				sseWriter.SendLog(fmt.Sprintf("Waiting for server to be ready... (%.1fs)", elapsed))
-			}
-
-			time.Sleep(checkInterval)
-		}
-
 		// Update settings
-		settings.WebServer.Enabled = running
+		settings.WebServer.Enabled = true
+		settings.WebServer.Port = server.Port
 		opencode.SaveSettings(settings)
 
-		if running {
-			sseWriter.SendStatus("running", map[string]string{
-				"port":    fmt.Sprintf("%d", settings.WebServer.Port),
-				"message": "Web server is running",
-			})
-			sseWriter.SendLog(fmt.Sprintf("✓ Web server started successfully on port %d", settings.WebServer.Port))
-			sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server started successfully", "running": "true"})
-		} else {
-			sseWriter.SendStatus("failed", map[string]string{
-				"port":    fmt.Sprintf("%d", settings.WebServer.Port),
-				"message": "Health check timeout",
-			})
-			sseWriter.SendError("Web server process started but health check failed")
-			sseWriter.SendDone(map[string]string{"success": "false", "message": "Web server may not be ready", "running": "false"})
-		}
+		sseWriter.SendStatus("running", map[string]string{
+			"port":    fmt.Sprintf("%d", server.Port),
+			"message": "Web server is running",
+		})
+		sseWriter.SendLog(fmt.Sprintf("✓ Web server started successfully on port %d", server.Port))
+		sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server started successfully", "running": "true"})
 
 	case "stop":
-		manager := subprocess.GetManager()
-
 		// Check if already stopped
-		if !opencode.IsWebServerRunning(settings.WebServer.Port) && !manager.IsRunning(opencode.WebServerProcessID) {
+		if !opencode.IsWebServerRunning(settings.WebServer.Port) {
 			sseWriter.SendStatus("stopped", map[string]string{"message": "Web server is already stopped"})
 			sseWriter.SendLog("Web server is already stopped")
 			sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server is already stopped", "running": "false"})
@@ -817,38 +730,15 @@ func handleOpencodeWebServerControlStreaming(w http.ResponseWriter, r *http.Requ
 		sseWriter.SendLog("Stopping OpenCode web server...")
 		sseWriter.SendStatus("stopping", map[string]string{"port": fmt.Sprintf("%d", settings.WebServer.Port)})
 
-		// First try to stop via subprocess manager
-		if manager.IsRunning(opencode.WebServerProcessID) {
-			sseWriter.SendLog("Stopping via subprocess manager...")
-			if err := manager.StopProcess(opencode.WebServerProcessID); err != nil {
-				sseWriter.SendLog(fmt.Sprintf("Subprocess manager stop failed: %v", err))
-			}
-		}
+		// Stop via ShutdownOpencodeServer
+		opencode.ShutdownOpencodeServer()
 
-		// Also try the standard opencode stop command
+		// Also try the standard opencode stop command as fallback
 		cmd, err := tool_exec.New("opencode", []string{"web", "stop"}, &tool_exec.Options{
 			CustomPath: customPath,
 		})
-		if err != nil {
-			sseWriter.SendStatus("error", map[string]string{"message": fmt.Sprintf("Failed to create command: %v", err)})
-			sseWriter.SendError(fmt.Sprintf("Failed to create command: %v", err))
-			sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
-			return
-		}
-
-		// Log the full command being executed
-		cmdStr := cmd.Cmd.Path
-		for _, arg := range cmd.Cmd.Args[1:] {
-			cmdStr += " " + arg
-		}
-		sseWriter.SendLog(fmt.Sprintf("Executing: %s", cmdStr))
-
-		err = sseWriter.StreamCmd(cmd.Cmd)
-		if err != nil {
-			sseWriter.SendStatus("error", map[string]string{"message": fmt.Sprintf("Failed to stop web server: %v", err)})
-			sseWriter.SendError(fmt.Sprintf("Failed to stop web server: %v", err))
-			sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
-			return
+		if err == nil {
+			cmd.Cmd.Run()
 		}
 
 		// Wait a moment and check if it's stopped
@@ -1258,6 +1148,37 @@ func handleAgentSessions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleExternalSessionProxy proxies requests to an external opencode server for external sessions.
+func handleExternalSessionProxy(w http.ResponseWriter, r *http.Request, parts []string) {
+	server, err := opencode.GetOrStartOpencodeServer()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	restPath := "/"
+	if len(parts) >= 3 {
+		restPath = "/" + parts[2]
+	}
+
+	r.URL.Path = restPath
+	r.URL.RawPath = ""
+
+	if strings.Contains(restPath, "/message") && r.Method == http.MethodGet {
+		opencode.ProxyMessages(w, r, server.Port)
+		return
+	}
+
+	if restPath == "/event" || restPath == "/global/event" {
+		opencode.ProxySSE(w, r, server.Port)
+		return
+	}
+
+	targetURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d%s", server.Port, restPath))
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy.ServeHTTP(w, r)
+}
+
 // handleAgentSessionProxy proxies requests to the agent's opencode server.
 // URL format: /api/agents/sessions/{sessionID}/proxy/{rest...}
 func handleAgentSessionProxy(w http.ResponseWriter, r *http.Request) {
@@ -1271,6 +1192,13 @@ func handleAgentSessionProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionID := parts[0]
+
+	// Handle external sessions (e.g., /api/agents/sessions/external/proxy/...)
+	if sessionID == "external" {
+		handleExternalSessionProxy(w, r, parts)
+		return
+	}
+
 	s := sessionMgr.get(sessionID)
 	if s == nil {
 		http.Error(w, "session not found", http.StatusNotFound)

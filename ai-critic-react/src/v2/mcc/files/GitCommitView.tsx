@@ -4,7 +4,7 @@ import type { GitStatusFile } from '../../../api/review';
 import type { DiffFile } from '../../../components/code-review/types';
 import { DiffViewer } from '../../DiffViewer';
 import type { FileDiff, DiffHunk, DiffLine } from '../../../api/checkpoints';
-import { statusBadge } from './utils';
+import { statusBadge, getFileIcon, formatFileSize, getFileSuffix } from './utils';
 import { loadGitUserConfig } from '../home/settings/gitStorage';
 import { GitPushSection } from './GitPushSection';
 import { ConfirmModal } from '../ConfirmModal';
@@ -290,7 +290,11 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                                     onClick={() => handleFileClick(f.path)}
                                 >
                                     {statusBadge(f.status)}
-                                    <span className="mcc-changed-file-path">{f.path}</span>
+                                    <div className="mcc-changed-file-info">
+                                        <span className="mcc-changed-file-path">{f.path}</span>
+                                        <span className="mcc-changed-file-size">{formatFileSize(f.size)}</span>
+                                        <span className="mcc-changed-file-suffix">{getFileIcon(f.path)}{getFileSuffix(f.path)}</span>
+                                    </div>
                                     <span className="mcc-git-file-actions">
                                         <button
                                             className="mcc-git-file-action"
@@ -328,7 +332,11 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                                     onClick={() => handleFileClick(f.path)}
                                 >
                                     {statusBadge(f.status === 'untracked' ? 'added' : f.status)}
-                                    <span className="mcc-changed-file-path">{f.path}</span>
+                                    <div className="mcc-changed-file-info">
+                                        <span className="mcc-changed-file-path">{f.path}</span>
+                                        <span className="mcc-changed-file-size">{formatFileSize(f.size)}</span>
+                                        <span className="mcc-changed-file-suffix">{getFileIcon(f.path)}{getFileSuffix(f.path)}</span>
+                                    </div>
                                     <span className="mcc-git-file-actions">
                                         {f.status === 'untracked' ? (
                                             <>

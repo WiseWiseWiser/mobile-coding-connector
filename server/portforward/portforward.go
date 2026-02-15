@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
@@ -566,11 +567,43 @@ func handleKillProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if port is protected
+	// Validate that the PID exists by checking if it's running
+	err = syscall.Kill(pid, syscall.Signal(0))
+	if err != nil {
+		if err == syscall.ESRCH {
+			http.Error(w, "process not found", http.StatusNotFound)
+			return
+		}
+		// Permission denied means process exists but we can't signal it
+		if err != syscall.EPERM {
+			http.Error(w, fmt.Sprintf("failed to validate process: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Find what port this PID is listening on (if any)
+	var listeningPort int
+	ports, err := getListeningPorts()
+	if err == nil {
+		for _, p := range ports {
+			if p.PID == pid {
+				listeningPort = p.Port
+				break
+			}
+		}
+	}
+
+	// Check if the port the process is listening on is protected
+	if listeningPort > 0 && isPortProtected(listeningPort) {
+		http.Error(w, "ask user to restart for you for port "+strconv.Itoa(listeningPort), http.StatusForbidden)
+		return
+	}
+
+	// Check if port is protected (if port is explicitly specified)
 	if portStr != "" {
 		port, err := strconv.Atoi(portStr)
 		if err == nil && isPortProtected(port) {
-			http.Error(w, "port is protected", http.StatusForbidden)
+			http.Error(w, "ask user to restart for you for port "+strconv.Itoa(port), http.StatusForbidden)
 			return
 		}
 	}
