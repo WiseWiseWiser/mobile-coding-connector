@@ -4,6 +4,7 @@
     padding: 16px;
     max-width: 600px;
     margin: 0 auto;
+    text-align: left;
 }
 
 .mockups-header {
@@ -71,6 +72,7 @@
     padding: 12px 16px;
     background: #252526;
     border-bottom: 1px solid #3c3c3c;
+    flex-shrink: 0;
 }
 
 .mockup-back-btn {
@@ -95,5 +97,6 @@
 
 .mockup-view-content {
     flex: 1;
-    overflow: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }

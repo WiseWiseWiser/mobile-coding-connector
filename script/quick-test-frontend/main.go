@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	quickTestPort  = 37651
 	vitePort       = 5173
 	defaultTimeout = 10 * time.Minute
 )
@@ -74,11 +73,11 @@ func Handle(args []string) error {
 	}
 
 	// Check for existing processes on ports
-	fmt.Printf("Checking for existing processes on ports %d and %d...\n", vitePort, quickTestPort)
+	fmt.Printf("Checking for existing processes on ports %d and %d...\n", vitePort, lib.QuickTestPort)
 
 	// Kill any existing process on quick-test port
-	if pid, err := getPidOnPort(quickTestPort); err == nil && pid != 0 {
-		fmt.Printf("Killing existing server on port %d (PID: %d)...\n", quickTestPort, pid)
+	if pid, err := getPidOnPort(lib.QuickTestPort); err == nil && pid != 0 {
+		fmt.Printf("Killing existing server on port %d (PID: %d)...\n", lib.QuickTestPort, pid)
 		syscall.Kill(pid, syscall.SIGKILL)
 		time.Sleep(500 * time.Millisecond)
 	}
@@ -118,7 +117,7 @@ func Handle(args []string) error {
 	fmt.Printf("Vite server ready on port %d\n", vitePort)
 
 	// Start the quick-test backend
-	fmt.Printf("Starting quick-test backend on port %d...\n", quickTestPort)
+	fmt.Printf("Starting quick-test backend on port %d...\n", lib.QuickTestPort)
 	backendCmd := exec.Command("/tmp/ai-critic-quick", "--quick-test")
 	backendCmd.Stdout = os.Stdout
 	backendCmd.Stderr = os.Stderr
@@ -131,7 +130,7 @@ func Handle(args []string) error {
 	fmt.Print("Waiting for backend...")
 	backendReady := false
 	for i := 0; i < 30; i++ {
-		if checkPort(quickTestPort) {
+		if checkPort(lib.QuickTestPort) {
 			backendReady = true
 			break
 		}
@@ -142,7 +141,7 @@ func Handle(args []string) error {
 	if !backendReady {
 		return fmt.Errorf("Backend failed to start")
 	}
-	fmt.Printf("Backend ready on port %d\n", quickTestPort)
+	fmt.Printf("Backend ready on port %d\n", lib.QuickTestPort)
 
 	// Start the proxy server that routes /api/* to backend
 	proxyMux := http.NewServeMux()
@@ -161,7 +160,7 @@ func Handle(args []string) error {
 	apiProxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
 			req.URL.Scheme = "http"
-			req.URL.Host = fmt.Sprintf("localhost:%d", quickTestPort)
+			req.URL.Host = fmt.Sprintf("localhost:%d", lib.QuickTestPort)
 		},
 	}
 
@@ -203,7 +202,7 @@ func Handle(args []string) error {
 	fmt.Println()
 	fmt.Printf("  Frontend:  http://localhost:%d\n", lib.DefaultServerPort)
 	fmt.Printf("  Vite:      http://localhost:%d\n", vitePort)
-	fmt.Printf("  Backend:   http://localhost:%d\n", quickTestPort)
+	fmt.Printf("  Backend:   http://localhost:%d\n", lib.QuickTestPort)
 	fmt.Println()
 	fmt.Printf("Auto-shutdown in %s\n", timeout)
 	fmt.Println("Press Ctrl+C to stop manually")

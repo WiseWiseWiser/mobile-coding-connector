@@ -21,7 +21,13 @@ const cookieName = "ai-critic-token"
 var (
 	credentialsFileMu   sync.RWMutex
 	credentialsFilePath = config.CredentialsFile
+	quickTestMode       bool
 )
+
+// SetQuickTestMode enables quick test mode which bypasses auth
+func SetQuickTestMode(enabled bool) {
+	quickTestMode = enabled
+}
 
 // SetCredentialsFile sets the path to the credentials file.
 // Must be called before the server starts.
@@ -81,6 +87,12 @@ func Middleware(next http.Handler, skipPaths []string) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Quick test mode bypasses all auth
+		if quickTestMode {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// Only check auth for /api/* paths
 		if !strings.HasPrefix(r.URL.Path, "/api/") {
 			next.ServeHTTP(w, r)

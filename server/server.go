@@ -53,6 +53,7 @@ var distFS embed.FS
 var templateHTML string
 var quickTestMode bool
 var quickTestQuitChan chan struct{}
+var frontendPort int
 
 func SetQuickTestMode(enabled bool) {
 	quickTestMode = enabled
@@ -61,12 +62,37 @@ func SetQuickTestMode(enabled bool) {
 	}
 }
 
+func SetFrontendPort(port int) {
+	frontendPort = port
+}
+
 func IsQuickTestMode() bool {
 	return quickTestMode
 }
 
 func GetQuickTestQuitChan() <-chan struct{} {
 	return quickTestQuitChan
+}
+
+func RunBackgroundTasks() {
+	opencode.StartHealthCheck()
+	cloudflareSettings.StartGlobalHealthChecks()
+}
+
+func RunStartupTasks() {
+	domains.AutoStartTunnels()
+	opencode.AutoStartWebServer()
+
+	go func() {
+		time.Sleep(2 * time.Second)
+		domains.InitDomainTunnels()
+		exposedurls.InitExposedURLTunnels()
+	}()
+}
+
+func RunSideEffectTasks() {
+	RunBackgroundTasks()
+	RunStartupTasks()
 }
 
 func Init(fs embed.FS, tmpl string) {
@@ -281,7 +307,11 @@ func Serve(port int, dev bool) error {
 }
 
 func ProxyDev(mux *http.ServeMux) error {
-	targetURL, err := url.Parse("http://localhost:5173")
+	port := frontendPort
+	if port == 0 {
+		port = 5173 // default
+	}
+	targetURL, err := url.Parse(fmt.Sprintf("http://localhost:%d", port))
 	if err != nil {
 		return fmt.Errorf("invalid proxy target: %v", err)
 	}
@@ -406,11 +436,8 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Projects API
 	projects.RegisterAPI(mux)
 
-	// Agents API (skip health check in quick-test mode)
+	// Agents API
 	agents.RegisterAPI(mux)
-	if !quickTestMode {
-		opencode.StartHealthCheck()
-	}
 
 	// Checkpoint API
 	checkpoint.RegisterAPI(mux)
@@ -438,18 +465,6 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Exposed URLs API
 	exposedurls.RegisterAPI(mux)
-
-	// Initialize unified tunnel with existing mappings from config
-	go func() {
-		// Wait a bit for server to fully start
-		time.Sleep(2 * time.Second)
-
-		// Add existing domains to unified tunnel
-		domains.InitDomainTunnels()
-
-		// Add existing exposed URLs to unified tunnel
-		exposedurls.InitExposedURLTunnels()
-	}()
 
 	// Keep-alive proxy API
 	keepalive.RegisterAPI(mux)

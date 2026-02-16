@@ -1,0 +1,33 @@
+.mockup-page-container {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    box-sizing: border-box;
+}
+
+.mockup-page-header {
+    margin-bottom: 20px;
+    flex-shrink: 0;
+    text-align: left;
+}
+
+.mockup-page-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #f1f5f9;
+    margin: 0 0 8px 0;
+    text-align: left;
+}
+
+.mockup-page-description {
+    font-size: 14px;
+    color: #94a3b8;
+    margin: 0;
+}
+
+.mockup-page-content {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}

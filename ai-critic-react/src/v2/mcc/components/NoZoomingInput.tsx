@@ -1,4 +1,5 @@
 import type { ReactNode, CSSProperties } from 'react';
+import './NoZoomingInput.css';
 
 export interface NoZoomingInputProps {
     children: ReactNode;
@@ -6,14 +7,9 @@ export interface NoZoomingInputProps {
     style?: CSSProperties;
 }
 
-const noZoomStyle: CSSProperties = {
-    fontSize: '16px',
-    touchAction: 'manipulation',
-};
-
 export function NoZoomingInput({ children, className, style }: NoZoomingInputProps) {
     return (
-        <div className={className} style={{ ...noZoomStyle, ...style }}>
+        <div className={`nozooming-input-wrapper ${className || ''}`} style={style}>
             {children}
         </div>
     );

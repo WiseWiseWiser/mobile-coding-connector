@@ -3,6 +3,8 @@ import { MobileWorkspace } from './MobileWorkspace';
 import { MobileCodingConnector } from './v2';
 import { ServerFiles } from './ServerFiles';
 import { NewTerminalMockup } from './NewTerminalMockup';
+import { NoZoomingInputDemo } from './NoZoomingInputDemo';
+import { ActionItemCardMockup } from './ActionItemCardMockup';
 import './MockupsPage.css';
 
 interface MockupItem {
@@ -13,6 +15,12 @@ interface MockupItem {
 }
 
 const mockups: MockupItem[] = [
+    {
+        id: 'action-card',
+        name: 'Action Item Card',
+        description: 'Mobile-optimized action card with expandable script and streaming logs',
+        component: ActionItemCardMockup,
+    },
     {
         id: 'new-terminal',
         name: 'New Terminal',
@@ -36,6 +44,12 @@ const mockups: MockupItem[] = [
         name: 'Server Files',
         description: 'Redesigned mobile-first file browser with tree view, file actions, and navigation',
         component: ServerFiles,
+    },
+    {
+        id: 'nozoom-input',
+        name: 'No Zooming Input',
+        description: 'Demo of inputs that prevent iOS Safari zooming',
+        component: NoZoomingInputDemo,
     },
 ];
 

@@ -1,0 +1,233 @@
+/* Mockup-specific styles - ActionCard styles are in pure-view */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+.mockup-page-container {
+    text-align: left;
+}
+
+.mockup-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.mockup-tab {
+    padding: 8px 16px;
+    border: 1px solid #334155;
+    background: #1e293b;
+    border-radius: 20px;
+    font-size: 13px;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mockup-tab:hover {
+    background: #334155;
+}
+
+.mockup-tab.active {
+    background: #3b82f6;
+    color: #fff;
+    border-color: #3b82f6;
+}
+
+.mockup-preview {
+    background: #0f172a;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 24px;
+}
+
+/* Edit Modal Styles */
+.mockup-edit-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.mockup-edit-modal {
+    background: #1e293b;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+    border: 1px solid #334155;
+}
+
+.mockup-edit-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #334155;
+}
+
+.mockup-edit-modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+.mockup-edit-modal-close {
+    background: none;
+    border: none;
+    color: #64748b;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.mockup-edit-modal-close:hover {
+    background: rgba(100, 116, 139, 0.2);
+    color: #94a3b8;
+}
+
+.mockup-edit-modal-body {
+    padding: 20px;
+}
+
+.mockup-edit-field {
+    margin-bottom: 16px;
+}
+
+.mockup-edit-field:last-child {
+    margin-bottom: 0;
+}
+
+.mockup-edit-field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: #94a3b8;
+    margin-bottom: 8px;
+}
+
+.mockup-edit-field input,
+.mockup-edit-field select,
+.mockup-edit-field textarea {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 14px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #f1f5f9;
+    box-sizing: border-box;
+    font-family: inherit;
+}
+
+.mockup-edit-field input:focus,
+.mockup-edit-field select:focus,
+.mockup-edit-field textarea:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.mockup-edit-field textarea {
+    resize: vertical;
+    font-family: 'IBM Plex Mono', 'Monaco', 'Menlo', monospace;
+}
+
+.mockup-edit-modal-footer {
+    display: flex;
+    gap: 12px;
+    padding: 16px 20px;
+    border-top: 1px solid #334155;
+}
+
+.mockup-edit-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+}
+
+.mockup-edit-btn-cancel {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+.mockup-edit-btn-cancel:hover {
+    background: #475569;
+}
+
+.mockup-edit-btn-save {
+    background: #3b82f6;
+    color: #fff;
+}
+
+.mockup-edit-btn-save:hover {
+    background: #2563eb;
+}
+
+/* Mockup Notes */
+.mockup-notes {
+    background: #1e293b;
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: 24px;
+    border: 1px solid #334155;
+}
+
+.mockup-notes h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #f1f5f9;
+    margin: 0 0 12px 0;
+}
+
+.mockup-notes ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.mockup-notes li {
+    font-size: 13px;
+    color: #94a3b8;
+    margin-bottom: 8px;
+    line-height: 1.5;
+}
+
+.mockup-notes li:last-child {
+    margin-bottom: 0;
+}
+
+.mockup-notes strong {
+    color: #f1f5f9;
+}
+
+/* iPhone viewport simulation */
+@media (max-width: 400px) {
+    .mockup-tabs {
+        gap: 6px;
+    }
+    
+    .mockup-tab {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+}

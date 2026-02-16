@@ -1,4 +1,4 @@
-import { LogViewer } from './LogViewer';
+import { LogViewer } from '../pure-view/LogViewer';
 import type { StreamingActionState } from '../hooks/useStreamingAction';
 import './StreamingActionButton.css';
 

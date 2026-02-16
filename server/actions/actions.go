@@ -30,15 +30,59 @@ type ActionStatus struct {
 	Running    bool      `json:"running"`
 	StartedAt  time.Time `json:"started_at,omitempty"`
 	FinishedAt time.Time `json:"finished_at,omitempty"`
-	Logs       []string  `json:"logs"`
+	Logs       LogBuffer `json:"logs"`
 	ExitCode   int       `json:"exit_code,omitempty"`
 	PID        int       `json:"pid,omitempty"`
+}
+
+// LogBuffer keeps first 100 and last 100 lines
+type LogBuffer struct {
+	First []string `json:"first"`
+	Last  []string `json:"last"`
+	Total int      `json:"total"`
+}
+
+const maxLogLines = 100
+
+// addLog adds a log line to the buffer (first 100 + last 100)
+func (lb *LogBuffer) addLog(line string) {
+	lb.Total++
+	if lb.Total <= maxLogLines {
+		lb.First = append(lb.First, line)
+	}
+	lb.Last = append(lb.Last, line)
+	if len(lb.Last) > maxLogLines {
+		lb.Last = lb.Last[1:]
+		if len(lb.First) < maxLogLines {
+			lb.First = append(lb.First, lb.Last[0])
+		}
+	}
+}
+
+// ToStringArray returns all logs as a single array with gap indicator
+func (lb *LogBuffer) ToStringArray() []string {
+	if lb.Total <= 200 {
+		result := make([]string, lb.Total)
+		copy(result, lb.First)
+		if len(lb.First) < lb.Total {
+			copy(result[len(lb.First):], lb.Last)
+		}
+		return result
+	}
+	// More than 200 lines: show first 100, gap, last 100
+	gap := []string{fmt.Sprintf("... %d lines omitted ...", lb.Total-200)}
+	result := make([]string, 0, 202)
+	result = append(result, lb.First...)
+	result = append(result, gap...)
+	result = append(result, lb.Last...)
+	return result
 }
 
 // ActionRunRequest represents a request to run an action
 type ActionRunRequest struct {
 	ProjectDir string `json:"project_dir"`
 	Script     string `json:"script"`
+	ActionID   string `json:"action_id,omitempty"`
 }
 
 // ActionStateFile represents the persisted state of actions
@@ -51,7 +95,42 @@ var (
 	mu              sync.RWMutex
 	actionStatuses  = make(map[string]*ActionStatus)
 	actionProcesses = make(map[string]*exec.Cmd)
+
+	// SSE broadcast: map actionID -> set of SSE writers
+	sseSubscribers   = make(map[string]map[*sse.Writer]bool)
+	sseSubscribersMu sync.RWMutex
 )
+
+// Subscribe adds an SSE writer to the action's subscriber list
+func Subscribe(actionID string, sw *sse.Writer) {
+	sseSubscribersMu.Lock()
+	defer sseSubscribersMu.Unlock()
+	if sseSubscribers[actionID] == nil {
+		sseSubscribers[actionID] = make(map[*sse.Writer]bool)
+	}
+	sseSubscribers[actionID][sw] = true
+}
+
+// Unsubscribe removes an SSE writer from the action's subscriber list
+func Unsubscribe(actionID string, sw *sse.Writer) {
+	sseSubscribersMu.Lock()
+	defer sseSubscribersMu.Unlock()
+	if sseSubscribers[actionID] != nil {
+		delete(sseSubscribers[actionID], sw)
+		if len(sseSubscribers[actionID]) == 0 {
+			delete(sseSubscribers, actionID)
+		}
+	}
+}
+
+// Broadcast sends a message to all subscribers of an action
+func Broadcast(actionID string, msg map[string]string) {
+	sseSubscribersMu.RLock()
+	defer sseSubscribersMu.RUnlock()
+	for sw := range sseSubscribers[actionID] {
+		sw.Send(msg)
+	}
+}
 
 // getActionsDir returns the directory for storing actions.json
 type ActionsDir interface {
@@ -302,24 +381,39 @@ func RunActionWithID(actionID string, projectDir string, script string, w http.R
 
 	// Set up status tracking if actionID provided
 	var status *ActionStatus
+	var projectName string
 	if actionID != "" {
+		// Extract project name from projectDir
+		projectName = filepath.Base(projectDir)
 		status = &ActionStatus{
 			ActionID:  actionID,
 			Running:   true,
 			StartedAt: time.Now(),
-			Logs:      []string{},
+			Logs:      LogBuffer{},
 		}
 		mu.Lock()
 		actionStatuses[actionID] = status
 		mu.Unlock()
 	}
 
+	// Track log count for periodic save
+	logCount := 0
+
 	log := func(msg string) {
 		sw.SendLog(msg)
 		if status != nil {
 			mu.Lock()
-			status.Logs = append(status.Logs, msg)
+			status.Logs.addLog(msg)
+			logCount++
 			mu.Unlock()
+
+			// Save to disk every 10 logs or every 5 seconds
+			if logCount%10 == 0 && projectName != "" {
+				go saveStatusPeriodically(actionID, status, projectName)
+			}
+		}
+		if actionID != "" {
+			Broadcast(actionID, map[string]string{"type": "log", "message": msg})
 		}
 	}
 
@@ -336,7 +430,7 @@ func RunActionWithID(actionID string, projectDir string, script string, w http.R
 		if len(parts) == 0 {
 			log("Empty script")
 			sw.SendDone(map[string]string{"success": "false", "message": "Empty script"})
-			clearStatus(actionID, status, -1)
+			clearStatus(actionID, status, -1, projectName)
 			return nil
 		}
 		cmd = exec.Command(parts[0], parts[1:]...)
@@ -371,12 +465,18 @@ func RunActionWithID(actionID string, projectDir string, script string, w http.R
 		}
 		log(fmt.Sprintf("Action failed: %v", err))
 		sw.SendDone(map[string]string{"success": "false", "message": err.Error()})
+		if actionID != "" {
+			Broadcast(actionID, map[string]string{"type": "done", "success": "false", "message": err.Error()})
+		}
 	} else {
 		log("Action completed successfully")
 		sw.SendDone(map[string]string{"success": "true", "message": "Action completed successfully"})
+		if actionID != "" {
+			Broadcast(actionID, map[string]string{"type": "done", "success": "true", "message": "Action completed successfully"})
+		}
 	}
 
-	clearStatus(actionID, status, exitCode)
+	clearStatus(actionID, status, exitCode, projectName)
 	return nil
 }
 
@@ -391,7 +491,7 @@ func (lw *logWriter) Write(p []byte) (n int, err error) {
 }
 
 // clearStatus clears the running status after completion
-func clearStatus(actionID string, status *ActionStatus, exitCode int) {
+func clearStatus(actionID string, status *ActionStatus, exitCode int, projectName string) {
 	if status == nil {
 		return
 	}
@@ -407,14 +507,13 @@ func clearStatus(actionID string, status *ActionStatus, exitCode int) {
 	delete(actionProcesses, actionID)
 
 	// Save to disk
-	projectName := filepath.Base(filepath.Dir(getActionsFile("")))
 	statuses := make(map[string]ActionStatus)
 	statuses[actionID] = *status
 	saveState(projectName, statuses)
 }
 
 // StopAction stops a running action by ID
-func StopAction(actionID string) error {
+func StopAction(actionID string, projectName string) error {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -434,10 +533,9 @@ func StopAction(actionID string) error {
 		status.Running = false
 		status.FinishedAt = time.Now()
 		status.ExitCode = -1
-		status.Logs = append(status.Logs, "Action stopped by user")
+		status.Logs.addLog("Action stopped by user")
 
 		// Save to disk
-		projectName := filepath.Base(filepath.Dir(getActionsFile("")))
 		statuses := make(map[string]ActionStatus)
 		statuses[actionID] = *status
 		saveState(projectName, statuses)
@@ -449,6 +547,64 @@ func StopAction(actionID string) error {
 	return nil
 }
 
+// handleActionStream provides SSE stream for subscribing to action logs
+func handleActionStream(w http.ResponseWriter, r *http.Request) {
+	actionID := strings.TrimPrefix(r.URL.Path, "/api/actions/stream/")
+	if actionID == "" {
+		respondErr(w, http.StatusBadRequest, "action ID is required")
+		return
+	}
+
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		respondErr(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	Subscribe(actionID, sw)
+	defer Unsubscribe(actionID, sw)
+
+	// Send current status and logs if action is running
+	mu.RLock()
+	status := actionStatuses[actionID]
+	mu.RUnlock()
+
+	if status != nil && status.Running {
+		// Send current logs first (first + last, avoiding duplicates)
+		for _, line := range status.Logs.First {
+			sw.SendLog(line)
+		}
+		for _, line := range status.Logs.Last {
+			// Check if already sent in First
+			alreadySent := false
+			for _, f := range status.Logs.First {
+				if f == line {
+					alreadySent = true
+					break
+				}
+			}
+			if !alreadySent {
+				sw.SendLog(line)
+			}
+		}
+
+		// Send running status
+		sw.SendStatus("running", nil)
+	}
+
+	// Keep connection open until client disconnects
+	<-r.Context().Done()
+}
+
+// saveStatusPeriodically saves action status to disk without blocking
+func saveStatusPeriodically(actionID string, status *ActionStatus, projectName string) {
+	statuses := make(map[string]ActionStatus)
+	mu.RLock()
+	statuses[actionID] = *status
+	mu.RUnlock()
+	saveState(projectName, statuses)
+}
+
 // RegisterAPI registers the actions API endpoints
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/actions", handleActions)
@@ -456,6 +612,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/actions/run", handleRunAction)
 	mux.HandleFunc("/api/actions/status", handleActionStatus)
 	mux.HandleFunc("/api/actions/stop", handleActionStop)
+	mux.HandleFunc("/api/actions/stream/", handleActionStream)
 }
 
 func handleActions(w http.ResponseWriter, r *http.Request) {
@@ -574,7 +731,7 @@ func handleRunAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run the action with SSE streaming
-	if err := RunAction(req.ProjectDir, req.Script, w); err != nil {
+	if err := RunActionWithID(req.ActionID, req.ProjectDir, req.Script, w); err != nil {
 		respondErr(w, http.StatusInternalServerError, err.Error())
 	}
 }
@@ -622,7 +779,8 @@ func handleActionStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := StopAction(actionID)
+	project := r.URL.Query().Get("project")
+	err := StopAction(actionID, project)
 	if err != nil {
 		respondErr(w, http.StatusInternalServerError, err.Error())
 		return

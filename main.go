@@ -7,6 +7,7 @@ import (
 
 	"github.com/xhd2015/lifelog-private/ai-critic/run"
 	"github.com/xhd2015/lifelog-private/ai-critic/server"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
 )
 
 //go:embed ai-critic-react/dist
@@ -23,9 +24,21 @@ func main() {
 	for _, arg := range os.Args[1:] {
 		if arg == "--quick-test" {
 			server.SetQuickTestMode(true)
-			break
+			auth.SetQuickTestMode(true)
+		}
+		if arg == "--frontend-port" {
+			// Next arg should be the port
 		}
 	}
+
+	// Set frontend port (default 18432 for quick-test)
+	frontendPort := 18432
+	for i, arg := range os.Args[1:] {
+		if arg == "--frontend-port" && i+1 < len(os.Args[1:]) {
+			fmt.Sscanf(os.Args[i+2], "%d", &frontendPort)
+		}
+	}
+	server.SetFrontendPort(frontendPort)
 
 	err := run.Run(os.Args[1:])
 	if err != nil {

@@ -10,9 +10,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
@@ -186,17 +184,7 @@ func Run(args []string) error {
 
 	// Skip auto-start operations in quick-test mode
 	if !quickTestMode {
-		// Auto-start Cloudflare tunnels for configured domains
-		fmt.Println("[run] Calling domains.AutoStartTunnels()")
-		domains.AutoStartTunnels()
-
-		// Auto-start opencode web server if a domain mapping is configured
-		fmt.Println("[run] Calling opencode.AutoStartWebServer()")
-		opencode.AutoStartWebServer()
-
-		// Start unified tunnel manager global health checks
-		// This monitors all mappings (domains + port forwards) and restarts them after 3 failures
-		cloudflare.StartGlobalHealthChecks()
+		server.RunSideEffectTasks()
 	}
 
 	if component != "" {

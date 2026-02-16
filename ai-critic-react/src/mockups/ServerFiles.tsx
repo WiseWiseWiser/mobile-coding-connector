@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { MockupPageContainer } from './MockupPageContainer';
 import './ServerFiles.css';
 
 interface FileItem {
@@ -54,7 +55,10 @@ export function ServerFiles() {
     };
 
     return (
-        <div className="server-files">
+        <MockupPageContainer 
+            title="Server Files"
+            description="Redesigned mobile-first file browser with tree view, file actions, and navigation"
+        >
             <div className="server-files-header">
                 <div className="server-files-path-bar">
                     <div className="server-files-path-label">Path:</div>
@@ -104,6 +108,6 @@ export function ServerFiles() {
                     </div>
                 ))}
             </div>
-        </div>
+        </MockupPageContainer>
     );
 }

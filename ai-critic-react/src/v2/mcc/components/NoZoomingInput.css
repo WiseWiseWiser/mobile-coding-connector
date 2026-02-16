@@ -1,0 +1,17 @@
+.nozooming-input-wrapper {
+    font-size: 16px;
+}
+
+.nozooming-input-wrapper input,
+.nozooming-input-wrapper textarea,
+.nozooming-input-wrapper select {
+    font-size: 16px !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nozooming-input-wrapper input:focus,
+.nozooming-input-wrapper textarea:focus,
+.nozooming-input-wrapper select:focus {
+    font-size: 16px !important;
+}

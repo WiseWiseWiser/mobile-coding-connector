@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
-import { fetchActions, createAction, updateAction, deleteAction, runAction, fetchActionStatus, stopAction } from '../../../api/actions';
-import type { Action, ActionStatus } from '../../../api/actions';
+import { useState, useEffect, useRef } from 'react';
+import { fetchActions, createAction, updateAction, deleteAction, runAction, fetchActionStatus, stopAction, streamActionLogs } from '../../../api/actions';
+import type { Action, ActionStatus, LogBuffer } from '../../../api/actions';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import type { LogLine } from '../../LogViewer';
 import { NoZoomingInput } from '../components/NoZoomingInput';
+import { ActionIconSelector, ActionCard, ConfirmModal } from '../../../pure-view';
 import './ActionsView.css';
 
 interface ActionsViewProps {
@@ -11,20 +12,9 @@ interface ActionsViewProps {
     projectDir: string;
 }
 
-const ICON_OPTIONS = [
-    { value: '🔨', label: 'Hammer (Build)' },
-    { value: '📋', label: 'Clipboard (Lint)' },
-    { value: '🚀', label: 'Rocket (Deploy)' },
-    { value: '▶️', label: 'Play (Run)' },
-    { value: '🧪', label: 'Test Tube (Test)' },
-    { value: '📦', label: 'Package (Package)' },
-    { value: '🔄', label: 'Sync (Update)' },
-    { value: '🧹', label: 'Broom (Clean)' },
-    { value: '📊', label: 'Chart (Analyze)' },
-    { value: '⚙️', label: 'Gear (Configure)' },
-    { value: '🔍', label: 'Search (Find)' },
-    { value: '✅', label: 'Check (Verify)' },
-];
+// Store for resumed streaming logs (actionId -> logs)
+const streamingLogsStore = new Map<string, LogLine[]>();
+const streamingRunningStore = new Map<string, boolean>();
 
 export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
     const [actions, setActions] = useState<Action[]>([]);
@@ -33,7 +23,7 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
     const [editingAction, setEditingAction] = useState<Action | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [actionStatuses, setActionStatuses] = useState<Record<string, ActionStatus>>({});
-    const [expandedActionId, setExpandedActionId] = useState<string | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState<{ actionId: string; name: string } | null>(null);
 
     const [formName, setFormName] = useState('');
     const [formIcon, setFormIcon] = useState('▶️');
@@ -41,17 +31,110 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
 
     const [runState, runControls] = useStreamingAction();
     const [currentRunningId, setCurrentRunningId] = useState<string | null>(null);
+    
+    // Track which actions we're already streaming
+    const streamingActionsRef = useRef<Set<string>>(new Set());
+    const eventSourcesRef = useRef<Map<string, EventSource>>(new Map());
+    // Force re-render for resumed logs
+    const [, setResumedLogCount] = useState(0);
 
     useEffect(() => {
         loadActions();
         loadStatuses();
+        
+        // Poll for running actions every 5 seconds
+        const pollInterval = setInterval(() => {
+            loadStatuses();
+        }, 5000);
+        
+        return () => clearInterval(pollInterval);
     }, [projectName]);
 
+    // Effect to handle resuming running actions
     useEffect(() => {
-        if (currentRunningId) {
-            setExpandedActionId(currentRunningId);
-        }
-    }, [currentRunningId]);
+        const runningActions = Object.entries(actionStatuses).filter(([_, status]) => status.running);
+        
+        runningActions.forEach(([actionId, status]) => {
+            // Skip if this is the currently running action in this session
+            if (actionId === currentRunningId) return;
+            
+            // Skip if already streaming this action
+            if (streamingActionsRef.current.has(actionId)) return;
+            
+            // Mark as streaming
+            streamingActionsRef.current.add(actionId);
+            
+            // Initialize logs from status
+            const logBuffer = status.logs as LogBuffer | undefined;
+            if (logBuffer) {
+                const logs: LogLine[] = [];
+                logBuffer.first.forEach(line => logs.push({ text: line }));
+                if (logBuffer.total > 200) {
+                    logs.push({ text: `... ${logBuffer.total - 200} lines omitted ...`, error: false });
+                }
+                const firstSet = new Set(logBuffer.first);
+                logBuffer.last.forEach(line => {
+                    if (!firstSet.has(line)) {
+                        logs.push({ text: line });
+                    }
+                });
+                streamingLogsStore.set(actionId, logs);
+            }
+            streamingRunningStore.set(actionId, true);
+            setResumedLogCount(n => n + 1);
+            
+            // Connect to SSE stream
+            const eventSource = streamActionLogs(actionId, {
+                onLog: (message) => {
+                    const logs = streamingLogsStore.get(actionId) || [];
+                    logs.push({ text: message });
+                    streamingLogsStore.set(actionId, logs);
+                    setResumedLogCount(n => n + 1);
+                },
+                onDone: () => {
+                    streamingRunningStore.set(actionId, false);
+                    streamingActionsRef.current.delete(actionId);
+                    eventSourcesRef.current.delete(actionId);
+                    loadStatuses();
+                    setResumedLogCount(n => n + 1);
+                },
+                onError: () => {
+                    streamingRunningStore.set(actionId, false);
+                    streamingActionsRef.current.delete(actionId);
+                    eventSourcesRef.current.delete(actionId);
+                    setResumedLogCount(n => n + 1);
+                },
+                onStatus: (status) => {
+                    streamingRunningStore.set(actionId, status === 'running');
+                    setResumedLogCount(n => n + 1);
+                },
+            });
+            eventSourcesRef.current.set(actionId, eventSource);
+        });
+        
+        // Cleanup: close streams for actions that are no longer running
+        streamingActionsRef.current.forEach(actionId => {
+            if (!actionStatuses[actionId]?.running) {
+                const es = eventSourcesRef.current.get(actionId);
+                if (es) {
+                    es.close();
+                    eventSourcesRef.current.delete(actionId);
+                }
+                streamingActionsRef.current.delete(actionId);
+                streamingRunningStore.delete(actionId);
+            }
+        });
+    }, [actionStatuses, currentRunningId]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            eventSourcesRef.current.forEach(es => es.close());
+            eventSourcesRef.current.clear();
+            streamingLogsStore.clear();
+            streamingRunningStore.clear();
+        };
+    }, []);
 
     const loadActions = async () => {
         setLoading(true);
@@ -127,13 +210,12 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
         }
     };
 
-    const handleDelete = async (actionId: string) => {
-        if (!confirm('Are you sure you want to delete this action?')) {
-            return;
-        }
+    const handleDelete = async () => {
+        if (!deleteConfirm) return;
 
         try {
-            await deleteAction(projectName, actionId);
+            await deleteAction(projectName, deleteConfirm.actionId);
+            setDeleteConfirm(null);
             await loadActions();
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Failed to delete action');
@@ -159,7 +241,7 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
 
     const handleStop = async (actionId: string) => {
         try {
-            await stopAction(actionId);
+            await stopAction(projectName, actionId);
             setCurrentRunningId(null);
             loadStatuses();
         } catch (e) {
@@ -169,16 +251,53 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
 
     const isEditing = isCreating || editingAction !== null;
 
-    const isRunning = (actionId: string) => {
-        return currentRunningId === actionId || actionStatuses[actionId]?.running;
-    };
-
     const getActionLogs = (actionId: string): LogLine[] => {
+        // Priority: live streaming logs > resumed streaming logs > cached logs
         if (currentRunningId === actionId) {
             return runState.logs;
         }
-        const logs = actionStatuses[actionId]?.logs || [];
-        return logs.map((text: string) => ({ text, error: false }));
+        
+        // Check if we have resumed streaming logs for this action
+        if (streamingLogsStore.has(actionId)) {
+            return streamingLogsStore.get(actionId)!;
+        }
+        
+        // Fall back to cached logs from status
+        const logBuffer = actionStatuses[actionId]?.logs as LogBuffer | undefined;
+        if (!logBuffer) return [];
+        
+        const logs: LogLine[] = [];
+        
+        // Add first 100 lines
+        logBuffer.first.forEach(line => logs.push({ text: line }));
+        
+        // If there's a gap (more than 200 total), add gap indicator
+        if (logBuffer.total > 200) {
+            logs.push({ text: `... ${logBuffer.total - 200} lines omitted ...`, error: false });
+        }
+        
+        // Add last 100 lines (skipping duplicates from first)
+        const firstSet = new Set(logBuffer.first);
+        logBuffer.last.forEach(line => {
+            if (!firstSet.has(line)) {
+                logs.push({ text: line });
+            }
+        });
+        
+        return logs;
+    };
+
+    const isActionRunning = (actionId: string): boolean => {
+        // Check current session first
+        if (currentRunningId === actionId) return runState.running;
+        
+        // Check resumed streaming
+        if (streamingRunningStore.has(actionId)) {
+            return streamingRunningStore.get(actionId)!;
+        }
+        
+        // Fall back to status
+        return actionStatuses[actionId]?.running || false;
     };
 
     return (
@@ -215,17 +334,10 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
 
                             <div className="mcc-actions-form-row">
                                 <label className="mcc-actions-form-label">Icon</label>
-                                <select
-                                    className="mcc-actions-form-select"
+                                <ActionIconSelector
                                     value={formIcon}
-                                    onChange={(e) => setFormIcon(e.target.value)}
-                                >
-                                    {ICON_OPTIONS.map((opt) => (
-                                        <option key={opt.value} value={opt.value}>
-                                            {opt.value} {opt.label}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={setFormIcon}
+                                />
                             </div>
 
                             <div className="mcc-actions-form-row">
@@ -261,89 +373,46 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
                             ) : (
                                 <div className="mcc-actions-list">
                                     {actions.map((action) => {
-                                        const running = isRunning(action.id);
+                                        const running = isActionRunning(action.id);
                                         const logs = getActionLogs(action.id);
-                                        const expanded = expandedActionId === action.id;
+                                        const status = actionStatuses[action.id];
 
                                         return (
-                                            <div key={action.id} className={`mcc-action-item ${running ? 'running' : ''}`}>
-                                                <div className="mcc-action-main">
-                                                    <button
-                                                        className="mcc-action-run-btn"
-                                                        onClick={() => handleRun(action)}
-                                                        disabled={running}
-                                                    >
-                                                        <span className="mcc-action-icon">{action.icon || '▶️'}</span>
-                                                        <span className="mcc-action-name">{action.name}</span>
-                                                        {running && (
-                                                            <span className="mcc-action-running">Running</span>
-                                                        )}
-                                                    </button>
-                                                    
-                                                    {running && (
-                                                        <button
-                                                            className="mcc-action-stop-btn"
-                                                            onClick={() => handleStop(action.id)}
-                                                            title="Stop"
-                                                        >
-                                                            ⏹
-                                                        </button>
-                                                    )}
-
-                                                    <div className="mcc-action-controls">
-                                                        <button
-                                                            className="mcc-action-expand-btn"
-                                                            onClick={() => setExpandedActionId(expanded ? null : action.id)}
-                                                            title={expanded ? 'Collapse' : 'Expand'}
-                                                        >
-                                                            {expanded ? '▼' : '▶'}
-                                                        </button>
-                                                        <button
-                                                            className="mcc-action-edit-btn"
-                                                            onClick={() => handleStartEdit(action)}
-                                                            title="Edit"
-                                                        >
-                                                            ✎
-                                                        </button>
-                                                        <button
-                                                            className="mcc-action-delete-btn"
-                                                            onClick={() => handleDelete(action.id)}
-                                                            title="Delete"
-                                                        >
-                                                            ×
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                <div className="mcc-action-script-row">
-                                                    <code className="mcc-action-script">{action.script}</code>
-                                                </div>
-
-                                                {expanded && (
-                                                    <div className="mcc-action-logs-section">
-                                                        <div className="mcc-action-logs-header">
-                                                            {running ? 'Running...' : logs.length > 0 ? 'Logs' : 'No logs'}
-                                                            {actionStatuses[action.id]?.exit_code !== undefined && !running && (
-                                                                <span className={`mcc-action-exit-code ${actionStatuses[action.id].exit_code === 0 ? 'success' : 'error'}`}>
-                                                                    Exit: {actionStatuses[action.id].exit_code}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        {logs.length > 0 && (
-                                                            <div className="mcc-action-logs">
-                                                                {logs.map((log, i) => (
-                                                                    <div key={i} className={`mcc-action-log-line ${log.error ? 'error' : ''}`}>{log.text}</div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
+                                            <div key={action.id} style={{ marginBottom: 12 }}>
+                                                <ActionCard
+                                                    name={action.name}
+                                                    icon={action.icon || '▶️'}
+                                                    script={action.script}
+                                                    running={running}
+                                                    exitCode={status?.exit_code}
+                                                    logs={logs}
+                                                    onRun={() => handleRun(action)}
+                                                    onStop={() => handleStop(action.id)}
+                                                    onEdit={() => handleStartEdit(action)}
+                                                    onDelete={() => setDeleteConfirm({ actionId: action.id, name: action.name })}
+                                                />
                                             </div>
                                         );
                                     })}
                                 </div>
                             )}
                         </>
+                    )}
+
+                    {/* Delete Confirmation Modal */}
+                    {deleteConfirm && (
+                        <ConfirmModal
+                            title="Delete Action"
+                            message={`Are you sure you want to delete "${deleteConfirm.name}"? This action cannot be undone.`}
+                            info={{
+                                Action: deleteConfirm.name,
+                            }}
+                            command={`Delete action "${deleteConfirm.name}"`}
+                            confirmLabel="Delete"
+                            confirmVariant="danger"
+                            onConfirm={handleDelete}
+                            onClose={() => setDeleteConfirm(null)}
+                        />
                     )}
                 </>
             )}
