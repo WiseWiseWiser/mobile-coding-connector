@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
+
+	exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
 )
 
 var (
@@ -213,8 +215,8 @@ func restartOpencodeServerWithoutTunnel() error {
 		port = 4096 // default port
 	}
 
-	// Clean up old instance
-	ShutdownOpencodeServer()
+	// Clean up old instance using the new package
+	exposed.Stop()
 
 	// Use the same function as the "Start" button to start the server
 	// This will automatically use the configured binary path from agent settings

@@ -13,6 +13,8 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
+
+	exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
 )
 
 // WebServerProcessID is the ID used for managing the web server subprocess
@@ -231,10 +233,14 @@ func ControlWebServer(action string, customPath string) (*WebServerControlRespon
 
 // startWebServer attempts to start the OpenCode web server.
 // The customPath parameter allows using a user-configured binary path.
-// It delegates to GetOrStartOpencodeServer for single instance management.
+// It uses the exposed_opencode package for strict port and password handling.
 func startWebServer(settings *Settings, customPath string) (*WebServerControlResponse, error) {
-	// Use GetOrStartOpencodeServer for single instance
-	server, err := GetOrStartOpencodeServer()
+	port := settings.WebServer.Port
+	if port == 0 {
+		port = 4096
+	}
+
+	server, err := exposed.StartWithSettings(port, settings.WebServer.Password, customPath)
 	if err != nil {
 		return &WebServerControlResponse{
 			Success: false,
@@ -243,7 +249,6 @@ func startWebServer(settings *Settings, customPath string) (*WebServerControlRes
 		}, nil
 	}
 
-	// Update settings to mark web server as enabled
 	settings.WebServer.Enabled = true
 	settings.WebServer.Port = server.Port
 	SaveSettings(settings)
@@ -260,8 +265,8 @@ func startWebServer(settings *Settings, customPath string) (*WebServerControlRes
 func stopWebServer(settings *Settings, customPath string) (*WebServerControlResponse, error) {
 	port := settings.WebServer.Port
 
-	// Stop using ShutdownOpencodeServer which handles the serverInstance
-	ShutdownOpencodeServer()
+	// Stop using exposed_opencode package
+	exposed.Stop()
 
 	// Also try the standard opencode stop command as fallback
 	cmd, err := tool_exec.New("opencode", []string{"web", "stop"}, &tool_exec.Options{

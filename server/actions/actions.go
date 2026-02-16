@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
@@ -445,6 +446,9 @@ func RunActionWithID(actionID string, projectDir string, script string, w http.R
 
 	cmd.Dir = projectDir
 
+	// Create process group to ensure child processes are killed together
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
 	// Set up environment with PATH additions
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	cmd.Env = tool_resolve.AppendExtraPaths(cmd.Env)
@@ -522,10 +526,14 @@ func StopAction(actionID string, projectName string) error {
 		return fmt.Errorf("action %s is not running", actionID)
 	}
 
-	// Try to kill the process
-	err := cmd.Process.Kill()
-	if err != nil {
-		return fmt.Errorf("failed to stop action: %v", err)
+	// Kill the entire process group (including child processes)
+	pgid, err := syscall.Getpgid(cmd.Process.Pid)
+	if err == nil {
+		// Kill the entire process group with negative PID
+		syscall.Kill(-pgid, syscall.SIGKILL)
+	} else {
+		// Fallback to killing just the process
+		cmd.Process.Kill()
 	}
 
 	// Update status
