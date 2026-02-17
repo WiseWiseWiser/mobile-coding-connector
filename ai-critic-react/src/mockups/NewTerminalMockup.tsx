@@ -10,12 +10,17 @@ interface TerminalTab {
     history: LogLine[];
     active: boolean;
     exited: boolean;
+    streaming?: boolean;
+    disconnected?: boolean;
 }
 
 interface LogLine {
     text: string;
     type: 'command' | 'output' | 'error';
+    streaming?: boolean;
 }
+
+type TerminalVariant = 'normal' | 'streaming' | 'exited' | 'disconnected';
 
 type CommandMock = LogLine[] | ((args: string[]) => LogLine[]);
 
@@ -53,6 +58,7 @@ const COMMAND_MOCKS: Record<string, CommandMock> = {
 let tabCounter = 1;
 
 export function NewTerminalMockup(_props: NewTerminalMockupProps) {
+    const [variant, setVariant] = useState<TerminalVariant>('normal');
     const [showKeyboard, setShowKeyboard] = useState(false);
     const [ctrlMode, setCtrlMode] = useState(false);
     const [tabs, setTabs] = useState<TerminalTab[]>([
@@ -92,6 +98,42 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
         }
     }, [showKeyboard]);
 
+    useEffect(() => {
+        if (variant === 'streaming' && activeTab) {
+            const streamingTexts = [
+                'Building...',
+                'Compiling assets...',
+                'Optimizing images...',
+                'Generating chunks...',
+                'Done!',
+            ];
+            let idx = 0;
+            
+            const addNextLine = () => {
+                if (idx >= streamingTexts.length || variant !== 'streaming') return;
+                
+                setTabs(tabs.map(t => 
+                    t.id === activeTabId 
+                        ? { 
+                            ...t, 
+                            history: [
+                                ...t.history, 
+                                { text: streamingTexts[idx], type: 'output', streaming: true }
+                            ] 
+                        }
+                        : t
+                ));
+                idx++;
+                
+                if (idx < streamingTexts.length) {
+                    setTimeout(addNextLine, 500 + Math.random() * 500);
+                }
+            };
+            
+            addNextLine();
+        }
+    }, [variant]);
+
     const handleInputKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -103,7 +145,6 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
         if (!inputRef.current || !activeTab) return;
         
         const text = inputRef.current.textContent?.trim() || '';
-        if (!text) return;
 
         const parts = text.split(' ');
         const cmd = parts[0].toLowerCase();
@@ -146,7 +187,11 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
                 { text: '', type: 'output' },
             ];
         } else {
-            newHistory = activeTab.history;
+            newHistory = [
+                ...activeTab.history,
+                { text: `$ ${text}`, type: 'command' },
+                { text: '', type: 'output' },
+            ];
         }
         
         setTabs(tabs.map(t => 
@@ -279,7 +324,10 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
         }
     };
 
-    const getLineStyle = (type: LogLine['type']): React.CSSProperties => {
+    const getLineStyle = (type: LogLine['type'], streaming?: boolean): React.CSSProperties => {
+        if (streaming) {
+            return { color: '#22d3ee' };
+        }
         switch (type) {
             case 'command':
                 return { color: '#22c55e' };
@@ -299,9 +347,84 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
                 input, textarea, [contenteditable] {
                     font-size: 16px !important;
                 }
+                @keyframes blink {
+                    0%, 50% { opacity: 1; }
+                    51%, 100% { opacity: 0; }
+                }
             `}</style>
             <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #334155' }}>
                 <h3 style={{ margin: 0, fontSize: '16px', color: '#e2e8f0' }}>New Terminal</h3>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                {(['normal', 'streaming', 'exited', 'disconnected'] as TerminalVariant[]).map(v => (
+                    <button
+                        key={v}
+                        onClick={() => {
+                            setVariant(v);
+                            if (v === 'exited') {
+                                setTabs([{
+                                    id: 'tab-1',
+                                    name: 'bash',
+                                    history: [
+                                        { text: '$ ./build.sh', type: 'command' },
+                                        { text: 'Build completed successfully', type: 'output' },
+                                        { text: '', type: 'output' },
+                                    ],
+                                    active: true,
+                                    exited: true,
+                                }]);
+                            } else if (v === 'disconnected') {
+                                setTabs([{
+                                    id: 'tab-1',
+                                    name: 'bash',
+                                    history: [
+                                        { text: 'Welcome to mobile terminal mockup', type: 'output' },
+                                        { text: 'Type commands and press Enter to execute', type: 'output' },
+                                        { text: '', type: 'output' },
+                                    ],
+                                    active: true,
+                                    exited: false,
+                                    disconnected: true,
+                                }]);
+                            } else if (v === 'streaming') {
+                                setTabs([{
+                                    id: 'tab-1',
+                                    name: 'bash',
+                                    history: [
+                                        { text: '$ npm run build', type: 'command' },
+                                        { text: '', type: 'output' },
+                                    ],
+                                    active: true,
+                                    exited: false,
+                                }]);
+                            } else {
+                                setTabs([{
+                                    id: 'tab-1',
+                                    name: 'bash',
+                                    history: [
+                                        { text: 'Welcome to mobile terminal mockup', type: 'output' },
+                                        { text: 'Type commands and press Enter to execute', type: 'output' },
+                                        { text: '', type: 'output' },
+                                    ],
+                                    active: true,
+                                    exited: false,
+                                }]);
+                            }
+                        }}
+                        style={{
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            borderRadius: '4px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            background: variant === v ? '#3b82f6' : '#334155',
+                            color: variant === v ? '#fff' : '#94a3b8',
+                        }}
+                    >
+                        {v.charAt(0).toUpperCase() + v.slice(1)}
+                    </button>
+                ))}
             </div>
                 
             <div style={{ background: '#0f172a', borderRadius: '8px', overflow: 'hidden', marginBottom: '20px' }}>
@@ -349,6 +472,7 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
                 
                 <div 
                     ref={outputRef}
+                    onClick={() => inputRef.current?.focus()}
                     style={{ 
                         padding: '12px', 
                         height: '200px', 
@@ -363,13 +487,54 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
                     }}
                 >
                     {activeTab.history.map((line, i) => (
-                        <div key={i} style={{ ...getLineStyle(line.type), whiteSpace: 'pre-wrap' }}>{line.text}</div>
+                        <div 
+                            key={i} 
+                            style={{ 
+                                ...getLineStyle(line.type, line.streaming), 
+                                whiteSpace: 'pre-wrap' 
+                            }}
+                        >
+                            {line.text}
+                            {line.streaming && i === activeTab.history.length - 1 && <span style={{ animation: 'blink 1s infinite' }}>▋</span>}
+                        </div>
                     ))}
                     
                     {activeTab.exited ? (
                         <div>
                             <div style={{ color: '#f59e0b', marginBottom: '8px' }}>Exit status: exited</div>
                             <div style={{ color: '#64748b', cursor: 'pointer' }} onClick={handleAnyKey}>Press any key to exit...</div>
+                        </div>
+                    ) : activeTab.disconnected ? (
+                        <div style={{ color: '#ef4444', padding: '20px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '24px', marginBottom: '8px' }}>⚡</div>
+                            <div>Disconnected</div>
+                            <button 
+                                onClick={() => {
+                                    setVariant('normal');
+                                    setTabs([{
+                                        id: 'tab-1',
+                                        name: 'bash',
+                                        history: [
+                                            { text: 'Reconnecting...', type: 'output' },
+                                            { text: 'Connected', type: 'output' },
+                                            { text: '', type: 'output' },
+                                        ],
+                                        active: true,
+                                        exited: false,
+                                    }]);
+                                }}
+                                style={{
+                                    marginTop: '12px',
+                                    padding: '8px 16px',
+                                    background: '#3b82f6',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    color: '#fff',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                Reconnect
+                            </button>
                         </div>
                     ) : (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -400,7 +565,7 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
                 <div 
                     ref={shortcutsRef}
                     style={{ 
-                        display: 'flex', 
+                        display: activeTab?.disconnected ? 'none' : 'flex', 
                         gap: '4px', 
                         padding: '8px 12px', 
                         paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
@@ -439,7 +604,7 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
             </div>
 
             <p style={{ fontSize: '13px', color: '#92400e', background: '#fef3c7', padding: '12px', borderRadius: '6px', margin: 0 }}>
-                Type commands and press Enter. Shift+Enter for new line.
+                Use the buttons above to switch variants: Normal, Streaming, Exited, Disconnected.
             </p>
         </div>
     );

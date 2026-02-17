@@ -72,6 +72,9 @@ func GetOrStartOpencodeServer() (*OpencodeServer, error) {
 	atomic.StoreInt32(&starting, 1)
 	defer atomic.StoreInt32(&starting, 0)
 
+	// Get a random available port for the internal agent server
+	// This server is for internal agent use and should not conflict with
+	// the exposed user-facing server (which uses configured port 4096)
 	port, err := findAvailablePort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to find available port: %w", err)

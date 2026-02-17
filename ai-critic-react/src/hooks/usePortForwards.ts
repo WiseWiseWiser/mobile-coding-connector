@@ -28,6 +28,8 @@ export const TunnelProviders = {
 export type TunnelProvider = typeof TunnelProviders[keyof typeof TunnelProviders];
 
 // Port forward type matching the backend API
+export type PortForwardType = 'port_forward' | 'domain' | 'exposed_url' | 'opencode' | 'extra';
+
 export interface PortForward {
     localPort: number;
     label: string;
@@ -36,6 +38,7 @@ export interface PortForward {
     provider: TunnelProvider;
     error?: string;
     bootstrap?: boolean; // true if started during server bootstrap (e.g., domain tunnels)
+    type?: PortForwardType; // source type
 }
 
 export type ProviderInfo = ApiProviderInfo;

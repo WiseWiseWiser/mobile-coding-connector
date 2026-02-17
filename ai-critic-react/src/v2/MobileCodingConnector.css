@@ -1688,6 +1688,17 @@ body:has(.mcc) {
     font-weight: 500;
 }
 
+/* Type badge for port forward sources */
+.mcc-port-type-badge {
+    padding: 2px 8px;
+    background: #8b5cf6;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #fff;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
 .mcc-forward-btn {
     width: 100%;
     padding: 12px;

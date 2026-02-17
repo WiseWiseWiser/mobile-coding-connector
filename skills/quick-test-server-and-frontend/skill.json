@@ -1,0 +1,26 @@
+{
+  "name": "quick-test-server-and-frontend",
+  "version": "1.0.0",
+  "description": "Quick test skill for debugging server and frontend integration using Puppeteer",
+  "type": "test",
+  "entry": "test-opencode-settings.js",
+  "config": {
+    "env": {
+      "TEST_URL": "https://agent-fast-apex-nest-23aed.xhd2015.xyz",
+      "HEADLESS": "true",
+      "DEBUG": "false"
+    }
+  },
+  "commands": {
+    "test": "node test-opencode-settings.js",
+    "test:headed": "HEADLESS=false node test-opencode-settings.js",
+    "test:debug": "DEBUG=true node test-opencode-settings.js"
+  },
+  "dependencies": {
+    "puppeteer": "^21.0.0"
+  },
+  "docs": {
+    "readme": "README.md",
+    "skill": "SKILL.md"
+  }
+}

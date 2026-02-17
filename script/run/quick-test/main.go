@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,6 +18,8 @@ Usage: go run ./script/run quick-test [options]
 
 Options:
   -h, --help   Show this help message
+  --keep       Keep server running indefinitely (disable auto-shutdown)
+  --port PORT  Port to run on (default: 37651)
 `
 
 func main() {
@@ -27,12 +31,33 @@ func main() {
 }
 
 func Handle(args []string) error {
-	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
-		fmt.Print(help)
-		return nil
+	var keepFlag bool
+	var portFlag int
+
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			fmt.Print(help)
+			return nil
+		}
+		if arg == "--keep" {
+			keepFlag = true
+			continue
+		}
+		if strings.HasPrefix(arg, "--port=") {
+			p, err := strconv.Atoi(strings.TrimPrefix(arg, "--port="))
+			if err != nil {
+				return fmt.Errorf("invalid port: %v", err)
+			}
+			portFlag = p
+			continue
+		}
+		return fmt.Errorf("unknown option: %s", arg)
 	}
 
 	quickTestPort := lib.QuickTestPort
+	if portFlag > 0 {
+		quickTestPort = portFlag
+	}
 
 	// Kill previous process on the port
 	fmt.Printf("Checking for existing server on port %d...\n", quickTestPort)
@@ -61,7 +86,12 @@ func Handle(args []string) error {
 
 	fmt.Printf("Starting server in quick-test mode on port %d...\n", quickTestPort)
 	fmt.Printf("Running from: %s\n", homeDir)
-	serverCmd := exec.Command("/tmp/ai-critic-quick", "--quick-test")
+
+	serverArgs := []string{"--quick-test"}
+	if keepFlag {
+		serverArgs = append(serverArgs, "--keep")
+	}
+	serverCmd := exec.Command("/tmp/ai-critic-quick", serverArgs...)
 	serverCmd.Stdout = os.Stdout
 	serverCmd.Stderr = os.Stderr
 	serverCmd.Stdin = os.Stdin
@@ -71,7 +101,11 @@ func Handle(args []string) error {
 	}
 
 	fmt.Printf("Server started with PID: %d\n", serverCmd.Process.Pid)
-	fmt.Println("Server will exit after 1 minute of inactivity.")
+	if keepFlag {
+		fmt.Println("Server will keep running indefinitely (--keep enabled).")
+	} else {
+		fmt.Println("Server will exit after 1 minute of inactivity.")
+	}
 	fmt.Println("Press Ctrl+C to stop manually.")
 
 	// Wait for the server process

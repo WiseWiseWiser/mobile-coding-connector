@@ -61,8 +61,17 @@
 .mockup-view {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100%;
+    position: relative;
     background: #1e1e1e;
+}
+
+.mockup-view-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    height: 100%;
 }
 
 .mockup-view-header {
@@ -72,7 +81,6 @@
     padding: 12px 16px;
     background: #252526;
     border-bottom: 1px solid #3c3c3c;
-    flex-shrink: 0;
 }
 
 .mockup-back-btn {
@@ -93,10 +101,4 @@
 .mockup-view-title {
     font-weight: 600;
     color: #d4d4d4;
-}
-
-.mockup-view-content {
-    flex: 1;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
 }

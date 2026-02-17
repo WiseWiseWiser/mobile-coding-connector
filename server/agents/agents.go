@@ -140,9 +140,6 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/sessions/", handleAgentSessionProxy)
 	// External opencode sessions (from CLI/web)
 	mux.HandleFunc("/api/agents/external-sessions", handleExternalSessions)
-
-	// Start opencode health check on server startup
-	opencode.StartHealthCheck()
 }
 
 // Shutdown stops the agents module (stops health checks, but leaves opencode running)

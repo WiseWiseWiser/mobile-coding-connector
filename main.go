@@ -26,6 +26,9 @@ func main() {
 			server.SetQuickTestMode(true)
 			auth.SetQuickTestMode(true)
 		}
+		if arg == "--keep" {
+			server.SetQuickTestKeep(true)
+		}
 		if arg == "--frontend-port" {
 			// Next arg should be the port
 		}

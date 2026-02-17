@@ -34,7 +34,8 @@ func isProcessAlive(cmd *exec.Cmd) bool {
 	return err == nil
 }
 
-func isPortAvailable(port int) bool {
+// IsPortAvailable checks if a port is available for binding
+func IsPortAvailable(port int) bool {
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		return false
@@ -72,8 +73,26 @@ func StartWithSettings(port int, password string, customPath string) (*OpencodeM
 	managerMutex.Lock()
 	defer managerMutex.Unlock()
 
-	if manager != nil && isProcessAlive(manager.Cmd) {
+	// Check if existing manager is running on the requested port
+	if manager != nil && isProcessAlive(manager.Cmd) && manager.Port == port {
 		return manager, nil
+	}
+
+	// If existing manager is running but on wrong port, stop it first
+	if manager != nil && isProcessAlive(manager.Cmd) {
+		fmt.Printf("[exposed_opencode] Stopping existing server on port %d to start on port %d\n", manager.Port, port)
+		if manager.Cmd != nil && manager.Cmd.Process != nil {
+			manager.Cmd.Process.Kill()
+		}
+		if manager.StopChan != nil {
+			select {
+			case <-manager.StopChan:
+			default:
+				close(manager.StopChan)
+			}
+		}
+		manager = nil
+		time.Sleep(500 * time.Millisecond) // Give time for port to be released
 	}
 
 	if manager != nil && manager.StopChan != nil {
@@ -99,7 +118,7 @@ func StartWithSettings(port int, password string, customPath string) (*OpencodeM
 		port = 4096
 	}
 
-	if !isPortAvailable(port) {
+	if !IsPortAvailable(port) {
 		return nil, fmt.Errorf("port %d is already in use", port)
 	}
 

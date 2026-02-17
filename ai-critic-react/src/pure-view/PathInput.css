@@ -1,0 +1,41 @@
+.path-input-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.path-input-label {
+    margin: 0;
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.path-input-field {
+    width: 100%;
+    padding: 10px 12px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #22c55e;
+    font-size: 16px;
+    font-family: monospace;
+    box-sizing: border-box;
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+    transform: scale(0.8125);
+    transform-origin: left top;
+    width: calc(100% / 0.8125);
+    margin-top: -2px;
+}
+
+.path-input-field:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.path-input-field::placeholder {
+    color: #475569;
+}

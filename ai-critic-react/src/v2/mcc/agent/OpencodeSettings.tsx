@@ -36,6 +36,8 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     const [savedSettings, setSavedSettings] = useState<OpencodeSettings>({});
     const [defaultDomain, setDefaultDomain] = useState<string>('');
     const [password, setPassword] = useState<string>('');
+    const [webServerPort, setWebServerPort] = useState<number>(4096);
+    const [webServerEnabled, setWebServerEnabled] = useState<boolean>(false);
 
     // Session model selection state
     const [savedModel, setSavedModel] = useState<{ modelID: string; providerID: string } | null>(null);
@@ -87,7 +89,10 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     });
 
     const hasChanges = selectedModel?.modelID !== savedModel?.modelID || selectedModel?.providerID !== savedModel?.providerID;
-    const hasSettingsChanges = defaultDomain !== (savedSettings.default_domain || '') || password !== (savedSettings.web_server?.password || '');
+    const hasSettingsChanges = webServerEnabled !== (savedSettings.web_server?.enabled ?? false)
+        || defaultDomain !== (savedSettings.default_domain || '') 
+        || webServerPort !== (savedSettings.web_server?.port || 4096)
+        || password !== (savedSettings.web_server?.password || '');
 
     useEffect(() => {
         loadAllData();
@@ -106,6 +111,8 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
             setSavedSettings(settings);
             setDefaultDomain(settings.default_domain || '');
             setPassword(settings.web_server?.password || '');
+            setWebServerPort(settings.web_server?.port || 4096);
+            setWebServerEnabled(settings.web_server?.enabled ?? false);
             setWebStatus(webStat);
             setAuthStatus(auth);
 
@@ -211,8 +218,8 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                 ...savedSettings,
                 default_domain: defaultDomain,
                 web_server: {
-                    enabled: currentConfig.enabled,
-                    port: currentConfig.port,
+                    enabled: webServerEnabled,
+                    port: webServerPort,
                     exposed_domain: currentConfig.exposed_domain,
                     password: password,
                 },
@@ -221,8 +228,8 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                 ...savedSettings,
                 default_domain: defaultDomain,
                 web_server: {
-                    enabled: currentConfig.enabled,
-                    port: currentConfig.port,
+                    enabled: webServerEnabled,
+                    port: webServerPort,
                     exposed_domain: currentConfig.exposed_domain,
                     password: password,
                 },
@@ -239,6 +246,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
         setSelectedModel(savedModel ? { ...savedModel } : null);
         setDefaultDomain(savedSettings.default_domain || '');
         setPassword(savedSettings.web_server?.password || '');
+        setWebServerEnabled(savedSettings.web_server?.enabled ?? false);
         setError('');
         setSuccess('');
     };
@@ -420,6 +428,21 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                                     )}
                                 </div>
                             </div>
+                            {/* Enable/Disable Toggle */}
+                            <div style={{ marginBottom: 12, marginTop: 8 }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={webServerEnabled}
+                                        onChange={(e) => setWebServerEnabled(e.target.checked)}
+                                        style={{ width: 18, height: 18 }}
+                                    />
+                                    <span style={{ fontWeight: 500 }}>Enable Web Server</span>
+                                </label>
+                                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: 4, marginLeft: 26 }}>
+                                    When enabled, the server will auto-start on boot if configured
+                                </div>
+                            </div>
                             <div style={{ fontSize: '13px', color: '#94a3b8' }}>
                                 <div>Port: <strong style={{ color: '#e2e8f0' }}>{webStatus?.port || 'N/A'}</strong></div>
                                 {webStatus?.domain && (
@@ -459,6 +482,33 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                                     )}
                                 </div>
                             )}
+
+                            {/* Web Server Port Input */}
+                            <div style={{ marginTop: 16 }}>
+                                <label className="mcc-agent-settings-label">
+                                    Web Server Port
+                                </label>
+                                <div className="mcc-agent-settings-hint" style={{ marginBottom: 8, fontSize: '13px', color: '#94a3b8' }}>
+                                    Port for the OpenCode web server (default: 4096). Changing this will apply on next server restart.
+                                </div>
+                                <input
+                                    type="number"
+                                    value={webServerPort}
+                                    onChange={(e) => setWebServerPort(parseInt(e.target.value, 10) || 4096)}
+                                    min={1024}
+                                    max={65535}
+                                    disabled={saving}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 12px',
+                                        background: '#1e293b',
+                                        border: webServerPort !== (savedSettings.web_server?.port || 4096) ? '1px solid #3b82f6' : '1px solid #334155',
+                                        borderRadius: 8,
+                                        color: '#e2e8f0',
+                                        fontSize: '14px',
+                                    }}
+                                />
+                            </div>
 
                             {/* Server Password Input */}
                             <div style={{ marginTop: 16 }}>

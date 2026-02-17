@@ -36,6 +36,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/fileupload"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/keepalive"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/logs"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
 	pfcloudflare "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/cloudflare"
 	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/localtunnel"
@@ -52,6 +53,7 @@ import (
 var distFS embed.FS
 var templateHTML string
 var quickTestMode bool
+var quickTestKeep bool
 var quickTestQuitChan chan struct{}
 var frontendPort int
 
@@ -60,6 +62,10 @@ func SetQuickTestMode(enabled bool) {
 	if enabled {
 		quickTestQuitChan = make(chan struct{})
 	}
+}
+
+func SetQuickTestKeep(enabled bool) {
+	quickTestKeep = enabled
 }
 
 func SetFrontendPort(port int) {
@@ -469,6 +475,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Keep-alive proxy API
 	keepalive.RegisterAPI(mux)
 
+	// Logs API
+	logs.RegisterAPI(mux)
+
 	// Server status API
 	RegisterServerStatusAPI(mux)
 
@@ -526,6 +535,10 @@ func handlePing(w http.ResponseWriter, r *http.Request) {
 }
 
 func wrapQuickTestHandler(next http.Handler) http.Handler {
+	if quickTestKeep {
+		return next
+	}
+
 	var (
 		mu      sync.Mutex
 		timer   *time.Timer

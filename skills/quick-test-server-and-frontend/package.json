@@ -1,0 +1,18 @@
+{
+  "name": "quick-test-server-and-frontend",
+  "version": "1.0.0",
+  "description": "Quick test skill for debugging server and frontend integration using Puppeteer",
+  "main": "test-opencode-settings.js",
+  "scripts": {
+    "test": "node test-opencode-settings.js",
+    "test:headed": "HEADLESS=false node test-opencode-settings.js",
+    "test:debug": "DEBUG=true node test-opencode-settings.js"
+  },
+  "dependencies": {
+    "puppeteer": "^21.0.0"
+  },
+  "devDependencies": {},
+  "keywords": ["test", "puppeteer", "opencode", "settings", "debug"],
+  "author": "AI Assistant",
+  "license": "MIT"
+}

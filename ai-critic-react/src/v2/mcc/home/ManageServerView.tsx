@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { pingKeepAlive, getKeepAliveStatus, uploadBinary, getUploadTarget, getBuildableProjects, restartServerExecStreaming } from '../../../api/keepalive';
 import type { KeepAliveStatus, UploadTarget, BuildableProject } from '../../../api/keepalive';
 import { consumeSSEStream } from '../../../api/sse';
-import { BackIcon, UploadIcon, DownloadIcon, FolderIcon } from '../../icons';
+import { fetchLogFiles, addLogFile, removeLogFile, streamLogFile, type LogFile } from '../../../api/logs';
+import { BackIcon, UploadIcon, DownloadIcon, FolderIcon, PlusIcon } from '../../icons';
 import { LogViewer } from '../../LogViewer';
 import type { LogLine } from '../../LogViewer';
 import { useTabHistory } from '../../../hooks/useTabHistory';
@@ -42,6 +43,13 @@ export function ManageServerView() {
     // Log states
     const [logLines, setLogLines] = useState<LogLine[]>([]);
     const [logStreaming, setLogStreaming] = useState(false);
+
+    // Log files management states
+    const [logFiles, setLogFiles] = useState<LogFile[]>([]);
+    const [selectedLogFile, setSelectedLogFile] = useState<string>('');
+    const [newLogFileName, setNewLogFileName] = useState('');
+    const [newLogFilePath, setNewLogFilePath] = useState('');
+    const [addingLogFile, setAddingLogFile] = useState(false);
 
     // Server status states
     const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
@@ -140,9 +148,25 @@ export function ManageServerView() {
         loadBuildInfo();
     }, [status?.binary_path]);
 
+    // Fetch log files on mount
+    useEffect(() => {
+        const loadLogFiles = async () => {
+            try {
+                const files = await fetchLogFiles();
+                setLogFiles(files);
+                if (files.length > 0 && !selectedLogFile) {
+                    setSelectedLogFile(files[0].name);
+                }
+            } catch (err) {
+                console.error('Failed to load log files:', err);
+            }
+        };
+        loadLogFiles();
+    }, []);
+
     // Log streaming via fetch + consumeSSEStream
     useEffect(() => {
-        if (!daemonRunning) {
+        if (!daemonRunning || !selectedLogFile) {
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
                 abortControllerRef.current = null;
@@ -159,10 +183,7 @@ export function ManageServerView() {
 
         (async () => {
             try {
-                const resp = await fetch('/api/keep-alive/logs?lines=100', {
-                    headers: { 'Accept': 'text/event-stream' },
-                    signal: controller.signal,
-                });
+                const resp = await streamLogFile({ file: selectedLogFile, lines: 1000 });
                 if (!resp.ok) {
                     setLogStreaming(false);
                     return;
@@ -172,7 +193,7 @@ export function ManageServerView() {
                     onLog: (line) => {
                         setLogLines(prev => {
                             const next = [...prev, line];
-                            return next.length > 500 ? next.slice(next.length - 500) : next;
+                            return next.length > 1000 ? next.slice(next.length - 1000) : next;
                         });
                     },
                     onError: (line) => {
@@ -193,7 +214,7 @@ export function ManageServerView() {
             controller.abort();
             abortControllerRef.current = null;
         };
-    }, [daemonRunning]);
+    }, [daemonRunning, selectedLogFile]);
 
     // Step 1: User selects a file -> fetch upload target and show confirm
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -249,6 +270,45 @@ export function ManageServerView() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ project_id: buildableProjects[0]?.id }),
         });
+    };
+
+    // Add new log file
+    const handleAddLogFile = async () => {
+        if (!newLogFileName.trim() || !newLogFilePath.trim()) return;
+        setAddingLogFile(true);
+        try {
+            await addLogFile(newLogFileName.trim(), newLogFilePath.trim());
+            const files = await fetchLogFiles();
+            setLogFiles(files);
+            setSelectedLogFile(newLogFileName.trim());
+            setNewLogFileName('');
+            setNewLogFilePath('');
+            setActionMessage('Log file added successfully');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to add log file');
+        } finally {
+            setAddingLogFile(false);
+        }
+    };
+
+    // Remove log file
+    const handleRemoveLogFile = async (name: string) => {
+        try {
+            await removeLogFile(name);
+            const files = await fetchLogFiles();
+            setLogFiles(files);
+            if (selectedLogFile === name) {
+                setSelectedLogFile(files.length > 0 ? files[0].name : '');
+            }
+            setActionMessage('Log file removed successfully');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to remove log file');
+        }
+    };
+
+    // Change selected log file
+    const handleLogFileChange = (name: string) => {
+        setSelectedLogFile(name);
     };
 
     return (
@@ -493,6 +553,24 @@ export function ManageServerView() {
                 <div className="manage-server-card" style={{ marginTop: 12 }}>
                     <div className="manage-server-card-header">
                         <span className="manage-server-card-title">Server Logs</span>
+                        <select
+                            value={selectedLogFile}
+                            onChange={(e) => handleLogFileChange(e.target.value)}
+                            style={{
+                                padding: '4px 8px',
+                                borderRadius: 4,
+                                border: '1px solid #d1d5db',
+                                background: '#fff',
+                                fontSize: 12,
+                                color: '#374151',
+                            }}
+                        >
+                            {logFiles.map((f) => (
+                                <option key={f.name} value={f.name}>
+                                    {f.name} ({f.path})
+                                </option>
+                            ))}
+                        </select>
                         <span className={`manage-server-badge ${logStreaming ? 'manage-server-badge--running' : 'manage-server-badge--stopped'}`}>
                             {logStreaming ? 'Live' : 'Disconnected'}
                         </span>
@@ -506,6 +584,103 @@ export function ManageServerView() {
                     />
                 </div>
             )}
+
+            {/* Log Files Management */}
+            <div className="manage-server-card" style={{ marginTop: 12 }}>
+                <div className="manage-server-card-header">
+                    <span className="manage-server-card-title">Log Files</span>
+                </div>
+                <div style={{ padding: 12 }}>
+                    {/* Add new log file */}
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                        <input
+                            type="text"
+                            placeholder="Name (e.g., server)"
+                            value={newLogFileName}
+                            onChange={(e) => setNewLogFileName(e.target.value)}
+                            style={{
+                                flex: 1,
+                                padding: '8px 10px',
+                                borderRadius: 4,
+                                border: '1px solid #d1d5db',
+                                fontSize: 13,
+                            }}
+                        />
+                        <input
+                            type="text"
+                            placeholder="Path (e.g., /var/log/app.log)"
+                            value={newLogFilePath}
+                            onChange={(e) => setNewLogFilePath(e.target.value)}
+                            style={{
+                                flex: 2,
+                                padding: '8px 10px',
+                                borderRadius: 4,
+                                border: '1px solid #d1d5db',
+                                fontSize: 13,
+                            }}
+                        />
+                        <button
+                            onClick={handleAddLogFile}
+                            disabled={addingLogFile || !newLogFileName.trim() || !newLogFilePath.trim()}
+                            style={{
+                                padding: '8px 12px',
+                                borderRadius: 4,
+                                border: 'none',
+                                background: '#3b82f6',
+                                color: '#fff',
+                                fontSize: 13,
+                                cursor: 'pointer',
+                                opacity: addingLogFile || !newLogFileName.trim() || !newLogFilePath.trim() ? 0.6 : 1,
+                            }}
+                        >
+                            <PlusIcon />
+                        </button>
+                    </div>
+
+                    {/* List of configured log files */}
+                    {logFiles.length === 0 ? (
+                        <div style={{ color: '#6b7280', fontSize: 13, textAlign: 'center', padding: 12 }}>
+                            No log files configured
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {logFiles.map((f) => (
+                                <div
+                                    key={f.name}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '8px 12px',
+                                        background: selectedLogFile === f.name ? '#eff6ff' : '#f9fafb',
+                                        borderRadius: 4,
+                                        border: '1px solid #e5e7eb',
+                                    }}
+                                >
+                                    <div>
+                                        <div style={{ fontWeight: 500, fontSize: 13 }}>{f.name}</div>
+                                        <div style={{ color: '#6b7280', fontSize: 12 }}>{f.path}</div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleRemoveLogFile(f.name)}
+                                        style={{
+                                            padding: '4px 8px',
+                                            borderRadius: 4,
+                                            border: 'none',
+                                            background: 'transparent',
+                                            color: '#ef4444',
+                                            cursor: 'pointer',
+                                            fontSize: 16,
+                                        }}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
 
             {/* Manage Files */}
             <div className="manage-server-card" style={{ marginTop: 12 }}>

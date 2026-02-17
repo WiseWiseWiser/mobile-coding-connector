@@ -5,6 +5,8 @@ import { ServerFiles } from './ServerFiles';
 import { NewTerminalMockup } from './NewTerminalMockup';
 import { NoZoomingInputDemo } from './NoZoomingInputDemo';
 import { ActionItemCardMockup } from './ActionItemCardMockup';
+import { FeatureMakerMockup } from './FeatureMakerMockup';
+import { PathInputDemo } from './PathInputDemo';
 import './MockupsPage.css';
 
 interface MockupItem {
@@ -50,6 +52,18 @@ const mockups: MockupItem[] = [
         name: 'No Zooming Input',
         description: 'Demo of inputs that prevent iOS Safari zooming',
         component: NoZoomingInputDemo,
+    },
+    {
+        id: 'feature-maker',
+        name: 'FeatureMaker',
+        description: 'AI-driven feature implementation flow with driver agent and subagents',
+        component: FeatureMakerMockup,
+    },
+    {
+        id: 'path-input',
+        name: 'PathInput',
+        description: 'Editable path input with no-zoom for iOS',
+        component: PathInputDemo,
     },
 ];
 

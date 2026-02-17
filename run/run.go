@@ -19,6 +19,7 @@ import (
 )
 
 var quickTestMode bool
+var quickTestKeep bool
 
 const quickTestPort = 37651
 
@@ -35,6 +36,7 @@ Options:
                         - Listens on port 37651
                         - Exits after 1 minute of no requests
                         - Extends life by +1min when a new request comes in
+  --keep                 Keep the server running indefinitely (disable auto-shutdown in quick-test mode)
   --dir DIR               Set the initial directory for code review (defaults to current working directory)
   --port PORT             Port to listen on (defaults to auto-find starting from %d)
   --config-file FILE      Path to configuration file (JSON)
@@ -89,6 +91,7 @@ func Run(args []string) error {
 	args, err := flags.
 		Bool("--dev", &devFlag).
 		Bool("--quick-test", &quickTestMode).
+		Bool("--keep", &quickTestKeep).
 		String("--component", &component).
 		String("--dir", &dirFlag).
 		Int("--port", &portFlag).
@@ -180,6 +183,9 @@ func Run(args []string) error {
 	// Set quick-test mode in server if enabled
 	if quickTestMode {
 		server.SetQuickTestMode(true)
+		if quickTestKeep {
+			server.SetQuickTestKeep(true)
+		}
 	}
 
 	// Skip auto-start operations in quick-test mode

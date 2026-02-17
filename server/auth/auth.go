@@ -252,6 +252,12 @@ func RegisterAPI(mux *http.ServeMux) {
 func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Quick test mode: always return authenticated without checking credentials
+	if quickTestMode {
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+
 	// Check initialization and token validity in one read
 	var token string
 	if cookie, err := r.Cookie(cookieName); err == nil {

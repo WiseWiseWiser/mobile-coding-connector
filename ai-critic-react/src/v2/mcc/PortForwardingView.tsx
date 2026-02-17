@@ -596,6 +596,11 @@ function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwardCardPr
                         Bootstrap
                     </span>
                 )}
+                {port.type && (
+                    <span className="mcc-port-type-badge" title={`Type: ${port.type}`}>
+                        {port.type.replace('_', ' ')}
+                    </span>
+                )}
             </div>
             {port.publicUrl ? (
                 <div className="mcc-port-url">

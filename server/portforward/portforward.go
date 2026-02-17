@@ -72,6 +72,17 @@ const (
 	ProviderCloudflareOwned  = "cloudflare_owned"
 )
 
+// PortForwardType represents the type of port forward source
+type PortForwardType string
+
+const (
+	PortForwardTypePortForward PortForwardType = "port_forward" // User-added port forwards
+	PortForwardTypeDomain      PortForwardType = "domain"       // Domain tunnels (core group)
+	PortForwardTypeExposedURL  PortForwardType = "exposed_url"  // Exposed URLs
+	PortForwardTypeOpenCode    PortForwardType = "opencode"     // OpenCode web server
+	PortForwardTypeExtra       PortForwardType = "extra"        // User extra mappings
+)
+
 // TunnelResult is sent by providers when the tunnel URL is ready or an error occurs
 type TunnelResult struct {
 	PublicURL string
@@ -106,13 +117,14 @@ type Provider interface {
 
 // PortForward represents a single port forward entry (API response)
 type PortForward struct {
-	LocalPort int    `json:"localPort"`
-	Label     string `json:"label"`
-	PublicURL string `json:"publicUrl"`
-	Status    string `json:"status"`
-	Provider  string `json:"provider"`
-	Error     string `json:"error,omitempty"`
-	Bootstrap bool   `json:"bootstrap,omitempty"` // true if started during server bootstrap (e.g., domain tunnels)
+	LocalPort int             `json:"localPort"`
+	Label     string          `json:"label"`
+	PublicURL string          `json:"publicUrl"`
+	Status    string          `json:"status"`
+	Provider  string          `json:"provider"`
+	Error     string          `json:"error,omitempty"`
+	Bootstrap bool            `json:"bootstrap,omitempty"` // true if started during server bootstrap (e.g., domain tunnels)
+	Type      PortForwardType `json:"type"`                // source type
 }
 
 // tunnel represents a running tunnel
@@ -193,6 +205,7 @@ func (m *Manager) listLocked() []PortForward {
 			Status:    t.status,
 			Provider:  t.provider,
 			Error:     t.errMsg,
+			Type:      PortForwardTypePortForward,
 		})
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -246,14 +259,141 @@ func (m *Manager) List() []PortForward {
 				Provider:  "cloudflare_domain",
 				Error:     dt.Error,
 				Bootstrap: true,
+				Type:      PortForwardTypeDomain,
 			})
 		}
 	}
+
+	// Include extension group mappings (exposed URLs, opencode webserver)
+	result = append(result, m.getExtensionGroupMappings()...)
+
+	// Include extra mappings from user-defined config
+	result = append(result, m.getExtraMappings()...)
 
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].LocalPort < result[j].LocalPort
 	})
 	return result
+}
+
+// getExtensionGroupMappings returns mappings from the extension tunnel group
+func (m *Manager) getExtensionGroupMappings() []PortForward {
+	var result []PortForward
+
+	tgm := cloudflare.GetTunnelGroupManager()
+	if tgm == nil {
+		return result
+	}
+
+	extGroup := tgm.GetExtensionGroup()
+	if extGroup == nil {
+		return result
+	}
+
+	mappings := extGroup.ListMappings()
+	for _, mapping := range mappings {
+		port := parseServiceURL(mapping.Service)
+		if port == 0 {
+			continue
+		}
+
+		// Determine type based on ID pattern
+		var pfType PortForwardType
+		var label string
+
+		switch {
+		case strings.HasPrefix(mapping.ID, "exposed-"):
+			pfType = PortForwardTypeExposedURL
+			label = mapping.Hostname
+		case strings.HasPrefix(mapping.ID, "port-"):
+			if port == 4096 {
+				pfType = PortForwardTypeOpenCode
+				label = "opencode-web"
+			} else {
+				// Skip port forwards that are already in m.tunnels
+				m.mu.Lock()
+				if _, exists := m.tunnels[port]; exists {
+					m.mu.Unlock()
+					continue
+				}
+				m.mu.Unlock()
+				pfType = PortForwardTypePortForward
+				label = mapping.Hostname
+			}
+		default:
+			continue
+		}
+
+		result = append(result, PortForward{
+			LocalPort: port,
+			Label:     label,
+			PublicURL: "https://" + mapping.Hostname,
+			Status:    StatusActive,
+			Provider:  "extension",
+			Type:      pfType,
+		})
+	}
+
+	return result
+}
+
+// getExtraMappings returns user-defined extra mappings from config file
+func (m *Manager) getExtraMappings() []PortForward {
+	var result []PortForward
+
+	tgm := cloudflare.GetTunnelGroupManager()
+	if tgm == nil {
+		return result
+	}
+
+	// Load extra mappings from both core and extension groups
+	groups := []*cloudflare.TunnelGroup{tgm.GetCoreGroup(), tgm.GetExtensionGroup()}
+
+	for _, group := range groups {
+		if group == nil {
+			continue
+		}
+
+		cfg, err := group.LoadExtraMappingsFile()
+		if err != nil || cfg == nil {
+			continue
+		}
+
+		for _, em := range cfg.Mappings {
+			port := parseServiceURL(em.LocalURL)
+			if port == 0 {
+				continue
+			}
+
+			result = append(result, PortForward{
+				LocalPort: port,
+				Label:     em.Domain,
+				PublicURL: "https://" + em.Domain,
+				Status:    StatusActive,
+				Provider:  "extra",
+				Type:      PortForwardTypeExtra,
+			})
+		}
+	}
+
+	return result
+}
+
+// parseServiceURL extracts port from service URL like "http://localhost:4096"
+func parseServiceURL(service string) int {
+	service = strings.TrimPrefix(service, "http://")
+	service = strings.TrimPrefix(service, "https://")
+	service = strings.TrimPrefix(service, "localhost:")
+	service = strings.TrimPrefix(service, "127.0.0.1:")
+
+	parts := strings.Split(service, ":")
+	if len(parts) >= 2 {
+		port, err := strconv.Atoi(parts[len(parts)-1])
+		if err == nil && port > 0 {
+			return port
+		}
+	}
+	return 0
 }
 
 // Add starts a new port forward using the specified provider
