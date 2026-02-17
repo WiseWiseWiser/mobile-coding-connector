@@ -1,0 +1,15 @@
+{
+  "name": "debug-port-5173",
+  "version": "1.0.0",
+  "description": "Debug skill for testing pages on port 5173 using Puppeteer.",
+  "main": "debug.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "puppeteer": "^24.37.3"
+  }
+}

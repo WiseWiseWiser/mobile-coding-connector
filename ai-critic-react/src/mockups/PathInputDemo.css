@@ -7,7 +7,7 @@
 .path-input-section {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
 }
 
 .path-input-section h3 {

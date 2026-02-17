@@ -1,0 +1,28 @@
+{
+  "name": "debug-port-5173",
+  "version": "1.0.0",
+  "description": "Debug skill for testing pages on port 5173 using Puppeteer",
+  "type": "test",
+  "entry": "debug.js",
+  "config": {
+    "env": {
+      "BASE_URL": "https://port-5173-ae2842d.xhd2015.xyz",
+      "VIEWPORT_WIDTH": "375",
+      "VIEWPORT_HEIGHT": "800",
+      "HEADLESS": "true"
+    }
+  },
+  "commands": {
+    "debug": "node debug.js",
+    "debug:iphone": "node debug.js",
+    "debug:ipad": "VIEWPORT_WIDTH=768 VIEWPORT_HEIGHT=1024 node debug.js",
+    "debug:desktop": "VIEWPORT_WIDTH=1280 VIEWPORT_HEIGHT=800 node debug.js"
+  },
+  "dependencies": {
+    "puppeteer": "^21.0.0"
+  },
+  "docs": {
+    "readme": "README.md",
+    "skill": "SKILL.md"
+  }
+}
