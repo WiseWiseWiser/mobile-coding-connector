@@ -4,7 +4,7 @@ import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalView, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './logs';
 import './App.css';
@@ -78,16 +78,6 @@ function MainApp() {
                 <Route path="/home" element={<Home />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/gen" element={<AppGen />} />
-                {MockupsPage && (
-                    <Route 
-                        path="/mockups/*" 
-                        element={
-                            <Suspense fallback={<div style={{ padding: 20, textAlign: 'center' }}>Loading mockups...</div>}>
-                                <MockupsPage />
-                            </Suspense>
-                        } 
-                    />
-                )}
             </Routes>
         </AppLayout>
     );
@@ -189,7 +179,7 @@ function App() {
                             <Route path=":agentId/settings" element={<AgentSettingsRoute />} />
                             <Route path=":agentId/:sessionId" element={<AgentChatRoute />} />
                         </Route>
-                        <Route path="terminal" element={<TerminalView />} />
+                        <Route path="terminal" element={<TerminalPage />} />
                         <Route path="ports" element={<PortsLayout />}>
                             <Route index element={<PortListRoute />} />
                             <Route path="diagnostics" element={<CloudflareDiagnosticsRoute />} />
@@ -234,7 +224,7 @@ function App() {
                             <Route path=":agentId/settings" element={<AgentSettingsRoute />} />
                             <Route path=":agentId/:sessionId" element={<AgentChatRoute />} />
                         </Route>
-                        <Route path="terminal" element={<TerminalView />} />
+                        <Route path="terminal" element={<TerminalPage />} />
                         <Route path="ports" element={<PortsLayout />}>
                             <Route index element={<PortListRoute />} />
                             <Route path="diagnostics" element={<CloudflareDiagnosticsRoute />} />

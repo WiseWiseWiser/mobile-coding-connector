@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useCurrent } from '../../../hooks/useCurrent';
 import '@xterm/xterm/css/xterm.css';
-import { useTerminal } from '../../../hooks/useTerminal';
-import type { TerminalTheme } from '../../../hooks/useTerminal';
+import { PureTerminalView, type PureTerminalViewHandle } from '../../../components/pure-terminal/PureTerminalView';
+import type { TerminalTheme } from '../../../hooks/usePureTerminal';
 import { useTerminalTabs } from '../../../hooks/useTerminalTabs';
 import { useV2Context } from '../../V2Context';
 import './TerminalManager.css';
@@ -45,7 +45,20 @@ interface TerminalInstanceHandle {
     focus: () => void;
 }
 
-// Individual terminal instance component
+// Ctrl mode state ref to share between component and callbacks
+const useCtrlMode = () => {
+    const ctrlModeRef = useRef(false);
+    const [ctrlActive, setCtrlActive] = useState(false);
+    
+    const setCtrlMode = (active: boolean) => {
+        ctrlModeRef.current = active;
+        setCtrlActive(active);
+    };
+    
+    return { ctrlModeRef, ctrlActive, setCtrlMode };
+};
+
+// Individual terminal instance component - uses PureTerminalView for the core terminal
 const TerminalInstance = forwardRef<TerminalInstanceHandle, {
     id: string;
     isActive: boolean;
@@ -73,9 +86,10 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
     onCloseTab,
     onAutoFocusHandled,
 }, ref) {
-    const [ctrlActive, setCtrlActive] = useState(false);
+    const { ctrlModeRef, ctrlActive, setCtrlMode } = useCtrlMode();
     const autoFocusHandledRef = useRef(false);
     const shortcutsRef = useRef<HTMLDivElement>(null);
+    const pureTerminalRef = useRef<PureTerminalViewHandle>(null);
 
     // iOS Safari keyboard detection using visualViewport API
     useEffect(() => {
@@ -133,80 +147,61 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
         return () => visualViewport.removeEventListener('resize', handleResize);
     }, []);
 
-    // Terminal is always active since parent keeps us mounted
-    const { terminalRef, connected, sendKey, reconnect, fit, focus, ctrlModeRef } = useTerminal(true, {
-        theme: v2Theme,
-        cwd,
-        name,
-        initialCommand,
-        sessionId,
-        onSessionId,
-        onCloseRequest: onCloseTab,
-        onCtrlModeConsumed: () => setCtrlActive(false),
-    });
-
-    // Expose fit and focus methods to parent
-    useImperativeHandle(ref, () => ({
-        fit: () => setTimeout(() => fit(), 50),
-        focus,
-    }));
-
-    // Report connection status to parent and handle autoFocus
-    const onConnectionChangeRef = useCurrent(onConnectionChange);
-    const prevConnectedRef = useRef<boolean | null>(null);
-    const onAutoFocusHandledRef = useCurrent(onAutoFocusHandled);
-    if (isActive && prevConnectedRef.current !== connected) {
-        prevConnectedRef.current = connected;
-        onConnectionChangeRef.current(connected);
+    // Handle connection changes
+    const handleConnectionChange = (connected: boolean) => {
+        onConnectionChange(connected);
         // Auto-focus when connection is established and autoFocus is requested
         if (connected && autoFocus && !autoFocusHandledRef.current) {
             autoFocusHandledRef.current = true;
-            focus();
-            onAutoFocusHandledRef.current();
+            pureTerminalRef.current?.focus();
+            onAutoFocusHandled();
         }
-    }
+    };
+
+    // Expose fit and focus methods to parent
+    useImperativeHandle(ref, () => ({
+        fit: () => setTimeout(() => pureTerminalRef.current?.fit(), 50),
+        focus: () => pureTerminalRef.current?.focus(),
+    }));
 
     // Report reconnect function to parent
     const onReconnectRefCb = useCurrent(onReconnectRef);
-    const reconnectRef = useCurrent(reconnect);
-    if (isActive) {
-        onReconnectRefCb.current(reconnectRef.current);
+    if (isActive && pureTerminalRef.current) {
+        onReconnectRefCb.current(() => pureTerminalRef.current?.reconnect());
     }
 
     const ctrlInputRef = useRef<HTMLInputElement | null>(null);
     const handleCtrl = () => {
         const next = !ctrlModeRef.current;
-        ctrlModeRef.current = next;
-        setCtrlActive(next);
+        setCtrlMode(next);
         // Focus the ctrl input field so user can type the next character
         if (next) {
             setTimeout(() => ctrlInputRef.current?.focus(), 0);
         }
     };
     const handleCtrlInput = (char: string) => {
-        ctrlModeRef.current = false;
-        setCtrlActive(false);
+        setCtrlMode(false);
         const charCode = char.toLowerCase().charCodeAt(0);
         if (charCode >= 97 && charCode <= 122) {
             // a-z → Ctrl+A (0x01) through Ctrl+Z (0x1A)
-            sendKey(String.fromCharCode(charCode - 96));
+            pureTerminalRef.current?.sendKey(String.fromCharCode(charCode - 96));
         }
-        focus();
+        pureTerminalRef.current?.focus();
     };
-    const handleEsc = () => sendKey('\x1b');
-    const handleCtrlC = () => sendKey('\x03');
-    const handleCtrlA = () => sendKey('\x01');
-    const handleCtrlR = () => sendKey('\x12');
-    const handleCtrlL = () => sendKey('\x0c');
-    const handleTab = () => sendKey('\t');
-    const handleArrowUp = () => sendKey('\x1b[A');
-    const handleArrowDown = () => sendKey('\x1b[B');
-    const handleArrowLeft = () => sendKey('\x1b[D');
-    const handleArrowRight = () => sendKey('\x1b[C');
+    const handleEsc = () => pureTerminalRef.current?.sendKey('\x1b');
+    const handleCtrlC = () => pureTerminalRef.current?.sendKey('\x03');
+    const handleCtrlA = () => pureTerminalRef.current?.sendKey('\x01');
+    const handleCtrlR = () => pureTerminalRef.current?.sendKey('\x12');
+    const handleCtrlL = () => pureTerminalRef.current?.sendKey('\x0c');
+    const handleTab = () => pureTerminalRef.current?.sendKey('\t');
+    const handleArrowUp = () => pureTerminalRef.current?.sendKey('\x1b[A');
+    const handleArrowDown = () => pureTerminalRef.current?.sendKey('\x1b[B');
+    const handleArrowLeft = () => pureTerminalRef.current?.sendKey('\x1b[D');
+    const handleArrowRight = () => pureTerminalRef.current?.sendKey('\x1b[C');
     const handlePaste = async () => {
         try {
             const text = await navigator.clipboard.readText();
-            if (text) sendKey(text);
+            if (text) pureTerminalRef.current?.sendKey(text);
         } catch (err) {
             console.error('Failed to paste from clipboard:', err);
         }
@@ -217,42 +212,53 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
             className={`terminal-instance ${isActive ? 'active' : ''}`}
             data-terminal-id={id}
         >
-            <div className="terminal-instance-content" ref={terminalRef}>
-                <div className="terminal-instance-shortcuts" ref={shortcutsRef}>
-                <button className="term-shortcut-btn" onClick={handleTab}>Tab</button>
-                <button className="term-shortcut-btn" onClick={handleArrowLeft}>←</button>
-                <button className="term-shortcut-btn" onClick={handleArrowRight}>→</button>
-                <button className="term-shortcut-btn" onClick={handleArrowUp}>↑</button>
-                <button className="term-shortcut-btn" onClick={handleArrowDown}>↓</button>
-                <button className={`term-shortcut-btn ${ctrlActive ? 'active' : ''}`} onClick={handleCtrl}>Ctrl</button>
-                {/* Hidden input to capture the next character when Ctrl mode is active */}
-                <input
-                    ref={ctrlInputRef}
-                    className="term-ctrl-hidden-input"
-                    type="text"
-                    maxLength={1}
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    autoComplete="off"
-                    onInput={(e) => {
-                        const val = (e.target as HTMLInputElement).value;
-                        if (val.length > 0) {
-                            handleCtrlInput(val);
-                            (e.target as HTMLInputElement).value = '';
-                        }
-                    }}
-                    onBlur={() => {
-                        ctrlModeRef.current = false;
-                        setCtrlActive(false);
-                    }}
+            <div className="terminal-instance-content">
+                <PureTerminalView
+                    ref={pureTerminalRef}
+                    theme={v2Theme}
+                    cwd={cwd}
+                    name={name}
+                    initialCommand={initialCommand}
+                    sessionId={sessionId}
+                    onSessionId={onSessionId}
+                    onConnectionChange={handleConnectionChange}
+                    onCloseRequest={onCloseTab}
+                    autoFocus={autoFocus}
                 />
-                <button className="term-shortcut-btn" onClick={handleEsc}>Esc</button>
-                <button className="term-shortcut-btn" onClick={handleCtrlC}>^C</button>
-                <button className="term-shortcut-btn" onClick={handleCtrlA}>^A</button>
-                <button className="term-shortcut-btn" onClick={handleCtrlR}>^R</button>
-                <button className="term-shortcut-btn" onClick={handleCtrlL}>^L</button>
-                <button className="term-shortcut-btn" onClick={handlePaste}>Paste</button>
-            </div>
+                <div className="terminal-instance-shortcuts" ref={shortcutsRef}>
+                    <button className="term-shortcut-btn" onClick={handleTab}>Tab</button>
+                    <button className="term-shortcut-btn" onClick={handleArrowLeft}>←</button>
+                    <button className="term-shortcut-btn" onClick={handleArrowRight}>→</button>
+                    <button className="term-shortcut-btn" onClick={handleArrowUp}>↑</button>
+                    <button className="term-shortcut-btn" onClick={handleArrowDown}>↓</button>
+                    <button className={`term-shortcut-btn ${ctrlActive ? 'active' : ''}`} onClick={handleCtrl}>Ctrl</button>
+                    {/* Hidden input to capture the next character when Ctrl mode is active */}
+                    <input
+                        ref={ctrlInputRef}
+                        className="term-ctrl-hidden-input"
+                        type="text"
+                        maxLength={1}
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        autoComplete="off"
+                        onInput={(e) => {
+                            const val = (e.target as HTMLInputElement).value;
+                            if (val.length > 0) {
+                                handleCtrlInput(val);
+                                (e.target as HTMLInputElement).value = '';
+                            }
+                        }}
+                        onBlur={() => {
+                            setCtrlMode(false);
+                        }}
+                    />
+                    <button className="term-shortcut-btn" onClick={handleEsc}>Esc</button>
+                    <button className="term-shortcut-btn" onClick={handleCtrlC}>^C</button>
+                    <button className="term-shortcut-btn" onClick={handleCtrlA}>^A</button>
+                    <button className="term-shortcut-btn" onClick={handleCtrlR}>^R</button>
+                    <button className="term-shortcut-btn" onClick={handleCtrlL}>^L</button>
+                    <button className="term-shortcut-btn" onClick={handlePaste}>Paste</button>
+                </div>
             </div>
         </div>
     );

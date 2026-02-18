@@ -1,0 +1,179 @@
+.custom-terminal {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    background: #0f172a;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.custom-terminal-wide {
+    width: 1024px;
+    max-width: 100%;
+}
+
+.custom-terminal-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 8px 12px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+}
+
+.custom-terminal-wide-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.custom-terminal-wide-toggle input {
+    width: 14px;
+    height: 14px;
+    accent-color: #22c55e;
+}
+
+.custom-terminal-output {
+    flex: 1;
+    padding: 12px;
+    overflow-y: auto;
+    overflow-x: auto;
+    font-family: 'SF Mono', Monaco, 'Ubuntu Mono', Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #e2e8f0;
+}
+
+.custom-terminal-line {
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin-bottom: 2px;
+}
+
+.custom-terminal-line-input {
+    color: #22c55e;
+}
+
+.custom-terminal-line-output {
+    color: #94a3b8;
+}
+
+.custom-terminal-line-error {
+    color: #ef4444;
+}
+
+.custom-terminal-line-success {
+    color: #22c55e;
+}
+
+.custom-terminal-input-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #1e293b;
+    border-top: 1px solid #334155;
+    position: relative;
+}
+
+.custom-terminal-prompt {
+    color: #22c55e;
+    font-family: 'SF Mono', Monaco, 'Ubuntu Mono', Consolas, monospace;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.custom-terminal-input-wrapper {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.custom-terminal-input {
+    width: 100%;
+    background: #0f172a;
+    border: 1px solid #334155;
+    color: #e2e8f0;
+    font-family: 'SF Mono', Monaco, 'Ubuntu Mono', Consolas, monospace;
+    font-size: 16px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    outline: none;
+    min-width: 0;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+.custom-terminal-input:focus {
+    border-color: #3b82f6;
+}
+
+.custom-terminal-input::placeholder {
+    color: #64748b;
+}
+
+.custom-terminal-dropdown {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    max-height: 150px;
+    overflow-y: auto;
+    z-index: 100;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.custom-terminal-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'SF Mono', Monaco, 'Ubuntu Mono', Consolas, monospace;
+}
+
+.custom-terminal-dropdown-item:hover,
+.custom-terminal-dropdown-item.selected {
+    background: #334155;
+}
+
+.custom-terminal-dropdown-prompt {
+    color: #22c55e;
+    flex-shrink: 0;
+}
+
+.custom-terminal-dropdown-text {
+    color: #e2e8f0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.custom-terminal-run-btn {
+    padding: 8px 16px;
+    background: #22c55e;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.custom-terminal-run-btn:hover {
+    background: #16a34a;
+}
+
+.custom-terminal-run-btn:active {
+    background: #15803d;
+}

@@ -1,0 +1,263 @@
+.command-success-mockup {
+    padding: 20px;
+    background: #0f172a;
+    min-height: 100vh;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    text-align: initial;
+}
+
+.command-success-header {
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #334155;
+}
+
+.command-success-header h2 {
+    margin: 0 0 8px 0;
+    font-size: 24px;
+    color: #e2e8f0;
+}
+
+.command-success-header p {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.command-success-header code {
+    background: #1e293b;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #22c55e;
+}
+
+.command-success-container {
+    margin-bottom: 24px;
+}
+
+.command-success-features {
+    margin-bottom: 24px;
+}
+
+.command-success-features h3 {
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    color: #e2e8f0;
+}
+
+.command-success-features ul {
+    margin: 0;
+    padding-left: 20px;
+    color: #94a3b8;
+    font-size: 14px;
+    line-height: 1.8;
+}
+
+.command-success-features li {
+    margin-bottom: 4px;
+}
+
+.command-success-features strong {
+    color: #e2e8f0;
+}
+
+.command-success-commands h3 {
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    color: #e2e8f0;
+}
+
+.command-success-command-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.command-success-command-list code {
+    background: #1e293b;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: 'SF Mono', Monaco, 'Ubuntu Mono', Consolas, monospace;
+    color: #22c55e;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.command-success-command-list code:hover {
+    background: #334155;
+}
+
+/* Reuse V2TerminalMockup styles */
+.command-success-container .v2-terminal-container {
+    background: #0f172a;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #334155;
+}
+
+.command-success-container .v2-terminal-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+}
+
+.command-success-container .v2-terminal-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.command-success-container .v2-terminal-status.connected {
+    color: #22c55e;
+}
+
+.command-success-container .v2-terminal-status .v2-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #22c55e;
+}
+
+.command-success-container .v2-terminal-title {
+    font-size: 12px;
+    color: #fff;
+    font-weight: 500;
+}
+
+.command-success-container .v2-terminal-body {
+    padding: 8px;
+    height: 250px;
+    overflow-y: auto;
+    background: #0f172a;
+}
+
+.command-success-container .v2-fake-terminal-wrapper {
+    height: 100%;
+    width: 100%;
+}
+
+.command-success-container .v2-fake-terminal-wrapper .xterm {
+    height: 100%;
+    padding: 4px;
+}
+
+.command-success-container .v2-fake-terminal-wrapper .xterm-viewport {
+    overflow-y: auto !important;
+}
+
+.command-success-container .v2-input-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #1e293b;
+    border-top: 1px solid #334155;
+}
+
+.command-success-container .v2-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.command-success-container .v2-input-prompt {
+    color: #22c55e;
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.command-success-container .v2-input-field {
+    flex: 1;
+    background: #0f172a;
+    border: 1px solid #334155;
+    color: #e2e8f0;
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 14px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    outline: none;
+    min-width: 0;
+}
+
+.command-success-container .v2-input-field:focus {
+    border-color: #3b82f6;
+}
+
+.command-success-container .v2-input-field::placeholder {
+    color: #64748b;
+}
+
+.command-success-container .v2-run-btn {
+    padding: 6px 16px;
+    background: #22c55e;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.command-success-container .v2-run-btn:hover {
+    background: #16a34a;
+}
+
+.command-success-container .v2-shortcuts-bar {
+    display: flex;
+    gap: 4px;
+    padding: 8px 12px;
+    background: #1e293b;
+    border-top: 1px solid #334155;
+    overflow-x: auto;
+}
+
+.command-success-container .v2-shortcut-btn {
+    padding: 4px 8px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 4px;
+    color: #94a3b8;
+    font-size: 10px;
+    font-family: monospace;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.command-success-container .v2-shortcut-btn:hover {
+    background: #475569;
+    color: #e2e8f0;
+}
+
+@media (max-width: 600px) {
+    .command-success-mockup {
+        padding: 12px;
+    }
+
+    .command-success-header h2 {
+        font-size: 20px;
+    }
+
+    .command-success-command-list {
+        gap: 6px;
+    }
+
+    .command-success-command-list code {
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+}

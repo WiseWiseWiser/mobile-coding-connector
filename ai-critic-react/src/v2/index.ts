@@ -19,6 +19,7 @@ export { DownloadFileView } from './mcc/home/DownloadFileView';
 export { ManageServerView } from './mcc/home/ManageServerView';
 export { AddFromFilesystemView } from './mcc/home/AddFromFilesystemView';
 export { TerminalView } from './mcc/terminal/TerminalView';
+export { TerminalPage } from './mcc/terminal/TerminalPage';
 export { AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute } from './mcc/agent';
 export { PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute } from './mcc';
 export { FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute } from './mcc/files';

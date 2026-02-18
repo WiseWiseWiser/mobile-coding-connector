@@ -1,0 +1,153 @@
+.scrollbar-mockup {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: #0f172a;
+    color: #e2e8f0;
+    overflow: hidden;
+}
+
+.sm-header {
+    padding: 16px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+    flex-shrink: 0;
+}
+
+.sm-header h2 {
+    margin: 0 0 6px 0;
+    font-size: 20px;
+    color: #f1f5f9;
+}
+
+.sm-description {
+    margin: 0;
+    font-size: 13px;
+    color: #94a3b8;
+    line-height: 1.4;
+}
+
+.sm-section {
+    padding: 16px;
+    border-bottom: 1px solid #334155;
+    flex-shrink: 0;
+}
+
+.sm-section h3 {
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    color: #f1f5f9;
+}
+
+.sm-horizontal-container {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.sm-horizontal-content {
+    padding: 12px;
+    white-space: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.sm-horizontal-content::-webkit-scrollbar {
+    display: none;
+}
+
+.sm-vertical-layout {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.sm-vertical-container {
+    flex: 1;
+    height: 200px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.sm-vertical-container.sm-minimal {
+    background: #0f172a;
+}
+
+.sm-vertical-content {
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 12px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.sm-vertical-content::-webkit-scrollbar {
+    display: none;
+}
+
+.sm-vertical-inner {
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.sm-vertical-inner::-webkit-scrollbar {
+    display: none;
+}
+
+.sm-content-line {
+    padding: 8px 0;
+    border-bottom: 1px solid #334155;
+    font-size: 13px;
+    color: #94a3b8;
+}
+
+.sm-content-line:last-child {
+    border-bottom: none;
+}
+
+.sm-info {
+    padding: 16px;
+    background: #1e293b;
+    flex-shrink: 0;
+}
+
+.sm-info h4 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: #f1f5f9;
+}
+
+.sm-info ul {
+    margin: 0;
+    padding-left: 20px;
+    color: #94a3b8;
+    font-size: 13px;
+    line-height: 1.8;
+}
+
+.sm-info li {
+    margin-bottom: 4px;
+}
+
+@media (max-width: 640px) {
+    .sm-header {
+        padding: 12px;
+    }
+
+    .sm-section {
+        padding: 12px;
+    }
+
+    .sm-vertical-container {
+        height: 150px;
+    }
+}

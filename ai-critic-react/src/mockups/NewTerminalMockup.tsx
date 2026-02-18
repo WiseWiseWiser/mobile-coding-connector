@@ -55,26 +55,71 @@ const COMMAND_MOCKS: Record<string, CommandMock> = {
     ],
 };
 
-let tabCounter = 1;
+let globalTabCounter = 1;
 
-export function NewTerminalMockup(_props: NewTerminalMockupProps) {
-    const [variant, setVariant] = useState<TerminalVariant>('normal');
+interface TerminalInstanceProps {
+    variant: TerminalVariant;
+}
+
+function TerminalInstance({ variant }: TerminalInstanceProps) {
     const [showKeyboard, setShowKeyboard] = useState(false);
     const [ctrlMode, setCtrlMode] = useState(false);
-    const [tabs, setTabs] = useState<TerminalTab[]>([
-        {
-            id: 'tab-1',
-            name: 'bash',
-            history: [
-                { text: 'Welcome to mobile terminal mockup', type: 'output' },
-                { text: 'Type commands and press Enter to execute', type: 'output' },
-                { text: '', type: 'output' },
-            ],
-            active: true,
-            exited: false,
-        },
-    ]);
-    const [activeTabId, setActiveTabId] = useState('tab-1');
+    const exitedInputRef = useRef<HTMLInputElement>(null);
+    
+    const getInitialTabs = (v: TerminalVariant): TerminalTab[] => {
+        if (v === 'exited') {
+            return [{
+                id: `tab-${globalTabCounter++}`,
+                name: 'bash',
+                history: [
+                    { text: '$ ./build.sh', 'type': 'command' },
+                    { text: 'Build completed successfully', 'type': 'output' },
+                    { text: '', type: 'output' },
+                ],
+                active: true,
+                exited: true,
+            }];
+        } else if (v === 'disconnected') {
+            return [{
+                id: `tab-${globalTabCounter++}`,
+                name: 'bash',
+                history: [
+                    { text: 'Welcome to mobile terminal mockup', type: 'output' },
+                    { text: 'Type commands and press Enter to execute', type: 'output' },
+                    { text: '', type: 'output' },
+                ],
+                active: true,
+                exited: false,
+                disconnected: true,
+            }];
+        } else if (v === 'streaming') {
+            return [{
+                id: `tab-${globalTabCounter++}`,
+                name: 'bash',
+                history: [
+                    { text: '$ npm run build', 'type': 'command' },
+                    { text: '', type: 'output' },
+                ],
+                active: true,
+                exited: false,
+            }];
+        } else {
+            return [{
+                id: `tab-${globalTabCounter++}`,
+                name: 'bash',
+                history: [
+                    { text: 'Welcome to mobile terminal mockup', type: 'output' },
+                    { text: 'Type commands and press Enter to execute', type: 'output' },
+                    { text: '', type: 'output' },
+                ],
+                active: true,
+                exited: false,
+            }];
+        }
+    };
+    
+    const [tabs, setTabs] = useState<TerminalTab[]>(getInitialTabs(variant));
+    const [activeTabId, setActiveTabId] = useState(tabs[0].id);
     const inputRef = useRef<HTMLDivElement>(null);
     const outputRef = useRef<HTMLDivElement>(null);
     const shortcutsRef = useRef<HTMLDivElement>(null);
@@ -110,7 +155,7 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
             let idx = 0;
             
             const addNextLine = () => {
-                if (idx >= streamingTexts.length || variant !== 'streaming') return;
+                if (idx >= streamingTexts.length) return;
                 
                 setTabs(tabs.map(t => 
                     t.id === activeTabId 
@@ -203,12 +248,11 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
     };
 
     const addNewTab = () => {
-        tabCounter++;
         const newTab: TerminalTab = {
-            id: `tab-${tabCounter}`,
+            id: `tab-${globalTabCounter++}`,
             name: 'bash',
             history: [
-                { text: `Terminal ${tabCounter}`, type: 'output' },
+                { text: `Terminal ${globalTabCounter}`, type: 'output' },
                 { text: '', type: 'output' },
             ],
             active: true,
@@ -227,12 +271,11 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
         e.stopPropagation();
         const newTabs = tabs.filter(t => t.id !== tabId);
         if (newTabs.length === 0) {
-            tabCounter++;
             const newTab: TerminalTab = {
-                id: `tab-${tabCounter}`,
+                id: `tab-${globalTabCounter++}`,
                 name: 'bash',
                 history: [
-                    { text: `Terminal ${tabCounter}`, type: 'output' },
+                    { text: `Terminal ${globalTabCounter}`, type: 'output' },
                     { text: '', type: 'output' },
                 ],
                 active: true,
@@ -250,19 +293,32 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
 
     const handleAnyKey = () => {
         if (activeTab?.exited) {
-            // Restart the terminal
-            setTabs(tabs.map(t => 
-                t.id === activeTabId 
-                    ? { 
-                        ...t, 
-                        exited: false, 
-                        history: [
-                            { text: 'Process terminated', type: 'output' },
-                            { text: '', type: 'output' },
-                        ]
-                    }
-                    : t
-            ));
+            setTabs(currentTabs => {
+                const tab = currentTabs.find(t => t.id === activeTabId);
+                if (tab?.exited) {
+                    return currentTabs.map(t => 
+                        t.id === activeTabId 
+                            ? { 
+                                ...t, 
+                                exited: false, 
+                                history: [
+                                    ...t.history,
+                                    { text: 'Process terminated', type: 'output' },
+                                    { text: '', type: 'output' },
+                                ]
+                            }
+                            : t
+                    );
+                }
+                return currentTabs;
+            });
+        }
+    };
+
+    const handleOutputKeyDown = (e: React.KeyboardEvent) => {
+        if (activeTab?.exited) {
+            e.preventDefault();
+            handleAnyKey();
         }
     };
 
@@ -338,274 +394,213 @@ export function NewTerminalMockup(_props: NewTerminalMockupProps) {
         }
     };
 
+    const handleReconnect = () => {
+        setTabs([{
+            id: `tab-${globalTabCounter++}`,
+            name: 'bash',
+            history: [
+                { text: 'Reconnecting...', type: 'output' },
+                { text: 'Connected', type: 'output' },
+                { text: '', type: 'output' },
+            ],
+            active: true,
+            exited: false,
+            disconnected: false,
+        }]);
+    };
+
     return (
-        <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto', background: '#0f172a', minHeight: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-            <style>{`
-                @viewport {
-                    user-zoom: fixed;
-                }
-                input, textarea, [contenteditable] {
-                    font-size: 16px !important;
-                }
-                @keyframes blink {
-                    0%, 50% { opacity: 1; }
-                    51%, 100% { opacity: 0; }
-                }
-            `}</style>
-            <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #334155' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', color: '#e2e8f0' }}>New Terminal</h3>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                {(['normal', 'streaming', 'exited', 'disconnected'] as TerminalVariant[]).map(v => (
-                    <button
-                        key={v}
-                        onClick={() => {
-                            setVariant(v);
-                            if (v === 'exited') {
-                                setTabs([{
-                                    id: 'tab-1',
-                                    name: 'bash',
-                                    history: [
-                                        { text: '$ ./build.sh', type: 'command' },
-                                        { text: 'Build completed successfully', type: 'output' },
-                                        { text: '', type: 'output' },
-                                    ],
-                                    active: true,
-                                    exited: true,
-                                }]);
-                            } else if (v === 'disconnected') {
-                                setTabs([{
-                                    id: 'tab-1',
-                                    name: 'bash',
-                                    history: [
-                                        { text: 'Welcome to mobile terminal mockup', type: 'output' },
-                                        { text: 'Type commands and press Enter to execute', type: 'output' },
-                                        { text: '', type: 'output' },
-                                    ],
-                                    active: true,
-                                    exited: false,
-                                    disconnected: true,
-                                }]);
-                            } else if (v === 'streaming') {
-                                setTabs([{
-                                    id: 'tab-1',
-                                    name: 'bash',
-                                    history: [
-                                        { text: '$ npm run build', type: 'command' },
-                                        { text: '', type: 'output' },
-                                    ],
-                                    active: true,
-                                    exited: false,
-                                }]);
-                            } else {
-                                setTabs([{
-                                    id: 'tab-1',
-                                    name: 'bash',
-                                    history: [
-                                        { text: 'Welcome to mobile terminal mockup', type: 'output' },
-                                        { text: 'Type commands and press Enter to execute', type: 'output' },
-                                        { text: '', type: 'output' },
-                                    ],
-                                    active: true,
-                                    exited: false,
-                                }]);
-                            }
-                        }}
-                        style={{
-                            padding: '6px 12px',
-                            fontSize: '12px',
-                            borderRadius: '4px',
-                            border: 'none',
-                            cursor: 'pointer',
-                            background: variant === v ? '#3b82f6' : '#334155',
-                            color: variant === v ? '#fff' : '#94a3b8',
-                        }}
-                    >
-                        {v.charAt(0).toUpperCase() + v.slice(1)}
-                    </button>
-                ))}
-            </div>
-                
-            <div style={{ background: '#0f172a', borderRadius: '8px', overflow: 'hidden', marginBottom: '20px' }}>
-                <div style={{ display: 'flex', gap: '4px', padding: '8px 12px', background: '#1e293b', borderBottom: '1px solid #334155', overflowX: 'auto' }}>
-                    {tabs.map(tab => (
-                        <span 
-                            key={tab.id}
-                            onClick={() => handleTabClick(tab.id)}
-                            style={{ 
-                                padding: '4px 12px', 
-                                background: tab.active ? '#0f172a' : '#334155', 
-                                borderRadius: '4px', 
-                                fontSize: '12px', 
-                                color: tab.active ? '#fff' : '#94a3b8',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                whiteSpace: 'nowrap',
-                            }}
-                        >
-                            {tab.name}
-                            {tabs.length > 1 && (
-                                <span 
-                                    onClick={(e) => handleCloseTab(tab.id, e)}
-                                    style={{ fontSize: '14px', color: '#64748b', marginLeft: '2px' }}
-                                >×</span>
-                            )}
-                        </span>
-                    ))}
+        <div style={{ background: '#0f172a', borderRadius: '8px', overflow: 'hidden', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', gap: '4px', padding: '8px 12px', background: '#1e293b', borderBottom: '1px solid #334155', overflowX: 'auto' }}>
+                <span style={{ padding: '4px 12px', color: '#94a3b8', fontSize: '11px', textTransform: 'capitalize', marginRight: '8px' }}>{variant}</span>
+                {tabs.map(tab => (
                     <span 
-                        onClick={addNewTab}
+                        key={tab.id}
+                        onClick={() => handleTabClick(tab.id)}
                         style={{ 
-                            padding: '4px 10px', 
-                            background: '#334155', 
+                            padding: '4px 12px', 
+                            background: tab.active ? '#0f172a' : '#334155', 
                             borderRadius: '4px', 
                             fontSize: '12px', 
-                            color: '#94a3b8',
+                            color: tab.active ? '#fff' : '#94a3b8',
                             cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            whiteSpace: 'nowrap',
                         }}
                     >
-                        +
+                        {tab.name}
+                        {tabs.length > 1 && (
+                            <span 
+                                onClick={(e) => handleCloseTab(tab.id, e)}
+                                style={{ fontSize: '14px', color: '#64748b', marginLeft: '2px' }}
+                            >×</span>
+                        )}
                     </span>
-                </div>
-                
-                <div 
-                    ref={outputRef}
-                    onClick={() => inputRef.current?.focus()}
+                ))}
+                <span 
+                    onClick={addNewTab}
                     style={{ 
-                        padding: '12px', 
-                        height: '200px', 
-                        overflowY: 'auto', 
-                        WebkitOverflowScrolling: 'touch',
-                        touchAction: 'pan-y',
-                        fontFamily: 'monospace', 
+                        padding: '4px 10px', 
+                        background: '#334155', 
+                        borderRadius: '4px', 
                         fontSize: '12px', 
-                        lineHeight: '1.5', 
-                        textAlign: 'left',
-                        cursor: 'text'
+                        color: '#94a3b8',
+                        cursor: 'pointer',
                     }}
                 >
-                    {activeTab.history.map((line, i) => (
-                        <div 
-                            key={i} 
+                    +
+                </span>
+            </div>
+            
+            <div 
+                ref={outputRef}
+                onClick={() => {
+                    console.log('[CLICK] output div clicked, activeTab.exited:', activeTab.exited);
+                    if (activeTab.exited) {
+                        console.log('[CLICK] trying to focus exitedInputRef');
+                        if (exitedInputRef.current) {
+                            exitedInputRef.current.focus();
+                            console.log('[CLICK] exitedInputRef.focus() called');
+                        } else {
+                            console.log('[CLICK] exitedInputRef is null!');
+                        }
+                    } else if (!activeTab.disconnected) {
+                        inputRef.current?.focus();
+                    }
+                }}
+                onKeyDown={handleOutputKeyDown}
+                tabIndex={activeTab.exited ? 0 : undefined}
+                style={{ 
+                    padding: '12px', 
+                    height: '200px', 
+                    overflowY: 'auto', 
+                    WebkitOverflowScrolling: 'touch',
+                    touchAction: 'pan-y',
+                    fontFamily: 'monospace', 
+                    fontSize: '12px', 
+                    lineHeight: '1.5', 
+                    textAlign: 'left',
+                    cursor: 'text',
+                    outline: 'none',
+                    position: 'relative'
+                }}
+            >
+                {activeTab.history.map((line, i) => (
+                    <div 
+                        key={i} 
+                        style={{ 
+                            ...getLineStyle(line.type, line.streaming), 
+                            whiteSpace: 'pre-wrap' 
+                        }}
+                    >
+                        {line.text}
+                        {line.streaming && i === activeTab.history.length - 1 && <span style={{ animation: 'blink 1s infinite' }}>▋</span>}
+                    </div>
+                ))}
+                
+                {activeTab.exited ? (
+                    <div style={{ textAlign: 'left' }}>
+                        <div style={{ color: '#f59e0b', marginBottom: '8px' }}>Exit status: exited</div>
+                        <input
+                            ref={exitedInputRef}
+                            type="text"
+                            autoComplete="off"
+                            placeholder="Press any key to restart..."
+                            onFocus={() => console.log('[FOCUS] exitedInputRef focused')}
+                            onBlur={() => console.log('[BLUR] exitedInputRef blurred')}
+                            onKeyDown={(e) => {
+                                console.log('[KEYDOWN] input key:', e.key);
+                                e.preventDefault();
+                                handleAnyKey();
+                            }}
                             style={{ 
-                                ...getLineStyle(line.type, line.streaming), 
-                                whiteSpace: 'pre-wrap' 
+                                color: '#64748b',
+                                background: 'transparent',
+                                border: 'none',
+                                outline: 'none',
+                                fontFamily: 'monospace',
+                                fontSize: '12px',
+                                width: '100%',
+                                cursor: 'text',
+                                caretColor: 'transparent'
+                            }}
+                        />
+                    </div>
+                ) : activeTab.disconnected ? (
+                    <div style={{ color: '#ef4444', padding: '20px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '24px', marginBottom: '8px' }}>⚡</div>
+                        <div>Disconnected</div>
+                        <button 
+                            onClick={handleReconnect}
+                            style={{
+                                marginTop: '12px',
+                                padding: '8px 16px',
+                                background: '#3b82f6',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: '#fff',
+                                cursor: 'pointer',
                             }}
                         >
-                            {line.text}
-                            {line.streaming && i === activeTab.history.length - 1 && <span style={{ animation: 'blink 1s infinite' }}>▋</span>}
-                        </div>
-                    ))}
-                    
-                    {activeTab.exited ? (
-                        <div>
-                            <div style={{ color: '#f59e0b', marginBottom: '8px' }}>Exit status: exited</div>
-                            <div style={{ color: '#64748b', cursor: 'pointer' }} onClick={handleAnyKey}>Press any key to exit...</div>
-                        </div>
-                    ) : activeTab.disconnected ? (
-                        <div style={{ color: '#ef4444', padding: '20px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '24px', marginBottom: '8px' }}>⚡</div>
-                            <div>Disconnected</div>
-                            <button 
-                                onClick={() => {
-                                    setVariant('normal');
-                                    setTabs([{
-                                        id: 'tab-1',
-                                        name: 'bash',
-                                        history: [
-                                            { text: 'Reconnecting...', type: 'output' },
-                                            { text: 'Connected', type: 'output' },
-                                            { text: '', type: 'output' },
-                                        ],
-                                        active: true,
-                                        exited: false,
-                                    }]);
-                                }}
-                                style={{
-                                    marginTop: '12px',
-                                    padding: '8px 16px',
-                                    background: '#3b82f6',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    color: '#fff',
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                Reconnect
-                            </button>
-                        </div>
-                    ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span style={{ color: '#22c55e' }}>$</span>
-                            <div
-                                ref={inputRef}
-                                contentEditable
-                                suppressContentEditableWarning
-                                onKeyDown={handleInputKeyDown}
-                                onFocus={() => setShowKeyboard(true)}
-                                onBlur={() => setTimeout(() => setShowKeyboard(false), 200)}
-                                style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: '#e2e8f0',
-                                    fontFamily: 'monospace',
-                                    fontSize: '16px',
-                                    outline: 'none',
-                                    flex: 1,
-                                    minWidth: '100px',
-                                    caretColor: '#60a5fa',
-                                }}
-                            />
-                        </div>
-                    )}
-                </div>
-
-                <div 
-                    ref={shortcutsRef}
-                    style={{ 
-                        display: activeTab?.disconnected ? 'none' : 'flex', 
-                        gap: '4px', 
-                        padding: '8px 12px', 
-                        paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
-                        background: '#1e293b', 
-                        borderTop: '1px solid #334155',
-                        overflowX: 'auto',
-                        transition: 'bottom 0.2s ease',
-                        ...(showKeyboard ? { position: 'fixed', left: 0, right: 0, zIndex: 100 } : {})
-                    }}
-                >
-                    <button style={shortcutBtnStyle} onClick={() => handleQuickAction('Tab')}>Tab</button>
-                    <button style={shortcutBtnStyle} onClick={() => handleQuickAction('←')}>←</button>
-                    <button style={shortcutBtnStyle} onClick={() => handleQuickAction('→')}>→</button>
-                    <button style={shortcutBtnStyle} onClick={() => handleQuickAction('↑')}>↑</button>
-                    <button style={shortcutBtnStyle} onClick={() => handleQuickAction('↓')}>↓</button>
-                    <button 
-                        style={ctrlMode ? { ...shortcutBtnStyle, background: '#60a5fa', color: 'white', borderColor: '#60a5fa' } : shortcutBtnStyle} 
-                        onClick={() => setCtrlMode(!ctrlMode)}
-                    >Ctrl</button>
-                    <button style={shortcutBtnStyle} onClick={() => handleQuickAction('Esc')}>Esc</button>
-                    <button style={shortcutBtnStyle} onClick={() => handleQuickAction('^C')}>^C</button>
-                    <button style={shortcutBtnStyle} onClick={() => handleQuickAction('^R')}>^R</button>
-                    <button style={shortcutBtnStyle} onClick={() => handleQuickAction('Paste')}>Paste</button>
-                </div>
+                            Reconnect
+                        </button>
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ color: '#22c55e' }}>$</span>
+                        <div
+                            ref={inputRef}
+                            contentEditable
+                            suppressContentEditableWarning
+                            onKeyDown={handleInputKeyDown}
+                            onFocus={() => setShowKeyboard(true)}
+                            onBlur={() => setTimeout(() => setShowKeyboard(false), 200)}
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#e2e8f0',
+                                fontFamily: 'monospace',
+                                fontSize: '16px',
+                                outline: 'none',
+                                flex: 1,
+                                minWidth: '100px',
+                                caretColor: '#60a5fa',
+                            }}
+                        />
+                    </div>
+                )}
             </div>
 
-            <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '16px', marginBottom: '16px', textAlign: 'left' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#374151' }}>Try these commands:</h4>
-                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#6b7280' }}>
-                    <li style={{ marginBottom: '6px' }}><code style={{ color: '#22c55e' }}>ls</code> - list files</li>
-                    <li style={{ marginBottom: '6px' }}><code style={{ color: '#22c55e' }}>pwd</code> - print working directory</li>
-                    <li style={{ marginBottom: '6px' }}><code style={{ color: '#22c55e' }}>exit</code> - simulate exit (shows exited status)</li>
-                    <li style={{ marginBottom: '6px' }}><code style={{ color: '#22c55e' }}>clear</code> - clear terminal</li>
-                    <li style={{ marginBottom: '6px' }}>Click <b>+</b> to add new terminal tab</li>
-                </ul>
+            <div 
+                ref={shortcutsRef}
+                style={{ 
+                    display: activeTab?.disconnected ? 'none' : 'flex', 
+                    gap: '4px', 
+                    padding: '8px 12px', 
+                    paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+                    background: '#1e293b', 
+                    borderTop: '1px solid #334155',
+                    overflowX: 'auto',
+                    transition: 'bottom 0.2s ease',
+                    ...(showKeyboard ? { position: 'fixed', left: 0, right: 0, zIndex: 100 } : {})
+                }}
+            >
+                <button style={shortcutBtnStyle} onClick={() => handleQuickAction('Tab')}>Tab</button>
+                <button style={shortcutBtnStyle} onClick={() => handleQuickAction('←')}>←</button>
+                <button style={shortcutBtnStyle} onClick={() => handleQuickAction('→')}>→</button>
+                <button style={shortcutBtnStyle} onClick={() => handleQuickAction('↑')}>↑</button>
+                <button style={shortcutBtnStyle} onClick={() => handleQuickAction('↓')}>↓</button>
+                <button 
+                    style={ctrlMode ? { ...shortcutBtnStyle, background: '#60a5fa', color: 'white', borderColor: '#60a5fa' } : shortcutBtnStyle} 
+                    onClick={() => setCtrlMode(!ctrlMode)}
+                >Ctrl</button>
+                <button style={shortcutBtnStyle} onClick={() => handleQuickAction('Esc')}>Esc</button>
+                <button style={shortcutBtnStyle} onClick={() => handleQuickAction('^C')}>^C</button>
+                <button style={shortcutBtnStyle} onClick={() => handleQuickAction('^R')}>^R</button>
+                <button style={shortcutBtnStyle} onClick={() => handleQuickAction('Paste')}>Paste</button>
             </div>
-
-            <p style={{ fontSize: '13px', color: '#92400e', background: '#fef3c7', padding: '12px', borderRadius: '6px', margin: 0 }}>
-                Use the buttons above to switch variants: Normal, Streaming, Exited, Disconnected.
-            </p>
         </div>
     );
 }
@@ -622,3 +617,45 @@ const shortcutBtnStyle: React.CSSProperties = {
     whiteSpace: 'nowrap',
     flexShrink: 0,
 };
+
+export function NewTerminalMockup(_props: NewTerminalMockupProps) {
+    return (
+        <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', background: '#0f172a', minHeight: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <style>{`
+                @viewport {
+                    user-zoom: fixed;
+                }
+                input, textarea, [contenteditable] {
+                    font-size: 16px !important;
+                }
+                @keyframes blink {
+                    0%, 50% { opacity: 1; }
+                    51%, 100% { opacity: 0; }
+                }
+            `}</style>
+            <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #334155' }}>
+                <h3 style={{ margin: 0, fontSize: '16px', color: '#e2e8f0' }}>New Terminal</h3>
+            </div>
+
+            <TerminalInstance variant="normal" />
+            <TerminalInstance variant="streaming" />
+            <TerminalInstance variant="exited" />
+            <TerminalInstance variant="disconnected" />
+
+            <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '16px', marginBottom: '16px', textAlign: 'left' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#374151' }}>Try these commands:</h4>
+                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#6b7280' }}>
+                    <li style={{ marginBottom: '6px' }}><code style={{ color: '#22c55e' }}>ls</code> - list files</li>
+                    <li style={{ marginBottom: '6px' }}><code style={{ color: '#22c55e' }}>pwd</code> - print working directory</li>
+                    <li style={{ marginBottom: '6px' }}><code style={{ color: '#22c55e' }}>exit</code> - simulate exit (shows exited status)</li>
+                    <li style={{ marginBottom: '6px' }}><code style={{ color: '#22c55e' }}>clear</code> - clear terminal</li>
+                    <li style={{ marginBottom: '6px' }}>Click <b>+</b> to add new terminal tab</li>
+                </ul>
+            </div>
+
+            <p style={{ fontSize: '13px', color: '#92400e', background: '#fef3c7', padding: '12px', borderRadius: '6px', margin: 0 }}>
+                Each terminal instance has independent state. Try different modes in parallel.
+            </p>
+        </div>
+    );
+}

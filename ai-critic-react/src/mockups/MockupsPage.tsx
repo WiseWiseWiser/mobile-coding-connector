@@ -3,10 +3,17 @@ import { MobileWorkspace } from './MobileWorkspace';
 import { MobileCodingConnector } from './v2';
 import { ServerFiles } from './ServerFiles';
 import { NewTerminalMockup } from './NewTerminalMockup';
+import { V2TerminalMockup } from './V2TerminalMockup';
+import { ExitedTerminalTest } from './ExitedTerminalTest';
 import { NoZoomingInputDemo } from './NoZoomingInputDemo';
+import { PureTerminalMockup } from './PureTerminalMockup';
+import { ScrollbarMockup } from './ScrollbarMockup';
 import { ActionItemCardMockup } from './ActionItemCardMockup';
 import { FeatureMakerMockup } from './FeatureMakerMockup';
 import { PathInputDemo } from './PathInputDemo';
+import { CommandInputMockup } from './CommandInputMockup';
+import { XtermQuickTerminal } from './CommandSuccessTerminal';
+import { CustomizeQuickTerminal } from './CustomizeQuickTerminal';
 import './MockupsPage.css';
 
 interface MockupItem {
@@ -24,10 +31,34 @@ const mockups: MockupItem[] = [
         component: ActionItemCardMockup,
     },
     {
+        id: 'pure-terminal',
+        name: 'Pure Terminal View',
+        description: 'Core terminal component without tabs or quick input - the reusable building block',
+        component: PureTerminalMockup,
+    },
+    {
+        id: 'custom-scrollbar',
+        name: 'Custom Scrollbar',
+        description: 'iOS-optimized scrollbar with drag and swipe support for horizontal/vertical scrolling',
+        component: ScrollbarMockup,
+    },
+    {
         id: 'new-terminal',
         name: 'New Terminal',
         description: 'Mobile-optimized terminal with keyboard compatibility',
         component: NewTerminalMockup,
+    },
+    {
+        id: 'v2-terminal',
+        name: 'V2 Terminal',
+        description: '12 terminal states demonstrating different UX patterns for mobile terminals',
+        component: V2TerminalMockup,
+    },
+    {
+        id: 'exited-terminal-test',
+        name: 'Exited Terminal Test',
+        description: 'Test page with only an exited terminal to debug refresh issue',
+        component: ExitedTerminalTest,
     },
     {
         id: 'mobile-workspace',
@@ -64,6 +95,24 @@ const mockups: MockupItem[] = [
         name: 'PathInput',
         description: 'Editable path input with no-zoom for iOS',
         component: PathInputDemo,
+    },
+    {
+        id: 'command-input',
+        name: 'Command Input',
+        description: 'Command input with history dropdown, fuzzy search, and keyboard navigation',
+        component: CommandInputMockup,
+    },
+    {
+        id: 'command-success-terminal',
+        name: 'Xterm Quick Terminal',
+        description: 'Interactive terminal with xterm, input bar, shortcuts, and fake bash server',
+        component: XtermQuickTerminal,
+    },
+    {
+        id: 'customize-quick-terminal',
+        name: 'Customize Quick Terminal',
+        description: 'Custom native terminal (iOS optimized) vs xterm-based terminal',
+        component: CustomizeQuickTerminal,
     },
 ];
 

@@ -142,11 +142,19 @@ const mockInsights: Insight[] = [
     },
 ];
 
+type DriverAgentStatus = 'idle' | 'running' | 'paused' | 'finished';
+
 export function FeatureMakerMockup() {
     const [currentStep] = useState<FlowStep>('clarifying');
     const [showDoc, setShowDoc] = useState(false);
     const [selectedInsight, setSelectedInsight] = useState<Insight | null>(null);
     const [projectPath, setProjectPath] = useState('/workspace/feature-request-app');
+    const [driverAgentStatus, setDriverAgentStatus] = useState<DriverAgentStatus>('idle');
+
+    const handleStart = () => setDriverAgentStatus('running');
+    const handlePause = () => setDriverAgentStatus('paused');
+    const handleResume = () => setDriverAgentStatus('running');
+    const handleAbort = () => setDriverAgentStatus('idle');
 
     return (
         <MockupPageContainer
@@ -243,11 +251,33 @@ export function FeatureMakerMockup() {
                                 onChange={setProjectPath}
                                 label="Project Directory"
                             />
-                        </div>
-
-                        <div className="fm-current-step-card">
-                            <h3>{flowSteps.find(s => s.step === currentStep)?.title}</h3>
-                            <p>{flowSteps.find(s => s.step === currentStep)?.description}</p>
+                            <div className="fm-driver-control">
+                                {driverAgentStatus === 'idle' && (
+                                    <button className="fm-driver-btn fm-driver-start" onClick={handleStart}>
+                                        ▶ Start the driver agent to implement the feature
+                                    </button>
+                                )}
+                                {driverAgentStatus === 'running' && (
+                                    <button className="fm-driver-btn fm-driver-pause" onClick={handlePause}>
+                                        ⏸ Pause
+                                    </button>
+                                )}
+                                {driverAgentStatus === 'paused' && (
+                                    <div className="fm-driver-paused-controls">
+                                        <button className="fm-driver-btn fm-driver-resume" onClick={handleResume}>
+                                            ▶ Resume
+                                        </button>
+                                        <button className="fm-driver-btn fm-driver-abort" onClick={handleAbort}>
+                                            ⏹ Abort
+                                        </button>
+                                    </div>
+                                )}
+                                {driverAgentStatus === 'finished' && (
+                                    <div className="fm-driver-finished">
+                                        <span className="fm-finished-badge">✓ Finished</span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <div className="fm-main-agent">

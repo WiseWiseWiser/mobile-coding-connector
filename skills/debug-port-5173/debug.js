@@ -25,6 +25,13 @@ const HEADLESS = process.env.HEADLESS !== 'false';
 
     const page = await browser.newPage();
     await page.setViewport({ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT });
+    
+    // Add waitForTimeout if not exists (Puppeteer compatibility)
+    if (!page.waitForTimeout) {
+        page.waitForTimeout = function(timeout) {
+            return new Promise(resolve => setTimeout(resolve, timeout));
+        };
+    }
 
     console.log(`Base URL: ${BASE_URL}`);
     console.log(`Viewport: ${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}\n`);

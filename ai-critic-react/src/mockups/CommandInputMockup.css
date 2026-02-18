@@ -1,0 +1,213 @@
+.command-input-mockup {
+    padding: 20px;
+    background: #0f172a;
+    min-height: 100vh;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    text-align: initial;
+}
+
+.command-input-mockup-header {
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #334155;
+}
+
+.command-input-mockup-header h2 {
+    margin: 0 0 8px 0;
+    font-size: 24px;
+    color: #e2e8f0;
+}
+
+.command-input-mockup-header p {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.command-input-mockup-section {
+    margin-bottom: 24px;
+}
+
+.command-input-mockup-section h3 {
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    color: #e2e8f0;
+}
+
+.command-input-position-selector {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: #1e293b;
+    border-radius: 8px;
+    border: 1px solid #334155;
+}
+
+.command-input-position-selector label {
+    color: #94a3b8;
+    font-size: 14px;
+}
+
+.command-input-position-selector select {
+    background: #0f172a;
+    border: 1px solid #334155;
+    color: #e2e8f0;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.command-input-demo {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px;
+    background: #1e293b;
+    border-radius: 8px;
+    border: 1px solid #334155;
+}
+
+.command-input-run-btn {
+    padding: 8px 16px;
+    background: #22c55e;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    height: 32px;
+    margin-top: 0;
+}
+
+.command-input-run-btn:hover {
+    background: #16a34a;
+}
+
+.command-input-variants {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.command-input-variant {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.variant-label {
+    font-size: 12px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.command-input-demo.compact {
+    padding: 8px;
+}
+
+.command-input-features {
+    margin: 0;
+    padding-left: 20px;
+    color: #94a3b8;
+    font-size: 14px;
+    line-height: 1.8;
+}
+
+.command-input-features li {
+    margin-bottom: 4px;
+}
+
+.command-input-features strong {
+    color: #e2e8f0;
+}
+
+.command-input-output {
+    padding: 12px;
+    background: #0f172a;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    font-family: 'SF Mono', Monaco, 'Ubuntu Mono', Consolas, monospace;
+    font-size: 13px;
+    min-height: 100px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.command-input-output-line {
+    padding: 2px 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.command-input-output-line.command {
+    color: #22c55e;
+}
+
+.command-input-output-line.result {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.command-input-output-empty {
+    color: #64748b;
+    font-style: italic;
+}
+
+.command-input-shortcuts {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.command-input-shortcut {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #1e293b;
+    border-radius: 6px;
+    border: 1px solid #334155;
+    font-size: 13px;
+}
+
+.command-input-shortcut kbd {
+    background: #334155;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 11px;
+    color: #e2e8f0;
+}
+
+.command-input-shortcut span {
+    color: #94a3b8;
+}
+
+@media (max-width: 600px) {
+    .command-input-mockup {
+        padding: 12px;
+    }
+
+    .command-input-mockup-header h2 {
+        font-size: 20px;
+    }
+
+    .command-input-demo {
+        flex-direction: column;
+    }
+
+    .command-input-run-btn {
+        width: 100%;
+    }
+
+    .command-input-shortcuts {
+        grid-template-columns: 1fr;
+    }
+}

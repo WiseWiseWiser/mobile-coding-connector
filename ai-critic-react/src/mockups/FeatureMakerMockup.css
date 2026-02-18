@@ -13,6 +13,80 @@
     justify-content: flex-start;
 }
 
+.fm-driver-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+}
+
+.fm-driver-start {
+    background: #22c55e;
+    color: #052e16;
+}
+
+.fm-driver-start:hover {
+    background: #16a34a;
+}
+
+.fm-driver-pause {
+    background: #f59e0b;
+    color: #451a03;
+}
+
+.fm-driver-pause:hover {
+    background: #d97706;
+}
+
+.fm-driver-resume {
+    background: #22c55e;
+    color: #052e16;
+    margin-right: 8px;
+}
+
+.fm-driver-resume:hover {
+    background: #16a34a;
+}
+
+.fm-driver-abort {
+    background: #ef4444;
+    color: white;
+}
+
+.fm-driver-abort:hover {
+    background: #dc2626;
+}
+
+.fm-driver-paused-controls {
+    display: flex;
+    gap: 0;
+}
+
+.fm-driver-paused-controls .fm-driver-btn:first-child {
+    border-radius: 6px 0 0 6px;
+}
+
+.fm-driver-paused-controls .fm-driver-btn:last-child {
+    border-radius: 0 6px 6px 0;
+}
+
+.fm-driver-finished {
+    display: flex;
+    align-items: center;
+}
+
+.fm-finished-badge {
+    padding: 8px 16px;
+    background: #14532d;
+    color: #22c55e;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
 .fm-toggle-doc {
     background: transparent;
     border: 1px solid #555;
@@ -221,6 +295,24 @@
     border: 1px solid #334155;
     border-radius: 8px;
     padding: 14px;
+}
+
+.fm-project-path .fm-driver-control {
+    margin-top: 12px;
+    margin-left: 0;
+}
+
+.fm-project-path .fm-driver-btn {
+    width: 100%;
+    justify-content: center;
+}
+
+.fm-project-path .fm-driver-paused-controls {
+    display: flex;
+}
+
+.fm-project-path .fm-driver-paused-controls .fm-driver-btn {
+    flex: 1;
 }
 
 .fm-subagents {

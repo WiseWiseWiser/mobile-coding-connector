@@ -1,0 +1,106 @@
+.command-input-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: 100%;
+}
+
+.command-input-wrapper {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    position: relative;
+}
+
+.command-prompt {
+    color: #22c55e;
+    font-family: 'SF Mono', Monaco, 'Ubuntu Mono', Consolas, monospace;
+    font-size: 16px;
+    line-height: 32px;
+    flex-shrink: 0;
+}
+
+.command-input-inner {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.command-input-field {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #e2e8f0;
+    font-family: 'SF Mono', Monaco, 'Ubuntu Mono', Consolas, monospace;
+    font-size: 16px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    width: 100%;
+    outline: none;
+    max-width: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    line-height: 22px;
+    height: 32px;
+    box-sizing: border-box;
+}
+
+.command-input-field:focus {
+    border-color: #3b82f6;
+}
+
+.command-input-field::placeholder {
+    color: #64748b;
+}
+
+.command-dropdown {
+    position: absolute;
+    left: 0;
+    right: 0;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    max-height: 150px;
+    overflow-y: auto;
+    z-index: 100;
+}
+
+.command-dropdown-top {
+    bottom: 100%;
+    margin-bottom: 4px;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.command-dropdown-bottom {
+    top: 100%;
+    margin-top: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.command-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'SF Mono', Monaco, 'Ubuntu Mono', Consolas, monospace;
+}
+
+.command-dropdown-item:hover,
+.command-dropdown-item.selected {
+    background: #334155;
+}
+
+.command-dropdown-prompt {
+    color: #22c55e;
+    flex-shrink: 0;
+}
+
+.command-dropdown-text {
+    color: #e2e8f0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
