@@ -99,7 +99,9 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
     }, []);
 
     const refresh = async () => {
-        setLoading(true);
+        if (stagedFiles.length === 0 && unstagedFiles.length === 0) {
+            setLoading(true);
+        }
         setError('');
         try {
             const status = await getGitStatus(projectDir);
@@ -264,228 +266,222 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                 {branch && <span className="mcc-git-branch">{branch}</span>}
             </div>
 
-            {loading ? (
-                <div className="mcc-files-empty">Loading...</div>
-            ) : (
-                <>
-                    {/* Error message at top */}
-                    {error && <div className="mcc-checkpoint-error">{error}</div>}
+            {/* Error message at top */}
+            {error && <div className="mcc-checkpoint-error">{error}</div>}
 
-                    {/* Staged Files */}
-                    <div className="mcc-checkpoint-section-header">
-                        <span className="mcc-checkpoint-section-label">
-                            Staged ({stagedFiles.length})
-                        </span>
-                        {stagedFiles.length > 0 && (
-                            <button className="mcc-git-action-btn" onClick={handleUnstageAll}>
-                                Unstage All
-                            </button>
-                        )}
-                    </div>
-                    {stagedFiles.length > 0 ? (
-                        <div className="mcc-changed-files-list">
-                            {stagedFiles.map(f => (
-                                <div
-                                    key={`staged-${f.path}`}
-                                    className={`mcc-changed-file-item${selectedFile === f.path ? ' mcc-changed-file-item-selected' : ''}`}
-                                    onClick={() => handleFileClick(f.path)}
+            {/* Staged Files */}
+            <div className="mcc-checkpoint-section-header">
+                <span className="mcc-checkpoint-section-label">
+                    Staged ({stagedFiles.length}){loading && stagedFiles.length > 0 && <span className="mcc-loading-indicator">...</span>}
+                </span>
+                {stagedFiles.length > 0 && (
+                    <button className="mcc-git-action-btn" onClick={handleUnstageAll}>
+                        Unstage All
+                    </button>
+                )}
+            </div>
+            {stagedFiles.length > 0 ? (
+                <div className="mcc-changed-files-list">
+                    {stagedFiles.map(f => (
+                        <div
+                            key={`staged-${f.path}`}
+                            className={`mcc-changed-file-item${selectedFile === f.path ? ' mcc-changed-file-item-selected' : ''}`}
+                            onClick={() => handleFileClick(f.path)}
+                        >
+                            {statusBadge(f.status)}
+                            <div className="mcc-changed-file-info">
+                                <span className="mcc-changed-file-path">{f.path}</span>
+                                <span className="mcc-changed-file-size">{formatFileSize(f.size)}</span>
+                                <span className="mcc-changed-file-suffix">{getFileIcon(f.path)}{getFileSuffix(f.path)}</span>
+                            </div>
+                            <span className="mcc-git-file-actions">
+                                <button
+                                    className="mcc-git-file-action"
+                                    onClick={(e) => { e.stopPropagation(); handleUnstage(f.path); }}
                                 >
-                                    {statusBadge(f.status)}
-                                    <div className="mcc-changed-file-info">
-                                        <span className="mcc-changed-file-path">{f.path}</span>
-                                        <span className="mcc-changed-file-size">{formatFileSize(f.size)}</span>
-                                        <span className="mcc-changed-file-suffix">{getFileIcon(f.path)}{getFileSuffix(f.path)}</span>
-                                    </div>
-                                    <span className="mcc-git-file-actions">
+                                    −
+                                </button>
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="mcc-files-empty" style={{ padding: '12px 16px' }}>
+                    {loading ? 'Loading...' : 'No staged changes'}
+                </div>
+            )}
+
+            {/* Unstaged Files */}
+            <div className="mcc-checkpoint-section-header">
+                <span className="mcc-checkpoint-section-label">
+                    Unstaged ({unstagedFiles.length}){loading && unstagedFiles.length > 0 && <span className="mcc-loading-indicator">...</span>}
+                </span>
+                {unstagedFiles.length > 0 && (
+                    <button className="mcc-git-action-btn" onClick={handleStageAll}>
+                        Stage All
+                    </button>
+                )}
+            </div>
+            {unstagedFiles.length > 0 ? (
+                <div className="mcc-changed-files-list">
+                    {unstagedFiles.map(f => (
+                        <div
+                            key={`unstaged-${f.path}`}
+                            className={`mcc-changed-file-item${selectedFile === f.path ? ' mcc-changed-file-item-selected' : ''}`}
+                            onClick={() => handleFileClick(f.path)}
+                        >
+                            {statusBadge(f.status === 'untracked' ? 'added' : f.status)}
+                            <div className="mcc-changed-file-info">
+                                <span className="mcc-changed-file-path">{f.path}</span>
+                                <span className="mcc-changed-file-size">{formatFileSize(f.size)}</span>
+                                <span className="mcc-changed-file-suffix">{getFileIcon(f.path)}{getFileSuffix(f.path)}</span>
+                            </div>
+                            <span className="mcc-git-file-actions">
+                                {f.status === 'untracked' ? (
+                                    <>
+                                        <button
+                                            className="mcc-git-file-action mcc-git-file-action-remove"
+                                            title={`Remove ${f.path}`}
+                                            onClick={(e) => { e.stopPropagation(); setModalState({ type: 'remove', file: f }); }}
+                                        >
+                                            ×
+                                        </button>
                                         <button
                                             className="mcc-git-file-action"
-                                            onClick={(e) => { e.stopPropagation(); handleUnstage(f.path); }}
+                                            onClick={(e) => { e.stopPropagation(); handleStage(f.path); }}
                                         >
-                                            −
+                                            +
                                         </button>
-                                    </span>
-                                </div>
-                            ))}
+                                    </>
+                                ) : (
+                                    <>
+                                        <button
+                                            className="mcc-git-file-action mcc-git-file-action-discard"
+                                            title={`Discard changes to ${f.path}`}
+                                            onClick={(e) => { e.stopPropagation(); setModalState({ type: 'discard', file: f }); }}
+                                        >
+                                            ↩
+                                        </button>
+                                        <button
+                                            className="mcc-git-file-action"
+                                            onClick={(e) => { e.stopPropagation(); handleStage(f.path); }}
+                                        >
+                                            +
+                                        </button>
+                                    </>
+                                )}
+                            </span>
                         </div>
-                    ) : (
-                        <div className="mcc-files-empty" style={{ padding: '12px 16px' }}>
-                            No staged changes
-                        </div>
-                    )}
+                    ))}
+                </div>
+            ) : (
+                <div className="mcc-files-empty" style={{ padding: '12px 16px' }}>
+                    {loading ? 'Loading...' : 'No unstaged changes'}
+                </div>
+            )}
 
-                    {/* Unstaged Files */}
-                    <div className="mcc-checkpoint-section-header">
-                        <span className="mcc-checkpoint-section-label">
-                            Unstaged ({unstagedFiles.length})
-                        </span>
-                        {unstagedFiles.length > 0 && (
-                            <button className="mcc-git-action-btn" onClick={handleStageAll}>
-                                Stage All
-                            </button>
+            {/* Diff View */}
+            {selectedFile && (
+                <div className="mcc-git-diff-section">
+                    <div className="mcc-checkpoint-section-label">Diff: {selectedFile}</div>
+                    <div className="mcc-current-diffs">
+                        {loadingDiffs ? (
+                            <div className="mcc-files-empty">Loading diffs...</div>
+                        ) : selectedDiff.length > 0 ? (
+                            <DiffViewer diffs={selectedDiff} />
+                        ) : (
+                            <div className="mcc-files-empty">No diff available</div>
                         )}
                     </div>
-                    {unstagedFiles.length > 0 ? (
-                        <div className="mcc-changed-files-list">
-                            {unstagedFiles.map(f => (
-                                <div
-                                    key={`unstaged-${f.path}`}
-                                    className={`mcc-changed-file-item${selectedFile === f.path ? ' mcc-changed-file-item-selected' : ''}`}
-                                    onClick={() => handleFileClick(f.path)}
-                                >
-                                    {statusBadge(f.status === 'untracked' ? 'added' : f.status)}
-                                    <div className="mcc-changed-file-info">
-                                        <span className="mcc-changed-file-path">{f.path}</span>
-                                        <span className="mcc-changed-file-size">{formatFileSize(f.size)}</span>
-                                        <span className="mcc-changed-file-suffix">{getFileIcon(f.path)}{getFileSuffix(f.path)}</span>
-                                    </div>
-                                    <span className="mcc-git-file-actions">
-                                        {f.status === 'untracked' ? (
-                                            <>
-                                                <button
-                                                    className="mcc-git-file-action mcc-git-file-action-remove"
-                                                    title={`Remove ${f.path}`}
-                                                    onClick={(e) => { e.stopPropagation(); setModalState({ type: 'remove', file: f }); }}
-                                                >
-                                                    ×
-                                                </button>
-                                                <button
-                                                    className="mcc-git-file-action"
-                                                    onClick={(e) => { e.stopPropagation(); handleStage(f.path); }}
-                                                >
-                                                    +
-                                                </button>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <button
-                                                    className="mcc-git-file-action mcc-git-file-action-discard"
-                                                    title={`Discard changes to ${f.path}`}
-                                                    onClick={(e) => { e.stopPropagation(); setModalState({ type: 'discard', file: f }); }}
-                                                >
-                                                    ↩
-                                                </button>
-                                                <button
-                                                    className="mcc-git-file-action"
-                                                    onClick={(e) => { e.stopPropagation(); handleStage(f.path); }}
-                                                >
-                                                    +
-                                                </button>
-                                            </>
-                                        )}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="mcc-files-empty" style={{ padding: '12px 16px' }}>
-                            No unstaged changes
-                        </div>
-                    )}
+                </div>
+            )}
 
-                    {/* Diff View */}
-                    {selectedFile && (
-                        <div className="mcc-git-diff-section">
-                            <div className="mcc-checkpoint-section-label">Diff: {selectedFile}</div>
-                            <div className="mcc-current-diffs">
-                                {loadingDiffs ? (
-                                    <div className="mcc-files-empty">Loading diffs...</div>
-                                ) : selectedDiff.length > 0 ? (
-                                    <DiffViewer diffs={selectedDiff} />
-                                ) : (
-                                    <div className="mcc-files-empty">No diff available</div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Show All Diffs Toggle */}
-                    {!selectedFile && (stagedFiles.length > 0 || unstagedFiles.length > 0) && (
-                        <div className="mcc-git-diff-toggle-section">
-                            <button
-                                className={`mcc-diff-toggle-btn ${showDiffs ? 'active' : ''}`}
-                                onClick={() => setShowDiffs(!showDiffs)}
-                            >
-                                {showDiffs ? 'Hide All Diffs' : 'Show All Diffs'}
-                            </button>
-                            {showDiffs && (
-                                <div className="mcc-current-diffs" style={{ marginTop: 8 }}>
-                                    {loadingDiffs ? (
-                                        <div className="mcc-files-empty">Loading diffs...</div>
-                                    ) : diffs.length > 0 ? (
-                                        <DiffViewer diffs={diffs} />
-                                    ) : (
-                                        <div className="mcc-files-empty">No diffs available</div>
-                                    )}
-                                </div>
+            {/* Show All Diffs Toggle */}
+            {!selectedFile && (stagedFiles.length > 0 || unstagedFiles.length > 0) && (
+                <div className="mcc-git-diff-toggle-section">
+                    <button
+                        className={`mcc-diff-toggle-btn ${showDiffs ? 'active' : ''}`}
+                        onClick={() => setShowDiffs(!showDiffs)}
+                    >
+                        {showDiffs ? 'Hide All Diffs' : 'Show All Diffs'}
+                    </button>
+                    {showDiffs && (
+                        <div className="mcc-current-diffs" style={{ marginTop: 8 }}>
+                            {loadingDiffs ? (
+                                <div className="mcc-files-empty">Loading diffs...</div>
+                            ) : diffs.length > 0 ? (
+                                <DiffViewer diffs={diffs} />
+                            ) : (
+                                <div className="mcc-files-empty">No diffs available</div>
                             )}
                         </div>
                     )}
+                </div>
+            )}
 
-                    {/* Commit Section */}
-                    <div className="mcc-git-commit-section">
-                        <div className="mcc-checkpoint-section-label">Commit Message</div>
-                        <div className="mcc-git-commit-form">
-                            <NoZoomingInput>
-                                <textarea
-                                    ref={messageRef}
-                                    className="mcc-checkpoint-message-input"
-                                    placeholder="Enter commit message..."
-                                    value={commitMessage}
-                                    onChange={(e) => setCommitMessage(e.target.value)}
-                                    rows={3}
-                                />
-                            </NoZoomingInput>
-                            {/* Commit button - standalone row */}
-                            <button
-                                className="mcc-git-commit-btn"
-                                onClick={handleCommit}
-                                disabled={committing || stagedFiles.length === 0 || !commitMessage.trim()}
-                            >
-                                {committing ? 'Committing...' : 'Commit'}
-                            </button>
-                            {/* Success message below commit button */}
-                            {success && <div className="mcc-git-success">{success}</div>}
+            {/* Commit Section */}
+            <div className="mcc-git-commit-section">
+                <div className="mcc-checkpoint-section-label">Commit Message</div>
+                <div className="mcc-git-commit-form">
+                    <NoZoomingInput>
+                        <textarea
+                            ref={messageRef}
+                            className="mcc-checkpoint-message-input"
+                            placeholder="Enter commit message..."
+                            value={commitMessage}
+                            onChange={(e) => setCommitMessage(e.target.value)}
+                            rows={3}
+                        />
+                    </NoZoomingInput>
+                    {/* Commit button - standalone row */}
+                    <button
+                        className="mcc-git-commit-btn"
+                        onClick={handleCommit}
+                        disabled={committing || stagedFiles.length === 0 || !commitMessage.trim()}
+                    >
+                        {committing ? 'Committing...' : 'Commit'}
+                    </button>
+                    {/* Success message below commit button */}
+                    {success && <div className="mcc-git-success">{success}</div>}
 
-                            {/* Push section */}
-                            <div style={{ marginTop: 12 }}>
-                                <GitPushSection projectDir={projectDir} sshKeyId={sshKeyId} />
-                            </div>
-                        </div>
+                    {/* Push section */}
+                    <div style={{ marginTop: 12 }}>
+                        <GitPushSection projectDir={projectDir} sshKeyId={sshKeyId} />
                     </div>
+                </div>
+            </div>
 
-                    {/* Confirm Modal for Discard/Remove */}
-                    {modalState && (
-                        modalState.type === 'discard' ? (
-                            <ConfirmModal
-                                title="Discard Changes"
-                                message={`Are you sure you want to discard changes to "${modalState.file.path}"?`}
-                                info={{
-                                    File: modalState.file.path,
-                                    Status: modalState.file.status,
-                                }}
-                                command={`git checkout -- "${modalState.file.path}"`}
-                                confirmLabel="Discard Changes"
-                                confirmVariant="danger"
-                                onConfirm={handleDiscard}
-                                onClose={() => setModalState(null)}
-                            />
-                        ) : (
-                            <ConfirmModal
-                                title="Remove File"
-                                message={`Are you sure you want to remove "${modalState.file.path}"?`}
-                                info={{
-                                    File: modalState.file.path,
-                                    Status: modalState.file.status,
-                                }}
-                                command={`rm -f "${modalState.file.path}"`}
-                                confirmLabel="Remove File"
-                                confirmVariant="danger"
-                                onConfirm={handleRemove}
-                                onClose={() => setModalState(null)}
-                            />
-                        )
-                    )}
-                </>
+            {/* Confirm Modal for Discard/Remove */}
+            {modalState && (
+                modalState.type === 'discard' ? (
+                    <ConfirmModal
+                        title="Discard Changes"
+                        message={`Are you sure you want to discard changes to "${modalState.file.path}"?`}
+                        info={{
+                            File: modalState.file.path,
+                            Status: modalState.file.status,
+                        }}
+                        command={`git checkout -- "${modalState.file.path}"`}
+                        confirmLabel="Discard Changes"
+                        confirmVariant="danger"
+                        onConfirm={handleDiscard}
+                        onClose={() => setModalState(null)}
+                    />
+                ) : (
+                    <ConfirmModal
+                        title="Remove File"
+                        message={`Are you sure you want to remove "${modalState.file.path}"?`}
+                        info={{
+                            File: modalState.file.path,
+                            Status: modalState.file.status,
+                        }}
+                        command={`rm -f "${modalState.file.path}"`}
+                        confirmLabel="Remove File"
+                        confirmVariant="danger"
+                        onConfirm={handleRemove}
+                        onClose={() => setModalState(null)}
+                    />
+                )
             )}
         </div>
     );

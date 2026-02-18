@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { getFakeShellServer, type FakeShellSession } from '../mockups/fake-shell/FakeShellServer';
+import { ShortcutsBar } from './ShortcutsBar';
 import './CustomTerminal.css';
 
 export interface CustomTerminalProps {
@@ -147,7 +148,7 @@ function applyBackspace(line: string, backspaceSeq: string): string {
     return result;
 }
 
-export function CustomTerminal({
+export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalProps>(function CustomTerminal({
     className = '',
     cwd = '/home/user',
     name = 'mock-shell',
@@ -156,7 +157,7 @@ export function CustomTerminal({
     maxLines = MAX_LINES,
     onConnectionChange,
     onCommandExecuted,
-}: CustomTerminalProps) {
+}, ref) {
     const [lines, setLines] = useState<TerminalLine[]>([]);
     const [quickInput, setQuickInput] = useState('');
     const [filteredHistory, setFilteredHistory] = useState<string[]>([]);
@@ -305,7 +306,14 @@ export function CustomTerminal({
             session.close();
             sessionRef.current = null;
         };
-    }, [cwd, name, maxLines, onConnectionChange, syncLines, currentWide]);
+    }, [cwd, name, maxLines, onConnectionChange, syncLines]);
+
+    useEffect(() => {
+        if (sessionRef.current) {
+            const newCols = currentWide ? 120 : 80;
+            sessionRef.current.resize(newCols, 24);
+        }
+    }, [currentWide]);
 
     // Handle iOS Safari keyboard visibility
     useEffect(() => {
@@ -344,6 +352,11 @@ export function CustomTerminal({
     const sendKey = useCallback((key: string) => {
         sessionRef.current?.send(key);
     }, []);
+
+    useImperativeHandle(ref, () => ({
+        sendKey,
+        focus: () => terminalInputRef.current?.focus(),
+    }), [sendKey]);
 
     const filterHistory = useCallback((value: string) => {
         if (!value.trim()) {
@@ -583,6 +596,7 @@ export function CustomTerminal({
                     spellCheck={false}
                 />
             </div>
+            <ShortcutsBar onSendKey={sendKey} />
             <div className="custom-terminal-input-bar">
                 <span className="custom-terminal-prompt">$</span>
                 <div className="custom-terminal-input-wrapper">
@@ -626,4 +640,4 @@ export function CustomTerminal({
             </div>
         </div>
     );
-}
+});

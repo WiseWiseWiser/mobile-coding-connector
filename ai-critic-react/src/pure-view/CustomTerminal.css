@@ -48,10 +48,19 @@
     color: #e2e8f0;
 }
 
+.custom-terminal-wide .custom-terminal-output {
+    overflow-x: auto;
+}
+
 .custom-terminal-line {
     white-space: pre-wrap;
     word-break: break-all;
     margin-bottom: 2px;
+}
+
+.custom-terminal-wide .custom-terminal-line {
+    white-space: pre;
+    word-break: normal;
 }
 
 .custom-terminal-line-input {

@@ -23,6 +23,8 @@ const ANSI = {
 export interface FakeShellSession {
     id: string;
     cwd: string;
+    cols: number;
+    rows: number;
     history: string[];
     send: (data: string) => void;
     onData: (callback: (data: string) => void) => () => void;
@@ -63,6 +65,8 @@ export class FakeShellServer {
         const session: FakeShellSession = {
             id: sessionId,
             cwd: initialCwd,
+            cols: 80,
+            rows: 24,
             history: [],
 
             send: (data: string) => {
@@ -130,8 +134,9 @@ export class FakeShellServer {
                 };
             },
 
-            resize: () => {
-                // No-op for fake shell
+            resize: (cols: number, rows: number) => {
+                session.cols = cols;
+                session.rows = rows;
             },
 
             close: () => {
@@ -144,21 +149,40 @@ export class FakeShellServer {
 
         // Send initial welcome message and prompt
         setTimeout(() => {
-            this.showWelcome(dataCallbacks);
+            this.showWelcome(session, dataCallbacks);
             this.showPrompt(session, dataCallbacks);
         }, 100);
 
         return session;
     }
 
-    private showWelcome(callbacks: ((data: string) => void)[]) {
+    private showWelcome(session: FakeShellSession, callbacks: ((data: string) => void)[]) {
+        const width = Math.min(session.cols, 100);
+        const innerWidth = width - 2;
+        
+        const topBorder = '═'.repeat(innerWidth);
+        const emptyLine = ' '.repeat(innerWidth);
+        
+        const title = '🚀 Welcome to Pure Terminal Mockup';
+        const titlePadding = Math.max(0, Math.floor((innerWidth - title.length) / 2));
+        const titleLine = ' '.repeat(titlePadding) + title + ' '.repeat(innerWidth - titlePadding - title.length);
+        
+        const desc = 'This is a fake shell running entirely in the browser.';
+        const descPadding = Math.max(0, Math.floor((innerWidth - desc.length) / 2));
+        const descLine = ' '.repeat(descPadding) + desc + ' '.repeat(innerWidth - descPadding - desc.length);
+        
+        const cmds = 'Try commands like: ls, pwd, echo, help';
+        const cmdsPadding = Math.max(0, Math.floor((innerWidth - cmds.length) / 2));
+        const cmdsLine = ' '.repeat(cmdsPadding) + cmds + ' '.repeat(innerWidth - cmdsPadding - cmds.length);
+
         const welcome = [
-            `${ANSI.brightCyan}╔════════════════════════════════════════════════════════════╗${ANSI.reset}`,
-            `${ANSI.brightCyan}║${ANSI.reset}     ${ANSI.bright}🚀 Welcome to Pure Terminal Mockup${ANSI.reset}                    ${ANSI.brightCyan}║${ANSI.reset}`,
-            `${ANSI.brightCyan}║${ANSI.reset}                                                            ${ANSI.brightCyan}║${ANSI.reset}`,
-            `${ANSI.brightCyan}║${ANSI.reset}   This is a ${ANSI.green}fake shell${ANSI.reset} running entirely in the browser.   ${ANSI.brightCyan}║${ANSI.reset}`,
-            `${ANSI.brightCyan}║${ANSI.reset}   Try commands like: ${ANSI.yellow}ls${ANSI.reset}, ${ANSI.yellow}pwd${ANSI.reset}, ${ANSI.yellow}echo${ANSI.reset}, ${ANSI.yellow}help${ANSI.reset}               ${ANSI.brightCyan}║${ANSI.reset}`,
-            `${ANSI.brightCyan}╚════════════════════════════════════════════════════════════╝${ANSI.reset}`,
+            '',
+            `${ANSI.brightCyan}╔${topBorder}╗${ANSI.reset}`,
+            `${ANSI.brightCyan}║${ANSI.reset}${titleLine}${ANSI.brightCyan}║${ANSI.reset}`,
+            `${ANSI.brightCyan}║${emptyLine}║${ANSI.reset}`,
+            `${ANSI.brightCyan}║${ANSI.reset}${descLine}${ANSI.brightCyan}║${ANSI.reset}`,
+            `${ANSI.brightCyan}║${ANSI.reset}${cmdsLine}${ANSI.brightCyan}║${ANSI.reset}`,
+            `${ANSI.brightCyan}╚${topBorder}╝${ANSI.reset}`,
             '',
         ].join('\r\n');
 
@@ -221,7 +245,7 @@ export class FakeShellServer {
                 this.showColors(callbacks);
                 break;
             case 'logo':
-                this.showWelcome(callbacks);
+                this.showWelcome(session, callbacks);
                 break;
             case 'exit':
                 callbacks.forEach(cb => cb('exit\r\n'));

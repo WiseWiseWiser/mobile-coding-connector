@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import { useFakeTerminal } from './fake-server';
 import { CustomTerminal } from '../pure-view/CustomTerminal';
+import { ShortcutsBar } from '../pure-view/ShortcutsBar';
 import './CustomizeQuickTerminal.css';
 
 const DEFAULT_HISTORY = [
@@ -91,13 +92,7 @@ export function CustomizeQuickTerminal() {
                     )}
                     
                     {!useCustom && (
-                        <div className="v2-shortcuts-bar">
-                            <button className="v2-shortcut-btn" onClick={() => sendKey('\t')}>Tab</button>
-                            <button className="v2-shortcut-btn" onClick={() => sendKey('\x1b[A')}>↑</button>
-                            <button className="v2-shortcut-btn" onClick={() => sendKey('\x1b[B')}>↓</button>
-                            <button className="v2-shortcut-btn" onClick={() => sendKey('\x03')}>^C</button>
-                            <button className="v2-shortcut-btn" onClick={() => sendKey('\x0c')}>^L</button>
-                        </div>
+                        <ShortcutsBar onSendKey={sendKey} />
                     )}
                 </div>
             </div>
