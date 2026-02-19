@@ -186,3 +186,21 @@
 .custom-terminal-run-btn:active {
     background: #15803d;
 }
+
+.custom-terminal-alt-screen {
+    background: #000000;
+}
+
+.custom-terminal-alt-screen .custom-terminal-line {
+    white-space: pre;
+}
+
+.custom-terminal-cursor {
+    animation: blink 1s infinite;
+    color: #22c55e;
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}

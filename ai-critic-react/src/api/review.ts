@@ -77,6 +77,7 @@ export interface GitStatusFile {
     status: string;
     isStaged: boolean;
     size: number;
+    isDir: boolean;
 }
 
 // Git status result
@@ -95,6 +96,20 @@ export async function getGitStatus(dir?: string): Promise<GitStatusResult> {
     if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to get git status');
+    }
+    return response.json();
+}
+
+// List contents of an untracked directory
+export async function listUntrackedDir(subDirPath: string, dir?: string): Promise<{ files: GitStatusFile[] }> {
+    const response = await fetch('/api/review/list-untracked-dir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dir, subDirPath }),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to list directory');
     }
     return response.json();
 }

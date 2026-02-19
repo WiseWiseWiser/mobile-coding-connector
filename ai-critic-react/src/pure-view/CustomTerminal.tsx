@@ -9,7 +9,6 @@ export interface CustomTerminalProps {
     name?: string;
     history: string[];
     wide?: boolean;
-    maxLines?: number;
     onConnectionChange?: (connected: boolean) => void;
     onCommandExecuted?: (command: string) => void;
 }
@@ -23,10 +22,6 @@ interface TerminalLine {
     id: number;
     content: React.ReactNode;
 }
-
-const MAX_LINES = 256;
-
-let lineIdCounter = 0;
 
 const ANSI_COLORS: Record<string, string> = {
     '0': '#0f172a',
@@ -73,7 +68,7 @@ function parseAnsiToHtml(text: string): React.ReactNode {
         }
 
         const codes = match[1].split(';').map(c => parseInt(c) || 0);
-        
+
         for (const code of codes) {
             if (code === 0) {
                 bold = false;
@@ -125,28 +120,7 @@ function fuzzyMatch(query: string, candidate: string): boolean {
     return qi === q.length;
 }
 
-function applyBackspace(line: string, backspaceSeq: string): string {
-    let result = line;
-    let i = 0;
-    while (i < backspaceSeq.length) {
-        const char = backspaceSeq[i];
-        if (char === '\b' || char === '\x7f') {
-            // Check for \b \b pattern (backspace + space + backspace)
-            // This is a common terminal sequence for deleting a character
-            if (i + 2 < backspaceSeq.length && backspaceSeq[i + 1] === ' ' && backspaceSeq[i + 2] === '\b') {
-                // Treat as single backspace
-                result = result.slice(0, -1);
-                i += 3;
-            } else {
-                result = result.slice(0, -1);
-                i++;
-            }
-        } else {
-            i++;
-        }
-    }
-    return result;
-}
+const LINE_HEIGHT = 19.5;
 
 export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalProps>(function CustomTerminal({
     className = '',
@@ -154,7 +128,6 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
     name = 'mock-shell',
     history,
     wide: externalWide,
-    maxLines = MAX_LINES,
     onConnectionChange,
     onCommandExecuted,
 }, ref) {
@@ -165,14 +138,13 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const [wide, setWide] = useState(false);
     const [isTerminalFocused, setIsTerminalFocused] = useState(false);
+    const [inAltScreen, setInAltScreen] = useState(false);
     const sessionRef = useRef<FakeShellSession | null>(null);
     const terminalInputRef = useRef<HTMLInputElement>(null);
     const quickInputRef = useRef<HTMLInputElement>(null);
     const outputRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    // Use a ref to store all lines including the current incomplete one
-    const allLinesRef = useRef<{ id: number; content: string }[]>([]);
-    const currentLineContentRef = useRef('');
+    const visibleRowsRef = useRef(24);
 
     const isControlled = externalWide !== undefined;
     const currentWide = isControlled ? externalWide : wide;
@@ -183,33 +155,36 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
         }
     }, [externalWide, isControlled]);
 
-    useEffect(() => {
-        if (sessionRef.current) {
-            const newCols = currentWide ? 120 : 80;
-            sessionRef.current.resize(newCols, 24);
-        }
-    }, [currentWide]);
-
     const handleWideChange = (newWide: boolean) => {
         if (!isControlled) {
             setWide(newWide);
         }
     };
 
-    // Scroll to bottom
     const scrollToBottom = useCallback(() => {
         if (outputRef.current) {
             outputRef.current.scrollTop = outputRef.current.scrollHeight;
         }
     }, []);
 
-    // Sync lines ref to React state
-    const syncLines = useCallback(() => {
-        const displayLines = allLinesRef.current.map(line => ({
+    const calculateVisibleRows = useCallback(() => {
+        if (outputRef.current) {
+            const containerHeight = outputRef.current.clientHeight;
+            return Math.max(Math.floor(containerHeight / LINE_HEIGHT), 5);
+        }
+        return 24;
+    }, []);
+
+    const syncLinesFromSession = useCallback(() => {
+        if (!sessionRef.current) return;
+
+        const outputLines = sessionRef.current.getOutputLines();
+        const displayLines = outputLines.map(line => ({
             id: line.id,
             content: parseAnsiToHtml(line.content)
         }));
         setLines(displayLines);
+        setInAltScreen(sessionRef.current.isInAltScreen());
         requestAnimationFrame(scrollToBottom);
     }, [scrollToBottom]);
 
@@ -218,85 +193,13 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
         const session = server.createSession({ cwd, name });
         sessionRef.current = session;
 
-        const unsubData = session.onData((data) => {
-            // Process backspace sequences first
-            let processedData = data;
-            
-            // Handle backspace sequences like '\b \b'
-            if (processedData.includes('\b')) {
-                // Apply backspace processing to current line
-                currentLineContentRef.current = applyBackspace(currentLineContentRef.current, processedData);
-                // Update the last line in display
-                if (allLinesRef.current.length > 0) {
-                    allLinesRef.current[allLinesRef.current.length - 1].content = currentLineContentRef.current;
-                }
-                syncLines();
-                return;
-            }
-            
-            // Check if data contains newline
-            if (processedData.includes('\r\n')) {
-                // Has newline - split and process
-                const parts = processedData.split('\r\n');
-                
-                // First part combines with current line content and becomes complete
-                const firstPart = currentLineContentRef.current + parts[0];
-                if (allLinesRef.current.length > 0 && currentLineContentRef.current.length > 0) {
-                    // Update the last line
-                    allLinesRef.current[allLinesRef.current.length - 1].content = firstPart;
-                } else if (firstPart.length > 0) {
-                    // Add new line
-                    allLinesRef.current.push({ id: ++lineIdCounter, content: firstPart });
-                }
-                
-                // Reset current line
-                currentLineContentRef.current = '';
-                
-                // Middle parts are complete lines
-                for (let i = 1; i < parts.length - 1; i++) {
-                    if (parts[i].length > 0) {
-                        allLinesRef.current.push({ id: ++lineIdCounter, content: parts[i] });
-                    }
-                }
-                
-                // Last part becomes the new current line
-                const lastPart = parts[parts.length - 1];
-                if (lastPart.length > 0) {
-                    currentLineContentRef.current = lastPart;
-                    allLinesRef.current.push({ id: ++lineIdCounter, content: lastPart });
-                }
-            } else if (processedData.length > 0) {
-                // No newline - append to current line
-                const wasEmpty = currentLineContentRef.current.length === 0;
-                currentLineContentRef.current += processedData;
-                
-                if (wasEmpty) {
-                    // Starting a new line - add it
-                    allLinesRef.current.push({ id: ++lineIdCounter, content: currentLineContentRef.current });
-                } else if (allLinesRef.current.length > 0) {
-                    // Update last line
-                    allLinesRef.current[allLinesRef.current.length - 1].content = currentLineContentRef.current;
-                } else {
-                    // First line
-                    allLinesRef.current.push({ id: ++lineIdCounter, content: currentLineContentRef.current });
-                }
-            }
-            
-            // Enforce max lines
-            if (allLinesRef.current.length > maxLines) {
-                allLinesRef.current = allLinesRef.current.slice(-maxLines);
-            }
-            
-            // Sync to React state
-            syncLines();
+        const unsubData = session.onData(() => {
+            syncLinesFromSession();
         });
 
         const unsubClose = session.onClose(() => {
             onConnectionChange?.(false);
         });
-
-        const newCols = currentWide ? 120 : 80;
-        session.resize(newCols, 24);
 
         onConnectionChange?.(true);
 
@@ -306,16 +209,38 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
             session.close();
             sessionRef.current = null;
         };
-    }, [cwd, name, maxLines, onConnectionChange, syncLines]);
+    }, [cwd, name, onConnectionChange, syncLinesFromSession]);
+
+    useEffect(() => {
+        const outputEl = outputRef.current;
+        if (!outputEl || !sessionRef.current) return;
+
+        const updateVisibleRows = () => {
+            const visibleRows = calculateVisibleRows();
+            if (visibleRows !== visibleRowsRef.current && sessionRef.current) {
+                visibleRowsRef.current = visibleRows;
+                const cols = currentWide ? 120 : 80;
+                sessionRef.current.resize(cols, visibleRows);
+            }
+        };
+
+        const resizeObserver = new ResizeObserver(() => {
+            updateVisibleRows();
+        });
+
+        resizeObserver.observe(outputEl);
+        updateVisibleRows();
+
+        return () => resizeObserver.disconnect();
+    }, [calculateVisibleRows, currentWide]);
 
     useEffect(() => {
         if (sessionRef.current) {
-            const newCols = currentWide ? 120 : 80;
-            sessionRef.current.resize(newCols, 24);
+            const cols = currentWide ? 120 : 80;
+            sessionRef.current.resize(cols, visibleRowsRef.current);
         }
     }, [currentWide]);
 
-    // Handle iOS Safari keyboard visibility
     useEffect(() => {
         const handleResize = () => {
             if (isTerminalFocused) {
@@ -336,7 +261,7 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
         };
 
         window.addEventListener('resize', handleResize);
-        
+
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', handleResize);
         }
@@ -368,7 +293,6 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
         return filtered.length > 0;
     }, [history]);
 
-    // Handle keystrokes from hidden input
     const handleTerminalKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         switch (e.key) {
             case 'Enter':
@@ -456,11 +380,10 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
         scrollToBottom();
     };
 
-    // Handle quick input (bottom input box)
     const handleQuickInputChange = (value: string) => {
         setQuickInput(value);
         setSelectedIndex(-1);
-        
+
         if (filterHistory(value)) {
             setShowDropdown(true);
         } else {
@@ -477,15 +400,14 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
 
     const handleQuickSubmit = () => {
         if (!quickInput.trim()) return;
-        
+
         const cmd = quickInput.trim();
-        
-        // Send command through shell
+
         for (const char of cmd) {
             sendKey(char);
         }
         sendKey('\r');
-        
+
         onCommandExecuted?.(cmd);
         setQuickInput('');
         setShowDropdown(false);
@@ -503,7 +425,7 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
         switch (e.key) {
             case 'ArrowDown':
                 e.preventDefault();
-                setSelectedIndex(prev => 
+                setSelectedIndex(prev =>
                     prev < filteredHistory.length - 1 ? prev + 1 : prev
                 );
                 break;
@@ -556,15 +478,15 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
                     <span>Wide</span>
                 </label>
             </div>
-            <div 
-                className="custom-terminal-output" 
+            <div
+                className={`custom-terminal-output ${inAltScreen ? 'custom-terminal-alt-screen' : ''}`}
                 ref={outputRef}
                 onClick={handleTerminalClick}
                 style={{ position: 'relative' }}
             >
                 {lines.map((line, index) => (
-                    <div 
-                        key={line.id} 
+                    <div
+                        key={line.id}
                         className="custom-terminal-line"
                     >
                         {line.content}
@@ -573,7 +495,6 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
                         )}
                     </div>
                 ))}
-                {/* Hidden input for capturing keystrokes */}
                 <input
                     ref={terminalInputRef}
                     type="text"
@@ -631,7 +552,7 @@ export const CustomTerminal = forwardRef<CustomTerminalHandle, CustomTerminalPro
                         </div>
                     )}
                 </div>
-                <button 
+                <button
                     className="custom-terminal-run-btn"
                     onClick={handleQuickSubmit}
                 >

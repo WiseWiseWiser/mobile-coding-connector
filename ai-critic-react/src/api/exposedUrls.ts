@@ -4,7 +4,7 @@ export interface ExposedURL {
     id: string;
     external_domain: string;
     internal_url: string;
-    enabled: boolean;
+    disabled: boolean;
     created_at: string;
 }
 
@@ -67,11 +67,11 @@ export async function deleteExposedURL(id: string): Promise<void> {
     }
 }
 
-export async function toggleExposedURL(id: string, enabled: boolean): Promise<ExposedURLWithStatus> {
+export async function toggleExposedURL(id: string, disabled: boolean): Promise<ExposedURLWithStatus> {
     const resp = await fetch('/api/exposed-urls/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, enabled }),
+        body: JSON.stringify({ id, disabled }),
     });
     if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));

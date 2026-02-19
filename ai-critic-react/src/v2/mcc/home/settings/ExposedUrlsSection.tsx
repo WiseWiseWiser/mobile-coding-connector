@@ -135,10 +135,10 @@ export function ExposedUrlsSection() {
         }
     };
 
-    const handleToggle = async (id: string, enabled: boolean) => {
+    const handleToggle = async (id: string, disabled: boolean) => {
         setError(null);
         try {
-            await toggleExposedURL(id, enabled);
+            await toggleExposedURL(id, disabled);
             const data = await fetchExposedURLs();
             setUrls(data);
         } catch (err) {
@@ -272,8 +272,8 @@ export function ExposedUrlsSection() {
                                                 <label>
                                                     <input
                                                         type="checkbox"
-                                                        checked={url.enabled !== false}
-                                                        onChange={(e) => handleToggle(url.id, e.target.checked)}
+                                                        checked={!url.disabled}
+                                                        onChange={(e) => handleToggle(url.id, !e.target.checked)}
                                                     />
                                                     <span>Enabled</span>
                                                 </label>

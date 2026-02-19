@@ -1,7 +1,6 @@
-import { useRef, useState } from 'react';
-import '@xterm/xterm/css/xterm.css';
+import { useState, useRef } from 'react';
 import { useFakeTerminal } from './fake-server';
-import { CustomTerminal } from '../pure-view/CustomTerminal';
+import { CustomTerminal, type CustomTerminalHandle } from '../pure-view/CustomTerminal';
 import { ShortcutsBar } from '../pure-view/ShortcutsBar';
 import './CustomizeQuickTerminal.css';
 
@@ -17,13 +16,15 @@ const DEFAULT_HISTORY = [
     'echo hello',
     'cat readme.md',
     'logo',
+    'vim test.txt',
 ];
 
 export function CustomizeQuickTerminal() {
-    const [useCustom, setUseCustom] = useState(true);
     const [connected, setConnected] = useState(false);
     const [history, setHistory] = useState<string[]>(DEFAULT_HISTORY);
     const terminalContainerRef = useRef<HTMLDivElement>(null);
+    const customTerminalRef = useRef<CustomTerminalHandle>(null);
+    const [useXterm, setUseXterm] = useState(false);
 
     const {
         terminalRef,
@@ -55,29 +56,34 @@ export function CustomizeQuickTerminal() {
                 <label>
                     <input
                         type="checkbox"
-                        checked={useCustom}
-                        onChange={(e) => setUseCustom(e.target.checked)}
+                        checked={useXterm}
+                        onChange={(e) => setUseXterm(e.target.checked)}
                     />
-                    <span>Use Custom Terminal (iOS Optimized)</span>
+                    <span>Use Xterm.js (instead of Custom Terminal)</span>
                 </label>
             </div>
 
             <div className="customize-quick-container">
                 <div className="v2-terminal-container">
                     <div className="v2-terminal-header">
-                        <div className={`v2-terminal-status ${useCustom ? connected : xtermConnected ? 'connected' : 'disconnected'}`}>
+                        <div className={`v2-terminal-status ${useXterm ? xtermConnected ? 'connected' : 'disconnected' : connected ? 'connected' : 'disconnected'}`}>
                             <span className="v2-status-dot"></span>
-                            {useCustom ? (connected ? 'Connected' : 'Disconnected') : (xtermConnected ? 'Connected' : 'Disconnected')}
+                            {useXterm ? (xtermConnected ? 'Connected' : 'Disconnected') : (connected ? 'Connected' : 'Disconnected')}
                         </div>
                         <span className="v2-terminal-title">bash</span>
                         <span className="v2-terminal-type">
-                            {useCustom ? 'Custom' : 'Xterm'}
+                            {useXterm ? 'Xterm' : 'Custom'}
                         </span>
                     </div>
                     
-                    {useCustom ? (
+                    {useXterm ? (
+                        <div className="v2-terminal-body" ref={terminalContainerRef}>
+                            <div className="v2-fake-terminal-wrapper" ref={terminalRef} />
+                        </div>
+                    ) : (
                         <div className="customize-quick-terminal-wrapper">
                             <CustomTerminal
+                                ref={customTerminalRef}
                                 cwd="/home/user"
                                 name="mock-shell"
                                 history={history}
@@ -85,13 +91,9 @@ export function CustomizeQuickTerminal() {
                                 onCommandExecuted={handleCommandExecuted}
                             />
                         </div>
-                    ) : (
-                        <div className="v2-terminal-body" ref={terminalContainerRef}>
-                            <div className="v2-fake-terminal-wrapper" ref={terminalRef} />
-                        </div>
                     )}
                     
-                    {!useCustom && (
+                    {useXterm && (
                         <ShortcutsBar onSendKey={sendKey} />
                     )}
                 </div>
@@ -105,6 +107,7 @@ export function CustomizeQuickTerminal() {
                     <li><strong>Touch Friendly</strong> - Standard HTML input for commands</li>
                     <li><strong>Lightweight</strong> - No xterm.js dependency</li>
                     <li><strong>Fast</strong> - Simple rendering pipeline</li>
+                    <li><strong>Vim Support</strong> - Alternate screen buffer for vim-like apps</li>
                 </ul>
             </div>
 
@@ -114,6 +117,7 @@ export function CustomizeQuickTerminal() {
                     <code>ls</code>
                     <code>pwd</code>
                     <code>help</code>
+                    <code>vim</code>
                     <code>colors</code>
                     <code>tree</code>
                     <code>ps</code>

@@ -16,7 +16,7 @@ type ExposedURL struct {
 	ID             string `json:"id"`
 	ExternalDomain string `json:"external_domain"`
 	InternalURL    string `json:"internal_url"`
-	Enabled        bool   `json:"enabled"`
+	Disabled       bool   `json:"disabled"`
 	CreatedAt      string `json:"created_at"`
 }
 
@@ -135,7 +135,6 @@ func (m *Manager) Add(externalDomain, internalURL string) (*ExposedURLWithStatus
 		ID:             id,
 		ExternalDomain: externalDomain,
 		InternalURL:    internalURL,
-		Enabled:        true,
 		CreatedAt:      now,
 	}
 
@@ -204,8 +203,8 @@ func (m *Manager) Update(id, externalDomain, internalURL string) (*ExposedURLWit
 		return nil, err
 	}
 
-	// Update tunnel mapping if enabled
-	if url.Enabled {
+	// Update tunnel mapping if not disabled
+	if !url.Disabled {
 		tg := cf.GetTunnelGroupManager().GetExtensionGroup()
 		mappingID := fmt.Sprintf("exposed-%s", id)
 
@@ -233,8 +232,8 @@ func (m *Manager) Update(id, externalDomain, internalURL string) (*ExposedURLWit
 	return url, nil
 }
 
-// Toggle enables or disables an exposed URL
-func (m *Manager) Toggle(id string, enabled bool) (*ExposedURLWithStatus, error) {
+// Toggle disables or enables an exposed URL
+func (m *Manager) Toggle(id string, disabled bool) (*ExposedURLWithStatus, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -243,13 +242,13 @@ func (m *Manager) Toggle(id string, enabled bool) (*ExposedURLWithStatus, error)
 		return nil, fmt.Errorf("exposed URL not found: %s", id)
 	}
 
-	url.Enabled = enabled
+	url.Disabled = disabled
 
 	// Update config file
 	err := m.jsonFile.Update(func(cfg *Config) error {
 		for i := range cfg.URLs {
 			if cfg.URLs[i].ID == id {
-				cfg.URLs[i].Enabled = enabled
+				cfg.URLs[i].Disabled = disabled
 				break
 			}
 		}
@@ -260,13 +259,13 @@ func (m *Manager) Toggle(id string, enabled bool) (*ExposedURLWithStatus, error)
 	}
 
 	// If disabling, remove from extension tunnel group
-	if !enabled {
+	if disabled {
 		tg := cf.GetTunnelGroupManager().GetExtensionGroup()
 		mappingID := fmt.Sprintf("exposed-%s", id)
 		if err := tg.RemoveMapping(mappingID); err != nil {
 			fmt.Printf("[exposed-urls] warning: failed to remove mapping on disable: %v\n", err)
 		}
-	} else if enabled && url.Status == "active" {
+	} else if !disabled && url.Status == "active" {
 		// If enabling and was active, re-add to extension tunnel group
 		tg := cf.GetTunnelGroupManager().GetExtensionGroup()
 		mappingID := fmt.Sprintf("exposed-%s", id)
@@ -448,33 +447,11 @@ func (m *Manager) StopTunnel(id string) error {
 func InitExposedURLTunnels() {
 	m := GetManager()
 
-	// First, migrate old URLs that don't have explicit enabled field to enabled
-	m.mu.Lock()
-	needsSave := false
-	for _, url := range m.urls {
-		if !url.Enabled {
-			url.Enabled = true
-			needsSave = true
-		}
-	}
-	if needsSave {
-		m.jsonFile.Update(func(cfg *Config) error {
-			for i := range cfg.URLs {
-				if !cfg.URLs[i].Enabled {
-					cfg.URLs[i].Enabled = true
-				}
-			}
-			return nil
-		})
-		fmt.Printf("[exposed-urls] Migrated URLs to enabled\n")
-	}
-	m.mu.Unlock()
-
-	// Now get enabled URLs
+	// Get enabled URLs (not disabled)
 	m.mu.RLock()
 	urls := make([]ExposedURL, 0, len(m.urls))
 	for _, url := range m.urls {
-		if url.Enabled {
+		if !url.Disabled {
 			urls = append(urls, url.ExposedURL)
 		}
 	}

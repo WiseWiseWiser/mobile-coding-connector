@@ -155,8 +155,8 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 type toggleRequest struct {
-	ID      string `json:"id"`
-	Enabled bool   `json:"enabled"`
+	ID       string `json:"id"`
+	Disabled bool   `json:"disabled"`
 }
 
 func handleToggle(w http.ResponseWriter, r *http.Request) {
@@ -177,7 +177,7 @@ func handleToggle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	manager := GetManager()
-	url, err := manager.Toggle(req.ID, req.Enabled)
+	url, err := manager.Toggle(req.ID, req.Disabled)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			http.Error(w, err.Error(), http.StatusNotFound)

@@ -123,6 +123,7 @@ func registerReviewAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/review/fetch", handleGitFetch)
 	mux.HandleFunc("/api/review/status", handleGitStatus)
 	mux.HandleFunc("/api/review/branches", handleGitBranches)
+	mux.HandleFunc("/api/review/list-untracked-dir", handleListUntrackedDir)
 }
 
 // ProviderInfo represents a provider for the frontend
@@ -579,6 +580,7 @@ type GitStatusFile struct {
 	Status   string `json:"status"`   // "added", "modified", "deleted", "renamed", "untracked"
 	IsStaged bool   `json:"isStaged"` // Whether the change is staged
 	Size     int64  `json:"size"`     // File size in bytes
+	IsDir    bool   `json:"isDir"`    // Whether this is a directory
 }
 
 // GitStatusResult represents the result of git status
@@ -613,6 +615,56 @@ func handleGitStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+// ListUntrackedDirRequest represents a request to list contents of an untracked directory
+type ListUntrackedDirRequest struct {
+	Dir        string `json:"dir"`        // Git repository directory
+	SubDirPath string `json:"subDirPath"` // Path within the untracked directory to list
+}
+
+// handleListUntrackedDir lists contents of an untracked directory for navigation
+func handleListUntrackedDir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var req ListUntrackedDirRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	dir := resolveDir(req.Dir)
+	if dir == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
+		return
+	}
+
+	fullPath := filepath.Join(dir, req.SubDirPath)
+	entries, err := os.ReadDir(fullPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to read directory: %v", err)})
+		return
+	}
+
+	var files []GitStatusFile
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, GitStatusFile{
+			Path:     filepath.Join(req.SubDirPath, entry.Name()),
+			Status:   "untracked",
+			IsStaged: false,
+			Size:     info.Size(),
+			IsDir:    entry.IsDir(),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"files": files})
 }
 
 // resolveDir resolves the git directory from the request, falling back to initialDir or cwd
@@ -670,8 +722,8 @@ func getGitStatus(dir string) (*GitStatusResult, error) {
 			filePath = filePath[idx+4:]
 		}
 
-		// Get file size
-		size := getFileSize(dir, filePath)
+		// Get file size and check if directory
+		size, isDir := getFileSize(dir, filePath)
 
 		// Staged change
 		if indexStatus != ' ' && indexStatus != '?' {
@@ -681,6 +733,7 @@ func getGitStatus(dir string) (*GitStatusResult, error) {
 				Status:   status,
 				IsStaged: true,
 				Size:     size,
+				IsDir:    isDir,
 			})
 		}
 
@@ -695,6 +748,7 @@ func getGitStatus(dir string) (*GitStatusResult, error) {
 				Status:   status,
 				IsStaged: false,
 				Size:     size,
+				IsDir:    isDir,
 			})
 		}
 	}
@@ -702,14 +756,14 @@ func getGitStatus(dir string) (*GitStatusResult, error) {
 	return result, nil
 }
 
-// getFileSize returns the size of a file in bytes
-func getFileSize(dir, filePath string) int64 {
+// getFileSize returns the size of a file in bytes and whether it's a directory
+func getFileSize(dir, filePath string) (int64, bool) {
 	fullPath := filepath.Join(dir, filePath)
 	info, err := os.Stat(fullPath)
 	if err != nil {
-		return 0
+		return 0, false
 	}
-	return info.Size()
+	return info.Size(), info.IsDir()
 }
 
 // parseStatusChar converts a git status character to a human-readable status

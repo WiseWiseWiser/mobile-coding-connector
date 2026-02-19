@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getGitStatus, getDiff, stageFile, unstageFile, gitCommit, gitCheckout, gitRemove } from '../../../api/review';
+import { getGitStatus, getDiff, stageFile, unstageFile, gitCommit, gitCheckout, gitRemove, listUntrackedDir } from '../../../api/review';
 import type { GitStatusFile } from '../../../api/review';
 import type { DiffFile } from '../../../components/code-review/types';
 import { DiffViewer } from '../../DiffViewer';
@@ -89,6 +89,9 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
         type: 'discard' | 'remove';
         file: GitStatusFile;
     } | null>(null);
+    const [browsePath, setBrowsePath] = useState<string | null>(null);
+    const [browsedFiles, setBrowsedFiles] = useState<GitStatusFile[]>([]);
+    const [loadingBrowsed, setLoadingBrowsed] = useState(false);
 
     const messageRef = useRef<HTMLTextAreaElement>(null);
 
@@ -112,6 +115,37 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
             setError(e instanceof Error ? e.message : 'Failed to get git status');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const navigateToDir = async (path: string) => {
+        const normalizedPath = path.replace(/\/+$/, '');
+        setLoadingBrowsed(true);
+        setError('');
+        try {
+            const result = await listUntrackedDir(normalizedPath, projectDir);
+            setBrowsedFiles(result.files);
+            setBrowsePath(normalizedPath);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Failed to list directory');
+        } finally {
+            setLoadingBrowsed(false);
+        }
+    };
+
+    const navigateBack = () => {
+        setBrowsePath(null);
+        setBrowsedFiles([]);
+    };
+
+    const navigateUp = () => {
+        if (!browsePath) return;
+        const parts = browsePath.split('/');
+        parts.pop();
+        if (parts.length === 0) {
+            navigateBack();
+        } else {
+            navigateToDir(parts.join('/'));
         }
     };
 
@@ -248,7 +282,22 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
         }
     };
 
-    const handleFileClick = (path: string) => {
+    const handleFileClick = (path: string, isDir?: boolean) => {
+        if (isDir) {
+            navigateToDir(path);
+            return;
+        }
+        setSelectedFile(selectedFile === path ? null : path);
+        if (!showDiffs) {
+            setShowDiffs(true);
+        }
+    };
+
+    const handleBrowsedFileClick = (path: string, isDir?: boolean) => {
+        if (isDir) {
+            navigateToDir(path);
+            return;
+        }
         setSelectedFile(selectedFile === path ? null : path);
         if (!showDiffs) {
             setShowDiffs(true);
@@ -314,30 +363,88 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
             {/* Unstaged Files */}
             <div className="mcc-checkpoint-section-header">
                 <span className="mcc-checkpoint-section-label">
-                    Unstaged ({unstagedFiles.length}){loading && unstagedFiles.length > 0 && <span className="mcc-loading-indicator">...</span>}
+                    Unstaged ({browsePath ? browsedFiles.length : unstagedFiles.length}){loading && unstagedFiles.length > 0 && <span className="mcc-loading-indicator">...</span>}
                 </span>
-                {unstagedFiles.length > 0 && (
+                {browsePath ? (
+                    <button className="mcc-git-action-btn" onClick={navigateUp}>
+                        Up
+                    </button>
+                ) : unstagedFiles.length > 0 ? (
                     <button className="mcc-git-action-btn" onClick={handleStageAll}>
                         Stage All
                     </button>
-                )}
+                ) : null}
             </div>
-            {unstagedFiles.length > 0 ? (
+            {browsePath ? (
+                <div className="mcc-git-browse-path">
+                    <button className="mcc-back-btn mcc-back-btn-small" onClick={navigateBack}>×</button>
+                    <span className="mcc-git-breadcrumb">{browsePath.endsWith('/') ? browsePath : browsePath + '/'}</span>
+                </div>
+            ) : null}
+            {loadingBrowsed ? (
+                <div className="mcc-files-empty" style={{ padding: '12px 16px' }}>Loading...</div>
+            ) : browsePath ? (
+                browsedFiles.length > 0 ? (
+                    <div className="mcc-changed-files-list">
+                        {browsedFiles.map(f => (
+                            <div
+                                key={`browsed-${f.path}`}
+                                className={`mcc-changed-file-item${selectedFile === f.path ? ' mcc-changed-file-item-selected' : ''}${f.isDir ? ' mcc-changed-file-item-dir' : ''}`}
+                                onClick={() => handleBrowsedFileClick(f.path, f.isDir)}
+                            >
+                                {statusBadge(f.isDir ? 'dir' : 'added')}
+                                <div className="mcc-changed-file-info">
+                                    <span className="mcc-changed-file-path">{(() => { const name = f.path.split('/').pop() || ''; return f.isDir && !name.endsWith('/') ? name + '/' : name; })()}</span>
+                                    <span className="mcc-changed-file-size">{f.isDir ? 'dir' : formatFileSize(f.size)}</span>
+                                </div>
+                                <span className="mcc-git-file-actions">
+                                    {!f.isDir && (
+                                        <>
+                                            <button
+                                                className="mcc-git-file-action mcc-git-file-action-remove"
+                                                title={`Remove ${f.path}`}
+                                                onClick={(e) => { e.stopPropagation(); setModalState({ type: 'remove', file: f }); }}
+                                            >
+                                                ×
+                                            </button>
+                                            <button
+                                                className="mcc-git-file-action"
+                                                onClick={(e) => { e.stopPropagation(); handleStage(f.path); }}
+                                            >
+                                                +
+                                            </button>
+                                        </>
+                                    )}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="mcc-files-empty" style={{ padding: '12px 16px' }}>Empty directory</div>
+                )
+            ) : unstagedFiles.length > 0 ? (
                 <div className="mcc-changed-files-list">
                     {unstagedFiles.map(f => (
                         <div
                             key={`unstaged-${f.path}`}
-                            className={`mcc-changed-file-item${selectedFile === f.path ? ' mcc-changed-file-item-selected' : ''}`}
-                            onClick={() => handleFileClick(f.path)}
+                            className={`mcc-changed-file-item${selectedFile === f.path ? ' mcc-changed-file-item-selected' : ''}${f.isDir ? ' mcc-changed-file-item-dir' : ''}`}
+                            onClick={() => handleFileClick(f.path, f.isDir)}
                         >
-                            {statusBadge(f.status === 'untracked' ? 'added' : f.status)}
+                            {statusBadge(f.isDir ? 'dir' : (f.status === 'untracked' ? 'added' : f.status))}
                             <div className="mcc-changed-file-info">
-                                <span className="mcc-changed-file-path">{f.path}</span>
-                                <span className="mcc-changed-file-size">{formatFileSize(f.size)}</span>
-                                <span className="mcc-changed-file-suffix">{getFileIcon(f.path)}{getFileSuffix(f.path)}</span>
+                                <span className="mcc-changed-file-path">{f.isDir && !f.path.endsWith('/') ? f.path + '/' : f.path}</span>
+                                <span className="mcc-changed-file-size">{f.isDir ? 'dir' : formatFileSize(f.size)}</span>
+                                {!f.isDir && <span className="mcc-changed-file-suffix">{getFileIcon(f.path)}{getFileSuffix(f.path)}</span>}
                             </div>
                             <span className="mcc-git-file-actions">
-                                {f.status === 'untracked' ? (
+                                {f.isDir ? (
+                                    <button
+                                        className="mcc-git-file-action"
+                                        title={`Enter ${f.path}`}
+                                    >
+                                        →
+                                    </button>
+                                ) : f.status === 'untracked' ? (
                                     <>
                                         <button
                                             className="mcc-git-file-action mcc-git-file-action-remove"
