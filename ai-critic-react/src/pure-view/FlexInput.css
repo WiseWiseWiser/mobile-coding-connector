@@ -1,0 +1,31 @@
+.flex-input-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.flex-input-field {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 16px;
+    font-family: inherit;
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+    resize: none;
+    overflow: hidden;
+}
+
+.flex-input-field:focus {
+    outline: none;
+}
+
+.flex-input-field:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (min-width: 768px) {
+    .flex-input-field {
+        font-size: 14px;
+    }
+}

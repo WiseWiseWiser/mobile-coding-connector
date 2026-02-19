@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { fetchTerminalConfig, saveTerminalConfig } from '../../../../api/terminalConfig';
+import { FlexInput } from '../../../../pure-view/FlexInput';
 import './TerminalSection.css';
 
 export function TerminalSection() {
@@ -85,11 +86,10 @@ export function TerminalSection() {
                         <p className="terminal-section-desc">
                             Shell path or name. Leave empty for default (<code>bash</code>).
                         </p>
-                        <input
-                            className="terminal-section-input"
-                            type="text"
+                        <FlexInput
+                            inputClassName="terminal-section-input"
                             value={shell}
-                            onChange={e => { setShell(e.target.value); setSuccess(false); }}
+                            onChange={v => { setShell(v); setSuccess(false); }}
                             placeholder="bash"
                         />
                     </div>
@@ -99,11 +99,10 @@ export function TerminalSection() {
                         <p className="terminal-section-desc">
                             Space-separated flags passed to the shell. Leave empty for default (<code>-i</code>).
                         </p>
-                        <input
-                            className="terminal-section-input"
-                            type="text"
+                        <FlexInput
+                            inputClassName="terminal-section-input"
                             value={shellFlags}
-                            onChange={e => { setShellFlags(e.target.value); setSuccess(false); }}
+                            onChange={v => { setShellFlags(v); setSuccess(false); }}
                             placeholder="--login -i"
                         />
                     </div>
@@ -114,11 +113,12 @@ export function TerminalSection() {
                         <p className="terminal-section-desc">
                             Custom shell prompt. Use <code>\n</code> for newline. Leave empty for shell default.
                         </p>
-                        <textarea
-                            className="terminal-section-input terminal-section-textarea"
+                        <FlexInput
+                            inputClassName="terminal-section-input terminal-section-textarea"
                             value={ps1}
-                            onChange={e => { setPs1(e.target.value); setSuccess(false); }}
+                            onChange={v => { setPs1(v); setSuccess(false); }}
                             placeholder="\\W $ "
+                            multiline
                             rows={2}
                         />
                         <div className="terminal-section-examples">
@@ -175,11 +175,10 @@ export function TerminalSection() {
                         )}
 
                         <div className="terminal-section-add-row">
-                            <input
-                                className="terminal-section-input"
-                                type="text"
+                            <FlexInput
+                                inputClassName="terminal-section-input"
                                 value={newPath}
-                                onChange={e => setNewPath(e.target.value)}
+                                onChange={setNewPath}
                                 onKeyDown={handlePathKeyDown}
                                 placeholder="/usr/local/custom/bin"
                             />

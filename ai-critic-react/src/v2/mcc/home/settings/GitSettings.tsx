@@ -12,6 +12,7 @@ import type { OAuthConfigStatus } from '../../../../api/auth';
 import { KeyIcon, PlusIcon, GitHubIcon } from '../../../icons';
 import { loadSSHKeys, saveSSHKeys, loadGitHubToken, saveGitHubToken, loadGitUserConfig, saveGitUserConfig } from './gitStorage';
 import type { SSHKey, GitUserConfig } from './gitStorage';
+import { FlexInput } from '../../../../pure-view/FlexInput';
 import './GitSettings.css';
 
 // ---- Constants ----
@@ -266,20 +267,18 @@ function SSHKeysPanel() {
                     <div className="mcc-git-form-fields">
                         <div className="mcc-form-field">
                             <label>Name</label>
-                            <input
-                                type="text"
-                                placeholder="My GitHub Key"
+                            <FlexInput
                                 value={name}
-                                onChange={e => setName(e.target.value)}
+                                onChange={setName}
+                                placeholder="My GitHub Key"
                             />
                         </div>
                         <div className="mcc-form-field">
                             <label>Host</label>
-                            <input
-                                type="text"
-                                placeholder="github.com"
+                            <FlexInput
                                 value={host}
-                                onChange={e => setHost(e.target.value)}
+                                onChange={setHost}
+                                placeholder="github.com"
                             />
                         </div>
                         <div className="mcc-form-field">
@@ -448,20 +447,19 @@ function GitHubOAuthPanel() {
                         <div className="mcc-git-form-fields">
                             <div className="mcc-form-field">
                                 <label>Client ID</label>
-                                <input
-                                    type="text"
-                                    placeholder="Ov23li..."
+                                <FlexInput
                                     value={clientId}
-                                    onChange={e => setClientId(e.target.value)}
+                                    onChange={setClientId}
+                                    placeholder="Ov23li..."
                                 />
                             </div>
                             <div className="mcc-form-field">
                                 <label>Client Secret</label>
-                                <input
+                                <FlexInput
                                     type="password"
-                                    placeholder="Enter client secret"
                                     value={clientSecret}
-                                    onChange={e => setClientSecret(e.target.value)}
+                                    onChange={setClientSecret}
+                                    placeholder="Enter client secret"
                                 />
                             </div>
                         </div>
@@ -540,20 +538,19 @@ function GitConfigPanel() {
                 <div className="mcc-git-form-fields">
                     <div className="mcc-form-field">
                         <label>User Name *</label>
-                        <input
-                            type="text"
-                            placeholder="John Doe"
+                        <FlexInput
                             value={name}
-                            onChange={e => setName(e.target.value)}
+                            onChange={setName}
+                            placeholder="John Doe"
                         />
                     </div>
                     <div className="mcc-form-field">
                         <label>Email *</label>
-                        <input
+                        <FlexInput
                             type="email"
-                            placeholder="john@example.com"
                             value={email}
-                            onChange={e => setEmail(e.target.value)}
+                            onChange={setEmail}
+                            placeholder="john@example.com"
                         />
                     </div>
                 </div>

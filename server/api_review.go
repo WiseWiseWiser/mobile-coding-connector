@@ -651,12 +651,19 @@ func handleListUntrackedDir(w http.ResponseWriter, r *http.Request) {
 
 	var files []GitStatusFile
 	for _, entry := range entries {
+		entryPath := filepath.Join(req.SubDirPath, entry.Name())
+
+		// Skip files/dirs that are ignored by git
+		if gitrunner.IsIgnored(dir, entryPath) {
+			continue
+		}
+
 		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
 		files = append(files, GitStatusFile{
-			Path:     filepath.Join(req.SubDirPath, entry.Name()),
+			Path:     entryPath,
 			Status:   "untracked",
 			IsStaged: false,
 			Size:     info.Size(),

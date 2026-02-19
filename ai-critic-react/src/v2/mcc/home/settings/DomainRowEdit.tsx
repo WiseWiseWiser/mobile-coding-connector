@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { DomainProviders, fetchRandomDomain } from '../../../../api/domains';
 import type { DomainEntry } from '../../../../api/domains';
+import { FlexInput } from '../../../../pure-view/FlexInput';
 
 export interface DomainRowEditProps {
     entry: DomainEntry;
@@ -25,12 +26,11 @@ export function DomainRowEdit({ entry, tunnelName, onSave, onRemove, onCancel, o
         <div className="diagnose-webaccess-row diagnose-webaccess-row--editing">
             <div className="diagnose-webaccess-add-row">
                 <label className="diagnose-webaccess-add-label">Domain</label>
-                <input
-                    type="text"
-                    className="diagnose-webaccess-input"
+                <FlexInput
+                    inputClassName="diagnose-webaccess-input"
                     placeholder="e.g. myapp.example.com"
                     value={domain}
-                    onChange={e => setDomain(e.target.value)}
+                    onChange={setDomain}
                 />
                 <button
                     type="button"
@@ -61,12 +61,11 @@ export function DomainRowEdit({ entry, tunnelName, onSave, onRemove, onCancel, o
             {provider === DomainProviders.Cloudflare && (
                 <div className="diagnose-webaccess-add-row">
                     <label className="diagnose-webaccess-add-label">Cloudflare Tunnel Name</label>
-                    <input
-                        type="text"
-                        className="diagnose-webaccess-input"
+                    <FlexInput
+                        inputClassName="diagnose-webaccess-input"
                         placeholder="auto (derived from domain)"
                         value={editTunnelName}
-                        onChange={e => setEditTunnelName(e.target.value)}
+                        onChange={setEditTunnelName}
                     />
                     <span className="diagnose-webaccess-tunnel-name-hint">
                         Shared Cloudflare named tunnel identifier. Default: auto (derived from domain)

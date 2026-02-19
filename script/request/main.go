@@ -5,15 +5,15 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
+	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 )
 
 const cookieName = lib.CookieName
 
-var help = fmt.Sprintf(`Usage: go run ./script/request <path> [body]
+var help = fmt.Sprintf(`Usage: go run ./script/request <path> [body] [options]
 
 Sends an HTTP request to the local server at http://localhost:%d.
 Automatically includes auth cookie from %s.
@@ -21,7 +21,10 @@ Automatically includes auth cookie from %s.
 Arguments:
   path    API path (e.g. /api/checkpoints?project=myproject)
   body    Optional JSON body; if provided, sends POST; otherwise sends GET
-  --port  Port to use (defaults to %d)
+
+Options:
+  --port PORT  Port to use (defaults to %d)
+  -h, --help   Show this help message
 
 Examples:
   go run ./script/request /api/checkpoints?project=lifelog-private
@@ -38,30 +41,23 @@ func main() {
 }
 
 func run(args []string) error {
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
+	var port int
+	args, err := flags.
+		Int("--port", &port).
+		Help("-h,--help", help).
+		Parse(args)
+	if err != nil {
+		return err
+	}
+
+	if len(args) == 0 {
 		fmt.Print(help)
 		return nil
 	}
 
-	// Parse --port flag
-	port := lib.DefaultServerPort
-	remainingArgs := []string{}
-	i := 0
-	for i < len(args) {
-		arg := args[i]
-		if arg == "--port" && i+1 < len(args) {
-			p, err := strconv.Atoi(args[i+1])
-			if err != nil {
-				return fmt.Errorf("invalid port: %s", args[i+1])
-			}
-			port = p
-			i += 2
-			continue
-		}
-		remainingArgs = append(remainingArgs, arg)
-		i++
+	if port == 0 {
+		port = lib.DefaultServerPort
 	}
-	args = remainingArgs
 
 	path := args[0]
 	body := ""

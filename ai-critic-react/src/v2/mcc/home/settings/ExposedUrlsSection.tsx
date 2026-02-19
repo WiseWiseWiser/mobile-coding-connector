@@ -10,6 +10,7 @@ import {
     stopExposedURLTunnel,
 } from '../../../../api/exposedUrls';
 import type { ExposedURLWithStatus, CloudflareStatus } from '../../../../api/exposedUrls';
+import { FlexInput } from '../../../../pure-view/FlexInput';
 import './ExposedUrlsSection.css';
 
 export function ExposedUrlsSection() {
@@ -201,22 +202,18 @@ export function ExposedUrlsSection() {
                                         <form onSubmit={handleSaveEdit} className="exposed-url-edit-form">
                                             <div className="exposed-url-field">
                                                 <label>External Domain:</label>
-                                                <input
-                                                    type="text"
+                                                <FlexInput
                                                     value={editExternalDomain}
-                                                    onChange={(e) => setEditExternalDomain(e.target.value)}
+                                                    onChange={setEditExternalDomain}
                                                     placeholder="e.g., myapp.example.com"
-                                                    required
                                                 />
                                             </div>
                                             <div className="exposed-url-field">
                                                 <label>Internal URL:</label>
-                                                <input
-                                                    type="text"
+                                                <FlexInput
                                                     value={editInternalURL}
-                                                    onChange={(e) => setEditInternalURL(e.target.value)}
+                                                    onChange={setEditInternalURL}
                                                     placeholder="e.g., http://localhost:3000 or tcp://my.squid.com:3128"
-                                                    required
                                                 />
                                             </div>
                                             <div className="exposed-url-actions">
@@ -323,23 +320,19 @@ export function ExposedUrlsSection() {
                             <h4>Add New Exposed URL</h4>
                             <div className="exposed-url-field">
                                 <label>External Domain:</label>
-                                <input
-                                    type="text"
+                                <FlexInput
                                     value={newExternalDomain}
-                                    onChange={(e) => setNewExternalDomain(e.target.value)}
+                                    onChange={setNewExternalDomain}
                                     placeholder="e.g., myapp.example.com"
-                                    required
                                 />
                                 <small>The domain that will be exposed publicly</small>
                             </div>
                             <div className="exposed-url-field">
                                 <label>Internal URL:</label>
-                                <input
-                                    type="text"
+                                <FlexInput
                                     value={newInternalURL}
-                                    onChange={(e) => setNewInternalURL(e.target.value)}
+                                    onChange={setNewInternalURL}
                                     placeholder="e.g., http://localhost:3000 or tcp://my.squid.com:3128"
-                                    required
                                 />
                                 <small>Internal service (use tcp:// for proxy servers)</small>
                             </div>

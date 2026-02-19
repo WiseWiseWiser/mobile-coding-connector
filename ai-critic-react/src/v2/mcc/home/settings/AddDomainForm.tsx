@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { DomainProviders, fetchRandomDomain } from '../../../../api/domains';
 import type { DomainEntry } from '../../../../api/domains';
+import { FlexInput } from '../../../../pure-view/FlexInput';
 
 export interface AddDomainFormProps {
     onAdd: (entry: DomainEntry) => void;
@@ -21,12 +22,11 @@ export function AddDomainForm({ onAdd, onCancel, onError }: AddDomainFormProps) 
         <div className="diagnose-webaccess-add">
             <div className="diagnose-webaccess-add-row">
                 <label className="diagnose-webaccess-add-label">Domain</label>
-                <input
-                    type="text"
-                    className="diagnose-webaccess-input"
+                <FlexInput
+                    inputClassName="diagnose-webaccess-input"
                     placeholder="e.g. myapp.example.com"
                     value={domain}
-                    onChange={e => setDomain(e.target.value)}
+                    onChange={setDomain}
                 />
                 <button
                     type="button"

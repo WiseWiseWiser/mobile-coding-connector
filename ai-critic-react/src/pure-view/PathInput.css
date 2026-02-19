@@ -13,35 +13,21 @@
     letter-spacing: 0.5px;
 }
 
-.path-input-field {
-    width: 100%;
+.path-input-container .flex-input-field {
     padding: 8px 10px;
     background: #0f172a;
     border: 1px solid #334155;
     border-radius: 6px;
     color: #22c55e;
-    font-size: 16px;
     font-family: monospace;
-    box-sizing: border-box;
-    -webkit-text-size-adjust: 100%;
-    touch-action: manipulation;
-    resize: none;
-    overflow: hidden;
     min-height: 40px;
     line-height: 1.4;
 }
 
-.path-input-field:focus {
-    outline: none;
+.path-input-container .flex-input-field:focus {
     border-color: #3b82f6;
 }
 
-.path-input-field::placeholder {
+.path-input-container .flex-input-field::placeholder {
     color: #475569;
-}
-
-@media (min-width: 768px) {
-    .path-input-field {
-        font-size: 13px;
-    }
 }

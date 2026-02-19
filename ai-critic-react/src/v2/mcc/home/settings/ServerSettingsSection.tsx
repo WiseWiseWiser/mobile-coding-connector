@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getServerConfig, setServerConfig, type ServerConfig } from '../../../../api/serverSettings';
+import { FlexInput } from '../../../../pure-view/FlexInput';
 import './ServerSettingsSection.css';
 
 export function ServerSettingsSection() {
@@ -90,13 +91,11 @@ export function ServerSettingsSection() {
                 {useExplicitDir && (
                     <div className="server-settings-field">
                         <label htmlFor="project-dir">Project Directory:</label>
-                        <input
-                            id="project-dir"
-                            type="text"
+                        <FlexInput
+                            inputClassName="server-settings-input"
                             value={projectDir}
-                            onChange={(e) => setProjectDir(e.target.value)}
+                            onChange={setProjectDir}
                             placeholder="e.g., /path/to/mobile-coding-connector"
-                            className="server-settings-input"
                         />
                         <small>
                             When set, this directory will be used instead of the auto-detected directory.

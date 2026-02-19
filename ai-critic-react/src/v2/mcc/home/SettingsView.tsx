@@ -1,3 +1,4 @@
+import '../theme.css';
 import { useNavigate } from 'react-router-dom';
 import { SecuritySection } from './settings/SecuritySection';
 import { WebAccessSection } from './settings/WebAccessSection';

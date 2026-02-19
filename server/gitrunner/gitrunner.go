@@ -260,3 +260,16 @@ func Checkout(paths ...string) *Command {
 	args := append([]string{"checkout", "--"}, paths...)
 	return NewCommand(args...)
 }
+
+// CheckIgnore checks if a path is ignored by gitignore rules.
+// Returns true if the path is ignored, false otherwise.
+func CheckIgnore(path string) *Command {
+	return NewCommand("check-ignore", "-q", path)
+}
+
+// IsIgnored checks if a path is ignored by gitignore rules in the given directory.
+// Returns true if the path is ignored, false otherwise.
+func IsIgnored(dir, path string) bool {
+	cmd := CheckIgnore(path).Dir(dir)
+	return cmd.RunSilent() == nil
+}

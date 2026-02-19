@@ -41,6 +41,7 @@ import (
 	pfcloudflare "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/cloudflare"
 	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/localtunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sshservers"
@@ -52,20 +53,18 @@ import (
 
 var distFS embed.FS
 var templateHTML string
-var quickTestMode bool
-var quickTestKeep bool
 var quickTestQuitChan chan struct{}
 var frontendPort int
 
 func SetQuickTestMode(enabled bool) {
-	quickTestMode = enabled
+	quicktest.SetEnabled(enabled)
 	if enabled {
 		quickTestQuitChan = make(chan struct{})
 	}
 }
 
 func SetQuickTestKeep(enabled bool) {
-	quickTestKeep = enabled
+	quicktest.SetKeepEnabled(enabled)
 }
 
 func SetFrontendPort(port int) {
@@ -73,7 +72,7 @@ func SetFrontendPort(port int) {
 }
 
 func IsQuickTestMode() bool {
-	return quickTestMode
+	return quicktest.Enabled()
 }
 
 func GetQuickTestQuitChan() <-chan struct{} {
@@ -161,7 +160,7 @@ func Serve(port int, dev bool) error {
 	handler := auth.Middleware(mux, []string{"/api/login", "/api/auth/check", "/api/auth/setup", "/ping", "/api/encrypt/public-key", "/api/tools/path-info"})
 
 	// Wrap with quick-test mode handler if enabled
-	if quickTestMode {
+	if quicktest.Enabled() {
 		handler = wrapQuickTestHandler(handler)
 	}
 
@@ -172,8 +171,10 @@ func Serve(port int, dev bool) error {
 		Handler:      handler,
 	}
 
-	if dev {
-		if !checkPort(5173) {
+	if dev || frontendPort != 0 {
+		// Only auto-start vite when --dev is set AND no explicit --frontend-port
+		// If --frontend-port is set, assume vite/frontend is externally managed
+		if dev && frontendPort == 0 && !checkPort(5173) {
 			// Create context for managing subprocesses
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -220,7 +221,7 @@ func Serve(port int, dev bool) error {
 	}
 
 	// Only print tunnel hints in non-quick-test mode
-	if !quickTestMode {
+	if !quicktest.Enabled() {
 		fmt.Printf("Serving directory preview at http://localhost:%d\n", port)
 		printTunnelHints(port)
 
@@ -535,14 +536,14 @@ func handlePing(w http.ResponseWriter, r *http.Request) {
 }
 
 func wrapQuickTestHandler(next http.Handler) http.Handler {
-	if quickTestKeep {
+	if quicktest.KeepEnabled() {
 		return next
 	}
 
 	var (
 		mu      sync.Mutex
 		timer   *time.Timer
-		timeout = 1 * time.Minute
+		timeout = 10 * time.Minute
 	)
 
 	resetTimer := func() {
@@ -552,7 +553,7 @@ func wrapQuickTestHandler(next http.Handler) http.Handler {
 			timer.Stop()
 		}
 		timer = time.AfterFunc(timeout, func() {
-			fmt.Println("[quick-test] No requests for 1 minute, shutting down...")
+			fmt.Println("[quick-test] No requests for 10 minutes, shutting down...")
 			if quickTestQuitChan != nil {
 				close(quickTestQuitChan)
 			}

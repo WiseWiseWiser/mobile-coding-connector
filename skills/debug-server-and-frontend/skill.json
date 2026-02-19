@@ -1,7 +1,7 @@
 {
-  "name": "quick-test-server-and-frontend",
+  "name": "debug-server-and-frontend",
   "version": "1.0.0",
-  "description": "Quick test skill for debugging server and frontend integration using Puppeteer",
+  "description": "Debug skill for server and frontend integration using Puppeteer",
   "type": "test",
   "entry": "test-opencode-settings.js",
   "config": {

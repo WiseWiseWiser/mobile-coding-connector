@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getLogs, clearLogs, getLogsAsText, type LogEntry } from '../../../../logs';
 import { BackIcon } from '../../../icons';
+import { FlexInput } from '../../../../pure-view/FlexInput';
 import './LogsView.css';
 
 export function LogsView() {
@@ -59,12 +60,11 @@ export function LogsView() {
             </div>
 
             <div className="logs-controls">
-                <input
-                    type="text"
+                <FlexInput
+                    inputClassName="logs-filter-input"
                     placeholder="Filter logs..."
                     value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
-                    className="logs-filter-input"
+                    onChange={setFilter}
                 />
                 <select
                     value={levelFilter}

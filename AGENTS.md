@@ -65,6 +65,34 @@ go run ./script/build
 
 The server listens on port 23712 by default. In dev mode, the frontend is proxied from the Vite dev server (port 5173).
 
+## Skills
+
+Skills are reusable debugging and testing tools located in `skills/` directory.
+
+### debug-server-and-frontend
+
+Location: `skills/debug-server-and-frontend/`
+
+Starts a quick-test server with the latest code and opens a browser debugger for testing.
+
+**Usage:**
+```bash
+# Start server and debug interactively
+go run ./script/debug-server-and-frontend
+
+# With visible browser window
+go run ./script/debug-server-and-frontend --no-headless
+
+# Run a script
+printf "console.log('Title:', await page.title())" | go run ./script/debug-server-and-frontend
+```
+
+**Features:**
+- Kills any existing server on port 37651 and deploys fresh code
+- Server accessible at `https://port-37651-ae2842d.xhd2015.xyz`
+- Puppeteer-based browser automation via stdin script
+- Auto-exits after 10 minutes of inactivity
+
 ## Coding Conventions
 
 - Go backend follows standard Go project layout

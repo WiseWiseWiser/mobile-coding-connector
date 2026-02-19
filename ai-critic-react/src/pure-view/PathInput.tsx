@@ -1,32 +1,21 @@
-import { useRef, useEffect } from 'react';
+import { FlexInput, type FlexInputProps } from './FlexInput';
 import './PathInput.css';
 
-export interface PathInputProps {
-    value: string;
-    onChange: (value: string) => void;
+export interface PathInputProps extends Omit<FlexInputProps, 'multiline'> {
     label?: string;
 }
 
-export function PathInput({ value, onChange, label = 'Project Directory' }: PathInputProps) {
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-    useEffect(() => {
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-            textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
-        }
-    }, [value]);
-
+export function PathInput({ value, onChange, label = 'Project Directory', ...props }: PathInputProps) {
     return (
         <div className="path-input-container">
             {label && <h3 className="path-input-label">{label}</h3>}
-            <textarea
-                ref={textareaRef}
-                className="path-input-field"
+            <FlexInput
                 value={value}
-                onChange={(e) => onChange(e.target.value)}
-                spellCheck={false}
+                onChange={onChange}
+                multiline
                 rows={1}
+                spellCheck={false}
+                {...props}
             />
         </div>
     );

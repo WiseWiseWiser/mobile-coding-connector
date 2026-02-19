@@ -4,10 +4,20 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 )
 
 var binaryName = lib.BinaryName
+
+var help = `
+Usage: go run ./script/release [options]
+
+Cross-compiles the server for release targets.
+
+Options:
+  -h, --help    Show this help message
+`
 
 // targets defines the cross-compilation targets for release.
 var targets = []struct {
@@ -27,6 +37,11 @@ func main() {
 }
 
 func Handle(args []string) error {
+	_, err := flags.Help("-h,--help", help).Parse(args)
+	if err != nil {
+		return err
+	}
+
 	// Step 1: Build frontend (shared across all targets)
 	fmt.Println("=== Building frontend ===")
 	if err := lib.BuildFrontend(); err != nil {

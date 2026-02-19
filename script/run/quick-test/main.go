@@ -5,21 +5,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
-	"syscall"
-	"time"
 
+	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 )
 
-const help = `
+var help = `
 Usage: go run ./script/run quick-test [options]
 
 Options:
-  -h, --help   Show this help message
-  --keep       Keep server running indefinitely (disable auto-shutdown)
-  --port PORT  Port to run on (default: 37651)
+  -h, --help               Show this help message
+  --keep                   Keep server running indefinitely (disable auto-shutdown)
+  --dev                    Run in development mode (auto-start vite, proxy frontend to 5173)
+  --frontend-port PORT     Proxy frontend to PORT (assumes vite/frontend started externally)
+  --port PORT              Port to run on (default: 37651)
 `
 
 func main() {
@@ -32,26 +31,23 @@ func main() {
 
 func Handle(args []string) error {
 	var keepFlag bool
+	var devFlag bool
+	var frontendPortFlag int
 	var portFlag int
 
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" {
-			fmt.Print(help)
-			return nil
-		}
-		if arg == "--keep" {
-			keepFlag = true
-			continue
-		}
-		if strings.HasPrefix(arg, "--port=") {
-			p, err := strconv.Atoi(strings.TrimPrefix(arg, "--port="))
-			if err != nil {
-				return fmt.Errorf("invalid port: %v", err)
-			}
-			portFlag = p
-			continue
-		}
-		return fmt.Errorf("unknown option: %s", arg)
+	args, err := flags.
+		Bool("--keep", &keepFlag).
+		Bool("--dev", &devFlag).
+		Int("--frontend-port", &frontendPortFlag).
+		Int("--port", &portFlag).
+		Help("-h,--help", help).
+		Parse(args)
+	if err != nil {
+		return err
+	}
+
+	if len(args) > 0 {
+		return fmt.Errorf("unknown args: %v", args)
 	}
 
 	quickTestPort := lib.QuickTestPort
@@ -59,16 +55,14 @@ func Handle(args []string) error {
 		quickTestPort = portFlag
 	}
 
-	// Kill previous process on the port
+	// Kill any existing process on the port
 	fmt.Printf("Checking for existing server on port %d...\n", quickTestPort)
-	prevPid, err := lib.GetPidOnPort(quickTestPort)
-	if err == nil && prevPid != 0 {
-		fmt.Printf("Killing previous server (PID: %d)...\n", prevPid)
-		err := syscall.Kill(prevPid, syscall.SIGKILL)
-		if err != nil {
-			fmt.Printf("Warning: failed to kill previous process: %v\n", err)
-		}
-		time.Sleep(500 * time.Millisecond)
+	killedPid, err := lib.KillPortPid(quickTestPort)
+	if err != nil {
+		return err
+	}
+	if killedPid > 0 {
+		fmt.Printf("Killed previous server (PID: %d)\n", killedPid)
 	}
 
 	// Build the Go server with quick-test flag
@@ -88,6 +82,12 @@ func Handle(args []string) error {
 	fmt.Printf("Running from: %s\n", homeDir)
 
 	serverArgs := []string{"--quick-test"}
+	if devFlag {
+		serverArgs = append(serverArgs, "--dev")
+	}
+	if frontendPortFlag > 0 {
+		serverArgs = append(serverArgs, "--frontend-port", fmt.Sprintf("%d", frontendPortFlag))
+	}
 	if keepFlag {
 		serverArgs = append(serverArgs, "--keep")
 	}
@@ -104,7 +104,7 @@ func Handle(args []string) error {
 	if keepFlag {
 		fmt.Println("Server will keep running indefinitely (--keep enabled).")
 	} else {
-		fmt.Println("Server will exit after 1 minute of inactivity.")
+		fmt.Println("Server will exit after 10 minutes of inactivity.")
 	}
 	fmt.Println("Press Ctrl+C to stop manually.")
 

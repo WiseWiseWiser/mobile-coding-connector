@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
@@ -44,11 +45,9 @@ func main() {
 }
 
 func Handle(args []string) error {
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" {
-			fmt.Print(help)
-			return nil
-		}
+	_, err := flags.Help("-h,--help", help).Parse(args)
+	if err != nil {
+		return err
 	}
 
 	// Check if files already exist

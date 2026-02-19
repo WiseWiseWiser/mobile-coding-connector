@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 )
 
@@ -20,14 +21,16 @@ Steps:
   1. Check podman is installed and machine is running
   2. Create and start a Debian container
   3. Exec into the container with an interactive shell
+
+Options:
+  -h, --help    Show this help message
 `
 
 func main() {
-	for _, arg := range os.Args[1:] {
-		if arg == "-h" || arg == "--help" {
-			fmt.Print(help)
-			return
-		}
+	_, err := flags.Help("-h,--help", help).Parse(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
 	}
 
 	if err := run(); err != nil {

@@ -1,5 +1,6 @@
 import { DomainProviders, fetchRandomDomain } from '../../../../api/domains';
 import type { DomainEntry } from '../../../../api/domains';
+import { FlexInput } from '../../../../pure-view/FlexInput';
 
 export interface EditModeContentProps {
     editTunnelName: string;
@@ -36,12 +37,11 @@ export function EditModeContent({
                         <div key={i} className="diagnose-webaccess-row">
                             <div className="diagnose-webaccess-add-row">
                                 <label className="diagnose-webaccess-add-label">Domain</label>
-                                <input
-                                    type="text"
-                                    className="diagnose-webaccess-input"
+                                <FlexInput
+                                    inputClassName="diagnose-webaccess-input"
                                     placeholder="e.g. myapp.example.com"
                                     value={entry.domain}
-                                    onChange={e => onUpdateEntry(i, 'domain', e.target.value)}
+                                    onChange={v => onUpdateEntry(i, 'domain', v)}
                                 />
                                 <button
                                     type="button"
@@ -72,12 +72,11 @@ export function EditModeContent({
                             {entry.provider === DomainProviders.Cloudflare && (
                                 <div className="diagnose-webaccess-add-row">
                                     <label className="diagnose-webaccess-add-label">Cloudflare Tunnel Name</label>
-                                    <input
-                                        type="text"
-                                        className="diagnose-webaccess-input"
+                                    <FlexInput
+                                        inputClassName="diagnose-webaccess-input"
                                         placeholder="auto (derived from domain)"
                                         value={editTunnelName}
-                                        onChange={e => onEditTunnelName(e.target.value)}
+                                        onChange={onEditTunnelName}
                                     />
                                     <span className="diagnose-webaccess-tunnel-name-hint">
                                         Shared Cloudflare named tunnel identifier. Default: auto (derived from domain)
@@ -108,12 +107,11 @@ export function EditModeContent({
                 <div className="diagnose-webaccess-add">
                     <div className="diagnose-webaccess-add-row">
                         <label className="diagnose-webaccess-add-label">Domain</label>
-                        <input
-                            type="text"
-                            className="diagnose-webaccess-input"
+                        <FlexInput
+                            inputClassName="diagnose-webaccess-input"
                             placeholder="e.g. myapp.example.com"
                             value={newDomain}
-                            onChange={e => onSetNewDomain(e.target.value)}
+                            onChange={onSetNewDomain}
                         />
                         <button
                             type="button"

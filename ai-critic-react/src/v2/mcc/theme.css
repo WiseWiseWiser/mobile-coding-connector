@@ -1,0 +1,70 @@
+/* MCC Theme - Semantic CSS Variables */
+
+:root {
+  /* === Backgrounds === */
+  --mcc-bg-app: #0f172a;
+  --mcc-bg-card: #1e293b;
+  --mcc-bg-card-elevated: #334155;
+  --mcc-bg-item: rgba(0, 0, 0, 0.2);
+  --mcc-bg-input: #334155;
+  --mcc-bg-hover: rgba(255, 255, 255, 0.05);
+  
+  /* === Text === */
+  --mcc-text-primary: #f1f5f9;
+  --mcc-text-secondary: #94a3b8;
+  --mcc-text-muted: #64748b;
+  --mcc-text-on-primary: #ffffff;
+  
+  /* === Borders === */
+  --mcc-border-default: #334155;
+  --mcc-border-subtle: rgba(51, 65, 85, 0.5);
+  --mcc-border-input: #475569;
+  
+  /* === Accent Colors === */
+  --mcc-accent-blue: #60a5fa;
+  --mcc-accent-blue-bg: rgba(96, 165, 250, 0.1);
+  --mcc-accent-blue-border: rgba(96, 165, 250, 0.3);
+  --mcc-accent-green: #22c55e;
+  --mcc-accent-green-bg: rgba(34, 197, 94, 0.1);
+  --mcc-accent-yellow: #f59e0b;
+  --mcc-accent-yellow-bg: rgba(245, 158, 11, 0.1);
+  --mcc-accent-red: #f87171;
+  --mcc-accent-red-bg: rgba(239, 68, 68, 0.1);
+  --mcc-accent-purple: #8b5cf6;
+  --mcc-accent-purple-bg: rgba(139, 92, 246, 0.15);
+  
+  /* === Status Colors === */
+  --mcc-status-active-bg: rgba(34, 197, 94, 0.15);
+  --mcc-status-active-text: #22c55e;
+  --mcc-status-active-border: rgba(34, 197, 94, 0.3);
+  --mcc-status-connecting-bg: rgba(59, 130, 246, 0.15);
+  --mcc-status-connecting-text: #60a5fa;
+  --mcc-status-warning-bg: rgba(245, 158, 11, 0.15);
+  --mcc-status-warning-text: #fbbf24;
+  --mcc-status-error-bg: rgba(239, 68, 68, 0.15);
+  --mcc-status-error-text: #f87171;
+  --mcc-status-stopped-bg: rgba(100, 116, 139, 0.1);
+  --mcc-status-stopped-text: #94a3b8;
+  
+  /* === Spacing === */
+  --mcc-gap-xs: 4px;
+  --mcc-gap-sm: 6px;
+  --mcc-gap-md: 8px;
+  --mcc-gap-lg: 12px;
+  --mcc-gap-xl: 16px;
+  
+  /* === Radii === */
+  --mcc-radius-sm: 4px;
+  --mcc-radius-md: 6px;
+  --mcc-radius-lg: 8px;
+  --mcc-radius-xl: 12px;
+  
+  /* === Typography === */
+  --mcc-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mcc-font-mono: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+  --mcc-font-size-xs: 11px;
+  --mcc-font-size-sm: 12px;
+  --mcc-font-size-md: 13px;
+  --mcc-font-size-lg: 14px;
+  --mcc-font-size-xl: 15px;
+}

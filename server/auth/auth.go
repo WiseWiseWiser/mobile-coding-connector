@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 )
 
 const cookieName = "ai-critic-token"
@@ -21,16 +22,8 @@ const cookieName = "ai-critic-token"
 var (
 	credentialsFileMu   sync.RWMutex
 	credentialsFilePath = config.CredentialsFile
-	quickTestMode       bool
 )
 
-// SetQuickTestMode enables quick test mode which bypasses auth
-func SetQuickTestMode(enabled bool) {
-	quickTestMode = enabled
-}
-
-// SetCredentialsFile sets the path to the credentials file.
-// Must be called before the server starts.
 func SetCredentialsFile(path string) {
 	credentialsFileMu.Lock()
 	defer credentialsFileMu.Unlock()
@@ -87,8 +80,7 @@ func Middleware(next http.Handler, skipPaths []string) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Quick test mode bypasses all auth
-		if quickTestMode {
+		if quicktest.Enabled() {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -252,8 +244,7 @@ func RegisterAPI(mux *http.ServeMux) {
 func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Quick test mode: always return authenticated without checking credentials
-	if quickTestMode {
+	if quicktest.Enabled() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 		return
 	}

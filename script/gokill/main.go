@@ -9,21 +9,26 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/xhd2015/less-gen/flags"
 )
 
 type PortProtectionConfig struct {
 	ProtectedPorts map[int]bool `json:"protected_ports"`
 }
 
-const help = `Usage: go run ./script/gokill <pid> [-9|-15]
+var help = `Usage: go run ./script/gokill <pid> [options]
 
 Kills the process with the given PID.
 Protects certain ports from being killed.
 
 Arguments:
   pid   Process ID to kill
+
+Options:
   -9    Send SIGKILL (force kill)
   -15   Send SIGTERM (graceful, default)
+  -h, --help   Show this help message
 
 Example:
   go run ./script/gokill 12345
@@ -38,30 +43,31 @@ func main() {
 }
 
 func run(args []string) error {
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
+	var sig9 bool
+	var sig15 bool
+
+	args, err := flags.
+		Bool("-9", &sig9).
+		Bool("-15", &sig15).
+		Help("-h,--help", help).
+		Parse(args)
+	if err != nil {
+		return err
+	}
+
+	if len(args) == 0 {
 		fmt.Print(help)
 		return nil
 	}
 
 	signal := syscall.SIGTERM // default
-
-	var pidStr string
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			sig, err := strconv.Atoi(arg[1:])
-			if err != nil {
-				return fmt.Errorf("invalid signal: %s", arg)
-			}
-			signal = syscall.Signal(sig)
-		} else {
-			pidStr = arg
-		}
+	if sig9 {
+		signal = syscall.SIGKILL
+	} else if sig15 {
+		signal = syscall.SIGTERM
 	}
 
-	if pidStr == "" {
-		return fmt.Errorf("missing pid argument")
-	}
-
+	pidStr := args[0]
 	pid, err := strconv.Atoi(pidStr)
 	if err != nil {
 		return fmt.Errorf("invalid pid: %s", pidStr)

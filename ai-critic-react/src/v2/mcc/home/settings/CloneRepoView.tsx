@@ -8,6 +8,7 @@ import { LogViewer } from '../../../LogViewer';
 import { LockIcon } from '../../../icons';
 import { loadSSHKeys, loadGitHubToken } from './gitStorage';
 import type { SSHKey } from './gitStorage';
+import { FlexInput } from '../../../../pure-view/FlexInput';
 import './GitSettings.css';
 
 export function CloneRepoView() {
@@ -183,11 +184,10 @@ function CloneRepoPanel() {
                 <div className="mcc-form-field">
                     <label>Clone by URL</label>
                     <div className="mcc-clone-manual-row">
-                        <input
-                            type="text"
-                            placeholder="https://github.com/user/repo.git or git@github.com:user/repo.git"
+                        <FlexInput
                             value={manualUrl}
-                            onChange={e => setManualUrl(e.target.value)}
+                            onChange={setManualUrl}
+                            placeholder="https://github.com/user/repo.git or git@github.com:user/repo.git"
                         />
                         <button
                             className="mcc-forward-btn mcc-clone-btn"
@@ -223,11 +223,10 @@ function CloneRepoPanel() {
             ) : (
                 <>
                     <div className="mcc-clone-search">
-                        <input
-                            type="text"
-                            placeholder="Search repositories..."
+                        <FlexInput
                             value={search}
-                            onChange={e => setSearch(e.target.value)}
+                            onChange={setSearch}
+                            placeholder="Search repositories..."
                         />
                     </div>
 

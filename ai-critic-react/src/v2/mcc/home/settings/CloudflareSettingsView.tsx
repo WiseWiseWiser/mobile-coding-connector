@@ -6,6 +6,7 @@ import { consumeSSEStream } from '../../../../api/sse';
 import { LogViewer } from '../../../LogViewer';
 import type { LogLine } from '../../../LogViewer';
 import { fetchRandomDomain } from '../../../../api/domains';
+import { FlexInput } from '../../../../pure-view/FlexInput';
 import './CloudflareSettingsView.css';
 
 /** Embeddable Cloudflare settings content (no page header) */
@@ -315,13 +316,12 @@ export function CloudflareSettingsContent() {
                     
                     {/* Add Domain Form */}
                     <div className="cf-domain-add-form">
-                        <input
-                            className="cf-input"
-                            type="text"
+                        <FlexInput
+                            inputClassName="cf-input"
                             placeholder="e.g., app.example.com"
                             value={newDomain}
-                            onChange={(e) => setNewDomain(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAddDomain()}
+                            onChange={v => { setNewDomain(v); }}
+                            onKeyDown={e => e.key === 'Enter' && handleAddDomain()}
                             disabled={addingDomain}
                         />
                         <button
@@ -385,13 +385,12 @@ export function CloudflareSettingsContent() {
 
                     {showCreate && (
                         <div className="cf-create-form">
-                            <input
-                                className="cf-input"
-                                type="text"
+                            <FlexInput
+                                inputClassName="cf-input"
                                 placeholder="Tunnel name"
                                 value={newTunnelName}
-                                onChange={(e) => setNewTunnelName(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                                onChange={v => { setNewTunnelName(v); }}
+                                onKeyDown={e => e.key === 'Enter' && handleCreate()}
                                 disabled={creating}
                             />
                             <button

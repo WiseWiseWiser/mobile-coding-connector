@@ -14,12 +14,10 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 
 	"github.com/xhd2015/less-gen/flags"
 )
-
-var quickTestMode bool
-var quickTestKeep bool
 
 const quickTestPort = 37651
 
@@ -31,11 +29,12 @@ Usage: ai-critic [options]
        ai-critic check-port --port PORT          Check if a port is accessible
 
 Options:
-  --dev                   Run in development mode
+  --dev                   Run in development mode (auto-start vite dev server)
+  --frontend-port PORT    Proxy frontend to PORT (assumes vite/frontend started externally)
   --quick-test           Run in quick-test mode: no auto mapping, health checks, or external webservers.
                         - Listens on port 37651
-                        - Exits after 1 minute of no requests
-                        - Extends life by +1min when a new request comes in
+                        - Exits after 10 minutes of no requests
+                        - Extends life by +10min when a new request comes in
   --keep                 Keep the server running indefinitely (disable auto-shutdown in quick-test mode)
   --dir DIR               Set the initial directory for code review (defaults to current working directory)
   --port PORT             Port to listen on (defaults to auto-find starting from %d)
@@ -80,6 +79,9 @@ func Run(args []string) error {
 	}
 
 	var devFlag bool
+	var frontendPortFlag int
+	var quickTestMode bool
+	var quickTestKeep bool
 	var component string
 	var dirFlag string
 	var configFile string
@@ -90,6 +92,7 @@ func Run(args []string) error {
 	var portFlag int
 	args, err := flags.
 		Bool("--dev", &devFlag).
+		Int("--frontend-port", &frontendPortFlag).
 		Bool("--quick-test", &quickTestMode).
 		Bool("--keep", &quickTestKeep).
 		String("--component", &component).
@@ -108,6 +111,10 @@ func Run(args []string) error {
 
 	if len(args) > 0 {
 		return fmt.Errorf("unrecognized extra args: %s", strings.Join(args, " "))
+	}
+
+	if frontendPortFlag > 0 {
+		server.SetFrontendPort(frontendPortFlag)
 	}
 
 	if component == "list" {
@@ -182,8 +189,10 @@ func Run(args []string) error {
 
 	// Set quick-test mode in server if enabled
 	if quickTestMode {
+		quicktest.SetEnabled(true)
 		server.SetQuickTestMode(true)
 		if quickTestKeep {
+			quicktest.SetKeepEnabled(true)
 			server.SetQuickTestKeep(true)
 		}
 	}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { fetchEncryptKeyStatus, generateEncryptKeys } from '../../../../api/encrypt';
 import type { EncryptKeyStatus } from '../../../../api/encrypt';
 import { fetchCredentials, addCredentialToken, generateCredential, type MaskedCredential } from '../../../../api/auth';
+import { FlexInput } from '../../../../pure-view/FlexInput';
 import './SecuritySection.css';
 
 export function SecuritySection() {
@@ -104,12 +105,11 @@ export function SecuritySection() {
                             </div>
                         )}
                         <div className="diagnose-security-add-token">
-                            <input
-                                type="text"
-                                className="diagnose-security-token-input"
+                            <FlexInput
+                                inputClassName="diagnose-security-token-input"
                                 placeholder="Enter token or generate one..."
                                 value={newToken}
-                                onChange={e => setNewToken(e.target.value)}
+                                onChange={setNewToken}
                                 disabled={addingToken}
                             />
                             <div className="diagnose-security-token-actions">
