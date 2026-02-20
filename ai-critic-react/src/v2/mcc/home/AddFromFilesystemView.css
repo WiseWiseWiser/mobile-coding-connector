@@ -34,6 +34,12 @@
     border-color: #60a5fa;
 }
 
+.add-fs-hint {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 4px;
+}
+
 .add-fs-selected-dir {
     padding: 10px 12px;
     background: #1e293b;

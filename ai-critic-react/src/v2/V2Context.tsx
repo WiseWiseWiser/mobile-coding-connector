@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { usePortForwards } from '../hooks/usePortForwards';
 import type { UsePortForwardsReturn } from '../hooks/usePortForwards';
 import { useLocalPorts } from '../hooks/useLocalPorts';
@@ -12,22 +12,18 @@ import type { AgentDef, AgentSessionInfo, ExternalOpencodeSession } from '../api
 import type { NavTab } from './mcc/types';
 
 interface V2ContextValue {
-    // Projects
     projectsList: ProjectInfo[];
+    rootProjects: ProjectInfo[];
+    getSubProjectsCount: (projectId: string) => number;
     projectsLoading: boolean;
     fetchProjects: () => void;
-    // Current project
     currentProject: ProjectInfo | null;
     setCurrentProject: (project: ProjectInfo | null) => void;
-    // Port forwarding
     portForwards: UsePortForwardsReturn;
-    // Local listening ports (SSE stream, persists across tab switches)
     localPorts: UseLocalPortsReturn;
-    // Cloudflare diagnostics (fetched once, survives tab switches)
     diagnostics: DiagnosticsData | null;
     diagnosticsLoading: boolean;
     refreshDiagnostics: () => void;
-    // Agent session state (lifted up to persist across tab switches)
     agents: AgentDef[];
     agentsLoading: boolean;
     refreshAgents: () => void;
@@ -35,11 +31,9 @@ interface V2ContextValue {
     setAgentSession: (agentId: string, session: AgentSessionInfo | null) => void;
     agentLaunchError: string;
     setAgentLaunchError: (error: string) => void;
-    // External agent sessions (e.g., opencode CLI/web sessions)
     externalSessions: ExternalOpencodeSession[];
     externalSessionsLoading: boolean;
     refreshExternalSessions: () => void;
-    // Per-tab navigation history
     tabHistories: Record<NavTab, string[]>;
     pushTabHistory: (tab: NavTab, path: string) => void;
     popTabHistory: (tab: NavTab) => string | undefined;
@@ -55,12 +49,11 @@ export function useV2Context(): V2ContextValue {
 }
 
 export function V2Provider({ children }: { children: React.ReactNode }) {
-    // Projects
     const [projectsList, setProjectsList] = useState<ProjectInfo[]>([]);
     const [projectsLoading, setProjectsLoading] = useState(true);
 
     const fetchProjects = () => {
-        apiFetchProjects()
+        apiFetchProjects({ all: true })
             .then(data => { setProjectsList(data); setProjectsLoading(false); })
             .catch(() => setProjectsLoading(false));
     };
@@ -69,7 +62,25 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
         fetchProjects();
     }, []);
 
-    // Current project
+    const rootProjects = useMemo(() => 
+        projectsList.filter(p => !p.parent_id),
+        [projectsList]
+    );
+
+    const subProjectsCountMap = useMemo(() => {
+        const map = new Map<string, number>();
+        for (const p of projectsList) {
+            if (p.parent_id) {
+                map.set(p.parent_id, (map.get(p.parent_id) || 0) + 1);
+            }
+        }
+        return map;
+    }, [projectsList]);
+
+    const getSubProjectsCount = useCallback((projectId: string): number => {
+        return subProjectsCountMap.get(projectId) || 0;
+    }, [subProjectsCountMap]);
+
     const [currentProject, setCurrentProject] = useState<ProjectInfo | null>(null);
 
     // Port forwarding
@@ -130,8 +141,8 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
         setExternalSessionsLoading(true);
         fetchExternalSessions()
             .then(data => {
-                if (data && data.sessions) {
-                    setExternalSessions(data.sessions);
+                if (data && data.items) {
+                    setExternalSessions(data.items);
                 } else {
                     setExternalSessions([]);
                 }
@@ -181,6 +192,8 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
     return (
         <V2Ctx.Provider value={{
             projectsList,
+            rootProjects,
+            getSubProjectsCount,
             projectsLoading,
             fetchProjects,
             currentProject,

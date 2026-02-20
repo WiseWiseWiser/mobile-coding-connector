@@ -12,10 +12,11 @@ import (
 
 // WebServerConfig holds the web server configuration.
 type WebServerConfig struct {
-	Enabled       bool   `json:"enabled"`
-	Port          int    `json:"port"`
-	ExposedDomain string `json:"exposed_domain,omitempty"`
-	Password      string `json:"password,omitempty"`
+	Enabled          bool   `json:"enabled"`
+	Port             int    `json:"port"`
+	ExposedDomain    string `json:"exposed_domain,omitempty"`
+	Password         string `json:"password,omitempty"`
+	AuthProxyEnabled bool   `json:"auth_proxy_enabled"`
 }
 
 // Settings holds the persisted opencode configuration.
@@ -84,10 +85,11 @@ func copySettings(s *Settings) *Settings {
 		Model:         s.Model,
 		DefaultDomain: s.DefaultDomain,
 		WebServer: WebServerConfig{
-			Enabled:       s.WebServer.Enabled,
-			Port:          s.WebServer.Port,
-			ExposedDomain: s.WebServer.ExposedDomain,
-			Password:      s.WebServer.Password,
+			Enabled:          s.WebServer.Enabled,
+			Port:             s.WebServer.Port,
+			ExposedDomain:    s.WebServer.ExposedDomain,
+			Password:         s.WebServer.Password,
+			AuthProxyEnabled: s.WebServer.AuthProxyEnabled,
 		},
 	}
 }

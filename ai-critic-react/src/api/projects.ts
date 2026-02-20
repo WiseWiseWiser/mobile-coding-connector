@@ -20,11 +20,26 @@ export interface ProjectInfo {
         is_clean: boolean;
         uncommitted: number;
     };
+    parent_id?: string;
     todos?: Todo[];
 }
 
-export async function fetchProjects(): Promise<ProjectInfo[]> {
-    const resp = await fetch('/api/projects');
+export async function fetchProjects(options?: { all?: boolean; parentId?: string }): Promise<ProjectInfo[]> {
+    const params = new URLSearchParams();
+    if (options?.all) {
+        params.set('all', 'true');
+    }
+    if (options?.parentId !== undefined) {
+        params.set('parent_id', options.parentId);
+    }
+    const query = params.toString();
+    const resp = await fetch(`/api/projects${query ? `?${query}` : ''}`);
+    const data = await resp.json();
+    return Array.isArray(data) ? data : [];
+}
+
+export async function fetchSubProjects(parentId: string): Promise<ProjectInfo[]> {
+    const resp = await fetch(`/api/projects?parent_id=${encodeURIComponent(parentId)}`);
     const data = await resp.json();
     return Array.isArray(data) ? data : [];
 }
@@ -36,10 +51,12 @@ export async function deleteProject(id: string): Promise<void> {
 export interface AddProjectRequest {
     name?: string;
     dir: string;
+    parent_id?: string;
 }
 
 export interface AddProjectResponse {
     status: string;
+    id: string;
     dir: string;
     name: string;
     error?: string;
@@ -61,6 +78,7 @@ export async function addProject(req: AddProjectRequest): Promise<AddProjectResp
 export interface ProjectUpdate {
     ssh_key_id?: string | null;
     use_ssh?: boolean;
+    parent_id?: string | null;
 }
 
 export async function updateProject(id: string, updates: ProjectUpdate): Promise<ProjectInfo> {

@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
-import { fetchActions, createAction, updateAction, deleteAction, runAction, fetchActionStatus, stopAction, streamActionLogs } from '../../../api/actions';
-import type { Action, ActionStatus, LogBuffer } from '../../../api/actions';
-import { useStreamingAction } from '../../../hooks/useStreamingAction';
+import { useState, useEffect } from 'react';
+import { fetchActions, createAction, updateAction, deleteAction, runAction, fetchActionStatus, stopAction } from '../../../api/actions';
+import type { Action, ActionStatus } from '../../../api/actions';
+import { usePerActionStreaming } from '../../../hooks/usePerActionStreaming';
 import type { LogLine } from '../../LogViewer';
 import { NoZoomingInput } from '../components/NoZoomingInput';
 import { ActionIconSelector, ActionCard, ConfirmModal } from '../../../pure-view';
@@ -11,10 +11,6 @@ interface ActionsViewProps {
     projectName: string;
     projectDir: string;
 }
-
-// Store for resumed streaming logs (actionId -> logs)
-const streamingLogsStore = new Map<string, LogLine[]>();
-const streamingRunningStore = new Map<string, boolean>();
 
 export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
     const [actions, setActions] = useState<Action[]>([]);
@@ -29,14 +25,8 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
     const [formIcon, setFormIcon] = useState('▶️');
     const [formScript, setFormScript] = useState('');
 
-    const [runState, runControls] = useStreamingAction();
-    const [currentRunningId, setCurrentRunningId] = useState<string | null>(null);
-    
-    // Track which actions we're already streaming
-    const streamingActionsRef = useRef<Set<string>>(new Set());
-    const eventSourcesRef = useRef<Map<string, EventSource>>(new Map());
-    // Force re-render for resumed logs
-    const [, setResumedLogCount] = useState(0);
+    // Use per-action streaming hook - each action has its own independent state
+    const perActionStreaming = usePerActionStreaming();
 
     useEffect(() => {
         loadActions();
@@ -50,91 +40,7 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
         return () => clearInterval(pollInterval);
     }, [projectName]);
 
-    // Effect to handle resuming running actions
-    useEffect(() => {
-        const runningActions = Object.entries(actionStatuses).filter(([_, status]) => status.running);
-        
-        runningActions.forEach(([actionId, status]) => {
-            // Skip if this is the currently running action in this session
-            if (actionId === currentRunningId) return;
-            
-            // Skip if already streaming this action
-            if (streamingActionsRef.current.has(actionId)) return;
-            
-            // Mark as streaming
-            streamingActionsRef.current.add(actionId);
-            
-            // Initialize logs from status
-            const logBuffer = status.logs as LogBuffer | undefined;
-            if (logBuffer) {
-                const logs: LogLine[] = [];
-                logBuffer.first.forEach(line => logs.push({ text: line }));
-                if (logBuffer.total > 200) {
-                    logs.push({ text: `... ${logBuffer.total - 200} lines omitted ...`, error: false });
-                }
-                const firstSet = new Set(logBuffer.first);
-                logBuffer.last.forEach(line => {
-                    if (!firstSet.has(line)) {
-                        logs.push({ text: line });
-                    }
-                });
-                streamingLogsStore.set(actionId, logs);
-            }
-            streamingRunningStore.set(actionId, true);
-            setResumedLogCount(n => n + 1);
-            
-            // Connect to SSE stream
-            const eventSource = streamActionLogs(actionId, {
-                onLog: (message) => {
-                    const logs = streamingLogsStore.get(actionId) || [];
-                    logs.push({ text: message });
-                    streamingLogsStore.set(actionId, logs);
-                    setResumedLogCount(n => n + 1);
-                },
-                onDone: () => {
-                    streamingRunningStore.set(actionId, false);
-                    streamingActionsRef.current.delete(actionId);
-                    eventSourcesRef.current.delete(actionId);
-                    loadStatuses();
-                    setResumedLogCount(n => n + 1);
-                },
-                onError: () => {
-                    streamingRunningStore.set(actionId, false);
-                    streamingActionsRef.current.delete(actionId);
-                    eventSourcesRef.current.delete(actionId);
-                    setResumedLogCount(n => n + 1);
-                },
-                onStatus: (status) => {
-                    streamingRunningStore.set(actionId, status === 'running');
-                    setResumedLogCount(n => n + 1);
-                },
-            });
-            eventSourcesRef.current.set(actionId, eventSource);
-        });
-        
-        // Cleanup: close streams for actions that are no longer running
-        streamingActionsRef.current.forEach(actionId => {
-            if (!actionStatuses[actionId]?.running) {
-                const es = eventSourcesRef.current.get(actionId);
-                if (es) {
-                    es.close();
-                    eventSourcesRef.current.delete(actionId);
-                }
-                streamingActionsRef.current.delete(actionId);
-                streamingRunningStore.delete(actionId);
-            }
-        });
-    }, [actionStatuses, currentRunningId]);
 
-    // Cleanup on unmount
-    useEffect(() => {
-        return () => {
-            eventSourcesRef.current.forEach(es => es.close());
-            eventSourcesRef.current.clear();
-            streamingLogsStore.clear();
-            streamingRunningStore.clear();
-        };
-    }, []);
 
     const loadActions = async () => {
         setLoading(true);
@@ -223,10 +129,13 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
     };
 
     const handleRun = async (action: Action) => {
-        setCurrentRunningId(action.id);
-        runControls.reset();
+        const [, controls] = perActionStreaming.getActionState(action.id);
+        
+        // Reset this specific action's state
+        controls.reset();
+        
         try {
-            await runControls.run(async () => {
+            await controls.run(async () => {
                 return runAction({
                     project_dir: projectDir,
                     script: action.script,
@@ -234,7 +143,6 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
                 });
             });
         } finally {
-            setCurrentRunningId(null);
             loadStatuses();
         }
     };
@@ -242,7 +150,6 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
     const handleStop = async (actionId: string) => {
         try {
             await stopAction(projectName, actionId);
-            setCurrentRunningId(null);
             loadStatuses();
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Failed to stop action');
@@ -252,18 +159,14 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
     const isEditing = isCreating || editingAction !== null;
 
     const getActionLogs = (actionId: string): LogLine[] => {
-        // Priority: live streaming logs > resumed streaming logs > cached logs
-        if (currentRunningId === actionId) {
-            return runState.logs;
-        }
-        
-        // Check if we have resumed streaming logs for this action
-        if (streamingLogsStore.has(actionId)) {
-            return streamingLogsStore.get(actionId)!;
+        // Priority: per-action streaming state > cached logs from status
+        const [state] = perActionStreaming.getActionState(actionId);
+        if (state.logs.length > 0) {
+            return state.logs;
         }
         
         // Fall back to cached logs from status
-        const logBuffer = actionStatuses[actionId]?.logs as LogBuffer | undefined;
+        const logBuffer = actionStatuses[actionId]?.logs;
         if (!logBuffer) return [];
         
         const logs: LogLine[] = [];
@@ -288,15 +191,13 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
     };
 
     const isActionRunning = (actionId: string): boolean => {
-        // Check current session first
-        if (currentRunningId === actionId) return runState.running;
-        
-        // Check resumed streaming
-        if (streamingRunningStore.has(actionId)) {
-            return streamingRunningStore.get(actionId)!;
+        // Check per-action streaming state first
+        const [state] = perActionStreaming.getActionState(actionId);
+        if (state.running) {
+            return true;
         }
         
-        // Fall back to status
+        // Fall back to status from server
         return actionStatuses[actionId]?.running || false;
     };
 

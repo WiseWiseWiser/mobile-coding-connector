@@ -1,10 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
+	"os/signal"
+	"syscall"
 
 	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
@@ -16,9 +17,9 @@ Usage: go run ./script/run quick-test [options]
 Options:
   -h, --help               Show this help message
   --keep                   Keep server running indefinitely (disable auto-shutdown)
-  --dev                    Run in development mode (auto-start vite, proxy frontend to 5173)
+  --no-vite                Don't auto-start vite (serve static frontend instead)
   --frontend-port PORT     Proxy frontend to PORT (assumes vite/frontend started externally)
-  --port PORT              Port to run on (default: 37651)
+  --port PORT              Port to run on (default: 3580)
 `
 
 func main() {
@@ -30,16 +31,13 @@ func main() {
 }
 
 func Handle(args []string) error {
-	var keepFlag bool
-	var devFlag bool
-	var frontendPortFlag int
-	var portFlag int
+	var opts lib.QuickTestOptions
 
 	args, err := flags.
-		Bool("--keep", &keepFlag).
-		Bool("--dev", &devFlag).
-		Int("--frontend-port", &frontendPortFlag).
-		Int("--port", &portFlag).
+		Bool("--keep", &opts.Keep).
+		Bool("--no-vite", &opts.NoVite).
+		Int("--frontend-port", &opts.FrontendPort).
+		Int("--port", &opts.Port).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
@@ -50,82 +48,55 @@ func Handle(args []string) error {
 		return fmt.Errorf("unknown args: %v", args)
 	}
 
-	quickTestPort := lib.QuickTestPort
-	if portFlag > 0 {
-		quickTestPort = portFlag
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// Kill any existing process on the port
-	fmt.Printf("Checking for existing server on port %d...\n", quickTestPort)
-	killedPid, err := lib.KillPortPid(quickTestPort)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		fmt.Println("\nReceived interrupt signal, shutting down...")
+		cancel()
+	}()
+
+	err = lib.QuickTestPrepare(&opts)
 	if err != nil {
 		return err
 	}
-	if killedPid > 0 {
-		fmt.Printf("Killed previous server (PID: %d)\n", killedPid)
-	}
 
-	// Build the Go server with quick-test flag
-	fmt.Println("Building Go server...")
-	err = buildServer()
+	opts.Stdout = os.Stdout
+	opts.Stderr = os.Stderr
+
+	result, err := lib.QuickTestStart(ctx, &opts)
 	if err != nil {
-		return fmt.Errorf("failed to build Go server: %v", err)
+		return err
 	}
 
-	// Start the server in quick-test mode from home directory
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %v", err)
+	if result.Restarted {
+		fmt.Println("Server restarted successfully (PID preserved).")
+		fmt.Println("Press Ctrl+C to stop manually.")
+		<-ctx.Done()
+		return nil
 	}
 
-	fmt.Printf("Starting server in quick-test mode on port %d...\n", quickTestPort)
-	fmt.Printf("Running from: %s\n", homeDir)
-
-	serverArgs := []string{"--quick-test"}
-	if devFlag {
-		serverArgs = append(serverArgs, "--dev")
-	}
-	if frontendPortFlag > 0 {
-		serverArgs = append(serverArgs, "--frontend-port", fmt.Sprintf("%d", frontendPortFlag))
-	}
-	if keepFlag {
-		serverArgs = append(serverArgs, "--keep")
-	}
-	serverCmd := exec.Command("/tmp/ai-critic-quick", serverArgs...)
-	serverCmd.Stdout = os.Stdout
-	serverCmd.Stderr = os.Stderr
-	serverCmd.Stdin = os.Stdin
-	serverCmd.Dir = homeDir
-	if err := serverCmd.Start(); err != nil {
-		return fmt.Errorf("failed to start Go server: %v", err)
-	}
-
-	fmt.Printf("Server started with PID: %d\n", serverCmd.Process.Pid)
-	if keepFlag {
+	fmt.Printf("Server started with PID: %d\n", result.ServerCmd.Process.Pid)
+	if opts.Keep {
 		fmt.Println("Server will keep running indefinitely (--keep enabled).")
 	} else {
 		fmt.Println("Server will exit after 10 minutes of inactivity.")
 	}
 	fmt.Println("Press Ctrl+C to stop manually.")
 
-	// Wait for the server process
-	err = serverCmd.Wait()
+	err = result.ServerCmd.Wait()
+
+	if result.ViteCmd != nil && result.ViteCmd.Process != nil {
+		fmt.Println("Stopping Vite dev server...")
+		result.ViteCmd.Process.Signal(syscall.SIGTERM)
+		result.ViteCmd.Wait()
+	}
+
 	if err != nil {
 		return fmt.Errorf("server exited with error: %v", err)
 	}
 	return nil
-}
-
-func buildServer() error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %v", err)
-	}
-	projectDir := filepath.Join(homeDir, "mobile-coding-connector")
-
-	cmd := exec.Command("go", "build", "-o", "/tmp/ai-critic-quick", "./")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Dir = projectDir
-	return cmd.Run()
 }

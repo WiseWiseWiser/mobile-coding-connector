@@ -60,7 +60,11 @@ export async function fetchAgents(): Promise<AgentDef[]> {
 }
 
 export interface ExternalSessionsResponse {
-    sessions: ExternalOpencodeSession[];
+    items: ExternalOpencodeSession[];
+    page: number;
+    page_size: number;
+    total: number;
+    total_pages: number;
     port: number;
     auth?: boolean;
 }
@@ -84,11 +88,31 @@ export interface ExternalOpencodeSession {
     parentID?: string;
 }
 
-export async function fetchExternalSessions(): Promise<ExternalSessionsResponse | null> {
+export async function fetchExternalSessions(page?: number, pageSize?: number): Promise<ExternalSessionsResponse | null> {
+    const params = new URLSearchParams();
+    if (page) params.set('page', page.toString());
+    if (pageSize) params.set('page_size', pageSize.toString());
+    
+    const url = params.toString() ? `/api/agents/external-sessions?${params}` : '/api/agents/external-sessions';
     try {
-        const resp = await fetch('/api/agents/external-sessions');
+        const resp = await fetch(url);
         if (!resp.ok) return null;
-        return await resp.json();
+        const data = await resp.json();
+        
+        // Handle both paginated and legacy response formats
+        if (data.items && Array.isArray(data.items)) {
+            return data;
+        }
+        // Legacy format: convert to paginated response
+        return {
+            items: data.sessions || [],
+            page: 1,
+            page_size: data.sessions?.length || 0,
+            total: data.sessions?.length || 0,
+            total_pages: 1,
+            port: data.port,
+            auth: data.auth,
+        };
     } catch {
         return null;
     }
@@ -435,6 +459,7 @@ export interface OpencodeSettings {
         port: number;
         exposed_domain?: string;
         password?: string;
+        auth_proxy_enabled?: boolean;
     };
 }
 
@@ -463,6 +488,10 @@ export interface OpencodeWebStatus {
     domain: string;
     port_mapped: boolean;
     config_path: string;
+    auth_proxy_running: boolean;
+    auth_proxy_found: boolean;
+    auth_proxy_path: string;
+    opencode_port: number;
 }
 
 export async function fetchOpencodeWebStatus(): Promise<OpencodeWebStatus> {

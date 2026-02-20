@@ -26,8 +26,8 @@ The script argument is JavaScript code to execute in the browser context.
 If no script is provided, reads from stdin.
 
 Example:
-  go run ./script/debug-port --port=37651 "console.log(await page.title())"
-  echo "await navigate('/'); console.log(await page.title())" | go run ./script/debug-port --port=37651
+  go run ./script/debug-port --port=3580 "console.log(await page.title())"
+  echo "await navigate('/'); console.log(await page.title())" | go run ./script/debug-port --port=3580
 `
 
 func main() {

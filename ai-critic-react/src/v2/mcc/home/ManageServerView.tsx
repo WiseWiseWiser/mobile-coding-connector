@@ -43,6 +43,7 @@ export function ManageServerView() {
     // Log states
     const [logLines, setLogLines] = useState<LogLine[]>([]);
     const [logStreaming, setLogStreaming] = useState(false);
+    const [logReconnectKey, setLogReconnectKey] = useState(0);
 
     // Log files management states
     const [logFiles, setLogFiles] = useState<LogFile[]>([]);
@@ -183,7 +184,7 @@ export function ManageServerView() {
 
         (async () => {
             try {
-                const resp = await streamLogFile({ file: selectedLogFile, lines: 1000 });
+                const resp = await streamLogFile({ file: selectedLogFile, lines: 1000, signal: controller.signal });
                 if (!resp.ok) {
                     setLogStreaming(false);
                     return;
@@ -214,7 +215,11 @@ export function ManageServerView() {
             controller.abort();
             abortControllerRef.current = null;
         };
-    }, [daemonRunning, selectedLogFile]);
+    }, [daemonRunning, selectedLogFile, logReconnectKey]);
+
+    const handleReconnectLogs = useCallback(() => {
+        setLogReconnectKey(k => k + 1);
+    }, []);
 
     // Step 1: User selects a file -> fetch upload target and show confirm
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -521,7 +526,7 @@ export function ManageServerView() {
                     <span className="manage-server-card-title">Server Status</span>
                 </div>
                 {serverStatusLoading ? (
-                    <div style={{ padding: 16, color: '#6b7280' }}>Loading...</div>
+                    <div style={{ padding: 16, color: '#94a3b8' }}>Loading...</div>
                 ) : serverStatus ? (
                     <div className="manage-server-info">
                         <InfoRow label="OS" value={serverStatus.os_info.os} />
@@ -534,17 +539,17 @@ export function ManageServerView() {
                         {serverStatus.disk.map((d, i) => (
                             <InfoRow key={i} label={`Disk ${d.mount_point}`} value={`${formatBytes(d.used)} / ${formatBytes(d.size)} (${d.use_percent.toFixed(1)}%)`} />
                         ))}
-                        <div style={{ marginTop: 12, fontWeight: 600, fontSize: 13, color: '#374151' }}>Top CPU Processes</div>
+                        <div style={{ marginTop: 12, fontWeight: 600, fontSize: 13, color: '#94a3b8' }}>Top CPU Processes</div>
                         {serverStatus.top_cpu.map((p, i) => (
-                            <InfoRow key={i} label={`${p.name} (PID: ${p.pid})`} value={`CPU: ${p.cpu} | Mem: ${p.mem}`} mono />
+                            <InfoRow key={i} label={`${p.name} (PID: ${p.pid})`} value={`CPU: ${p.cpu} | Mem: ${p.mem}`} mono wrap />
                         ))}
-                        <div style={{ marginTop: 12, fontWeight: 600, fontSize: 13, color: '#374151' }}>Top Memory Processes</div>
+                        <div style={{ marginTop: 12, fontWeight: 600, fontSize: 13, color: '#94a3b8' }}>Top Memory Processes</div>
                         {serverStatus.top_mem.map((p, i) => (
-                            <InfoRow key={i} label={`${p.name} (PID: ${p.pid})`} value={`CPU: ${p.cpu} | Mem: ${p.mem}`} mono />
+                            <InfoRow key={i} label={`${p.name} (PID: ${p.pid})`} value={`CPU: ${p.cpu} | Mem: ${p.mem}`} mono wrap />
                         ))}
                     </div>
                 ) : (
-                    <div style={{ padding: 16, color: '#6b7280' }}>Unable to load server status</div>
+                    <div style={{ padding: 16, color: '#94a3b8' }}>Unable to load server status</div>
                 )}
             </div>
 
@@ -559,10 +564,11 @@ export function ManageServerView() {
                             style={{
                                 padding: '4px 8px',
                                 borderRadius: 4,
-                                border: '1px solid #d1d5db',
-                                background: '#fff',
+                                border: '1px solid #475569',
+                                background: '#1e293b',
                                 fontSize: 12,
-                                color: '#374151',
+                                color: '#e2e8f0',
+                                maxWidth: '150px',
                             }}
                         >
                             {logFiles.map((f) => (
@@ -571,9 +577,27 @@ export function ManageServerView() {
                                 </option>
                             ))}
                         </select>
-                        <span className={`manage-server-badge ${logStreaming ? 'manage-server-badge--running' : 'manage-server-badge--stopped'}`}>
-                            {logStreaming ? 'Live' : 'Disconnected'}
-                        </span>
+                        {logStreaming ? (
+                            <span className="manage-server-badge manage-server-badge--running">
+                                Live
+                            </span>
+                        ) : (
+                            <button
+                                onClick={handleReconnectLogs}
+                                className="manage-server-btn manage-server-btn--reconnect"
+                                style={{
+                                    padding: '4px 10px',
+                                    fontSize: 11,
+                                    borderRadius: 4,
+                                    border: '1px solid #f59e0b',
+                                    background: 'transparent',
+                                    color: '#f59e0b',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                Reconnect
+                            </button>
+                        )}
                     </div>
                     <LogViewer
                         lines={logLines}
@@ -592,17 +616,18 @@ export function ManageServerView() {
                 </div>
                 <div style={{ padding: 12 }}>
                     {/* Add new log file */}
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                    <div className="manage-server-log-form">
                         <input
                             type="text"
                             placeholder="Name (e.g., server)"
                             value={newLogFileName}
                             onChange={(e) => setNewLogFileName(e.target.value)}
                             style={{
-                                flex: 1,
                                 padding: '8px 10px',
                                 borderRadius: 4,
-                                border: '1px solid #d1d5db',
+                                border: '1px solid #475569',
+                                background: '#1e293b',
+                                color: '#e2e8f0',
                                 fontSize: 13,
                             }}
                         />
@@ -612,10 +637,11 @@ export function ManageServerView() {
                             value={newLogFilePath}
                             onChange={(e) => setNewLogFilePath(e.target.value)}
                             style={{
-                                flex: 2,
                                 padding: '8px 10px',
                                 borderRadius: 4,
-                                border: '1px solid #d1d5db',
+                                border: '1px solid #475569',
+                                background: '#1e293b',
+                                color: '#e2e8f0',
                                 fontSize: 13,
                             }}
                         />
@@ -639,7 +665,7 @@ export function ManageServerView() {
 
                     {/* List of configured log files */}
                     {logFiles.length === 0 ? (
-                        <div style={{ color: '#6b7280', fontSize: 13, textAlign: 'center', padding: 12 }}>
+                        <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 12 }}>
                             No log files configured
                         </div>
                     ) : (
@@ -647,19 +673,15 @@ export function ManageServerView() {
                             {logFiles.map((f) => (
                                 <div
                                     key={f.name}
+                                    className="manage-server-log-item"
                                     style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        padding: '8px 12px',
-                                        background: selectedLogFile === f.name ? '#eff6ff' : '#f9fafb',
-                                        borderRadius: 4,
-                                        border: '1px solid #e5e7eb',
+                                        background: selectedLogFile === f.name ? 'rgba(59, 130, 246, 0.2)' : '#0f172a',
+                                        border: selectedLogFile === f.name ? '1px solid #3b82f6' : '1px solid #334155',
                                     }}
                                 >
                                     <div>
-                                        <div style={{ fontWeight: 500, fontSize: 13 }}>{f.name}</div>
-                                        <div style={{ color: '#6b7280', fontSize: 12 }}>{f.path}</div>
+                                        <div style={{ fontWeight: 500, fontSize: 13, color: '#e2e8f0' }}>{f.name}</div>
+                                        <div style={{ color: '#94a3b8', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.path}</div>
                                     </div>
                                     <button
                                         onClick={() => handleRemoveLogFile(f.name)}
@@ -717,10 +739,10 @@ export function ManageServerView() {
     );
 }
 
-function InfoRow({ label, value, mono, highlight }: { label: string; value: string; mono?: boolean; highlight?: boolean }) {
+function InfoRow({ label, value, mono, highlight, wrap }: { label: string; value: string; mono?: boolean; highlight?: boolean; wrap?: boolean }) {
     return (
         <div className="manage-server-info-row">
-            <span className="manage-server-info-label">{label}</span>
+            <span className={`manage-server-info-label${wrap ? ' manage-server-info-label--wrap' : ''}`}>{label}</span>
             <span className={`manage-server-info-value${mono ? ' manage-server-info-value--mono' : ''}${highlight ? ' manage-server-info-value--highlight' : ''}`}>{value}</span>
         </div>
     );

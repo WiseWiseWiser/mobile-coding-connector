@@ -19,7 +19,7 @@ import (
 	"github.com/xhd2015/less-gen/flags"
 )
 
-const quickTestPort = 37651
+const quickTestPort = 3580
 
 var help = fmt.Sprintf(`
 Usage: ai-critic [options]
@@ -32,7 +32,7 @@ Options:
   --dev                   Run in development mode (auto-start vite dev server)
   --frontend-port PORT    Proxy frontend to PORT (assumes vite/frontend started externally)
   --quick-test           Run in quick-test mode: no auto mapping, health checks, or external webservers.
-                        - Listens on port 37651
+                        - Listens on port 3580
                         - Exits after 10 minutes of no requests
                         - Extends life by +10min when a new request comes in
   --keep                 Keep the server running indefinitely (disable auto-shutdown in quick-test mode)
@@ -43,6 +43,7 @@ Options:
   --enc-key-file FILE     Path to encryption key file (defaults to "%s")
   --domains-file FILE     Path to domains JSON file (defaults to "%s")
   --rules-dir DIR         Directory containing REVIEW_RULES.md (defaults to "rules")
+  --project-dir DIR       Project root directory (for finding ai-critic-react in dev mode)
   --component             Serve a specific component
   -h, --help              Show this help message
 
@@ -89,6 +90,7 @@ func Run(args []string) error {
 	var encKeyFileFlag string
 	var domainsFileFlag string
 	var rulesDir string
+	var projectDir string
 	var portFlag int
 	args, err := flags.
 		Bool("--dev", &devFlag).
@@ -103,6 +105,7 @@ func Run(args []string) error {
 		String("--enc-key-file", &encKeyFileFlag).
 		String("--domains-file", &domainsFileFlag).
 		String("--rules-dir", &rulesDir).
+		String("--project-dir", &projectDir).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
@@ -166,6 +169,11 @@ func Run(args []string) error {
 	// Set rules directory (defaults to "rules" in current directory)
 	if rulesDir != "" {
 		server.SetRulesDir(rulesDir)
+	}
+
+	// Set project directory (for finding ai-critic-react in dev mode)
+	if projectDir != "" {
+		server.SetProjectDir(projectDir)
 	}
 
 	// Determine port to use

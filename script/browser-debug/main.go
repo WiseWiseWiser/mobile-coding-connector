@@ -43,7 +43,7 @@ func loadAuthToken() string {
 	return ""
 }
 
-var defaultPort = 37651
+var defaultPort = 3580
 
 const help = `
 Usage: go run ./script/browser-debug [OPTIONS] <URL>
@@ -55,7 +55,7 @@ Options:
   --headless         Run browser in headless mode (no visible window)
   --new              Force start a new browser instance (ignore existing)
   --header <header>  Add custom HTTP header in "Key: Value" format (can be used multiple times)
-  --port <port>      Backend port for API requests (default: 37651)
+  --port <port>      Backend port for API requests (default: 3580)
 
 The tool reuses an existing Chrome instance on port ` + debugPort + ` if available.
 To start fresh, use --new.
@@ -64,10 +64,10 @@ Auto-injects ai-critic auth token from ~/.ai-critic/server-credentials if availa
 
 Examples:
 
-  go run ./script/browser-debug http://localhost:37651
-  go run ./script/browser-debug --headless http://localhost:37651
-  go run ./script/browser-debug --header "Authorization: Bearer token123" http://localhost:37651
-  go run ./script/browser-debug --header "X-Custom: value" --header "Cookie: session=abc" http://localhost:37651
+  go run ./script/browser-debug http://localhost:3580
+  go run ./script/browser-debug --headless http://localhost:3580
+  go run ./script/browser-debug --header "Authorization: Bearer token123" http://localhost:3580
+  go run ./script/browser-debug --header "X-Custom: value" --header "Cookie: session=abc" http://localhost:3580
 `
 
 var customHeaders map[string]string

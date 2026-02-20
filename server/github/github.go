@@ -65,9 +65,10 @@ type CloneRequest struct {
 
 // CloneResponse is returned after a clone operation
 type CloneResponse struct {
-	Status string `json:"status"`
-	Dir    string `json:"dir,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Status    string `json:"status"`
+	Dir       string `json:"dir,omitempty"`
+	Error     string `json:"error,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
 }
 
 var (
@@ -401,7 +402,8 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 
 	// Save project to store
 	repoName := extractRepoName(req.RepoURL)
-	if saveErr := projects.Add(projects.Project{
+	var projectID string
+	if id, saveErr := projects.Add(projects.Project{
 		Name:     repoName,
 		RepoURL:  req.RepoURL,
 		Dir:      targetDir,
@@ -409,9 +411,11 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 		UseSSH:   req.UseSSH,
 	}); saveErr != nil {
 		fmt.Printf("[GitHub] Warning: failed to save project: %v\n", saveErr)
+	} else {
+		projectID = id
 	}
 
-	sw.SendDone(map[string]string{"dir": targetDir})
+	sw.SendDone(map[string]string{"dir": targetDir, "projectId": projectID})
 }
 
 // SSHTestRequest is sent by the frontend to test an SSH key

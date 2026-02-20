@@ -30,13 +30,11 @@ interface WorkspaceListViewProps {
 
 export function WorkspaceListView({ onSelectProject: propOnSelectProject }: WorkspaceListViewProps) {
     const navigate = useNavigate();
-    const { projectsList, projectsLoading, fetchProjects, currentProject } = useV2Context();
+    const { rootProjects, getSubProjectsCount, projectsLoading, fetchProjects, currentProject } = useV2Context();
     
-    // Get onSelectProject from outlet context if not provided as prop
     const outletContext = useOutletContext<HomeOutletContext | null>();
     const onSelectProject = propOnSelectProject ?? outletContext?.onSelectProject ?? (() => {});
 
-    // Clone streaming state - shared across all project cards
     const [cloningProjectId, setCloningProjectId] = useState<string | null>(null);
     const [cloneState, cloneControls] = useStreamingAction((result) => {
         if (result.ok) {
@@ -85,15 +83,16 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
             </div>
             {projectsLoading ? (
                 <div className="mcc-ports-empty">Loading projects...</div>
-            ) : projectsList.length === 0 ? (
+            ) : rootProjects.length === 0 ? (
                 <div className="mcc-ports-empty">No projects yet. Clone a repository from Git Settings.</div>
             ) : (
                 <div className="mcc-workspace-cards">
-                    {projectsList.map(project => (
+                    {rootProjects.map(project => (
                         <ProjectCard
                             key={project.id}
                             project={project}
                             isActive={project.name === currentProject?.name}
+                            subProjectsCount={getSubProjectsCount(project.id)}
                             onSelect={() => onSelectProject(project)}
                             onOpen={() => {
                                 navigate(`/project/${encodeURIComponent(project.name)}`);
@@ -104,7 +103,6 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
                             anyCloning={cloneState.running}
                         />
                     ))}
-                    {/* Streaming logs area - shown below all cards */}
                     {(cloneState.showLogs || cloneState.result) && (
                         <div style={{ marginTop: 8 }}>
                             <StreamingLogs
@@ -148,6 +146,7 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
 interface ProjectCardProps {
     project: ProjectInfo;
     isActive: boolean;
+    subProjectsCount: number;
     onSelect: () => void;
     onOpen: () => void;
     onRemove: () => void;
@@ -156,7 +155,7 @@ interface ProjectCardProps {
     anyCloning: boolean;
 }
 
-function ProjectCard({ project, isActive, onSelect, onOpen, onRemove, onClone, cloning, anyCloning }: ProjectCardProps) {
+function ProjectCard({ project, isActive, subProjectsCount, onSelect, onOpen, onRemove, onClone, cloning, anyCloning }: ProjectCardProps) {
     const createdDate = new Date(project.created_at).toLocaleDateString();
     const dirMissing = !project.dir_exists;
     const sshValidation = validateProjectSSHKey(project);
@@ -167,6 +166,7 @@ function ProjectCard({ project, isActive, onSelect, onOpen, onRemove, onClone, c
         <div className={`mcc-workspace-card mcc-workspace-card-clickable${isActive ? ' mcc-workspace-card-active' : ''}`} onClick={onSelect}>
             <div className="mcc-workspace-card-header">
                 <span className="mcc-workspace-name">{project.name}</span>
+                {subProjectsCount > 0 && <span className="mcc-workspace-subprojects-badge">{subProjectsCount} sub-project{subProjectsCount !== 1 ? 's' : ''}</span>}
                 {isActive && <span className="mcc-workspace-active-badge">Working on</span>}
                 {dirMissing && <span className="mcc-workspace-missing-badge">Not cloned</span>}
                 {hasUncommitted && <span className="mcc-workspace-uncommitted-badge">{gitStatus.uncommitted} files uncommitted</span>}

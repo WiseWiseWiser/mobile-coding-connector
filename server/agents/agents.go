@@ -1045,6 +1045,21 @@ func handleExternalSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse pagination parameters
+	page := 1
+	pageSize := 20 // default page size
+
+	if p := r.URL.Query().Get("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+	if ps := r.URL.Query().Get("page_size"); ps != "" {
+		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
+			pageSize = parsed
+		}
+	}
+
 	// Get or start the opencode server
 	server, err := opencode.GetOrStartOpencodeServer()
 	if err != nil {
@@ -1071,23 +1086,51 @@ func handleExternalSessions(w http.ResponseWriter, r *http.Request) {
 	if resp.StatusCode == http.StatusUnauthorized {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"sessions": []interface{}{},
-			"port":     server.Port,
-			"auth":     true,
+			"items":       []interface{}{},
+			"page":        page,
+			"page_size":   pageSize,
+			"total":       0,
+			"total_pages": 0,
+			"port":        server.Port,
+			"auth":        true,
 		})
 		return
 	}
 
-	var sessions []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+	var allSessions []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&allSessions); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Apply pagination
+	total := len(allSessions)
+	totalPages := (total + pageSize - 1) / pageSize
+
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+
+	var pagedSessions []map[string]interface{}
+	if start < total {
+		pagedSessions = allSessions[start:end]
+	} else {
+		pagedSessions = []map[string]interface{}{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"sessions": sessions,
-		"port":     server.Port,
+		"items":       pagedSessions,
+		"page":        page,
+		"page_size":   pageSize,
+		"total":       total,
+		"total_pages": totalPages,
+		"port":        server.Port,
 	})
 }
 

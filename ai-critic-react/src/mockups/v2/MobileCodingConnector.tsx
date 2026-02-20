@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useCurrent } from '../../hooks/useCurrent';
+import { SessionsSection, type SessionItem } from '../../pure-view/SessionsSection';
 import './MobileCodingConnector.css';
 
 // Navigation tabs
@@ -114,6 +115,28 @@ const mockTerminalLines: TerminalLine[] = [
     { type: 'output', content: '  ➜  Network: http://192.168.1.5:5173/' },
 ];
 
+// Mock sessions for the SessionsSection
+const mockSessions: SessionItem[] = [
+    {
+        id: 'sess-001',
+        title: 'Session 3',
+        preview: 'Add a login page with Google OAuth integration...',
+        createdAt: '2 hours ago',
+    },
+    {
+        id: 'sess-002',
+        title: 'Session 2',
+        preview: 'Fix the navigation bug in the header component...',
+        createdAt: '5 hours ago',
+    },
+    {
+        id: 'sess-003',
+        title: 'Session 1',
+        preview: 'Initial setup and project configuration...',
+        createdAt: '1 day ago',
+    },
+];
+
 export function MobileCodingConnector() {
     const navigate = useNavigate();
     const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -133,6 +156,9 @@ export function MobileCodingConnector() {
     const [showNewPortForm, setShowNewPortForm] = useState(false);
     const [newPortNumber, setNewPortNumber] = useState('');
     const [newPortLabel, setNewPortLabel] = useState('');
+
+    // Session state
+    const [_selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
     // Refs for callbacks
     const activeTabRef = useCurrent(activeTab);
@@ -204,14 +230,27 @@ export function MobileCodingConnector() {
                 return <WorkspaceListView workspaces={mockWorkspaces} onSelect={handleSelectWorkspace} />;
             case NavTabs.Agent:
                 return (
-                    <AgentChatView
-                        workspace={currentWorkspace}
-                        messages={mockChatHistory}
-                        agentStatus={agentStatus}
-                        inputValue={chatInput}
-                        onInputChange={setChatInput}
-                        onSend={handleSendPrompt}
-                    />
+                    <div className="mcc-agent-tab">
+                        <SessionsSection
+                            sessions={mockSessions}
+                            onSelectSession={(sessionId) => {
+                                setSelectedSessionId(sessionId);
+                                console.log('Selected session:', sessionId);
+                            }}
+                            onNewSession={() => {
+                                console.log('Creating new session...');
+                            }}
+                            title="Sessions"
+                        />
+                        <AgentChatView
+                            workspace={currentWorkspace}
+                            messages={mockChatHistory}
+                            agentStatus={agentStatus}
+                            inputValue={chatInput}
+                            onInputChange={setChatInput}
+                            onSend={handleSendPrompt}
+                        />
+                    </div>
                 );
             case NavTabs.Terminal:
                 return (

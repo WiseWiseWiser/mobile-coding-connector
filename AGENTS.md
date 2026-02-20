@@ -88,8 +88,8 @@ printf "console.log('Title:', await page.title())" | go run ./script/debug-serve
 ```
 
 **Features:**
-- Kills any existing server on port 37651 and deploys fresh code
-- Server accessible at `https://port-37651-ae2842d.xhd2015.xyz`
+- Kills any existing server on port 3580 and deploys fresh code
+- Server accessible at `https://port-3580-ae2842d.xhd2015.xyz`
 - Puppeteer-based browser automation via stdin script
 - Auto-exits after 10 minutes of inactivity
 

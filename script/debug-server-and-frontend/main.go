@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -14,24 +13,17 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 )
 
-const defaultQuickTestPort = lib.QuickTestPort
-const viteDevPort = lib.ViteDevPort
-
 const help = `Usage: go run ./script/debug-server-and-frontend [options]
 
 Starts a quick-test server with the latest code and opens a browser debugger.
 
-This script:
-  - Kills any existing server on the port
-  - Starts the Vite dev server for frontend hot reload
-  - Builds and starts a fresh server with latest code (proxies to vite)
-  - Opens a browser debugger for testing
+This script runs quick-test (which manages vite and server) and opens a browser debugger for JS code evaluation.
 
 Options:
   -h, --help      Show this help message
-  --port PORT     Port for quick-test server (default: 37651)
+  --port PORT     Port for quick-test server (default: 3580)
   --no-headless   Run browser with visible window
-  --no-vite       Skip starting vite dev server (use built frontend)
+  --no-vite       Pass to quick-test: don't auto-start vite (use built frontend)
 `
 
 func main() {
@@ -43,14 +35,13 @@ func main() {
 }
 
 func run(args []string) error {
-	var port int
+	var opts lib.QuickTestOptions
 	var noHeadless bool
-	var noVite bool
 
 	args, err := flags.
-		Int("--port", &port).
+		Int("--port", &opts.Port).
 		Bool("--no-headless", &noHeadless).
-		Bool("--no-vite", &noVite).
+		Bool("--no-vite", &opts.NoVite).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
@@ -62,10 +53,8 @@ func run(args []string) error {
 	}
 
 	headless := !noHeadless
-
-	if port == 0 {
-		port = defaultQuickTestPort
-	}
+	opts.Stdout = os.Stdout
+	opts.Stderr = os.Stderr
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -82,69 +71,32 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get project root: %v", err)
 	}
+	opts.ProjectDir = projectRoot
 
-	// Kill any existing process on the port
-	fmt.Printf("Checking for existing server on port %d...\n", port)
-	killedPid, err := lib.KillPortPid(port)
+	err = lib.QuickTestPrepare(&opts)
 	if err != nil {
 		return err
 	}
-	if killedPid > 0 {
-		fmt.Printf("Killed previous server (PID: %d)\n", killedPid)
+
+	result, err := lib.QuickTestStart(ctx, &opts)
+	if err != nil {
+		return err
 	}
 
-	var viteCmd *exec.Cmd
-	if !noVite {
-		// Start vite dev server
-		fmt.Println("Starting Vite dev server...")
-		viteCmd = exec.CommandContext(ctx, "npm", "run", "dev")
-		viteCmd.Dir = projectRoot + "/ai-critic-react"
-		viteCmd.Stdout = os.Stdout
-		viteCmd.Stderr = os.Stderr
-
-		if err := viteCmd.Start(); err != nil {
-			return fmt.Errorf("failed to start vite dev server: %v", err)
+	fmt.Printf("Waiting for server to be ready on port %d...\n", opts.GetPort())
+	if err := waitForPort(ctx, opts.GetPort(), 60*time.Second); err != nil {
+		if result.ServerCmd.Process != nil {
+			result.ServerCmd.Process.Kill()
 		}
-
-		// Wait for vite to be ready
-		fmt.Printf("Waiting for Vite dev server on port %d...\n", viteDevPort)
-		if err := waitForHTTP(ctx, fmt.Sprintf("http://localhost:%d", viteDevPort), 30*time.Second); err != nil {
-			if viteCmd.Process != nil {
-				viteCmd.Process.Kill()
-			}
-			return fmt.Errorf("vite dev server failed to start: %v", err)
-		}
-		fmt.Println("Vite dev server is ready!")
-	}
-
-	// Start quick-test server with --frontend-port to proxy to vite (vite started externally)
-	fmt.Printf("Starting quick-test server on port %d...\n", port)
-	quickTestArgs := []string{"run", "./script/run/quick-test", fmt.Sprintf("--port=%d", port), "--frontend-port", "5173"}
-	quickTestCmd := exec.CommandContext(ctx, "go", quickTestArgs...)
-	quickTestCmd.Dir = projectRoot
-	quickTestCmd.Stdout = os.Stdout
-	quickTestCmd.Stderr = os.Stderr
-
-	if err := quickTestCmd.Start(); err != nil {
-		if viteCmd != nil && viteCmd.Process != nil {
-			viteCmd.Process.Kill()
-		}
-		return fmt.Errorf("failed to start quick-test server: %v", err)
-	}
-
-	fmt.Printf("Waiting for server to be ready on port %d...\n", port)
-	if err := waitForPort(ctx, port, 30*time.Second); err != nil {
-		quickTestCmd.Process.Kill()
-		if viteCmd != nil && viteCmd.Process != nil {
-			viteCmd.Process.Kill()
+		if result.ViteCmd != nil && result.ViteCmd.Process != nil {
+			result.ViteCmd.Process.Kill()
 		}
 		return fmt.Errorf("server failed to start: %v", err)
 	}
 	fmt.Println("Server is ready!")
 
-	// Start debug-port
 	fmt.Println("Starting browser debugger...")
-	debugCmd := exec.CommandContext(ctx, "go", "run", "./script/debug-port", fmt.Sprintf("--port=%d", port))
+	debugCmd := exec.CommandContext(ctx, "go", "run", "./script/debug-port", fmt.Sprintf("--port=%d", opts.GetPort()))
 	if !headless {
 		debugCmd.Args = append(debugCmd.Args, "--no-headless")
 	}
@@ -155,18 +107,16 @@ func run(args []string) error {
 
 	debugErr := debugCmd.Run()
 
-	// Clean up quick-test server
-	if quickTestCmd.Process != nil {
+	if result.ServerCmd.Process != nil {
 		fmt.Println("Stopping quick-test server...")
-		quickTestCmd.Process.Signal(syscall.SIGTERM)
-		quickTestCmd.Wait()
+		result.ServerCmd.Process.Signal(syscall.SIGTERM)
+		result.ServerCmd.Wait()
 	}
 
-	// Clean up vite server
-	if viteCmd != nil && viteCmd.Process != nil {
+	if result.ViteCmd != nil && result.ViteCmd.Process != nil {
 		fmt.Println("Stopping Vite dev server...")
-		viteCmd.Process.Signal(syscall.SIGTERM)
-		viteCmd.Wait()
+		result.ViteCmd.Process.Signal(syscall.SIGTERM)
+		result.ViteCmd.Wait()
 	}
 
 	if debugErr != nil {
@@ -190,25 +140,6 @@ func waitForPort(ctx context.Context, port int, timeout time.Duration) error {
 		time.Sleep(200 * time.Millisecond)
 	}
 	return fmt.Errorf("timeout waiting for port %d", port)
-}
-
-func waitForHTTP(ctx context.Context, url string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	client := &http.Client{Timeout: 1 * time.Second}
-	for time.Now().Before(deadline) {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		resp, err := client.Get(url)
-		if err == nil {
-			resp.Body.Close()
-			return nil
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	return fmt.Errorf("timeout waiting for HTTP at %s", url)
 }
 
 func getProjectRoot() (string, error) {

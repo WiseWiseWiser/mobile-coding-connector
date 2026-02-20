@@ -72,39 +72,90 @@ func GetOrStartOpencodeServer() (*OpencodeServer, error) {
 	atomic.StoreInt32(&starting, 1)
 	defer atomic.StoreInt32(&starting, 0)
 
-	// Get a random available port for the internal agent server
-	// This server is for internal agent use and should not conflict with
-	// the exposed user-facing server (which uses configured port 4096)
-	port, err := findAvailablePort()
-	if err != nil {
-		return nil, fmt.Errorf("failed to find available port: %w", err)
-	}
+	var result *OpencodeServer
+	var resultErr error
 
-	serverInstance = &OpencodeServer{
-		Port:     port,
-		StopChan: make(chan struct{}),
-	}
+	resultErr = WithLock(func() error {
+		// Check registry for existing process
+		info, err := LoadRegistry()
+		if err != nil {
+			fmt.Printf("[opencode] Warning: failed to load registry: %v\n", err)
+		}
 
-	if err := startOpencodeWebServer(serverInstance); err != nil {
-		return nil, fmt.Errorf("failed to start opencode server: %w", err)
-	}
+		// If registry has info, check if process is still alive and port reachable
+		if info != nil && info.PID > 0 && info.Port > 0 {
+			if IsProcessAlive(info.PID) && IsPortReachable(info.Port) {
+				fmt.Printf("[opencode] Reusing existing internal server: PID=%d, Port=%d\n", info.PID, info.Port)
+				result = &OpencodeServer{
+					Port: info.Port,
+				}
+				return nil
+			}
+			fmt.Printf("[opencode] Registry process dead or port unreachable: PID=%d, Port=%d\n", info.PID, info.Port)
+		}
 
-	if err := waitForServer(port, 10*time.Second); err != nil {
-		return nil, fmt.Errorf("opencode server not ready: %w", err)
-	}
+		// Need to start new server
+		port, err := findAvailablePort()
+		if err != nil {
+			return fmt.Errorf("failed to find available port: %w", err)
+		}
 
-	fmt.Printf("[opencode] Server started on port %d\n", port)
-	return serverInstance, nil
+		newServer := &OpencodeServer{
+			Port:     port,
+			StopChan: make(chan struct{}),
+		}
+
+		if err := startOpencodeWebServer(newServer); err != nil {
+			return fmt.Errorf("failed to start opencode server: %w", err)
+		}
+
+		if err := waitForServer(port, 10*time.Second); err != nil {
+			return fmt.Errorf("opencode server not ready: %w", err)
+		}
+
+		// Save to registry
+		if newServer.Cmd != nil && newServer.Cmd.Process != nil {
+			regInfo := &InternalServerInfo{
+				PID:       newServer.Cmd.Process.Pid,
+				Port:      port,
+				StartTime: time.Now().Unix(),
+			}
+			if err := SaveRegistry(regInfo); err != nil {
+				fmt.Printf("[opencode] Warning: failed to save registry: %v\n", err)
+			}
+		}
+
+		fmt.Printf("[opencode] Internal server started on port %d\n", port)
+		result = newServer
+		return nil
+	})
+
+	if resultErr != nil {
+		return nil, resultErr
+	}
+	return result, nil
 }
 
 func findAvailablePort() (int, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
+	// Get the user-facing port to avoid
+	userPort := GetWebServerPort()
+
+	// Try to find an available port, avoiding the user-facing port
+	for i := 0; i < 100; i++ {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return 0, err
+		}
+		port := ln.Addr().(*net.TCPAddr).Port
+		ln.Close()
+
+		// Skip the user-facing server port
+		if port == userPort {
+			continue
+		}
+		return port, nil
 	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	ln.Close()
-	return port, nil
+	return 0, fmt.Errorf("failed to find available port after 100 attempts")
 }
 
 func startOpencodeWebServer(server *OpencodeServer) error {

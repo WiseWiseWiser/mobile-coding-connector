@@ -418,6 +418,11 @@ body:has(.mcc) {
     border-color: #34d399;
 }
 
+.mcc-workspace-card-subproject {
+    border-left: 3px solid #8b5cf6;
+    background: rgba(139, 92, 246, 0.05);
+}
+
 .mcc-workspace-active-badge {
     font-size: 10px;
     font-weight: 600;
@@ -438,11 +443,31 @@ body:has(.mcc) {
     white-space: nowrap;
 }
 
+.mcc-workspace-subproject-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: #8b5cf6;
+    background: rgba(139, 92, 246, 0.15);
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
 .mcc-workspace-uncommitted-badge {
     font-size: 10px;
     font-weight: 600;
     color: #ef4444;
     background: rgba(239, 68, 68, 0.15);
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.mcc-workspace-subprojects-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: #a78bfa;
+    background: rgba(167, 139, 250, 0.15);
     padding: 2px 8px;
     border-radius: 4px;
     white-space: nowrap;

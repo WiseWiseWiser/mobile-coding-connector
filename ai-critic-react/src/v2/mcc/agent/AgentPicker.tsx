@@ -1,5 +1,6 @@
-import type { AgentDef, AgentSessionInfo } from '../../../api/agents';
+import type { AgentDef, AgentSessionInfo, ExternalOpencodeSession } from '../../../api/agents';
 import { SettingsIcon } from '../../icons';
+import { SessionsSection, type SessionItem } from '../../../pure-view/SessionsSection';
 
 export interface AgentPickerProps {
     agents: AgentDef[];
@@ -11,12 +12,50 @@ export interface AgentPickerProps {
     onStopAgent: (agentId: string) => void;
     onConfigureAgent: (agentId: string) => void;
     // External sessions from CLI/web opencode
-    externalSessions?: { id: string }[];
+    externalSessions?: ExternalOpencodeSession[];
+    // Sessions section props
+    recentSessions?: SessionItem[];
+    sessionsLoading?: boolean;
+    onSelectSession?: (sessionId: string) => void;
+    onNewSession?: () => void;
 }
 
-export function AgentPicker({ agents, loading, launchError, sessions, onLaunchHeadless, onOpenSessions, onStopAgent, onConfigureAgent, externalSessions = [] }: AgentPickerProps) {
+export function AgentPicker({
+    agents,
+    loading,
+    launchError,
+    sessions,
+    onLaunchHeadless,
+    onOpenSessions,
+    onStopAgent,
+    onConfigureAgent,
+    externalSessions = [],
+    recentSessions,
+    sessionsLoading,
+    onSelectSession,
+    onNewSession,
+}: AgentPickerProps) {
+    // Convert external sessions to SessionItem format for the SessionsSection
+    const sessionItems: SessionItem[] = recentSessions ?? externalSessions?.map(es => ({
+        id: es.id,
+        title: es.title || `Session ${es.slug || es.id.slice(0, 8)}`,
+        preview: es.summary ? `${es.summary.files} files changed` : 'External session',
+        createdAt: es.time?.created ? new Date(es.time.created * 1000).toLocaleDateString() : undefined,
+    })) ?? [];
+
     return (
         <div className="mcc-agent-view">
+            {/* Sessions Section - shown above agents */}
+            {sessionItems.length > 0 && onSelectSession && (
+                <SessionsSection
+                    sessions={sessionItems}
+                    loading={sessionsLoading}
+                    onSelectSession={onSelectSession}
+                    onNewSession={onNewSession}
+                    title="Sessions"
+                />
+            )}
+
             <div className="mcc-agent-header">
                 <h2>Agents</h2>
             </div>

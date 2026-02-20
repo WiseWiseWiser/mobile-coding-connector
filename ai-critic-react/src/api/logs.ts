@@ -31,6 +31,7 @@ export interface StreamLogFileParams {
     file?: string;
     path?: string;
     lines?: number;
+    signal?: AbortSignal;
 }
 
 export function streamLogFile(params: StreamLogFileParams = {}): Promise<Response> {
@@ -49,5 +50,6 @@ export function streamLogFile(params: StreamLogFileParams = {}): Promise<Respons
 
     return fetch(url.toString(), {
         headers: { 'Accept': 'text/event-stream' },
+        signal: params.signal,
     });
 }

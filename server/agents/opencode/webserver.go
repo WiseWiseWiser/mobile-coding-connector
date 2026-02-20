@@ -1,6 +1,7 @@
 package opencode
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,8 +12,10 @@ import (
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 
 	exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
 )
@@ -22,11 +25,15 @@ const WebServerProcessID = "opencode-web-server"
 
 // WebServerStatus represents the status of the OpenCode web server
 type WebServerStatus struct {
-	Running    bool   `json:"running"`
-	Port       int    `json:"port"`
-	Domain     string `json:"domain"`
-	PortMapped bool   `json:"port_mapped"`
-	ConfigPath string `json:"config_path"`
+	Running          bool   `json:"running"`
+	Port             int    `json:"port"`
+	Domain           string `json:"domain"`
+	PortMapped       bool   `json:"port_mapped"`
+	ConfigPath       string `json:"config_path"`
+	AuthProxyRunning bool   `json:"auth_proxy_running"`
+	AuthProxyFound   bool   `json:"auth_proxy_found"`
+	AuthProxyPath    string `json:"auth_proxy_path"`
+	OpencodePort     int    `json:"opencode_port"`
 }
 
 // GetWebServerStatus checks if the OpenCode web server is running and if its port is mapped
@@ -36,17 +43,40 @@ func GetWebServerStatus() (*WebServerStatus, error) {
 		return nil, err
 	}
 
+	proxyPort := settings.WebServer.Port
+
 	status := &WebServerStatus{
-		Port:   settings.WebServer.Port,
-		Domain: settings.DefaultDomain,
+		Port:         proxyPort,
+		Domain:       settings.DefaultDomain,
+		OpencodePort: 0,
 	}
 
-	// Check if web server is running by trying to connect to its port
-	status.Running = IsWebServerRunning(settings.WebServer.Port)
+	// Check if auth proxy binary exists and get its full path
+	if path, err := tool_resolve.LookPath("basic-auth-proxy"); err == nil {
+		status.AuthProxyFound = true
+		status.AuthProxyPath = path
+	} else {
+		status.AuthProxyFound = false
+		status.AuthProxyPath = ""
+	}
+
+	// Check if auth proxy is running on the proxy port
+	if settings.WebServer.AuthProxyEnabled {
+		status.AuthProxyRunning = IsAuthProxyRunning(proxyPort)
+		// Get the actual opencode port from settings if running
+		if status.AuthProxyRunning {
+			status.OpencodePort = GetOpencodeInternalPort(proxyPort)
+		}
+		status.Running = status.AuthProxyRunning
+	} else {
+		// Check if web server is running by trying to connect to its port
+		status.Running = IsWebServerRunning(settings.WebServer.Port)
+		status.OpencodePort = settings.WebServer.Port
+	}
 
 	// Check if port is mapped to the domain
 	if status.Running && settings.DefaultDomain != "" {
-		status.PortMapped = isPortMappedToDomain(settings.WebServer.Port, settings.DefaultDomain)
+		status.PortMapped = isPortMappedToDomain(proxyPort, settings.DefaultDomain)
 	}
 
 	// Get config path
@@ -56,6 +86,33 @@ func GetWebServerStatus() (*WebServerStatus, error) {
 	}
 
 	return status, nil
+}
+
+// IsAuthProxyRunning checks if the auth proxy is running on the given port
+func IsAuthProxyRunning(port int) bool {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 2*time.Second)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+// GetOpencodeInternalPort returns the internal opencode port from the proxy config file
+// The proxy stores the backend port in its config
+func GetOpencodeInternalPort(proxyPort int) int {
+	configPath := filepath.Join(config.DataDir, "basic-auth-proxy.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return 0
+	}
+	var proxyCfg struct {
+		BackendPort int `json:"backend_port"`
+	}
+	if err := json.Unmarshal(data, &proxyCfg); err != nil {
+		return 0
+	}
+	return proxyCfg.BackendPort
 }
 
 // IsWebServerRunning checks if the OpenCode web server is running on the given port
@@ -240,6 +297,11 @@ func startWebServer(settings *Settings, customPath string) (*WebServerControlRes
 		port = 4096
 	}
 
+	// If auth proxy is enabled, start opencode on a random available port and wrap with proxy
+	if settings.WebServer.AuthProxyEnabled {
+		return startWebServerWithProxy(settings, customPath, port)
+	}
+
 	server, err := exposed.StartWithSettings(port, settings.WebServer.Password, customPath)
 	if err != nil {
 		return &WebServerControlResponse{
@@ -260,10 +322,172 @@ func startWebServer(settings *Settings, customPath string) (*WebServerControlRes
 	}, nil
 }
 
+// startWebServerWithProxy starts opencode on a random port and wraps it with auth proxy
+func startWebServerWithProxy(settings *Settings, customPath string, proxyPort int) (*WebServerControlResponse, error) {
+	// Find an available port for opencode
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return &WebServerControlResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to find available port: %v", err),
+			Running: false,
+		}, nil
+	}
+	opencodePort := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+
+	// Start opencode server on the available port
+	server, err := exposed.StartWithSettings(opencodePort, settings.WebServer.Password, customPath)
+	if err != nil {
+		return &WebServerControlResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to start opencode server: %v", err),
+			Running: false,
+		}, nil
+	}
+
+	// Save the internal opencode port
+	settings.WebServer.Enabled = true
+	settings.WebServer.Port = proxyPort
+	SaveSettings(settings)
+
+	// Save proxy config with backend port
+	proxyConfigPath := filepath.Join(config.DataDir, "basic-auth-proxy.json")
+	proxyCfg := struct {
+		BackendPort int `json:"backend_port"`
+	}{BackendPort: server.Port}
+	proxyCfgData, _ := json.MarshalIndent(proxyCfg, "", "  ")
+	os.WriteFile(proxyConfigPath, proxyCfgData, 0644)
+
+	// Start the auth proxy
+	err = startAuthProxy(proxyPort, server.Port)
+	if err != nil {
+		// Clean up opencode server
+		exposed.Stop()
+		return &WebServerControlResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to start auth proxy: %v", err),
+			Running: false,
+		}, nil
+	}
+
+	return &WebServerControlResponse{
+		Success: true,
+		Message: fmt.Sprintf("Web server started successfully on port %d (with auth proxy)", proxyPort),
+		Running: true,
+	}, nil
+}
+
+// startAuthProxy starts the basic-auth-proxy process
+func startAuthProxy(proxyPort, backendPort int) error {
+	// Check if binary exists
+	if !tool_resolve.IsAvailable("basic-auth-proxy") {
+		return fmt.Errorf("basic-auth-proxy binary not found in PATH")
+	}
+
+	cmd, err := tool_exec.New("basic-auth-proxy", []string{
+		"--port", fmt.Sprintf("%d", proxyPort),
+		"--backend-port", fmt.Sprintf("%d", backendPort),
+	}, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create proxy command: %w", err)
+	}
+
+	err = cmd.Cmd.Start()
+	if err != nil {
+		return fmt.Errorf("failed to start proxy: %w", err)
+	}
+
+	return nil
+}
+
+// stopAuthProxy stops the basic-auth-proxy process
+func stopAuthProxy() error {
+	// Read proxy config to get backend port
+	proxyConfigPath := filepath.Join(config.DataDir, "basic-auth-proxy.json")
+	proxyPort := 0
+
+	// First get the proxy port from settings
+	settings, err := LoadSettings()
+	if err == nil {
+		proxyPort = settings.WebServer.Port
+	}
+
+	// Try to kill the proxy on the proxy port
+	if proxyPort > 0 {
+		return KillProcessByPort(proxyPort)
+	}
+
+	// Fallback: try to read config and kill by backend port
+	data, err := os.ReadFile(proxyConfigPath)
+	if err != nil {
+		return nil // No proxy running
+	}
+
+	var cfg struct {
+		BackendPort int `json:"backend_port"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil
+	}
+
+	// The backend port is the opencode port, not the proxy port
+	// We don't have the proxy port saved, so just return nil
+	return nil
+}
+
 // stopWebServer attempts to stop the OpenCode web server.
 // The customPath parameter allows using a user-configured binary path.
 func stopWebServer(settings *Settings, customPath string) (*WebServerControlResponse, error) {
 	port := settings.WebServer.Port
+
+	// If auth proxy is enabled, stop it first
+	if settings.WebServer.AuthProxyEnabled {
+		stopAuthProxy()
+		// Then stop the opencode server
+		exposed.Stop()
+		// Also try the standard opencode stop command as fallback
+		cmd, err := tool_exec.New("opencode", []string{"web", "stop"}, &tool_exec.Options{
+			CustomPath: customPath,
+		})
+		if err == nil {
+			cmd.Cmd.Run()
+		}
+
+		// Wait a moment for the server to stop
+		time.Sleep(1 * time.Second)
+
+		// Check if opencode is still running on the internal port
+		proxyConfigPath := filepath.Join(config.DataDir, "basic-auth-proxy.json")
+		data, err := os.ReadFile(proxyConfigPath)
+		opencodeRunning := false
+		if err == nil {
+			var cfg struct {
+				BackendPort int `json:"backend_port"`
+			}
+			if err := json.Unmarshal(data, &cfg); err == nil && cfg.BackendPort > 0 {
+				opencodeRunning = IsWebServerRunning(cfg.BackendPort)
+				if opencodeRunning {
+					fmt.Printf("Opencode server still running on port %d, attempting to kill process directly...\n", cfg.BackendPort)
+					if err := KillProcessByPort(cfg.BackendPort); err != nil {
+						fmt.Printf("Failed to kill opencode process: %v\n", err)
+					}
+				}
+			}
+		}
+
+		// Remove proxy config
+		os.Remove(proxyConfigPath)
+
+		settings.WebServer.Enabled = false
+		SaveSettings(settings)
+
+		return &WebServerControlResponse{
+			Success: true,
+			Message: "Web server stopped successfully",
+			Running: false,
+		}, nil
+	}
 
 	// Stop using exposed_opencode package
 	exposed.Stop()

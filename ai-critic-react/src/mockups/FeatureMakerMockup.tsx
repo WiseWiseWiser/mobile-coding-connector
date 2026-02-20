@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { MockupPageContainer } from './MockupPageContainer';
 import { PathInput } from '../pure-view/PathInput';
+import { getFakeLLMServer, type FakeLLMSession, type StreamEvent } from './fake';
 import './FeatureMakerMockup.css';
 
 type FlowStep = 'understanding' | 'clarifying' | 'implementing' | 'verifying' | 'completed';
@@ -150,11 +151,63 @@ export function FeatureMakerMockup() {
     const [selectedInsight, setSelectedInsight] = useState<Insight | null>(null);
     const [projectPath, setProjectPath] = useState('/workspace/feature-request-app');
     const [driverAgentStatus, setDriverAgentStatus] = useState<DriverAgentStatus>('idle');
+    const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
+    const [progress, setProgress] = useState(0);
+    const sessionRef = useRef<FakeLLMSession | null>(null);
+    const streamEventsRef = useRef<HTMLDivElement | null>(null);
 
-    const handleStart = () => setDriverAgentStatus('running');
+    useEffect(() => {
+        if (streamEventsRef.current) {
+            streamEventsRef.current.scrollTop = streamEventsRef.current.scrollHeight;
+        }
+    }, [streamEvents]);
+
+    const handleStart = () => {
+        setDriverAgentStatus('running');
+        setStreamEvents([]);
+        setProgress(0);
+
+        const server = getFakeLLMServer();
+        const session = server.startStream(mockFeatureRequest.description, projectPath);
+        sessionRef.current = session;
+
+        session.onStart(() => {
+            setStreamEvents(prev => [...prev, { type: 'start', message: 'Starting driver agent...', timestamp: Date.now() }]);
+        });
+
+        session.onStep((event) => {
+            setStreamEvents(prev => [...prev, event]);
+            if (event.progress) setProgress(event.progress);
+        });
+
+        session.onDone((event) => {
+            setStreamEvents(prev => [...prev, event]);
+            setDriverAgentStatus('finished');
+            setProgress(100);
+            sessionRef.current = null;
+        });
+
+        session.onAborted((event) => {
+            setStreamEvents(prev => [...prev, event]);
+            setDriverAgentStatus('idle');
+            sessionRef.current = null;
+        });
+    };
+
     const handlePause = () => setDriverAgentStatus('paused');
-    const handleResume = () => setDriverAgentStatus('running');
-    const handleAbort = () => setDriverAgentStatus('idle');
+    
+    const handleResume = () => {
+        setDriverAgentStatus('running');
+    };
+
+    const handleAbort = () => {
+        if (sessionRef.current) {
+            sessionRef.current.abort();
+            sessionRef.current = null;
+        }
+        setDriverAgentStatus('idle');
+        setProgress(0);
+    };
 
     return (
         <MockupPageContainer
@@ -251,33 +304,6 @@ export function FeatureMakerMockup() {
                                 onChange={setProjectPath}
                                 label="Project Directory"
                             />
-                            <div className="fm-driver-control">
-                                {driverAgentStatus === 'idle' && (
-                                    <button className="fm-driver-btn fm-driver-start" onClick={handleStart}>
-                                        ▶ Start the driver agent to implement the feature
-                                    </button>
-                                )}
-                                {driverAgentStatus === 'running' && (
-                                    <button className="fm-driver-btn fm-driver-pause" onClick={handlePause}>
-                                        ⏸ Pause
-                                    </button>
-                                )}
-                                {driverAgentStatus === 'paused' && (
-                                    <div className="fm-driver-paused-controls">
-                                        <button className="fm-driver-btn fm-driver-resume" onClick={handleResume}>
-                                            ▶ Resume
-                                        </button>
-                                        <button className="fm-driver-btn fm-driver-abort" onClick={handleAbort}>
-                                            ⏹ Abort
-                                        </button>
-                                    </div>
-                                )}
-                                {driverAgentStatus === 'finished' && (
-                                    <div className="fm-driver-finished">
-                                        <span className="fm-finished-badge">✓ Finished</span>
-                                    </div>
-                                )}
-                            </div>
                         </div>
 
                         <div className="fm-main-agent">
@@ -329,6 +355,53 @@ export function FeatureMakerMockup() {
                     </div>
 
                     <div className="fm-panels">
+                        <div className="fm-run-section">
+                            <div className="fm-run-controls">
+                                <div className="fm-driver-control">
+                                    {driverAgentStatus === 'idle' && (
+                                        <button className="fm-driver-btn fm-driver-start" onClick={handleStart}>
+                                            ▶ Start the driver agent to implement the feature
+                                        </button>
+                                    )}
+                                    {driverAgentStatus === 'running' && (
+                                        <button className="fm-driver-btn fm-driver-pause" onClick={handlePause}>
+                                            ⏸ Pause
+                                        </button>
+                                    )}
+                                    {driverAgentStatus === 'paused' && (
+                                        <div className="fm-driver-paused-controls">
+                                            <button className="fm-driver-btn fm-driver-resume" onClick={handleResume}>
+                                                ▶ Resume
+                                            </button>
+                                            <button className="fm-driver-btn fm-driver-abort" onClick={handleAbort}>
+                                                ⏹ Abort
+                                            </button>
+                                        </div>
+                                    )}
+                                    {driverAgentStatus === 'finished' && (
+                                        <div className="fm-driver-finished">
+                                            <span className="fm-finished-badge">✓ Finished</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            {(driverAgentStatus === 'running' || driverAgentStatus === 'paused' || driverAgentStatus === 'finished') && (
+                                <div className="fm-run-progress">
+                                    <div className="fm-progress-bar">
+                                        <div className="fm-progress-fill" style={{ width: `${progress}%` }}></div>
+                                    </div>
+                                    <div className="fm-stream-events" ref={streamEventsRef}>
+                                        {streamEvents.map((event, i) => (
+                                            <div key={i} className={`fm-stream-event fm-event-type-${event.type}`}>
+                                                {event.step && <span className="fm-event-step">[{event.step}]</span>}
+                                                <span className="fm-event-message">{event.message}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         <div className="fm-flow-section completed">
                             <div className="fm-section-header">
                                 <span className="fm-section-num">1</span>

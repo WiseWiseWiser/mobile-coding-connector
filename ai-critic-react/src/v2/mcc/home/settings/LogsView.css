@@ -1,5 +1,5 @@
 .logs-view {
-    padding: 16px;
+    padding: var(--mcc-gap-lg);
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -8,91 +8,95 @@
 
 .logs-controls {
     display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: var(--mcc-gap-sm);
+    margin-bottom: var(--mcc-gap-md);
 }
 
 .logs-filter-input {
     flex: 1;
-    padding: 8px 12px;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 14px;
+    padding: var(--mcc-gap-sm) var(--mcc-gap-md);
+    border: 1px solid var(--mcc-border-input);
+    border-radius: var(--mcc-radius-md);
+    background: var(--mcc-bg-input);
+    color: var(--mcc-text-primary);
+    font-size: var(--mcc-font-size-md);
 }
 
 .logs-filter-input:focus {
     outline: none;
-    border-color: #3b82f6;
+    border-color: var(--mcc-accent-blue);
 }
 
 .logs-level-select {
-    padding: 8px 12px;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 14px;
-    background: white;
+    padding: var(--mcc-gap-sm) var(--mcc-gap-md);
+    border: 1px solid var(--mcc-border-input);
+    border-radius: var(--mcc-radius-md);
+    font-size: var(--mcc-font-size-md);
+    background: var(--mcc-bg-input);
+    color: var(--mcc-text-primary);
     cursor: pointer;
 }
 
 .logs-actions {
     display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: var(--mcc-gap-sm);
+    margin-bottom: var(--mcc-gap-md);
 }
 
 .logs-action-btn {
-    padding: 8px 16px;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    background: white;
-    font-size: 14px;
+    padding: var(--mcc-gap-sm) var(--mcc-gap-md);
+    border: 1px solid var(--mcc-border-default);
+    border-radius: var(--mcc-radius-md);
+    background: var(--mcc-bg-card);
+    color: var(--mcc-text-primary);
+    font-size: var(--mcc-font-size-md);
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .logs-action-btn:hover {
-    background: #f8fafc;
-    border-color: #cbd5e1;
+    background: var(--mcc-bg-card-elevated);
+    border-color: var(--mcc-border-input);
 }
 
 .logs-copy-btn {
-    background: #3b82f6;
+    background: var(--mcc-accent-blue);
     color: white;
-    border-color: #3b82f6;
+    border-color: var(--mcc-accent-blue);
 }
 
 .logs-copy-btn:hover {
-    background: #2563eb;
-    border-color: #2563eb;
+    background: var(--mcc-accent-blue-hover);
+    border-color: var(--mcc-accent-blue-hover);
 }
 
 .logs-count {
-    font-size: 12px;
-    color: #64748b;
-    margin-bottom: 8px;
+    font-size: var(--mcc-font-size-sm);
+    color: var(--mcc-text-muted);
+    margin-bottom: var(--mcc-gap-sm);
 }
 
 .logs-list {
     flex: 1;
     overflow-y: auto;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-    font-size: 12px;
+    background: var(--mcc-bg-card);
+    border: 1px solid var(--mcc-border-default);
+    border-radius: var(--mcc-radius-lg);
+    font-family: var(--mcc-font-mono);
+    font-size: var(--mcc-font-size-sm);
 }
 
 .logs-empty {
-    padding: 24px;
+    padding: var(--mcc-gap-xl);
     text-align: center;
-    color: #94a3b8;
+    color: var(--mcc-text-muted);
 }
 
 .logs-entry {
     display: flex;
-    gap: 8px;
-    padding: 6px 12px;
-    border-bottom: 1px solid #e2e8f0;
+    gap: var(--mcc-gap-sm);
+    padding: var(--mcc-gap-xs) var(--mcc-gap-md);
+    border-bottom: 1px solid var(--mcc-border-default);
     align-items: flex-start;
 }
 
@@ -101,7 +105,7 @@
 }
 
 .logs-time {
-    color: #94a3b8;
+    color: var(--mcc-text-muted);
     flex-shrink: 0;
 }
 
@@ -113,19 +117,19 @@
 }
 
 .logs-level.logs-level-error {
-    color: #ef4444;
+    color: var(--mcc-accent-red);
 }
 
 .logs-level.logs-level-warn {
-    color: #f59e0b;
+    color: var(--mcc-accent-yellow);
 }
 
 .logs-level.logs-level-info {
-    color: #3b82f6;
+    color: var(--mcc-accent-blue);
 }
 
 .logs-level.logs-level-debug {
-    color: #8b5cf6;
+    color: var(--mcc-accent-purple);
 }
 
 .logs-message {
@@ -135,9 +139,9 @@
 }
 
 .logs-entry.logs-level-error {
-    background: #fef2f2;
+    background: rgba(248, 113, 113, 0.1);
 }
 
 .logs-entry.logs-level-warn {
-    background: #fffbeb;
+    background: rgba(245, 158, 11, 0.1);
 }

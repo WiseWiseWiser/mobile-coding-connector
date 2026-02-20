@@ -33,6 +33,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/exposedurls"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/fakellm"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/fileupload"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/keepalive"
@@ -55,6 +56,15 @@ var distFS embed.FS
 var templateHTML string
 var quickTestQuitChan chan struct{}
 var frontendPort int
+var projectDir string
+
+func SetProjectDir(dir string) {
+	projectDir = dir
+}
+
+func GetProjectDir() string {
+	return projectDir
+}
 
 func SetQuickTestMode(enabled bool) {
 	quicktest.SetEnabled(enabled)
@@ -115,10 +125,13 @@ func checkPort(port int) bool {
 }
 
 func EnsureFrontendDevServer(ctx context.Context) (chan struct{}, error) {
-	// Check if 5173 is running
 	fmt.Println("Frontend dev server (port 5173) not detected. Starting it...")
 	cmd := exec.Command("bun", "run", "dev")
-	cmd.Dir = "ai-critic-react/"
+	if projectDir != "" {
+		cmd.Dir = filepath.Join(projectDir, "ai-critic-react")
+	} else {
+		cmd.Dir = "ai-critic-react/"
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -479,6 +492,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Logs API
 	logs.RegisterAPI(mux)
 
+	// Fake LLM API for mockups
+	fakellm.RegisterAPI(mux)
+
 	// Server status API
 	RegisterServerStatusAPI(mux)
 
@@ -504,6 +520,11 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Exec restart endpoint - replaces process without changing PID
 	mux.HandleFunc("/api/server/exec-restart", handleExecRestart)
+
+	// Quick-test only endpoint for instant exec restart
+	if quicktest.Enabled() {
+		mux.HandleFunc("/api/quick-test/exec-restart", handleQuickTestExecRestart)
+	}
 
 	return nil
 }
@@ -1038,6 +1059,72 @@ func findNewerBinary(currentBin string) string {
 	}
 
 	return newestBin
+}
+
+// handleQuickTestExecRestart handles instant exec restart for quick-test mode.
+// Unlike the regular exec-restart, this does not wait for graceful shutdown.
+// It performs immediate syscall.Exec with the provided binary path.
+func handleQuickTestExecRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !quicktest.Enabled() {
+		http.Error(w, "Endpoint only available in quick-test mode", http.StatusForbidden)
+		return
+	}
+
+	binaryPath := r.URL.Query().Get("binary")
+	if binaryPath == "" {
+		http.Error(w, "Missing 'binary' query parameter", http.StatusBadRequest)
+		return
+	}
+
+	absPath, err := filepath.Abs(binaryPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to resolve binary path: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Binary not found: %v", err), http.StatusBadRequest)
+		return
+	}
+	if info.IsDir() {
+		http.Error(w, "Binary path is a directory", http.StatusBadRequest)
+		return
+	}
+
+	if err := os.Chmod(absPath, 0755); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to make binary executable: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	SetShutdownMode("restart")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "restarting",
+		"message": "Server will exec restart immediately",
+		"binary":  absPath,
+	})
+
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	ShutdownServer()
+
+	time.Sleep(200 * time.Millisecond)
+
+	err = syscall.Exec(absPath, os.Args, os.Environ())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: syscall.Exec failed: %v\n", err)
+	}
 }
 
 // shutdownHandler handles graceful shutdown of the server

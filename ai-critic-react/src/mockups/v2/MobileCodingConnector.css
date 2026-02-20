@@ -755,7 +755,29 @@
 }
 
 .mcc-file-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: #1e293b;
+}
+
+/* ---- Agent Tab with Sessions Section ---- */
+
+.mcc-agent-tab {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.mcc-agent-tab .sessions-section {
+    flex-shrink: 0;
+    max-height: 45%;
+    overflow-y: auto;
+    border-bottom: 1px solid #1e293b;
+}
+
+.mcc-agent-tab .mcc-agent-chat {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .mcc-file-icon {

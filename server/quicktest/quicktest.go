@@ -3,9 +3,10 @@ package quicktest
 import "sync"
 
 var (
-	mu          sync.RWMutex
-	enabled     bool
-	keepEnabled bool
+	mu                sync.RWMutex
+	enabled           bool
+	keepEnabled       bool
+	execRestartBinary string
 )
 
 func SetEnabled(v bool) {
@@ -30,4 +31,16 @@ func KeepEnabled() bool {
 	mu.RLock()
 	defer mu.RUnlock()
 	return keepEnabled
+}
+
+func SetExecRestartBinary(path string) {
+	mu.Lock()
+	defer mu.Unlock()
+	execRestartBinary = path
+}
+
+func GetExecRestartBinary() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return execRestartBinary
 }

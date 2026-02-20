@@ -32,6 +32,7 @@ type Project struct {
 	SSHKeyID  string `json:"ssh_key_id,omitempty"`
 	UseSSH    bool   `json:"use_ssh"`
 	CreatedAt string `json:"created_at"`
+	ParentID  string `json:"parent_id,omitempty"`
 	Todos     []Todo `json:"todos,omitempty"`
 }
 
@@ -99,17 +100,16 @@ func saveAll(list []Project) error {
 	return os.WriteFile(projectsFile, data, 0644)
 }
 
-func Add(p Project) error {
+func Add(p Project) (string, error) {
 	mu.Lock()
 	defer mu.Unlock()
 	list, err := loadAll()
 	if err != nil {
-		return err
+		return "", err
 	}
-	// Skip if a project with the same directory already exists
 	for _, existing := range list {
 		if existing.Dir == p.Dir {
-			return nil
+			return existing.ID, nil
 		}
 	}
 	if p.ID == "" {
@@ -119,7 +119,10 @@ func Add(p Project) error {
 		p.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	list = append(list, p)
-	return saveAll(list)
+	if err := saveAll(list); err != nil {
+		return "", err
+	}
+	return p.ID, nil
 }
 
 func List() ([]Project, error) {
@@ -142,6 +145,9 @@ func Remove(id string) error {
 			found = true
 			continue
 		}
+		if p.ParentID == id {
+			p.ParentID = ""
+		}
 		filtered = append(filtered, p)
 	}
 	if !found {
@@ -155,6 +161,7 @@ func Remove(id string) error {
 type ProjectUpdate struct {
 	SSHKeyID *string `json:"ssh_key_id"`
 	UseSSH   *bool   `json:"use_ssh"`
+	ParentID *string `json:"parent_id"`
 }
 
 func Update(id string, updates ProjectUpdate) (*Project, error) {
@@ -173,6 +180,9 @@ func Update(id string, updates ProjectUpdate) (*Project, error) {
 		}
 		if updates.UseSSH != nil {
 			list[i].UseSSH = *updates.UseSSH
+		}
+		if updates.ParentID != nil {
+			list[i].ParentID = *updates.ParentID
 		}
 		if err := saveAll(list); err != nil {
 			return nil, err
@@ -195,14 +205,30 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 			respondErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		// Enrich with dir_exists and git status fields
+		parentID := r.URL.Query().Get("parent_id")
+		includeAll := r.URL.Query().Get("all") == "true"
 		type ProjectWithStatus struct {
 			Project
 			DirExists bool          `json:"dir_exists"`
 			GitStatus GitStatusInfo `json:"git_status"`
 		}
-		result := make([]ProjectWithStatus, len(list))
-		for i, p := range list {
+		var filtered []Project
+		if includeAll {
+			filtered = list
+		} else {
+			filtered = make([]Project, 0, len(list))
+			for _, p := range list {
+				if parentID == "" {
+					if p.ParentID == "" {
+						filtered = append(filtered, p)
+					}
+				} else if p.ParentID == parentID {
+					filtered = append(filtered, p)
+				}
+			}
+		}
+		result := make([]ProjectWithStatus, len(filtered))
+		for i, p := range filtered {
 			_, statErr := os.Stat(p.Dir)
 			gitStatus := getGitStatus(p.Dir)
 			result[i] = ProjectWithStatus{
@@ -214,8 +240,9 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusOK, result)
 	case http.MethodPost:
 		var req struct {
-			Name string `json:"name"`
-			Dir  string `json:"dir"`
+			Name     string `json:"name"`
+			Dir      string `json:"dir"`
+			ParentID string `json:"parent_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			respondErr(w, http.StatusBadRequest, "invalid request body")
@@ -247,14 +274,16 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 			name = filepath.Base(absDir)
 		}
 		p := Project{
-			Name: name,
-			Dir:  absDir,
+			Name:     name,
+			Dir:      absDir,
+			ParentID: req.ParentID,
 		}
-		if err := Add(p); err != nil {
+		projectID, err := Add(p)
+		if err != nil {
 			respondErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		respondJSON(w, http.StatusOK, map[string]string{"status": "ok", "dir": absDir, "name": name})
+		respondJSON(w, http.StatusOK, map[string]string{"status": "ok", "id": projectID, "dir": absDir, "name": name})
 	case http.MethodDelete:
 		id := r.URL.Query().Get("id")
 		if id == "" {

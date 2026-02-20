@@ -21,6 +21,7 @@
     cursor: pointer;
     border: none;
     transition: all 0.2s;
+    box-sizing: border-box;
 }
 
 .fm-driver-start {
@@ -71,20 +72,6 @@
 
 .fm-driver-paused-controls .fm-driver-btn:last-child {
     border-radius: 0 6px 6px 0;
-}
-
-.fm-driver-finished {
-    display: flex;
-    align-items: center;
-}
-
-.fm-finished-badge {
-    padding: 8px 16px;
-    background: #14532d;
-    color: #22c55e;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
 }
 
 .fm-toggle-doc {
@@ -156,6 +143,133 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+}
+
+.fm-run-section {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border: 1px solid #2a4a6a;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.fm-run-controls {
+    display: flex;
+    justify-content: center;
+}
+
+.fm-run-section .fm-driver-control {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+.fm-run-section .fm-driver-btn {
+    font-size: 14px;
+    padding: 12px 24px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.fm-run-section .fm-driver-paused-controls {
+    display: flex;
+    width: 100%;
+}
+
+.fm-run-section .fm-driver-paused-controls .fm-driver-btn {
+    flex: 1;
+}
+
+.fm-run-section .fm-driver-finished {
+    width: 100%;
+    display: block;
+}
+
+.fm-run-section .fm-finished-badge {
+    display: block;
+    padding: 12px 24px;
+    background: #14532d;
+    color: #22c55e;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.fm-run-section .fm-driver-pause {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.fm-run-progress {
+    margin-top: 16px;
+}
+
+.fm-progress-bar {
+    height: 6px;
+    background: #1a1a2e;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.fm-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6 0%, #22c55e 100%);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.fm-stream-events {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.fm-stream-event {
+    font-size: 12px;
+    padding: 4px 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.fm-event-step {
+    color: #93c5fd;
+    font-weight: 500;
+    text-transform: capitalize;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.fm-event-message {
+    color: #d1d5db;
+    word-break: break-word;
+    flex: 1;
+    min-width: 0;
+}
+
+.fm-event-type-start {
+    border-left: 3px solid #3b82f6;
+}
+
+.fm-event-type-step {
+    border-left: 3px solid #f59e0b;
+}
+
+.fm-event-type-done {
+    border-left: 3px solid #22c55e;
+    background: rgba(34, 197, 94, 0.1);
+}
+
+.fm-event-type-aborted {
+    border-left: 3px solid #ef4444;
 }
 
 .fm-feature-request {

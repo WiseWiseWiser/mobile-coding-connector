@@ -1,19 +1,23 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { addProject } from '../../../api/projects';
+import { addProject, updateProject } from '../../../api/projects';
 import { useV2Context } from '../../V2Context';
 import { ServerFileBrowser } from './ServerFileBrowser';
 import './AddFromFilesystemView.css';
 
 export function AddFromFilesystemView() {
     const navigate = useNavigate();
-    const { fetchProjects } = useV2Context();
+    const { fetchProjects, projectsList } = useV2Context();
 
     const [selectedDir, setSelectedDir] = useState('');
     const [name, setName] = useState('');
+    const [parentId, setParentId] = useState('');
     const [adding, setAdding] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+
+    // Get root projects (projects without parent) for the dropdown
+    const rootProjects = projectsList.filter(p => !p.parent_id);
 
     const handleDirectoryChange = (dir: string) => {
         setSelectedDir(dir);
@@ -31,6 +35,12 @@ export function AddFromFilesystemView() {
         setSuccess(null);
         try {
             const result = await addProject({ dir: selectedDir, name: name.trim() || undefined });
+            
+            // If a parent project is selected, update the new project to be a subproject
+            if (parentId) {
+                await updateProject(result.id, { parent_id: parentId });
+            }
+            
             setSuccess(`Added workspace: ${result.name} (${result.dir})`);
             fetchProjects();
         } catch (err) {
@@ -58,6 +68,28 @@ export function AddFromFilesystemView() {
                         onChange={e => setName(e.target.value)}
                     />
                 </div>
+
+                {/* Parent Project (optional) */}
+                {rootProjects.length > 0 && (
+                    <div className="add-fs-section">
+                        <label className="add-fs-label">Parent Project (optional)</label>
+                        <select
+                            className="add-fs-input"
+                            value={parentId}
+                            onChange={e => setParentId(e.target.value)}
+                        >
+                            <option value="">-- No parent (root project) --</option>
+                            {rootProjects.map(p => (
+                                <option key={p.id} value={p.id}>
+                                    {p.name}
+                                </option>
+                            ))}
+                        </select>
+                        <div className="add-fs-hint">
+                            Select a parent project to create this as a sub-project
+                        </div>
+                    </div>
+                )}
 
                 {/* Selected directory display */}
                 <div className="add-fs-section">

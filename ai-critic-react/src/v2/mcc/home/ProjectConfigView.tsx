@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useV2Context } from '../../V2Context';
 import { useTabHistory } from '../../../hooks/useTabHistory';
 import { useSSHKeyValidation } from '../../../hooks/useSSHKeyValidation';
 import { NavTabs } from '../types';
-import { updateProject, runGitOp, GitOps } from '../../../api/projects';
+import { updateProject, runGitOp, GitOps, addProject } from '../../../api/projects';
 import type { GitOp } from '../../../api/projects';
 import { cloneRepo } from '../../../api/auth';
 import { loadSSHKeys } from './settings/gitStorage';
@@ -12,7 +12,7 @@ import type { SSHKey } from './settings/gitStorage';
 import { encryptWithServerKey } from './crypto';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import { StreamingLogs } from '../../StreamingComponents';
-import { KeyIcon } from '../../icons';
+import { KeyIcon, PlusIcon } from '../../icons';
 import { CustomSelect } from './CustomSelect';
 import { GitPushSection } from '../files/GitPushSection';
 import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
@@ -138,6 +138,56 @@ export function ProjectConfigView() {
     };
 
     const currentKey = sshKeys.find(k => k.id === project.ssh_key_id);
+
+    const isSubProject = !!project.parent_id;
+    const subProjects = useMemo(() => 
+        projectsList.filter(p => p.parent_id === project.id),
+        [projectsList, project.id]
+    );
+    const [showAddSubProject, setShowAddSubProject] = useState(false);
+    const [newSubProjectName, setNewSubProjectName] = useState('');
+    const [newSubProjectDir, setNewSubProjectDir] = useState('');
+    const [addingSubProject, setAddingSubProject] = useState(false);
+    const [subProjectError, setSubProjectError] = useState('');
+
+    useEffect(() => {
+        if (project.dir && !newSubProjectDir) {
+            setNewSubProjectDir(project.dir);
+        }
+    }, [project.dir, newSubProjectDir]);
+
+    const handleAddSubProject = async () => {
+        if (!newSubProjectDir.trim()) {
+            setSubProjectError('Directory is required');
+            return;
+        }
+        setAddingSubProject(true);
+        setSubProjectError('');
+        try {
+            await addProject({
+                name: newSubProjectName.trim() || undefined,
+                dir: newSubProjectDir.trim(),
+                parent_id: project.id,
+            });
+            fetchProjects();
+            setShowAddSubProject(false);
+            setNewSubProjectName('');
+            setNewSubProjectDir(project.dir);
+        } catch (err) {
+            setSubProjectError(err instanceof Error ? err.message : 'Failed to add sub-project');
+        } finally {
+            setAddingSubProject(false);
+        }
+    };
+
+    const handleRemoveFromParent = async (subProjectId: string) => {
+        try {
+            await updateProject(subProjectId, { parent_id: null });
+            fetchProjects();
+        } catch (err) {
+            console.error('Failed to unlink sub-project:', err);
+        }
+    };
 
     return (
         <div className="mcc-workspace-list">
@@ -330,6 +380,111 @@ export function ProjectConfigView() {
                     </div>
                 )}
             </div>
+
+            {/* Sub Projects Section - only for root projects */}
+            {!isSubProject && (
+                <div style={{ padding: '16px', marginTop: 16 }}>
+                    <div style={{ fontSize: '15px', fontWeight: 600, color: '#e2e8f0', marginBottom: 12 }}>
+                        Sub Projects ({subProjects.length})
+                    </div>
+                    
+                    {subProjects.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                            {subProjects.map(sp => (
+                                <div key={sp.id} style={{
+                                    padding: '10px 14px',
+                                    background: 'rgba(30, 41, 59, 0.5)',
+                                    border: '1px solid #334155',
+                                    borderRadius: 8,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 4,
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#e2e8f0' }}>{sp.name}</span>
+                                        <div style={{ display: 'flex', gap: 8 }}>
+                                            <button
+                                                onClick={() => navigate(`/project/${encodeURIComponent(sp.name)}`)}
+                                                style={{ padding: '4px 10px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, fontSize: '12px', cursor: 'pointer' }}
+                                            >
+                                                Open
+                                            </button>
+                                            <button
+                                                onClick={() => handleRemoveFromParent(sp.id)}
+                                                style={{ padding: '4px 10px', background: '#1e293b', color: '#f87171', border: '1px solid #334155', borderRadius: 6, fontSize: '12px', cursor: 'pointer' }}
+                                            >
+                                                Unlink
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#64748b' }}>{sp.dir}</div>
+                                    {!sp.dir_exists && <span style={{ fontSize: '11px', color: '#f59e0b' }}>Not cloned</span>}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div style={{ fontSize: '13px', color: '#64748b', marginBottom: 12 }}>
+                            No sub-projects yet.
+                        </div>
+                    )}
+
+                    {showAddSubProject ? (
+                        <div style={{
+                            padding: '12px',
+                            background: 'rgba(30, 41, 59, 0.5)',
+                            border: '1px solid #334155',
+                            borderRadius: 8,
+                        }}>
+                            <div style={{ marginBottom: 10 }}>
+                                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: 4 }}>Name (optional)</label>
+                                <input
+                                    type="text"
+                                    value={newSubProjectName}
+                                    onChange={e => setNewSubProjectName(e.target.value)}
+                                    placeholder="Uses directory name if empty"
+                                    style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, color: '#e2e8f0', fontSize: '13px' }}
+                                />
+                            </div>
+                            <div style={{ marginBottom: 10 }}>
+                                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: 4 }}>Directory *</label>
+                                <input
+                                    type="text"
+                                    value={newSubProjectDir}
+                                    onChange={e => setNewSubProjectDir(e.target.value)}
+                                    placeholder="/path/to/project"
+                                    style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, color: '#e2e8f0', fontSize: '13px' }}
+                                />
+                            </div>
+                            {subProjectError && (
+                                <div style={{ marginBottom: 10, fontSize: '12px', color: '#f87171' }}>{subProjectError}</div>
+                            )}
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <button
+                                    onClick={handleAddSubProject}
+                                    disabled={addingSubProject}
+                                    style={{ flex: 1, padding: '8px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, fontSize: '13px', cursor: 'pointer' }}
+                                >
+                                    {addingSubProject ? 'Adding...' : 'Add'}
+                                </button>
+                                <button
+                                    onClick={() => { setShowAddSubProject(false); setSubProjectError(''); }}
+                                    style={{ padding: '8px 12px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, fontSize: '13px', cursor: 'pointer' }}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => setShowAddSubProject(true)}
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, fontSize: '13px', cursor: 'pointer' }}
+                        >
+                            <PlusIcon />
+                            <span>Add Sub Project</span>
+                        </button>
+                    )}
+                </div>
+            )}
 
             <ErrorBoundary>
                 <ProjectTodos projectId={project.id} />

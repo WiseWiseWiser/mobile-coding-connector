@@ -14,6 +14,7 @@ import { PathInputDemo } from './PathInputDemo';
 import { CommandInputMockup } from './CommandInputMockup';
 import { XtermQuickTerminal } from './CommandSuccessTerminal';
 import { CustomizeQuickTerminal } from './CustomizeQuickTerminal';
+import { SessionsSectionMockup } from './SessionsSectionMockup';
 import './MockupsPage.css';
 
 interface MockupItem {
@@ -113,6 +114,12 @@ const mockups: MockupItem[] = [
         name: 'Customize Quick Terminal',
         description: 'Custom native terminal (iOS optimized) vs xterm-based terminal',
         component: CustomizeQuickTerminal,
+    },
+    {
+        id: 'sessions-section',
+        name: 'Sessions Section',
+        description: 'Pure-view component for displaying and managing agent sessions',
+        component: SessionsSectionMockup,
     },
 ];
 

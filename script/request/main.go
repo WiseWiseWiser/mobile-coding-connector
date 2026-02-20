@@ -30,7 +30,7 @@ Examples:
   go run ./script/request /api/checkpoints?project=lifelog-private
   go run ./script/request /api/checkpoints '{"project_dir":"/path","name":"test","file_paths":["a.txt"]}'
   go run ./script/request /api/auth/check
-  go run ./script/request --port 37651 /api/server/status
+  go run ./script/request --port 3580 /api/server/status
 `, lib.DefaultServerPort, lib.CredentialsFile, lib.DefaultServerPort)
 
 func main() {

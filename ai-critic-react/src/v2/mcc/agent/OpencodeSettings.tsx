@@ -38,6 +38,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     const [password, setPassword] = useState<string>('');
     const [webServerPort, setWebServerPort] = useState<number>(4096);
     const [webServerEnabled, setWebServerEnabled] = useState<boolean>(false);
+    const [authProxyEnabled, setAuthProxyEnabled] = useState<boolean>(false);
 
     // Session model selection state
     const [savedModel, setSavedModel] = useState<{ modelID: string; providerID: string } | null>(null);
@@ -92,7 +93,8 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     const hasSettingsChanges = webServerEnabled !== (savedSettings.web_server?.enabled ?? false)
         || defaultDomain !== (savedSettings.default_domain || '') 
         || webServerPort !== (savedSettings.web_server?.port || 4096)
-        || password !== (savedSettings.web_server?.password || '');
+        || password !== (savedSettings.web_server?.password || '')
+        || authProxyEnabled !== (savedSettings.web_server?.auth_proxy_enabled ?? false);
 
     useEffect(() => {
         loadAllData();
@@ -113,6 +115,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
             setPassword(settings.web_server?.password || '');
             setWebServerPort(settings.web_server?.port || 4096);
             setWebServerEnabled(settings.web_server?.enabled ?? false);
+            setAuthProxyEnabled(settings.web_server?.auth_proxy_enabled ?? false);
             setWebStatus(webStat);
             setAuthStatus(auth);
 
@@ -222,6 +225,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                     port: webServerPort,
                     exposed_domain: currentConfig.exposed_domain,
                     password: password,
+                    auth_proxy_enabled: authProxyEnabled,
                 },
             });
             setSavedSettings({
@@ -232,6 +236,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                     port: webServerPort,
                     exposed_domain: currentConfig.exposed_domain,
                     password: password,
+                    auth_proxy_enabled: authProxyEnabled,
                 },
             });
             setSuccess('Settings saved successfully');
@@ -247,6 +252,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
         setDefaultDomain(savedSettings.default_domain || '');
         setPassword(savedSettings.web_server?.password || '');
         setWebServerEnabled(savedSettings.web_server?.enabled ?? false);
+        setAuthProxyEnabled(savedSettings.web_server?.auth_proxy_enabled ?? false);
         setError('');
         setSuccess('');
     };
@@ -537,6 +543,33 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                                 {savedSettings.web_server?.password && savedSettings.web_server.password !== password && (
                                     <div style={{ marginTop: 8, fontSize: '13px', color: '#94a3b8' }}>
                                         Password is saved (hidden for security)
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Auth Proxy Toggle */}
+                            <div style={{ marginTop: 16 }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={authProxyEnabled}
+                                        onChange={(e) => setAuthProxyEnabled(e.target.checked)}
+                                        disabled={saving}
+                                        style={{ width: 18, height: 18, cursor: saving ? 'not-allowed' : 'pointer' }}
+                                    />
+                                    <div>
+                                        <div className="mcc-agent-settings-label" style={{ marginBottom: 4 }}>
+                                            Enable Auth Proxy
+                                        </div>
+                                        <div className="mcc-agent-settings-hint" style={{ fontSize: '13px', color: '#94a3b8' }}>
+                                            Replace browser basic auth popup with a login page. Requires basic-auth-proxy binary in PATH.
+                                        </div>
+                                    </div>
+                                </label>
+                                {webStatus && (
+                                    <div style={{ marginTop: 8, marginLeft: 30, fontSize: '13px', color: webStatus.auth_proxy_found ? '#86efac' : '#f87171' }}>
+                                        Binary: {webStatus.auth_proxy_found ? webStatus.auth_proxy_path : 'Not Found'} | 
+                                        Running: {webStatus.auth_proxy_running ? 'Yes' : 'No'}
                                     </div>
                                 )}
                             </div>

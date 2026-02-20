@@ -14,5 +14,5 @@ const (
 	ViteDevPort = 5173
 
 	// QuickTestPort is the default port for quick-test mode.
-	QuickTestPort = 37651
+	QuickTestPort = 3580
 )

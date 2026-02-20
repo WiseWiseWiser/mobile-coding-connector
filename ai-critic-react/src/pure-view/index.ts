@@ -8,3 +8,5 @@ export { ActionIconSelector, ACTION_ICON_OPTIONS } from './ActionIconSelector';
 export type { ActionIconSelectorProps, ActionIconOption } from './ActionIconSelector';
 export { ActionCard } from './ActionCard';
 export type { ActionCardProps } from './ActionCard';
+export { SessionsSection } from './SessionsSection';
+export type { SessionsSectionProps, SessionItem } from './SessionsSection';
