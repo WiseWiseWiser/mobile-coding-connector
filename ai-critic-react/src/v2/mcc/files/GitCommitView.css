@@ -281,3 +281,23 @@
     border-radius: 8px;
     overflow: hidden;
 }
+
+/* Generate commit message logs */
+.mcc-git-generate-logs {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+    font-size: 11px;
+    color: #94a3b8;
+    max-height: 150px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.mcc-git-generate-log-line {
+    line-height: 1.5;
+}

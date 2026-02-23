@@ -46,7 +46,7 @@ export function SessionList({ session, projectName, onBack, onStop, onSelectSess
     const [totalPages, setTotalPages] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     const [savedSettings, setSavedSettings] = useState<OpencodeSettings | null>(null);
-    const pageSize = 20;
+    const pageSize = 5;
     const onSelectSessionRef = useCurrent(onSelectSession);
     const sessionRef = useCurrent(session);
 

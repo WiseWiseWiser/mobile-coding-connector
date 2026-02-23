@@ -16,8 +16,11 @@ export function AgentPickerRoute() {
             onStopAgent={ctx.onStopAgent}
             onConfigureAgent={(agentId) => ctx.navigateToView(`${agentId}/settings`)}
             externalSessions={ctx.externalSessions}
+            externalSessionsTotal={ctx.externalSessionsTotal}
+            externalSessionsPage={ctx.externalSessionsPage}
             onSelectSession={(sessionId) => ctx.navigateToView(`session/${sessionId}`)}
             onNewSession={() => ctx.navigateToView('new-session')}
+            onRefreshExternalSessions={(page) => ctx.refreshExternalSessions(page)}
         />
     );
 }

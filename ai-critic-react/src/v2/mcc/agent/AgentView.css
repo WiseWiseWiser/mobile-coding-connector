@@ -951,3 +951,255 @@
     background: rgba(96, 165, 250, 0.2);
     border-color: rgba(96, 165, 250, 0.4);
 }
+
+/* ==================== Custom Agent Cards ==================== */
+
+.mcc-agent-card-meta {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 11px;
+    color: #64748b;
+}
+
+.mcc-agent-meta-prompt {
+    background: rgba(96, 165, 250, 0.1);
+    color: #60a5fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.mcc-agent-meta-tools {
+    background: rgba(100, 116, 139, 0.2);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.mcc-agent-card-actions-inline {
+    display: flex;
+    gap: 4px;
+}
+
+.mcc-agent-empty {
+    padding: 24px 16px;
+    text-align: center;
+    color: #64748b;
+}
+
+.mcc-agent-empty p {
+    margin: 0 0 16px;
+}
+
+/* ==================== Agent Editor ==================== */
+
+.mcc-agent-editor {
+    padding: 16px;
+}
+
+.mcc-agent-editor-header {
+    margin-bottom: 20px;
+}
+
+.mcc-agent-editor-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+.mcc-form-group {
+    margin-bottom: 16px;
+}
+
+.mcc-form-group label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: #e2e8f0;
+    margin-bottom: 6px;
+}
+
+.mcc-form-group small {
+    display: block;
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 4px;
+}
+
+.mcc-input,
+.mcc-select,
+.mcc-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    background: #1e293b;
+    color: #f1f5f9;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.mcc-input:focus,
+.mcc-select:focus,
+.mcc-textarea:focus {
+    border-color: #60a5fa;
+}
+
+.mcc-input::placeholder,
+.mcc-textarea::placeholder {
+    color: #475569;
+}
+
+.mcc-textarea {
+    resize: vertical;
+    min-height: 120px;
+    line-height: 1.5;
+}
+
+.mcc-select {
+    cursor: pointer;
+}
+
+.mcc-checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.mcc-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #94a3b8;
+    cursor: pointer;
+}
+
+.mcc-checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #3b82f6;
+}
+
+.mcc-permission-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mcc-permission-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: #1e293b;
+    border-radius: 6px;
+}
+
+.mcc-permission-row span {
+    font-size: 13px;
+    color: #94a3b8;
+}
+
+.mcc-select-small {
+    padding: 4px 8px;
+    background: #0f172a;
+    color: #f1f5f9;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.mcc-form-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.mcc-btn-primary,
+.mcc-btn-secondary {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    border: none;
+}
+
+.mcc-btn-primary {
+    background: #3b82f6;
+    color: #fff;
+}
+
+.mcc-btn-primary:hover:not(:disabled) {
+    background: #2563eb;
+}
+
+.mcc-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.mcc-btn-secondary {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+.mcc-btn-secondary:hover {
+    background: #475569;
+}
+
+.mcc-error {
+    padding: 10px 14px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    color: #fca5a5;
+    font-size: 13px;
+    margin-top: 12px;
+}
+
+/* Add agent button */
+
+.mcc-agent-add-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.mcc-agent-add-btn:hover {
+    background: #2563eb;
+}
+
+.mcc-agent-view-all {
+    padding: 8px 16px;
+}
+
+.mcc-agent-view-all-btn {
+    background: none;
+    border: none;
+    color: #60a5fa;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.mcc-agent-view-all-btn:hover {
+    background: rgba(96, 165, 250, 0.1);
+}

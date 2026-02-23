@@ -1,5 +1,10 @@
 package config
 
+import (
+	"fmt"
+	"path/filepath"
+)
+
 // DataDir is the base directory for all ai-critic data files, relative to the
 // working directory (or under $HOME for per-user configs like agents.json).
 const DataDir = ".ai-critic"
@@ -34,3 +39,48 @@ const (
 	OpencodeInternalServerRegistry = DataDir + "/opencode-internal-server.json"
 	OpencodeInternalServerLock     = DataDir + "/opencode-internal-server.lock"
 )
+
+// Process management directory and paths
+const (
+	ProcsDir = DataDir + "/procs"
+)
+
+func OpencodeInternalServerDir() string {
+	return ProcsDir + "/opencode-internal"
+}
+
+func OpencodeWebServerDir() string {
+	return ProcsDir + "/opencode-web"
+}
+
+func BasicAuthProxyDir() string {
+	return ProcsDir + "/basic-auth-proxy"
+}
+
+func OpencodeInternalServerLockPath() string {
+	return filepath.Join(OpencodeInternalServerDir(), "lock")
+}
+
+func OpencodeInternalServerRegistryPath() string {
+	return filepath.Join(OpencodeInternalServerDir(), "registry.json")
+}
+
+func OpencodeWebServerLockPath() string {
+	return filepath.Join(OpencodeWebServerDir(), "lock")
+}
+
+func OpencodeWebServerRegistryPath() string {
+	return filepath.Join(OpencodeWebServerDir(), "registry.json")
+}
+
+func BasicAuthProxyLockPath() string {
+	return filepath.Join(BasicAuthProxyDir(), "lock")
+}
+
+func BasicAuthProxyRegistryPath() string {
+	return filepath.Join(BasicAuthProxyDir(), "registry.json")
+}
+
+func init() {
+	fmt.Println("[config] Process management paths initialized")
+}

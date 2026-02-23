@@ -30,6 +30,9 @@ export interface AgentOutletContext {
     // External sessions from CLI/web opencode
     externalSessions: ExternalOpencodeSession[];
     externalSessionsLoading: boolean;
+    externalSessionsTotal: number;
+    externalSessionsPage: number;
+    refreshExternalSessions: (page: number) => void;
 }
 
 export function AgentLayout() {
@@ -44,6 +47,9 @@ export function AgentLayout() {
         setAgentLaunchError: setLaunchError,
         externalSessions,
         externalSessionsLoading,
+        externalSessionsTotal,
+        externalSessionsPage,
+        refreshExternalSessions,
     } = useV2Context();
     const projectDir = currentProject?.dir ?? null;
     const projectName = currentProject?.name ?? null;
@@ -140,6 +146,9 @@ export function AgentLayout() {
         navigateToView,
         externalSessions,
         externalSessionsLoading,
+        externalSessionsTotal,
+        externalSessionsPage,
+        refreshExternalSessions,
     };
 
     return (

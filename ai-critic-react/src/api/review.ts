@@ -145,6 +145,23 @@ export async function gitCommit(message: string, dir?: string, userInfo?: GitUse
     return response.json();
 }
 
+// Generate a commit message using AI based on staged changes (streaming)
+// Returns the raw Response for use with useStreamingAction hook
+export async function generateCommitMessage(dir?: string): Promise<Response> {
+    const response = await fetch('/api/review/generate-commit-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dir }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to generate commit message');
+    }
+
+    return response;
+}
+
 // Git branch entry
 export interface GitBranch {
     name: string;

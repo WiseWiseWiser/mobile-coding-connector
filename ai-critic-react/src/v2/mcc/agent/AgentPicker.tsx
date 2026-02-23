@@ -1,6 +1,13 @@
 import type { AgentDef, AgentSessionInfo, ExternalOpencodeSession } from '../../../api/agents';
 import { SettingsIcon } from '../../icons';
 import { SessionsSection, type SessionItem } from '../../../pure-view/SessionsSection';
+import type { CustomAgent } from '../../../api/customAgents';
+import { fetchCustomAgents, deleteCustomAgent } from '../../../api/customAgents';
+import { CustomAgentCard } from './CustomAgentCard';
+import { useState, useEffect } from 'react';
+import { AgentEditor } from './AgentEditor';
+import { PlusIcon } from '../../icons';
+import { Pagination } from './Pagination';
 
 export interface AgentPickerProps {
     agents: AgentDef[];
@@ -13,11 +20,14 @@ export interface AgentPickerProps {
     onConfigureAgent: (agentId: string) => void;
     // External sessions from CLI/web opencode
     externalSessions?: ExternalOpencodeSession[];
+    externalSessionsTotal?: number;
+    externalSessionsPage?: number;
     // Sessions section props
     recentSessions?: SessionItem[];
     sessionsLoading?: boolean;
     onSelectSession?: (sessionId: string) => void;
     onNewSession?: () => void;
+    onRefreshExternalSessions?: (page: number) => void;
 }
 
 export function AgentPicker({
@@ -30,34 +40,151 @@ export function AgentPicker({
     onStopAgent,
     onConfigureAgent,
     externalSessions = [],
+    externalSessionsTotal = 0,
+    externalSessionsPage = 1,
     recentSessions,
     sessionsLoading,
     onSelectSession,
     onNewSession,
+    onRefreshExternalSessions,
 }: AgentPickerProps) {
+    const [customAgents, setCustomAgents] = useState<CustomAgent[]>([]);
+    const [customAgentsLoading, setCustomAgentsLoading] = useState(true);
+    const [showEditor, setShowEditor] = useState(false);
+    const [editingAgent, setEditingAgent] = useState<CustomAgent | null>(null);
+
+    useEffect(() => {
+        loadCustomAgents();
+    }, []);
+
+    const loadCustomAgents = async () => {
+        try {
+            const agents = await fetchCustomAgents();
+            setCustomAgents(agents);
+        } catch (err) {
+            console.error('Failed to load custom agents:', err);
+        } finally {
+            setCustomAgentsLoading(false);
+        }
+    };
+
+    const handleCreateAgent = () => {
+        setEditingAgent(null);
+        setShowEditor(true);
+    };
+
+    const handleEditAgent = (agent: CustomAgent) => {
+        setEditingAgent(agent);
+        setShowEditor(true);
+    };
+
+    const handleDeleteAgent = async (agent: CustomAgent) => {
+        if (!confirm(`Delete agent "${agent.name}"?`)) return;
+        try {
+            await deleteCustomAgent(agent.id);
+            loadCustomAgents();
+        } catch (err) {
+            console.error('Failed to delete agent:', err);
+            alert('Failed to delete agent');
+        }
+    };
+
+    const handleSaveAgent = () => {
+        setShowEditor(false);
+        setEditingAgent(null);
+        loadCustomAgents();
+    };
+
     // Convert external sessions to SessionItem format for the SessionsSection
-    const sessionItems: SessionItem[] = recentSessions ?? externalSessions?.map(es => ({
+    // Show 5 sessions per page with pagination footer
+    const PAGE_SIZE = 5;
+    const allSessionItems: SessionItem[] = (recentSessions ?? externalSessions?.map(es => ({
         id: es.id,
         title: es.title || `Session ${es.slug || es.id.slice(0, 8)}`,
         preview: es.summary ? `${es.summary.files} files changed` : 'External session',
         createdAt: es.time?.created ? new Date(es.time.created * 1000).toLocaleDateString() : undefined,
-    })) ?? [];
+    })) ?? []);
+    const sessionItems = allSessionItems;
+    const totalPages = Math.ceil((externalSessionsTotal || 0) / PAGE_SIZE);
+    const currentPage = externalSessionsPage || 1;
+
+    const handlePageChange = (newPage: number) => {
+        if (onRefreshExternalSessions) {
+            onRefreshExternalSessions(newPage);
+        }
+    };
+
+    if (showEditor) {
+        return (
+            <div className="mcc-agent-view">
+                <AgentEditor
+                    agent={editingAgent}
+                    onSave={handleSaveAgent}
+                    onCancel={() => {
+                        setShowEditor(false);
+                        setEditingAgent(null);
+                    }}
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="mcc-agent-view">
             {/* Sessions Section - shown above agents */}
             {sessionItems.length > 0 && onSelectSession && (
-                <SessionsSection
-                    sessions={sessionItems}
-                    loading={sessionsLoading}
-                    onSelectSession={onSelectSession}
-                    onNewSession={onNewSession}
-                    title="Sessions"
-                />
+                <>
+                    <SessionsSection
+                        sessions={sessionItems}
+                        loading={sessionsLoading}
+                        onSelectSession={onSelectSession}
+                        onNewSession={onNewSession}
+                        title="Sessions"
+                    />
+                    <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        totalCount={externalSessionsTotal}
+                        pageSize={PAGE_SIZE}
+                        onPageChange={handlePageChange}
+                        loading={sessionsLoading}
+                    />
+                </>
             )}
 
+            {/* Custom Agents Section */}
             <div className="mcc-agent-header">
                 <h2>Agents</h2>
+                <button className="mcc-agent-add-btn" onClick={handleCreateAgent}>
+                    <PlusIcon /> New Agent
+                </button>
+            </div>
+
+            {customAgentsLoading ? (
+                <div className="mcc-agent-loading">Loading agents...</div>
+            ) : customAgents.length === 0 ? (
+                <div className="mcc-agent-empty">
+                    <p>No custom agents yet. Create one to get started!</p>
+                    <button className="mcc-forward-btn mcc-agent-launch-btn" onClick={handleCreateAgent}>
+                        Create Agent
+                    </button>
+                </div>
+            ) : (
+                <div className="mcc-agent-list">
+                    {customAgents.map(agent => (
+                        <CustomAgentCard
+                            key={agent.id}
+                            agent={agent}
+                            onEdit={handleEditAgent}
+                            onDelete={handleDeleteAgent}
+                        />
+                    ))}
+                </div>
+            )}
+
+            {/* Coding Tools Section (external agents) */}
+            <div className="mcc-agent-header">
+                <h2>Coding Tools</h2>
             </div>
 
             {loading && <div className="mcc-agent-loading">Loading agents...</div>}

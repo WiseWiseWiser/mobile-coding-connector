@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getGitStatus, getDiff, stageFile, unstageFile, gitCommit, gitCheckout, gitRemove, listUntrackedDir } from '../../../api/review';
+import { getGitStatus, getDiff, stageFile, unstageFile, gitCommit, gitCheckout, gitRemove, listUntrackedDir, generateCommitMessage } from '../../../api/review';
 import type { GitStatusFile } from '../../../api/review';
 import type { DiffFile } from '../../../components/code-review/types';
 import { DiffViewer } from '../../DiffViewer';
@@ -9,6 +9,8 @@ import { loadGitUserConfig } from '../home/settings/gitStorage';
 import { GitPushSection } from './GitPushSection';
 import { ConfirmModal } from '../ConfirmModal';
 import { NoZoomingInput } from '../components/NoZoomingInput';
+import { useStreamingAction } from '../../../hooks/useStreamingAction';
+import { StreamingLogs } from '../../StreamingComponents';
 import './FilesView.css';
 import './GitCommitView.css';
 
@@ -92,6 +94,12 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
     const [browsePath, setBrowsePath] = useState<string | null>(null);
     const [browsedFiles, setBrowsedFiles] = useState<GitStatusFile[]>([]);
     const [loadingBrowsed, setLoadingBrowsed] = useState(false);
+
+    const [generateState, generateControls] = useStreamingAction((result) => {
+        if (result.ok && result.message) {
+            setCommitMessage(result.message);
+        }
+    });
 
     const messageRef = useRef<HTMLTextAreaElement>(null);
 
@@ -280,6 +288,14 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
         } finally {
             setCommitting(false);
         }
+    };
+
+    const handleGenerateCommitMessage = () => {
+        if (stagedFiles.length === 0) {
+            setError('No staged changes to generate commit message for');
+            return;
+        }
+        generateControls.run(() => generateCommitMessage(projectDir));
     };
 
     const handleFileClick = (path: string, isDir?: boolean) => {
@@ -540,6 +556,17 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                             rows={3}
                         />
                     </NoZoomingInput>
+                    {/* Generate button - next to textarea */}
+                    <button
+                        className="mcc-git-commit-btn"
+                        onClick={handleGenerateCommitMessage}
+                        disabled={generateState.running || stagedFiles.length === 0}
+                        style={{ marginTop: 8, marginBottom: 8 }}
+                    >
+                        {generateState.running ? 'Generating...' : 'Generate'}
+                    </button>
+                    {/* Streaming logs */}
+                    <StreamingLogs state={generateState} pendingMessage="Running agent..." maxHeight={200} />
                     {/* Commit button - standalone row */}
                     <button
                         className="mcc-git-commit-btn"

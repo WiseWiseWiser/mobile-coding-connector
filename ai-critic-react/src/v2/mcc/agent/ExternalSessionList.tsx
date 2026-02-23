@@ -3,6 +3,7 @@ import type { ExternalOpencodeSession } from '../../../api/agents';
 import { fetchExternalSessions } from '../../../api/agents';
 import { AgentChatHeader } from './AgentChatHeader';
 import { truncate } from './utils';
+import { Pagination } from './Pagination';
 
 export interface ExternalSessionListProps {
     projectName: string | null;
@@ -24,7 +25,7 @@ export function ExternalSessionList({ projectName, onBack, onSelectSession, onNe
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
-    const pageSize = 20;
+    const pageSize = 5;
 
     useEffect(() => {
         let cancelled = false;
@@ -57,37 +58,6 @@ export function ExternalSessionList({ projectName, onBack, onSelectSession, onNe
         }
     };
 
-    const renderPagination = () => {
-        if (totalPages <= 1) return null;
-
-        return (
-            <div className="mcc-agent-pagination">
-                <div className="mcc-agent-pagination-info">
-                    Showing {sessions.length} of {totalCount} sessions
-                </div>
-                <div className="mcc-agent-pagination-controls">
-                    <button
-                        className="mcc-agent-pagination-btn"
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        disabled={currentPage === 1}
-                    >
-                        ←
-                    </button>
-                    <span className="mcc-agent-pagination-page">
-                        Page {currentPage} of {totalPages}
-                    </span>
-                    <button
-                        className="mcc-agent-pagination-btn"
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage === totalPages}
-                    >
-                        →
-                    </button>
-                </div>
-            </div>
-        );
-    };
-
     return (
         <div className="mcc-agent-view">
             <AgentChatHeader agentName="OpenCode (External)" projectName={projectName} onBack={onBack} />
@@ -108,7 +78,14 @@ export function ExternalSessionList({ projectName, onBack, onSelectSession, onNe
                 <div className="mcc-agent-loading">No external sessions found</div>
             ) : (
                 <>
-                    {renderPagination()}
+                    <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        totalCount={totalCount}
+                        pageSize={pageSize}
+                        onPageChange={handlePageChange}
+                        loading={loading}
+                    />
                     <div className="mcc-agent-session-list">
                         {sessions.map((s) => {
                             return (
@@ -132,7 +109,14 @@ export function ExternalSessionList({ projectName, onBack, onSelectSession, onNe
                             );
                         })}
                     </div>
-                    {renderPagination()}
+                    <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        totalCount={totalCount}
+                        pageSize={pageSize}
+                        onPageChange={handlePageChange}
+                        loading={loading}
+                    />
                 </>
             )}
         </div>

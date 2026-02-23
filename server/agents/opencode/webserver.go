@@ -18,6 +18,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 
 	exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/proc_manager"
 )
 
 // WebServerProcessID is the ID used for managing the web server subprocess
@@ -311,10 +312,6 @@ func startWebServer(settings *Settings, customPath string) (*WebServerControlRes
 		}, nil
 	}
 
-	settings.WebServer.Enabled = true
-	settings.WebServer.Port = server.Port
-	SaveSettings(settings)
-
 	return &WebServerControlResponse{
 		Success: true,
 		Message: fmt.Sprintf("Web server started successfully on port %d", server.Port),
@@ -346,11 +343,6 @@ func startWebServerWithProxy(settings *Settings, customPath string, proxyPort in
 		}, nil
 	}
 
-	// Save the internal opencode port
-	settings.WebServer.Enabled = true
-	settings.WebServer.Port = proxyPort
-	SaveSettings(settings)
-
 	// Save proxy config with backend port
 	proxyConfigPath := filepath.Join(config.DataDir, "basic-auth-proxy.json")
 	proxyCfg := struct {
@@ -378,6 +370,8 @@ func startWebServerWithProxy(settings *Settings, customPath string, proxyPort in
 	}, nil
 }
 
+const authProxyProcName = "basic-auth-proxy"
+
 // startAuthProxy starts the basic-auth-proxy process
 func startAuthProxy(proxyPort, backendPort int) error {
 	// Check if binary exists
@@ -398,41 +392,59 @@ func startAuthProxy(proxyPort, backendPort int) error {
 		return fmt.Errorf("failed to start proxy: %w", err)
 	}
 
+	// Save to registry
+	proc_manager.WithLock(authProxyProcName, func() error {
+		err := proc_manager.SaveRegistry(authProxyProcName, &proc_manager.ProcessRegistry{
+			Name:      authProxyProcName,
+			PID:       cmd.Cmd.Process.Pid,
+			Port:      proxyPort,
+			StartTime: time.Now().Unix(),
+		})
+		if err != nil {
+			fmt.Printf("[opencode] Warning: failed to save auth proxy registry: %v\n", err)
+		}
+		return nil
+	})
+
+	fmt.Printf("[opencode] Auth proxy started on port %d (backend: %d), PID: %d\n", proxyPort, backendPort, cmd.Cmd.Process.Pid)
 	return nil
 }
 
 // stopAuthProxy stops the basic-auth-proxy process
 func stopAuthProxy() error {
-	// Read proxy config to get backend port
-	proxyConfigPath := filepath.Join(config.DataDir, "basic-auth-proxy.json")
-	proxyPort := 0
+	var proxyPort int
 
-	// First get the proxy port from settings
+	// Get proxy port from settings
 	settings, err := LoadSettings()
 	if err == nil {
 		proxyPort = settings.WebServer.Port
 	}
 
-	// Try to kill the proxy on the proxy port
-	if proxyPort > 0 {
-		return KillProcessByPort(proxyPort)
-	}
+	// Try to stop using registry
+	err = proc_manager.WithLock(authProxyProcName, func() error {
+		reg, err := proc_manager.LoadRegistry(authProxyProcName)
+		if err != nil {
+			fmt.Printf("[opencode] Warning: failed to load auth proxy registry: %v\n", err)
+		}
 
-	// Fallback: try to read config and kill by backend port
-	data, err := os.ReadFile(proxyConfigPath)
-	if err != nil {
-		return nil // No proxy running
-	}
+		if reg != nil && reg.PID > 0 && proc_manager.IsProcessAlive(reg.PID) {
+			fmt.Printf("[opencode] Stopping auth proxy: PID=%d, Port=%d\n", reg.PID, reg.Port)
+			proc_manager.StopProcess(reg.PID)
+		}
 
-	var cfg struct {
-		BackendPort int `json:"backend_port"`
-	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
+		proc_manager.ClearRegistry(authProxyProcName)
 		return nil
+	})
+
+	if err != nil {
+		fmt.Printf("[opencode] Warning: failed to stop auth proxy via registry: %v\n", err)
 	}
 
-	// The backend port is the opencode port, not the proxy port
-	// We don't have the proxy port saved, so just return nil
+	// Fallback: try to kill by port if we have it
+	if proxyPort > 0 {
+		KillProcessByPort(proxyPort)
+	}
+
 	return nil
 }
 

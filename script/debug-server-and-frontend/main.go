@@ -85,10 +85,10 @@ func run(args []string) error {
 
 	fmt.Printf("Waiting for server to be ready on port %d...\n", opts.GetPort())
 	if err := waitForPort(ctx, opts.GetPort(), 60*time.Second); err != nil {
-		if result.ServerCmd.Process != nil {
+		if result != nil && result.ServerCmd != nil && result.ServerCmd.Process != nil {
 			result.ServerCmd.Process.Kill()
 		}
-		if result.ViteCmd != nil && result.ViteCmd.Process != nil {
+		if result != nil && result.ViteCmd != nil && result.ViteCmd.Process != nil {
 			result.ViteCmd.Process.Kill()
 		}
 		return fmt.Errorf("server failed to start: %v", err)
@@ -107,13 +107,13 @@ func run(args []string) error {
 
 	debugErr := debugCmd.Run()
 
-	if result.ServerCmd.Process != nil {
+	if result != nil && result.ServerCmd != nil && result.ServerCmd.Process != nil {
 		fmt.Println("Stopping quick-test server...")
 		result.ServerCmd.Process.Signal(syscall.SIGTERM)
 		result.ServerCmd.Wait()
 	}
 
-	if result.ViteCmd != nil && result.ViteCmd.Process != nil {
+	if result != nil && result.ViteCmd != nil && result.ViteCmd.Process != nil {
 		fmt.Println("Stopping Vite dev server...")
 		result.ViteCmd.Process.Signal(syscall.SIGTERM)
 		result.ViteCmd.Wait()

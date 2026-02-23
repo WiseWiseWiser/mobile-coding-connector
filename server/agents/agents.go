@@ -140,6 +140,9 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/sessions/", handleAgentSessionProxy)
 	// External opencode sessions (from CLI/web)
 	mux.HandleFunc("/api/agents/external-sessions", handleExternalSessions)
+
+	// Custom agents API
+	RegisterCustomAgentsAPI(mux)
 }
 
 // Shutdown stops the agents module (stops health checks, but leaves opencode running)
@@ -1047,7 +1050,7 @@ func handleExternalSessions(w http.ResponseWriter, r *http.Request) {
 
 	// Parse pagination parameters
 	page := 1
-	pageSize := 20 // default page size
+	pageSize := 5 // default page size
 
 	if p := r.URL.Query().Get("page"); p != "" {
 		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
@@ -1139,7 +1142,7 @@ func handleAgentSessions(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		// Parse pagination parameters
 		page := 1
-		pageSize := 20 // default page size
+		pageSize := 10 // default page size
 
 		if p := r.URL.Query().Get("page"); p != "" {
 			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {

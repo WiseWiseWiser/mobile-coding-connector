@@ -33,7 +33,9 @@ interface V2ContextValue {
     setAgentLaunchError: (error: string) => void;
     externalSessions: ExternalOpencodeSession[];
     externalSessionsLoading: boolean;
-    refreshExternalSessions: () => void;
+    externalSessionsTotal: number;
+    externalSessionsPage: number;
+    refreshExternalSessions: (page?: number) => void;
     tabHistories: Record<NavTab, string[]>;
     pushTabHistory: (tab: NavTab, path: string) => void;
     popTabHistory: (tab: NavTab) => string | undefined;
@@ -112,6 +114,8 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
     // External agent sessions (opencode CLI/web sessions)
     const [externalSessions, setExternalSessions] = useState<ExternalOpencodeSession[]>([]);
     const [externalSessionsLoading, setExternalSessionsLoading] = useState(false);
+    const [externalSessionsTotal, setExternalSessionsTotal] = useState(0);
+    const [externalSessionsPage, setExternalSessionsPage] = useState(1);
 
     const setAgentSession = (agentId: string, session: AgentSessionInfo | null) => {
         setAgentSessions(prev => {
@@ -137,19 +141,24 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
     }, []);
 
     // External sessions refresh
-    const refreshExternalSessions = useCallback(() => {
+    const refreshExternalSessions = useCallback((page: number = 1) => {
         setExternalSessionsLoading(true);
-        fetchExternalSessions()
+        // Fetch 5 sessions per page
+        fetchExternalSessions(page, 5)
             .then(data => {
                 if (data && data.items) {
                     setExternalSessions(data.items);
+                    setExternalSessionsTotal(data.total || 0);
+                    setExternalSessionsPage(page);
                 } else {
                     setExternalSessions([]);
+                    setExternalSessionsTotal(0);
                 }
                 setExternalSessionsLoading(false);
             })
             .catch(() => {
                 setExternalSessions([]);
+                setExternalSessionsTotal(0);
                 setExternalSessionsLoading(false);
             });
     }, []);
@@ -212,6 +221,8 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
             setAgentLaunchError,
             externalSessions,
             externalSessionsLoading,
+            externalSessionsTotal,
+            externalSessionsPage,
             refreshExternalSessions,
             tabHistories,
             pushTabHistory,
