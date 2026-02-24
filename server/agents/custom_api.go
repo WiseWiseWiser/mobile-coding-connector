@@ -20,6 +20,7 @@ import (
 func RegisterCustomAgentsAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/custom-agents", handleCustomAgents)
 	mux.HandleFunc("/api/custom-agents/", handleCustomAgent)
+	mux.HandleFunc("/api/custom-agents/sessions", handleCustomAgentSessions)
 }
 
 type CreateCustomAgentRequest struct {
@@ -66,21 +67,51 @@ func handleCustomAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agentID := strings.TrimPrefix(path, "/api/custom-agents/")
-	agentID, err := url.PathUnescape(agentID)
+	path = strings.TrimPrefix(path, "/api/custom-agents/")
+	path, err := url.PathUnescape(path)
 	if err != nil {
 		http.Error(w, "Invalid agent ID", http.StatusBadRequest)
 		return
 	}
 
+	var agentID string
+	var isLaunch bool
+	if strings.HasSuffix(path, "/launch") {
+		agentID = strings.TrimSuffix(path, "/launch")
+		isLaunch = true
+	} else {
+		agentID = path
+	}
+
+	if agentID == "" {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
 	switch r.Method {
 	case http.MethodGet:
+		if isLaunch {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		handleGetCustomAgent(w, r, agentID)
 	case http.MethodPut:
+		if isLaunch {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		handleUpdateCustomAgent(w, r, agentID)
 	case http.MethodDelete:
+		if isLaunch {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		handleDeleteCustomAgent(w, r, agentID)
 	case http.MethodPost:
+		if !isLaunch {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		handleLaunchCustomAgent(w, r, agentID)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -428,6 +459,17 @@ func GetCustomAgentSessions() []AgentSessionInfo {
 	})
 
 	return result
+}
+
+func handleCustomAgentSessions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessions := GetCustomAgentSessions()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sessions)
 }
 
 func toKebabCase(s string) string {

@@ -11,15 +11,22 @@ import (
 )
 
 // WebServerConfig holds the web server configuration.
+// These are user-configured preferences, NOT runtime state.
+// The Enabled field indicates user's preference to auto-start on boot (not current running status).
+// The Port field is the user-configured port preference, not the actual runtime port.
 type WebServerConfig struct {
-	Enabled          bool   `json:"enabled"`
-	Port             int    `json:"port"`
+	Enabled          bool   `json:"enabled"` // User preference: auto-start on boot
+	Port             int    `json:"port"`    // User preference: desired port (default 4096)
 	ExposedDomain    string `json:"exposed_domain,omitempty"`
 	Password         string `json:"password,omitempty"`
 	AuthProxyEnabled bool   `json:"auth_proxy_enabled"`
 }
 
 // Settings holds the persisted opencode configuration.
+//
+// This struct stores user-configured settings only. Runtime state such as whether
+// the web server is currently running should NOT be stored here - it will be
+// overwritten when the settings are saved. Use in-memory tracking for runtime state.
 type Settings struct {
 	Model         string          `json:"model,omitempty"`
 	DefaultDomain string          `json:"default_domain,omitempty"`
@@ -95,6 +102,19 @@ func copySettings(s *Settings) *Settings {
 }
 
 // SaveSettings saves the opencode settings to disk.
+//
+// IMPORTANT: This function should only be used to save settings explicitly configured by the user.
+// DO NOT use this function to persist runtime state changes such as:
+//   - Web server running status (Enabled)
+//   - Dynamically allocated ports (Port)
+//   - Any other runtime-computed values
+//
+// The settings file is user configuration, not runtime state. Runtime state should be
+// tracked in memory or in separate runtime state files. Persisting runtime state to this
+// file will overwrite user configuration and cause bugs like port being overwritten
+// with auto-allocated ports, or Enabled being set incorrectly.
+//
+// For runtime status, use in-memory tracking or a separate runtime state mechanism.
 func SaveSettings(s *Settings) error {
 	settingsMu.Lock()
 	defer settingsMu.Unlock()

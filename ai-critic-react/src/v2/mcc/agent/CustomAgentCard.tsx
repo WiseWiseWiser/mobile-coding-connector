@@ -7,19 +7,24 @@ interface AgentCardProps {
   agent: CustomAgent;
   onEdit: (agent: CustomAgent) => void;
   onDelete: (agent: CustomAgent) => void;
+  onLaunch: (agentId: string) => void;
 }
 
-export function CustomAgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
+export function CustomAgentCard({ agent, onEdit, onDelete, onLaunch }: AgentCardProps) {
   const { currentProject } = useV2Context();
   const projectDir = currentProject?.dir;
 
   const handleLaunch = async () => {
-    if (!projectDir) return;
+    if (!projectDir) {
+      alert('Please select a project first');
+      return;
+    }
     try {
-      const result = await launchCustomAgent(agent.id, projectDir);
-      window.open(result.url, '_blank');
+      await launchCustomAgent(agent.id, projectDir);
+      onLaunch(agent.id);
     } catch (err) {
       console.error('Failed to launch agent:', err);
+      alert('Failed to launch agent: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 

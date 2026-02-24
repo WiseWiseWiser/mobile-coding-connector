@@ -19,7 +19,6 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
@@ -132,7 +131,10 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/opencode/settings", handleOpencodeSettings)
 	mux.HandleFunc("/api/agents/opencode/web-status", handleOpencodeWebStatus)
 	mux.HandleFunc("/api/agents/opencode/server", handleOpencodeServer)
-	mux.HandleFunc("/api/agents/opencode/web-server/control", handleOpencodeWebServerControl)
+	mux.HandleFunc("/api/agents/opencode/exposed-server/start", handleOpencodeWebServerStart)
+	mux.HandleFunc("/api/agents/opencode/exposed-server/start/stream", handleOpencodeWebServerStartStreaming)
+	mux.HandleFunc("/api/agents/opencode/exposed-server/stop", handleOpencodeWebServerStop)
+	mux.HandleFunc("/api/agents/opencode/exposed-server/stop/stream", handleOpencodeWebServerStopStreaming)
 	mux.HandleFunc("/api/agents/opencode/web-server/domain-map", handleOpencodeWebServerDomainMap)
 	mux.HandleFunc("/api/agents/opencode/web-server/domain-map/stream", handleOpencodeWebServerDomainMapStreaming)
 	mux.HandleFunc("/api/agents/sessions", handleAgentSessions)
@@ -645,32 +647,22 @@ func handleOpencodeServer(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleOpencodeWebServerControl handles start/stop operations for the web server
-// Supports both JSON and SSE streaming responses based on Accept header
-func handleOpencodeWebServerControl(w http.ResponseWriter, r *http.Request) {
+// handleOpencodeWebServerStart handles starting the web server
+func handleOpencodeWebServerStart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var req opencode.WebServerControlRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Get user-configured binary path for opencode agent
 	customPath := GetAgentBinaryPath("opencode")
 
-	// Check if client wants streaming (SSE)
 	acceptHeader := r.Header.Get("Accept")
 	if acceptHeader == "text/event-stream" {
-		handleOpencodeWebServerControlStreaming(w, r, req.Action, customPath)
+		handleOpencodeWebServerStartStreaming(w, r)
 		return
 	}
 
-	// Non-streaming JSON response
-	resp, err := opencode.ControlWebServer(req.Action, customPath)
+	resp, err := opencode.StartWebServer(customPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -680,8 +672,57 @@ func handleOpencodeWebServerControl(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-// handleOpencodeWebServerControlStreaming handles start/stop with SSE streaming
-func handleOpencodeWebServerControlStreaming(w http.ResponseWriter, r *http.Request, action string, customPath string) {
+// handleOpencodeWebServerStartStreaming handles starting the web server with SSE streaming
+func handleOpencodeWebServerStartStreaming(w http.ResponseWriter, r *http.Request) {
+	sseWriter := sse.NewWriter(w)
+	if sseWriter == nil {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	sseWriter.SendLog("Starting OpenCode web server...")
+	server, err := opencode.GetOrStartOpencodeServer()
+	if err != nil {
+		sseWriter.SendError(fmt.Sprintf("Failed to start web server: %v", err))
+		sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
+		return
+	}
+
+	sseWriter.SendStatus("running", map[string]string{
+		"port":    fmt.Sprintf("%d", server.Port),
+		"message": "Web server is running",
+	})
+	sseWriter.SendLog(fmt.Sprintf("✓ Web server started successfully on port %d", server.Port))
+	sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server started successfully", "running": "true", "port": fmt.Sprintf("%d", server.Port)})
+}
+
+// handleOpencodeWebServerStop handles stopping the web server
+func handleOpencodeWebServerStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	customPath := GetAgentBinaryPath("opencode")
+
+	acceptHeader := r.Header.Get("Accept")
+	if acceptHeader == "text/event-stream" {
+		handleOpencodeWebServerStopStreaming(w, r)
+		return
+	}
+
+	resp, err := opencode.StopWebServer(customPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// handleOpencodeWebServerStopStreaming handles stopping the web server with SSE streaming
+func handleOpencodeWebServerStopStreaming(w http.ResponseWriter, r *http.Request) {
 	sseWriter := sse.NewWriter(w)
 	if sseWriter == nil {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
@@ -695,92 +736,40 @@ func handleOpencodeWebServerControlStreaming(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	switch action {
-	case "start":
-		// Use GetOrStartOpencodeServer for single instance
-		sseWriter.SendLog("Starting OpenCode web server...")
-		server, err := opencode.GetOrStartOpencodeServer()
-		if err != nil {
-			sseWriter.SendError(fmt.Sprintf("Failed to start web server: %v", err))
-			sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
-			return
-		}
+	if !opencode.IsWebServerRunning(settings.WebServer.Port) {
+		sseWriter.SendStatus("stopped", map[string]string{"message": "Web server is already stopped"})
+		sseWriter.SendLog("Web server is already stopped")
+		sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server is already stopped", "running": "false"})
+		return
+	}
 
-		// Update settings
-		settings.WebServer.Enabled = true
-		settings.WebServer.Port = server.Port
-		opencode.SaveSettings(settings)
+	sseWriter.SendLog("Stopping OpenCode web server...")
+	sseWriter.SendStatus("stopping", map[string]string{"port": fmt.Sprintf("%d", settings.WebServer.Port)})
 
-		sseWriter.SendStatus("running", map[string]string{
-			"port":    fmt.Sprintf("%d", server.Port),
-			"message": "Web server is running",
+	customPath := GetAgentBinaryPath("opencode")
+	_, err = opencode.StopWebServer(customPath)
+	if err != nil {
+		sseWriter.SendError(fmt.Sprintf("Failed to stop web server: %v", err))
+		sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
+		return
+	}
+
+	running := opencode.IsWebServerRunning(settings.WebServer.Port)
+
+	if !running {
+		sseWriter.SendStatus("stopped", map[string]string{
+			"port":    fmt.Sprintf("%d", settings.WebServer.Port),
+			"message": "Web server stopped successfully",
 		})
-		sseWriter.SendLog(fmt.Sprintf("✓ Web server started successfully on port %d", server.Port))
-		sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server started successfully", "running": "true"})
-
-	case "stop":
-		// Check if already stopped
-		if !opencode.IsWebServerRunning(settings.WebServer.Port) {
-			sseWriter.SendStatus("stopped", map[string]string{"message": "Web server is already stopped"})
-			sseWriter.SendLog("Web server is already stopped")
-			sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server is already stopped", "running": "false"})
-			return
-		}
-
-		sseWriter.SendLog("Stopping OpenCode web server...")
-		sseWriter.SendStatus("stopping", map[string]string{"port": fmt.Sprintf("%d", settings.WebServer.Port)})
-
-		// Stop via ShutdownOpencodeServer
-		opencode.ShutdownOpencodeServer()
-
-		// Also try the standard opencode stop command as fallback
-		cmd, err := tool_exec.New("opencode", []string{"web", "stop"}, &tool_exec.Options{
-			CustomPath: customPath,
+		sseWriter.SendLog("✓ Web server stopped successfully")
+		sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server stopped successfully", "running": "false"})
+	} else {
+		sseWriter.SendStatus("failed", map[string]string{
+			"port":    fmt.Sprintf("%d", settings.WebServer.Port),
+			"message": "Server may still be running",
 		})
-		if err == nil {
-			cmd.Cmd.Run()
-		}
-
-		// Wait a moment and check if it's stopped
-		time.Sleep(1 * time.Second)
-		running := opencode.IsWebServerRunning(settings.WebServer.Port)
-
-		// If still running, use pure Go implementation to kill the process by port
-		if running {
-			sseWriter.SendLog(fmt.Sprintf("Web server still running on port %d, attempting to kill process directly...", settings.WebServer.Port))
-			if err := opencode.KillProcessByPort(settings.WebServer.Port); err != nil {
-				sseWriter.SendLog(fmt.Sprintf("Failed to kill process by port: %v", err))
-			} else {
-				sseWriter.SendLog("Sent kill signal to process, waiting for shutdown...")
-				// Wait another moment and check again
-				time.Sleep(500 * time.Millisecond)
-				running = opencode.IsWebServerRunning(settings.WebServer.Port)
-			}
-		}
-
-		// Update settings
-		settings.WebServer.Enabled = running
-		opencode.SaveSettings(settings)
-
-		if !running {
-			sseWriter.SendStatus("stopped", map[string]string{
-				"port":    fmt.Sprintf("%d", settings.WebServer.Port),
-				"message": "Web server stopped successfully",
-			})
-			sseWriter.SendLog("✓ Web server stopped successfully")
-			sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server stopped successfully", "running": "false"})
-		} else {
-			sseWriter.SendStatus("failed", map[string]string{
-				"port":    fmt.Sprintf("%d", settings.WebServer.Port),
-				"message": "Server may still be running",
-			})
-			sseWriter.SendError("Web server stop command executed but server may still be running")
-			sseWriter.SendDone(map[string]string{"success": "false", "message": "Web server may still be running", "running": "true"})
-		}
-
-	default:
-		sseWriter.SendError(fmt.Sprintf("Invalid action: %s", action))
-		sseWriter.SendDone(map[string]string{"success": "false", "message": fmt.Sprintf("Invalid action: %s", action)})
+		sseWriter.SendError("Web server may still be running")
+		sseWriter.SendDone(map[string]string{"success": "false", "message": "Web server may still be running", "running": "true"})
 	}
 }
 

@@ -282,6 +282,15 @@ func Serve(port int, dev bool) error {
 			fmt.Println("Stopping agents module...")
 			agents.Shutdown()
 
+			// Stop opencode web server if enabled
+			if opencode.IsWebServerEnabled() {
+				fmt.Println("Stopping opencode web server...")
+				_, err := opencode.StopWebServer("")
+				if err != nil {
+					fmt.Printf("Warning: failed to stop opencode web server: %v\n", err)
+				}
+			}
+
 			// Stop all port forwards (tunnels)
 			pfManager := portforward.GetDefaultManager()
 			for _, pf := range pfManager.List() {

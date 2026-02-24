@@ -7,7 +7,8 @@ import {
     fetchOpencodeWebStatus,
     updateAgentConfig,
     updateOpencodeSettings,
-    controlOpencodeWebServerStreaming,
+    startOpencodeWebServerStreaming,
+    stopOpencodeWebServerStreaming,
     unmapOpencodeDomain,
     mapOpencodeDomainStreaming,
 } from '../../../api/agents';
@@ -269,7 +270,8 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     const handleWebServerControl = async (action: 'start' | 'stop') => {
         setError('');
         setSuccess('');
-        await webServerActionControls.run(() => controlOpencodeWebServerStreaming(action));
+        const streamFn = action === 'start' ? startOpencodeWebServerStreaming : stopOpencodeWebServerStreaming;
+        await webServerActionControls.run(() => streamFn());
     };
 
     const handleMapDomain = async () => {

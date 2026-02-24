@@ -270,23 +270,24 @@ type WebServerControlResponse struct {
 	Running bool   `json:"running"`
 }
 
-// ControlWebServer starts or stops the OpenCode web server.
+// StartWebServer starts the OpenCode web server.
 // The customPath parameter, if provided, will be used as the opencode binary path.
-// This allows using user-configured paths from agent settings.
-func ControlWebServer(action string, customPath string) (*WebServerControlResponse, error) {
+func StartWebServer(customPath string) (*WebServerControlResponse, error) {
 	settings, err := LoadSettings()
 	if err != nil {
 		return nil, err
 	}
+	return startWebServer(settings, customPath)
+}
 
-	switch action {
-	case "start":
-		return startWebServer(settings, customPath)
-	case "stop":
-		return stopWebServer(settings, customPath)
-	default:
-		return nil, fmt.Errorf("invalid action: %s (must be 'start' or 'stop')", action)
+// StopWebServer stops the OpenCode web server.
+// The customPath parameter, if provided, will be used as the opencode binary path.
+func StopWebServer(customPath string) (*WebServerControlResponse, error) {
+	settings, err := LoadSettings()
+	if err != nil {
+		return nil, err
 	}
+	return stopWebServer(settings, customPath)
 }
 
 // startWebServer attempts to start the OpenCode web server.
@@ -374,6 +375,27 @@ const authProxyProcName = "basic-auth-proxy"
 
 // startAuthProxy starts the basic-auth-proxy process
 func startAuthProxy(proxyPort, backendPort int) error {
+	// Check if proxy already running (reuse existing if available)
+	reg, err := proc_manager.LoadRegistry(authProxyProcName)
+	if err == nil && reg != nil && proc_manager.IsProcessAlive(reg.PID) {
+		// Check if proxy is reachable on the expected port
+		if proc_manager.IsPortReachable(reg.Port, "") {
+			fmt.Printf("[opencode] Reusing existing auth proxy: PID=%d, Port=%d\n", reg.PID, reg.Port)
+			// Update backend port in config if needed
+			proxyConfigPath := filepath.Join(config.DataDir, "basic-auth-proxy.json")
+			proxyCfg := struct {
+				BackendPort int `json:"backend_port"`
+			}{BackendPort: backendPort}
+			proxyCfgData, _ := json.MarshalIndent(proxyCfg, "", "  ")
+			os.WriteFile(proxyConfigPath, proxyCfgData, 0644)
+			return nil
+		}
+		// Process exists but not reachable, stop it
+		fmt.Printf("[opencode] Existing auth proxy not reachable, stopping PID=%d\n", reg.PID)
+		proc_manager.StopProcess(reg.PID)
+		proc_manager.ClearRegistry(authProxyProcName)
+	}
+
 	// Check if binary exists
 	if !tool_resolve.IsAvailable("basic-auth-proxy") {
 		return fmt.Errorf("basic-auth-proxy binary not found in PATH")
@@ -491,9 +513,6 @@ func stopWebServer(settings *Settings, customPath string) (*WebServerControlResp
 		// Remove proxy config
 		os.Remove(proxyConfigPath)
 
-		settings.WebServer.Enabled = false
-		SaveSettings(settings)
-
 		return &WebServerControlResponse{
 			Success: true,
 			Message: "Web server stopped successfully",
@@ -528,10 +547,6 @@ func stopWebServer(settings *Settings, customPath string) (*WebServerControlResp
 			running = IsWebServerRunning(port)
 		}
 	}
-
-	// Update settings to mark web server as disabled
-	settings.WebServer.Enabled = running
-	SaveSettings(settings)
 
 	return &WebServerControlResponse{
 		Success: !running,
@@ -754,14 +769,14 @@ func AutoStartWebServer() {
 	// Try to start the web server (non-blocking, will succeed if already running)
 	go func() {
 		fmt.Printf("[opencode] AutoStartWebServer: attempting to start web server for domain %s...\n", settings.DefaultDomain)
-		resp, err := ControlWebServer("start", "")
+		resp, err := StartWebServer("")
 		if err != nil {
-			fmt.Printf("[opencode] AutoStartWebServer: ControlWebServer returned error: %v\n", err)
+			fmt.Printf("[opencode] AutoStartWebServer: StartWebServer returned error: %v\n", err)
 		} else if resp != nil {
-			fmt.Printf("[opencode] AutoStartWebServer: ControlWebServer result - Success=%v, Message=%q, Running=%v\n",
+			fmt.Printf("[opencode] AutoStartWebServer: StartWebServer result - Success=%v, Message=%q, Running=%v\n",
 				resp.Success, resp.Message, resp.Running)
 		} else {
-			fmt.Printf("[opencode] AutoStartWebServer: ControlWebServer returned nil response\n")
+			fmt.Printf("[opencode] AutoStartWebServer: StartWebServer returned nil response\n")
 		}
 	}()
 }

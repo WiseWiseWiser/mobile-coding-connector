@@ -18,6 +18,7 @@ export interface AgentPickerProps {
     onOpenSessions: (agentId: string) => void;
     onStopAgent: (agentId: string) => void;
     onConfigureAgent: (agentId: string) => void;
+    onNavigateToView?: (view: string) => void;
     // External sessions from CLI/web opencode
     externalSessions?: ExternalOpencodeSession[];
     externalSessionsTotal?: number;
@@ -39,6 +40,7 @@ export function AgentPicker({
     onOpenSessions,
     onStopAgent,
     onConfigureAgent,
+    onNavigateToView,
     externalSessions = [],
     externalSessionsTotal = 0,
     externalSessionsPage = 1,
@@ -177,6 +179,7 @@ export function AgentPicker({
                             agent={agent}
                             onEdit={handleEditAgent}
                             onDelete={handleDeleteAgent}
+                            onLaunch={onNavigateToView || (() => {})}
                         />
                     ))}
                 </div>

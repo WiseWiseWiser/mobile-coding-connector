@@ -511,29 +511,57 @@ export interface WebServerControlResponse {
     running: boolean;
 }
 
-export async function controlOpencodeWebServer(action: 'start' | 'stop'): Promise<WebServerControlResponse> {
-    const resp = await fetch('/api/agents/opencode/web-server/control', {
+export async function startOpencodeWebServer(): Promise<WebServerControlResponse> {
+    const resp = await fetch('/api/agents/opencode/exposed-server/start', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
     });
     if (!resp.ok) {
         const text = await resp.text();
-        throw new Error(text || 'Failed to control web server');
+        throw new Error(text || 'Failed to start web server');
     }
     return resp.json();
 }
 
-/** Control web server with streaming (returns Response for SSE consumption). */
-export function controlOpencodeWebServerStreaming(action: 'start' | 'stop'): Promise<Response> {
-    return fetch('/api/agents/opencode/web-server/control', {
+export async function stopOpencodeWebServer(): Promise<WebServerControlResponse> {
+    const resp = await fetch('/api/agents/opencode/exposed-server/stop', {
         method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'Accept': 'text/event-stream',
-        },
-        body: JSON.stringify({ action }),
     });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || 'Failed to stop web server');
+    }
+    return resp.json();
+}
+
+/** Start web server with streaming (returns Response for SSE consumption). */
+export function startOpencodeWebServerStreaming(): Promise<Response> {
+    return fetch('/api/agents/opencode/exposed-server/start/stream', {
+        method: 'POST',
+        headers: { 'Accept': 'text/event-stream' },
+    });
+}
+
+/** Stop web server with streaming (returns Response for SSE consumption). */
+export function stopOpencodeWebServerStreaming(): Promise<Response> {
+    return fetch('/api/agents/opencode/exposed-server/stop/stream', {
+        method: 'POST',
+        headers: { 'Accept': 'text/event-stream' },
+    });
+}
+
+// Backwards compatibility alias
+export async function controlOpencodeWebServer(action: 'start' | 'stop'): Promise<WebServerControlResponse> {
+    if (action === 'start') {
+        return startOpencodeWebServer();
+    }
+    return stopOpencodeWebServer();
+}
+
+export function controlOpencodeWebServerStreaming(action: 'start' | 'stop'): Promise<Response> {
+    if (action === 'start') {
+        return startOpencodeWebServerStreaming();
+    }
+    return stopOpencodeWebServerStreaming();
 }
 
 // ---- OpenCode Web Server Domain Mapping ----

@@ -198,3 +198,22 @@ export async function launchCustomAgent(
   }
   return resp.json();
 }
+
+export interface CustomAgentSession {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  project_dir: string;
+  port: number;
+  created_at: string;
+  status: string;
+}
+
+export async function fetchCustomAgentSessions(): Promise<CustomAgentSession[]> {
+  const resp = await fetch('/api/custom-agents/sessions');
+  if (!resp.ok) {
+    const error = await resp.text();
+    throw new Error(error || 'Failed to fetch custom agent sessions');
+  }
+  return resp.json();
+}
