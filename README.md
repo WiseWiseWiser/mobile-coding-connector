@@ -20,7 +20,7 @@ Start the server:
 ./ai-critic-server
 ```
 
-Open http://localhost:23712 in your browser. On first launch, you'll be prompted to set up an initial credential to secure your server.
+Open http://localhost:23712 in your browser. On first launch, you'll see the [Initial Setup](#initial-setup) page to create a login credential.
 
 To access from public domain:
 
@@ -32,7 +32,83 @@ cloudflared tunnel --url http://localhost:23712
 npx localtunnel --port 23712
 ```
 
-On initial login, you will be prompted to setup login password, the initial password will be generated using secure sha256sum, you should keep it somewhere else to get logged in.
+## Initial Setup
+
+On first launch, the server has no credentials and is in an **uninitialized** state. Any API request returns `{"error": "not_initialized"}`, and the frontend automatically shows the **Setup** page.
+
+### Step 1: Create Credential
+
+Open the browser and you'll see the Setup page. You have two options:
+
+- **Generate Random**: Click the "Generate Random" button. The server generates a secure 64-character hex token (32 random bytes → SHA-256 hash).
+- **Enter Manually**: Type your own credential into the input field.
+
+> **Important**: Copy and save the credential somewhere safe before confirming. This is your login password — if you lose it, you'll need to manually edit the credentials file on the server.
+
+Click **"Confirm & Continue"** to finalize. The credential is written to `.ai-critic/server-credentials` (permissions `0600`).
+
+### Step 2: Log In
+
+After setup, you're redirected to the **Login** page. Enter any username and paste the credential as the password. On success, the server sets an `ai-critic-token` cookie (valid for 1 year).
+
+You can also authenticate via the `Authorization: Bearer <credential>` header for API access.
+
+### Step 3: Configure AI Models (Optional)
+
+To enable AI code review, configure at least one AI provider. Go to **Settings → AI Models** in the UI, or manually create `.ai-critic/ai-models.json`:
+
+```json
+{
+  "providers": [
+    {
+      "name": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "sk-..."
+    }
+  ],
+  "models": [
+    {
+      "provider": "openai",
+      "model": "gpt-4o"
+    }
+  ],
+  "default_provider": "openai",
+  "default_model": "gpt-4o"
+}
+```
+
+### Step 4: Generate Encryption Keys (Optional)
+
+Encryption keys enable secure transmission of sensitive data (e.g., SSH private keys) from the browser to the server. Generate them from the UI (**Settings → Encryption**) or via CLI:
+
+```bash
+go run ./script/crypto/gen
+```
+
+This creates an RSA key pair at `.ai-critic/enc-key` and `.ai-critic/enc-key.pub`.
+
+### Data Directory
+
+All server state is stored under `.ai-critic/` in the working directory:
+
+| File | Description |
+|------|-------------|
+| `server-credentials` | Login credentials (one token per line) |
+| `enc-key` / `enc-key.pub` | RSA key pair for frontend encryption |
+| `ai-models.json` | AI provider and model configuration |
+| `server-project.json` | Server project directory setting |
+| `agents.json` | Agent configurations |
+| `terminal-config.json` | Terminal settings and extra PATH entries |
+| `server-domains.json` | Domain/tunnel mappings |
+| `projects.json` | Registered projects |
+
+### Managing Credentials
+
+You can add more credentials after setup:
+
+- **UI**: Settings → Manage Credentials → Add
+- **API**: `POST /api/auth/credentials/add` with `{"token": "your-token"}`
+- **Manual**: Append a new line to `.ai-critic/server-credentials`
 
 ## Run with Keep Alive Daemon
 If the server panics, the process ends. To make it auto restart, add a `keep-alive` sub command:
