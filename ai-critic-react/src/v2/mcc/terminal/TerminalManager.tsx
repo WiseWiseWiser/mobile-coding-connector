@@ -37,6 +37,8 @@ interface TerminalManagerProps {
     isVisible: boolean;
     /** Async function to load initial sessions. If provided, sessions will be loaded via this function. */
     loadSessions?: () => Promise<Array<{ id: string; name: string; cwd?: string }>>;
+    /** Default working directory for new terminal tabs. */
+    defaultCwd?: string;
 }
 
 
@@ -273,7 +275,7 @@ export interface TerminalManagerHandle {
     fitActive: () => void;
 }
 
-export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManagerProps>(function TerminalManager({ isVisible, loadSessions }, ref) {
+export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManagerProps>(function TerminalManager({ isVisible, loadSessions, defaultCwd }, ref) {
     const { currentProject } = useV2Context();
     const [zenMode, setZenMode] = useState(false);
 
@@ -291,7 +293,7 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
         ensureLoaded,
     } = useTerminalTabs({
         loadSessions,
-        defaultCwd: currentProject?.dir,
+        defaultCwd: defaultCwd || currentProject?.dir,
     });
 
     // Trigger loading when component becomes visible

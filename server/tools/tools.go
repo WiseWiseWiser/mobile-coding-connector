@@ -26,6 +26,10 @@ type ToolInfo struct {
 	InstallWindows string `json:"install_windows"`
 	AutoInstallCmd string `json:"auto_install_cmd,omitempty"`
 	SettingsPath   string `json:"settings_path,omitempty"`
+	// Upgrade commands - if set, tool supports upgrading via these commands
+	UpgradeMacOS   string `json:"upgrade_macos,omitempty"`
+	UpgradeLinux   string `json:"upgrade_linux,omitempty"`
+	UpgradeWindows string `json:"upgrade_windows,omitempty"`
 }
 
 // InstallResponse is the response from the tool install API.
@@ -52,7 +56,10 @@ type toolDef struct {
 	installMacOS   []string
 	installLinux   []string
 	installWindows string
-	settingsPath   string // relative path for tool-specific settings page
+	settingsPath   string   // relative path for tool-specific settings page
+	upgradeMacOS   []string // commands to upgrade the tool on macOS
+	upgradeLinux   []string // commands to upgrade the tool on Linux
+	upgradeWindows string   // command to upgrade the tool on Windows
 }
 
 // requiredTools defines all tools needed by the backend.
@@ -303,6 +310,33 @@ var requiredTools = []toolDef{
 			"npm install -g @openai/codex",
 		},
 		installWindows: "npm install -g @openai/codex",
+		upgradeMacOS: []string{
+			"npm update -g @openai/codex",
+		},
+		upgradeLinux: []string{
+			"npm update -g @openai/codex",
+		},
+		upgradeWindows: "npm update -g @openai/codex",
+	},
+	{
+		name:        "github-copilot",
+		description: "GitHub Copilot CLI - AI-powered code assistant",
+		purpose:     "AI coding agent powered by GitHub Copilot for code generation and editing",
+		versionCmd:  []string{"github-copilot", "--version"},
+		installMacOS: []string{
+			"npm install -g @github/copilot-cli",
+		},
+		installLinux: []string{
+			"npm install -g @github/copilot-cli",
+		},
+		installWindows: "npm install -g @github/copilot-cli",
+		upgradeMacOS: []string{
+			"npm update -g @github/copilot-cli",
+		},
+		upgradeLinux: []string{
+			"npm update -g @github/copilot-cli",
+		},
+		upgradeWindows: "npm update -g @github/copilot-cli",
 	},
 	{
 		name:        "claude",
@@ -316,6 +350,13 @@ var requiredTools = []toolDef{
 			"npm install -g @anthropic-ai/claude-code",
 		},
 		installWindows: "npm install -g @anthropic-ai/claude-code",
+		upgradeMacOS: []string{
+			"npm update -g @anthropic-ai/claude-code",
+		},
+		upgradeLinux: []string{
+			"npm update -g @anthropic-ai/claude-code",
+		},
+		upgradeWindows: "npm update -g @anthropic-ai/claude-code",
 	},
 	{
 		name:        "cline",
@@ -551,6 +592,9 @@ func CheckTools() *ToolsResponse {
 			InstallLinux:   joinInstallSteps(tool.installLinux),
 			InstallWindows: tool.installWindows,
 			SettingsPath:   tool.settingsPath,
+			UpgradeMacOS:   joinInstallSteps(tool.upgradeMacOS),
+			UpgradeLinux:   joinInstallSteps(tool.upgradeLinux),
+			UpgradeWindows: tool.upgradeWindows,
 		}
 
 		// Check if tool is installed — use the version command's binary name
@@ -585,22 +629,90 @@ func CheckTools() *ToolsResponse {
 					info.Version = version
 				}
 			}
-		} else {
-			// Not installed — check if auto-install is possible
-			info.AutoInstallCmd = getAutoInstallScript(getInstallStepsForOS(tool))
 		}
-
 		resp.Tools = append(resp.Tools, info)
 	}
 
 	return resp
 }
 
-// RegisterAPI registers the tools API endpoint.
-func RegisterAPI(mux *http.ServeMux) {
-	mux.HandleFunc("/api/tools", handleTools)
-	mux.HandleFunc("/api/tools/install", handleInstallTool)
-	RegisterPathInfoAPI(mux)
+func handleUpgradeTool(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	toolName := r.URL.Query().Get("name")
+	if toolName == "" {
+		http.Error(w, "Missing 'name' parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Find the tool and its upgrade script
+	var script string
+	found := false
+	for _, tool := range requiredTools {
+		if tool.name != toolName {
+			continue
+		}
+		found = true
+		script = getUpgradeScriptForOS(tool)
+		break
+	}
+	if !found {
+		http.Error(w, "Unknown tool", http.StatusNotFound)
+		return
+	}
+	if script == "" {
+		http.Error(w, "Tool cannot be upgraded on this OS", http.StatusBadRequest)
+		return
+	}
+
+	// Stream upgrade output via SSE
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Prepend "set -e" so any command failure aborts the script immediately
+	fullScript := "set -e\n" + script
+
+	sw.SendLog(fmt.Sprintf("$ %s", strings.ReplaceAll(script, "\n", "\n$ ")))
+
+	cmd := exec.Command("bash", "-c", fullScript)
+	// Set up environment with extended PATH
+	cmd.Env = tool_resolve.AppendExtraPaths(os.Environ())
+	if err := sw.StreamCmd(cmd); err != nil {
+		sw.SendError(fmt.Sprintf("Upgrade failed: %v", err))
+	} else {
+		sw.SendDone(map[string]string{"message": "Upgraded successfully"})
+	}
+}
+
+// getUpgradeScriptForOS returns the upgrade script for the current OS.
+func getUpgradeScriptForOS(tool toolDef) string {
+	var steps []string
+	switch runtime.GOOS {
+	case "darwin":
+		steps = tool.upgradeMacOS
+	case "linux":
+		steps = tool.upgradeLinux
+	case "windows":
+		if tool.upgradeWindows != "" {
+			return tool.upgradeWindows
+		}
+		return ""
+	default:
+		steps = tool.upgradeLinux
+	}
+
+	if len(steps) == 0 {
+		return ""
+	}
+
+	// Use same logic as getAutoInstallScript for consistency
+	return getAutoInstallScript(steps)
 }
 
 func handleTools(w http.ResponseWriter, r *http.Request) {
@@ -667,4 +779,12 @@ func handleInstallTool(w http.ResponseWriter, r *http.Request) {
 	} else {
 		sw.SendDone(map[string]string{"message": "Installed successfully"})
 	}
+}
+
+// RegisterAPI registers the tools API endpoint.
+func RegisterAPI(mux *http.ServeMux) {
+	mux.HandleFunc("/api/tools", handleTools)
+	mux.HandleFunc("/api/tools/install", handleInstallTool)
+	mux.HandleFunc("/api/tools/upgrade", handleUpgradeTool)
+	RegisterPathInfoAPI(mux)
 }

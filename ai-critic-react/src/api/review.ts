@@ -73,11 +73,13 @@ export async function gitRemove(path: string, dir?: string): Promise<void> {
 
 // Git status file entry
 export interface GitStatusFile {
-    path: string;
-    status: string;
-    isStaged: boolean;
-    size: number;
-    isDir: boolean;
+  path: string;
+  status: string;
+  isStaged: boolean;
+  isDir?: boolean;
+  isGitDir?: boolean;
+  isGitWorktree?: boolean;
+  size?: number;
 }
 
 // Git status result
@@ -169,6 +171,14 @@ export interface GitBranch {
     date: string;
 }
 
+// Worktree entry
+export interface Worktree {
+    path: string;
+    branch: string;
+    isMain: boolean;
+    isBare: boolean;
+}
+
 // List branches sorted by recent commit date
 export async function getGitBranches(dir?: string): Promise<GitBranch[]> {
     const response = await fetch('/api/review/branches', {
@@ -179,6 +189,66 @@ export async function getGitBranches(dir?: string): Promise<GitBranch[]> {
     if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to list branches');
+    }
+    return response.json();
+}
+
+// List all worktrees for a repository
+export async function listWorktrees(dir?: string): Promise<Worktree[]> {
+    const response = await fetch('/api/review/worktrees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dir }),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to list worktrees');
+    }
+    return response.json();
+}
+
+// Create a new worktree
+export async function createWorktree(
+    branch: string,
+    path: string,
+    dir?: string
+): Promise<{ status: string; message?: string }> {
+    const response = await fetch('/api/review/worktrees/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch, path, dir }),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create worktree');
+    }
+    return response.json();
+}
+
+// Remove a worktree
+export async function removeWorktree(path: string, force?: boolean, dir?: string): Promise<{ status: string }> {
+    const response = await fetch('/api/review/worktrees/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, force, dir }),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to remove worktree');
+    }
+    return response.json();
+}
+
+// Move a worktree to a new location
+export async function moveWorktree(oldPath: string, newPath: string, dir?: string): Promise<{ status: string }> {
+    const response = await fetch('/api/review/worktrees/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPath, newPath, dir }),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to move worktree');
     }
     return response.json();
 }

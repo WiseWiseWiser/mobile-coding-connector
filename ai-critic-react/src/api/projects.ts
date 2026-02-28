@@ -6,6 +6,14 @@ export interface Todo {
     updated_at?: string;
 }
 
+// Worktree configuration stored in project
+export interface WorktreeConfig {
+    [id: string]: {
+        path: string;
+        branch: string;
+    };
+}
+
 // Project type from API
 export interface ProjectInfo {
     id: string;
@@ -22,6 +30,8 @@ export interface ProjectInfo {
     };
     parent_id?: string;
     todos?: Todo[];
+    worktrees?: WorktreeConfig;
+    readme?: string;
 }
 
 export async function fetchProjects(options?: { all?: boolean; parentId?: string }): Promise<ProjectInfo[]> {
@@ -79,6 +89,7 @@ export interface ProjectUpdate {
     ssh_key_id?: string | null;
     use_ssh?: boolean;
     parent_id?: string | null;
+    worktrees?: WorktreeConfig;
 }
 
 export async function updateProject(id: string, updates: ProjectUpdate): Promise<ProjectInfo> {
@@ -211,6 +222,43 @@ export async function deleteTodo(projectId: string, todoId: string): Promise<voi
         console.log('[deleteTodo] Deleted todo successfully');
     } catch (err) {
         console.error('[deleteTodo] Error:', err);
+        throw err;
+    }
+}
+
+// ---- README Operations ----
+
+export async function fetchReadme(projectId: string): Promise<string> {
+    console.log('[fetchReadme] Loading readme for project:', projectId);
+    try {
+        const resp = await fetch(`/api/projects/readme?project_id=${projectId}`);
+        if (!resp.ok) {
+            console.warn('[fetchReadme] Failed to fetch readme, status:', resp.status);
+            return '';
+        }
+        const data = await resp.json();
+        return data.readme || '';
+    } catch (err) {
+        console.error('[fetchReadme] Error:', err);
+        return '';
+    }
+}
+
+export async function updateReadme(projectId: string, readme: string): Promise<void> {
+    console.log('[updateReadme] Updating readme for project:', projectId);
+    try {
+        const resp = await fetch(`/api/projects/readme?project_id=${projectId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ readme }),
+        });
+        if (!resp.ok) {
+            const data = await resp.json();
+            throw new Error(data.error || 'Failed to update readme');
+        }
+        console.log('[updateReadme] Updated readme successfully');
+    } catch (err) {
+        console.error('[updateReadme] Error:', err);
         throw err;
     }
 }

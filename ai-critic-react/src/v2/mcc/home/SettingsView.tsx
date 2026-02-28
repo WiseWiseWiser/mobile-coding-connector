@@ -8,6 +8,7 @@ import { CloudflareSettingsContent } from './settings/CloudflareSettingsView';
 import { TerminalSection } from './settings/TerminalSection';
 import { ServerSettingsSection } from './settings/ServerSettingsSection';
 import { AIModelsSection } from './settings/AIModelsSection';
+import { ProxySettingsSection } from './settings/ProxySettingsSection';
 import './DiagnoseView.css'; // Shared styles: .diagnose-view, .diagnose-section, .diagnose-section-title, .diagnose-loading, .diagnose-error
 import './settings/GitSettings.css';
 import './settings/CloudflareSettingsView.css';
@@ -40,6 +41,8 @@ export function SettingsView() {
             <SecuritySection />
 
             <TerminalSection />
+
+            <ProxySettingsSection />
 
             <AIModelsSection />
 

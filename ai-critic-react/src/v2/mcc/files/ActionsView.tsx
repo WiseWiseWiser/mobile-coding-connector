@@ -135,6 +135,9 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
         controls.reset();
         
         try {
+            // Add user operation log
+            controls.addLog(`> Starting action: ${action.name}`);
+            
             await controls.run(async () => {
                 return runAction({
                     project_dir: projectDir,
@@ -147,12 +150,20 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
         }
     };
 
-    const handleStop = async (actionId: string) => {
+    const handleStop = async (actionId: string, actionName: string) => {
+        // First update local state immediately for better UX
+        const [, controls] = perActionStreaming.getActionState(actionId);
+        controls.addLog(`> Stopping action: ${actionName}...`);
+        
         try {
             await stopAction(projectName, actionId);
+            // Update local state to reflect stop was requested
+            controls.stop();
+            controls.addLog(`> Stop requested for action: ${actionName}`);
             loadStatuses();
         } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to stop action');
+            const errMsg = e instanceof Error ? e.message : 'Failed to stop action';
+            controls.addLog(`> ERROR: Failed to stop action: ${errMsg}`, true);
         }
     };
 
@@ -288,7 +299,7 @@ export function ActionsView({ projectName, projectDir }: ActionsViewProps) {
                                                     exitCode={status?.exit_code}
                                                     logs={logs}
                                                     onRun={() => handleRun(action)}
-                                                    onStop={() => handleStop(action.id)}
+                                                    onStop={() => handleStop(action.id, action.name)}
                                                     onEdit={() => handleStartEdit(action)}
                                                     onDelete={() => setDeleteConfirm({ actionId: action.id, name: action.name })}
                                                 />

@@ -12,6 +12,10 @@ export interface ToolInfo {
     install_windows: string;
     auto_install_cmd?: string;
     settings_path?: string;
+    // Upgrade commands
+    upgrade_macos?: string;
+    upgrade_linux?: string;
+    upgrade_windows?: string;
 }
 
 export interface ToolsResponse {
@@ -35,6 +39,18 @@ export async function installTool(name: string): Promise<Response> {
     if (!resp.ok) {
         const text = await resp.text();
         throw new Error(text || 'Failed to install tool');
+    }
+    return resp;
+}
+
+/** Start upgrading a tool, returns the raw Response for SSE streaming. */
+export async function upgradeTool(name: string): Promise<Response> {
+    const resp = await fetch(`/api/tools/upgrade?name=${encodeURIComponent(name)}`, {
+        method: 'POST',
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || 'Failed to upgrade tool');
     }
     return resp;
 }

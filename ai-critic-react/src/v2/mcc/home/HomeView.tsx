@@ -19,6 +19,7 @@ export { GitSettings } from './settings/GitSettings';
 export { CloneRepoView } from './settings/CloneRepoView';
 export { SSHServersView } from './SSHServersView';
 export { ManageFilesView } from './ManageFilesView';
+export { ExperimentalView } from './ExperimentalView';
 
 interface HomeOutletContext {
     onSelectProject: (project: ProjectInfo) => void;
@@ -128,7 +129,7 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
             </button>
             <button className="mcc-diagnose-btn" onClick={() => navigate('diagnose')}>
                 <DiagnoseIcon />
-                <span>System Diagnostics</span>
+                <span>Server Tools</span>
             </button>
             <button className="mcc-diagnose-btn" onClick={() => navigate('manage-server')}>
                 <SettingsIcon />
@@ -137,6 +138,17 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
             <button className="mcc-diagnose-btn" onClick={() => navigate('ssh-servers')}>
                 <TerminalIcon />
                 <span>Manage SSH</span>
+            </button>
+            <button className="mcc-experimental-btn" onClick={() => navigate('experimental')}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10.42 12.06a2.999 2.999 0 0 1 3.16-3.16c.36-.03.72-.13 1.07-.28.35-.15.67-.36.94-.62.27-.27.48-.59.62-.94.15-.35.25-.71.28-1.07a2.999 2.999 0 0 1 3.16-3.16"/>
+                    <path d="M14.5 12.06c-.03.36-.13.72-.28 1.07-.15.35-.36.67-.62.94-.27.27-.59.48-.94.62-.35.15-.71.25-1.07.28a2.999 2.999 0 0 1-3.16 3.16"/>
+                    <path d="M12 19.06v2"/>
+                    <path d="M12 15.06v2"/>
+                    <path d="M8 17.06h2"/>
+                    <path d="M14 17.06h2"/>
+                </svg>
+                <span>Experimental</span>
             </button>
         </div>
     );

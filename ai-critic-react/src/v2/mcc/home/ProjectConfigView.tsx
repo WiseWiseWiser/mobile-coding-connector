@@ -17,6 +17,8 @@ import { CustomSelect } from './CustomSelect';
 import { GitPushSection } from '../files/GitPushSection';
 import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
 import { ProjectTodos } from './ProjectTodos';
+import { WorktreesSection } from './WorktreesSection';
+import { ProjectReadmeEditor } from './ProjectReadmeEditor';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import './ProjectConfigView.css';
 
@@ -485,6 +487,14 @@ export function ProjectConfigView() {
                     )}
                 </div>
             )}
+
+            <ErrorBoundary>
+                <WorktreesSection project={project} />
+            </ErrorBoundary>
+
+            <ErrorBoundary>
+                <ProjectReadmeEditor projectId={project.id} />
+            </ErrorBoundary>
 
             <ErrorBoundary>
                 <ProjectTodos projectId={project.id} />

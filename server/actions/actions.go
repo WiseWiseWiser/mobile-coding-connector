@@ -395,6 +395,8 @@ func RunActionWithID(actionID string, projectDir string, script string, w http.R
 		mu.Lock()
 		actionStatuses[actionID] = status
 		mu.Unlock()
+
+		fmt.Printf("Starting action %s in project %s with script: %s\n", actionID, projectName, script)
 	}
 
 	// Track log count for periodic save
@@ -523,16 +525,27 @@ func StopAction(actionID string, projectName string) error {
 
 	cmd, ok := actionProcesses[actionID]
 	if !ok || cmd == nil || cmd.Process == nil {
-		return fmt.Errorf("action %s is not running", actionID)
+		// Check if it was already marked as not running
+		if status, statusOk := actionStatuses[actionID]; statusOk {
+			if !status.Running {
+				return fmt.Errorf("action %s is not running (already finished)", actionID)
+			}
+		}
+		return fmt.Errorf("action %s is not running (process not found)", actionID)
 	}
+
+	logMsg := fmt.Sprintf("Stopping action %s (PID: %d)", actionID, cmd.Process.Pid)
+	fmt.Println(logMsg)
 
 	// Kill the entire process group (including child processes)
 	pgid, err := syscall.Getpgid(cmd.Process.Pid)
 	if err == nil {
 		// Kill the entire process group with negative PID
 		syscall.Kill(-pgid, syscall.SIGKILL)
+		fmt.Printf("Sent SIGKILL to process group %d for action %s\n", pgid, actionID)
 	} else {
 		// Fallback to killing just the process
+		fmt.Printf("Failed to get process group, killing process directly: %v\n", err)
 		cmd.Process.Kill()
 	}
 
@@ -542,11 +555,14 @@ func StopAction(actionID string, projectName string) error {
 		status.FinishedAt = time.Now()
 		status.ExitCode = -1
 		status.Logs.addLog("Action stopped by user")
+		fmt.Printf("Action %s marked as stopped. Exit code: -1\n", actionID)
 
 		// Save to disk
 		statuses := make(map[string]ActionStatus)
 		statuses[actionID] = *status
 		saveState(projectName, statuses)
+	} else {
+		fmt.Printf("Warning: No status found for action %s during stop\n", actionID)
 	}
 
 	actionProcesses[actionID] = nil
@@ -788,12 +804,17 @@ func handleActionStop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	project := r.URL.Query().Get("project")
+
+	fmt.Printf("Stop request received for action %s in project %s\n", actionID, project)
+
 	err := StopAction(actionID, project)
 	if err != nil {
+		fmt.Printf("Stop action failed for %s: %v\n", actionID, err)
 		respondErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	fmt.Printf("Action %s stopped successfully\n", actionID)
 	respondJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
 }
 

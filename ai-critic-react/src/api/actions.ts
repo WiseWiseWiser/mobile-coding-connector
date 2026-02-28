@@ -84,7 +84,10 @@ export async function stopAction(project: string, actionId: string): Promise<voi
     const resp = await fetch(`/api/actions/stop?project=${encodeURIComponent(project)}&action_id=${encodeURIComponent(actionId)}`, {
         method: 'POST',
     });
-    if (!resp.ok) throw new Error('Failed to stop action');
+    if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to stop action');
+    }
 }
 
 export type ActionStreamHandler = {

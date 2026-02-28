@@ -34,6 +34,7 @@ type Project struct {
 	CreatedAt string `json:"created_at"`
 	ParentID  string `json:"parent_id,omitempty"`
 	Todos     []Todo `json:"todos,omitempty"`
+	Readme    string `json:"readme,omitempty"`
 }
 
 // GitStatusInfo holds git status information for a project
@@ -162,6 +163,7 @@ type ProjectUpdate struct {
 	SSHKeyID *string `json:"ssh_key_id"`
 	UseSSH   *bool   `json:"use_ssh"`
 	ParentID *string `json:"parent_id"`
+	Readme   *string `json:"readme"`
 }
 
 func Update(id string, updates ProjectUpdate) (*Project, error) {
@@ -184,6 +186,9 @@ func Update(id string, updates ProjectUpdate) (*Project, error) {
 		if updates.ParentID != nil {
 			list[i].ParentID = *updates.ParentID
 		}
+		if updates.Readme != nil {
+			list[i].Readme = *updates.Readme
+		}
 		if err := saveAll(list); err != nil {
 			return nil, err
 		}
@@ -195,6 +200,74 @@ func Update(id string, updates ProjectUpdate) (*Project, error) {
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/projects", handleProjects)
 	mux.HandleFunc("/api/projects/todos", handleTodos)
+	mux.HandleFunc("/api/projects/readme", handleReadme)
+}
+
+func handleReadme(w http.ResponseWriter, r *http.Request) {
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		respondErr(w, http.StatusBadRequest, "project_id is required")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		mu.RLock()
+		defer mu.RUnlock()
+		list, err := loadAll()
+		if err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		for _, p := range list {
+			if p.ID == projectID {
+				respondJSON(w, http.StatusOK, map[string]string{"readme": p.Readme})
+				return
+			}
+		}
+		respondErr(w, http.StatusNotFound, "project not found")
+
+	case http.MethodPut:
+		var req struct {
+			Readme string `json:"readme"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondErr(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		list, err := loadAll()
+		if err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		var projectIndex int = -1
+		for i, p := range list {
+			if p.ID == projectID {
+				projectIndex = i
+				break
+			}
+		}
+
+		if projectIndex == -1 {
+			respondErr(w, http.StatusNotFound, "project not found")
+			return
+		}
+
+		list[projectIndex].Readme = req.Readme
+		if err := saveAll(list); err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func handleProjects(w http.ResponseWriter, r *http.Request) {

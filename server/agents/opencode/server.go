@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/xhd2015/lifelog-private/ai-critic/server/logs"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
 
 	exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
@@ -86,6 +88,10 @@ func GetOrStartOpencodeServer() (*OpencodeServer, error) {
 		if info != nil && info.PID > 0 && info.Port > 0 {
 			if IsProcessAlive(info.PID) && IsPortReachable(info.Port) {
 				fmt.Printf("[opencode] Reusing existing internal server: PID=%d, Port=%d\n", info.PID, info.Port)
+				if quicktest.Enabled() {
+					fmt.Printf("[opencode] Reusing existing internal server caller:\n")
+					logs.PrintCallerStack()
+				}
 				result = &OpencodeServer{
 					Port: info.Port,
 				}

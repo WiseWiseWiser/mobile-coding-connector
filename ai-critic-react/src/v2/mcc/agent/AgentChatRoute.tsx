@@ -5,6 +5,7 @@ import { AgentChat } from './AgentChat';
 import { AgentPicker } from './AgentPicker';
 import { fetchOpencodeServer } from '../../../api/agents';
 import { fetchCustomAgentSessions, type CustomAgentSession } from '../../../api/customAgents';
+import { CustomAgentSessionView } from './CustomAgentSessionView';
 
 export function AgentChatRoute() {
     const ctx = useOutletContext<AgentOutletContext>();
@@ -86,6 +87,16 @@ export function AgentChatRoute() {
                         onConfigureAgent={(aid) => ctx.navigateToView(`${aid}/settings`)}
                         onNavigateToView={ctx.navigateToView}
                         externalSessions={ctx.externalSessions}
+                    />
+                );
+            }
+            // If we have a specific sessionId in the URL, use the dedicated session view
+            if (sessionId) {
+                return (
+                    <CustomAgentSessionView
+                        session={customSession}
+                        projectName={ctx.projectName}
+                        onBack={() => ctx.navigateToView(agentId)}
                     />
                 );
             }

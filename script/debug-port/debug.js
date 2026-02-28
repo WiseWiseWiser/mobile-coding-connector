@@ -7,14 +7,18 @@ const VIEWPORT_HEIGHT = parseInt(process.env.VIEWPORT_HEIGHT || '800');
 const HEADLESS = process.env.HEADLESS !== 'false';
 
 (async () => {
+    console.log('DEBUG: Starting debug.js');
     // Check if stdin has piped data
     const isPipe = !process.stdin.isTTY;
     let scriptArg;
     
     if (isPipe) {
+        console.log('DEBUG: stdin is pipe');
         // Read script from stdin
         scriptArg = fs.readFileSync('/dev/stdin', 'utf-8').trim();
+        console.log('DEBUG: script from stdin:', scriptArg);
     } else {
+        console.log('DEBUG: stdin is TTY');
         scriptArg = process.argv[2];
     }
 
@@ -79,4 +83,5 @@ const HEADLESS = process.env.HEADLESS !== 'false';
 
     await browser.close();
     console.log('\nDone');
+    process.exit(0);
 })();

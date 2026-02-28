@@ -15,6 +15,7 @@ export interface PerActionControls {
     stop: () => void;
     reset: () => void;
     setShowLogs: (show: boolean) => void;
+    addLog: (line: string, isError?: boolean) => void;
 }
 
 export type PerActionEntry = [PerActionState, PerActionControls];
@@ -157,6 +158,20 @@ export function usePerActionStreaming(): {
         });
     }, []);
 
+    const addLog = useCallback((actionId: string, line: string, isError: boolean = false) => {
+        setActionStates(prev => {
+            const next = new Map(prev);
+            const state = next.get(actionId);
+            if (state) {
+                next.set(actionId, {
+                    ...state,
+                    logs: [...state.logs, { text: line, error: isError }],
+                });
+            }
+            return next;
+        });
+    }, []);
+
     const getActionState = (actionId: string): PerActionEntry => {
         const state = actionStates.get(actionId) || {
             running: false,
@@ -171,6 +186,7 @@ export function usePerActionStreaming(): {
             stop: () => stop(actionId),
             reset: () => reset(actionId),
             setShowLogs: (show) => setShowLogs(actionId, show),
+            addLog: (line, isError) => addLog(actionId, line, isError),
         };
 
         return [state, controls];

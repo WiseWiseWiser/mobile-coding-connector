@@ -29,6 +29,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/checkpoint"
 	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/codexweb"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
@@ -42,6 +43,7 @@ import (
 	pfcloudflare "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/cloudflare"
 	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/localtunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/proxyconfig"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
@@ -90,11 +92,13 @@ func GetQuickTestQuitChan() <-chan struct{} {
 }
 
 func RunBackgroundTasks() {
+	fmt.Printf("[auto-task] Running background tasks\n")
 	opencode.StartHealthCheck()
 	cloudflareSettings.StartGlobalHealthChecks()
 }
 
 func RunStartupTasks() {
+	fmt.Printf("[auto-task] Running startup tasks\n")
 	domains.AutoStartTunnels()
 	opencode.AutoStartWebServer()
 
@@ -106,6 +110,7 @@ func RunStartupTasks() {
 }
 
 func RunSideEffectTasks() {
+	fmt.Printf("[auto-task] Running side effect tasks\n")
 	RunBackgroundTasks()
 	RunStartupTasks()
 }
@@ -434,6 +439,7 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// terminal API
 	terminal.RegisterAPI(mux)
+	proxyconfig.RegisterAPI(mux)
 
 	// port forwarding: register providers and API
 	portforward.RegisterDefaultProvider(&pflocaltunnel.Provider{})
@@ -524,6 +530,10 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Build from source API
 	registerBuildAPI(mux)
+
+	// Codex Web API
+	codexweb.RegisterRoutes(mux)
+
 	// Graceful shutdown endpoint
 	mux.HandleFunc("/api/shutdown", shutdownHandler)
 

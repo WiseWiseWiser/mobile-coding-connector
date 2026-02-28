@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchTools, installTool } from '../../../api/tools';
+import { fetchTools, installTool, upgradeTool } from '../../../api/tools';
 import type { ToolInfo, ToolsResponse } from '../../../api/tools';
 import { consumeSSEStream } from '../../../api/sse';
 import { LogViewer } from '../../LogViewer';
@@ -35,7 +35,7 @@ export function DiagnoseView() {
         <div className="diagnose-view">
             <div className="mcc-section-header">
                 <button className="mcc-back-btn" onClick={() => navigate('..')}>&larr;</button>
-                <h2>System Diagnostics</h2>
+                <h2>Server Tools</h2>
             </div>
 
             {loading ? (
@@ -89,6 +89,7 @@ function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
     const [installLogs, setInstallLogs] = useState<LogLine[]>([]);
     const [installDone, setInstallDone] = useState(false);
     const [installError, setInstallError] = useState(false);
+    const [upgrading, setUpgrading] = useState(false);
 
     const getInstallCommand = () => {
         switch (os) {
@@ -101,6 +102,24 @@ function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
             default:
                 return tool.install_linux;
         }
+    };
+
+    const getUpgradeCommand = () => {
+        switch (os) {
+            case 'darwin':
+                return tool.upgrade_macos;
+            case 'linux':
+                return tool.upgrade_linux;
+            case 'windows':
+                return tool.upgrade_windows;
+            default:
+                return tool.upgrade_linux;
+        }
+    };
+
+    const hasUpgradeCommand = () => {
+        const cmd = getUpgradeCommand();
+        return cmd && cmd.trim().length > 0;
     };
 
     const handleInstall = async (e: React.MouseEvent) => {
@@ -130,6 +149,37 @@ function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
             setInstallError(true);
         }
         setInstalling(false);
+    };
+
+    const handleUpgrade = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!hasUpgradeCommand()) return;
+        
+        setUpgrading(true);
+        setInstallLogs([]);
+        setInstallDone(false);
+        setInstallError(false);
+        setExpanded(true);
+
+        try {
+            const resp = await upgradeTool(tool.name);
+            await consumeSSEStream(resp, {
+                onLog: (line) => setInstallLogs(prev => [...prev, line]),
+                onError: (line) => {
+                    setInstallLogs(prev => [...prev, line]);
+                    setInstallError(true);
+                },
+                onDone: (message) => {
+                    setInstallLogs(prev => [...prev, { text: message }]);
+                    setInstallDone(true);
+                    onInstalled();
+                },
+            });
+        } catch (err) {
+            setInstallLogs(prev => [...prev, { text: String(err), error: true }]);
+            setInstallError(true);
+        }
+        setUpgrading(false);
     };
 
     const showLogs = installLogs.length > 0;
@@ -214,6 +264,19 @@ function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
                                 <span className="diagnose-tool-install-os">Windows:</span>
                                 <code>{tool.install_windows}</code>
                             </div>
+                        </div>
+                    )}
+                    {tool.installed && (
+                        <div className="diagnose-tool-row">
+                            <button
+                                className="diagnose-tool-upgrade-btn"
+                                onClick={handleUpgrade}
+                                disabled={upgrading || !hasUpgradeCommand()}
+                                title={hasUpgradeCommand() ? 'Upgrade to latest version' : 'Upgrade not available for this tool'}
+                                style={{ marginTop: '8px' }}
+                            >
+                                {upgrading ? 'Upgrading...' : hasUpgradeCommand() ? 'Upgrade' : 'Upgrade (not available)'}
+                            </button>
                         </div>
                     )}
                 </div>

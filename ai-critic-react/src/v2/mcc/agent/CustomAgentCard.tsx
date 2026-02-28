@@ -20,8 +20,9 @@ export function CustomAgentCard({ agent, onEdit, onDelete, onLaunch }: AgentCard
       return;
     }
     try {
-      await launchCustomAgent(agent.id, projectDir);
-      onLaunch(agent.id);
+      const result = await launchCustomAgent(agent.id, projectDir);
+      // Navigate to the specific session view instead of generic agent view
+      onLaunch(`${agent.id}/${result.sessionId}`);
     } catch (err) {
       console.error('Failed to launch agent:', err);
       alert('Failed to launch agent: ' + (err instanceof Error ? err.message : String(err)));

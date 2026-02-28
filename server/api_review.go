@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -124,6 +125,10 @@ func registerReviewAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/review/fetch", handleGitFetch)
 	mux.HandleFunc("/api/review/status", handleGitStatus)
 	mux.HandleFunc("/api/review/branches", handleGitBranches)
+	mux.HandleFunc("/api/review/worktrees", handleListWorktrees)
+	mux.HandleFunc("/api/review/worktrees/create", handleCreateWorktree)
+	mux.HandleFunc("/api/review/worktrees/remove", handleRemoveWorktree)
+	mux.HandleFunc("/api/review/worktrees/move", handleMoveWorktree)
 	mux.HandleFunc("/api/review/list-untracked-dir", handleListUntrackedDir)
 	mux.HandleFunc("/api/review/generate-commit-message", handleGenerateCommitMessage)
 }
@@ -578,11 +583,13 @@ func handleGitFetch(w http.ResponseWriter, r *http.Request) {
 
 // GitStatusFile represents a single file in git status output
 type GitStatusFile struct {
-	Path     string `json:"path"`
-	Status   string `json:"status"`   // "added", "modified", "deleted", "renamed", "untracked"
-	IsStaged bool   `json:"isStaged"` // Whether the change is staged
-	Size     int64  `json:"size"`     // File size in bytes
-	IsDir    bool   `json:"isDir"`    // Whether this is a directory
+	Path          string `json:"path"`
+	Status        string `json:"status"`        // "added", "modified", "deleted", "renamed", "untracked"
+	IsStaged      bool   `json:"isStaged"`      // Whether the change is staged
+	Size          int64  `json:"size"`          // File size in bytes
+	IsDir         bool   `json:"isDir"`         // Whether this is a directory
+	IsGitDir      bool   `json:"isGitDir"`      // Whether this directory is a git repository
+	IsGitWorktree bool   `json:"isGitWorktree"` // Whether this directory is a git worktree
 }
 
 // GitStatusResult represents the result of git status
@@ -664,12 +671,30 @@ func handleListUntrackedDir(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
+
+		// Check if this directory is a git repository
+		// Git repos have either a .git directory (normal repos) or a .git file (worktrees)
+		isGitDir := false
+		isGitWorktree := false
+		if entry.IsDir() {
+			gitPath := filepath.Join(fullPath, entry.Name(), ".git")
+			if gitInfo, err := os.Stat(gitPath); err == nil {
+				isGitDir = true
+				// Check if it's a worktree (.git is a file, not a directory)
+				if !gitInfo.IsDir() {
+					isGitWorktree = true
+				}
+			}
+		}
+
 		files = append(files, GitStatusFile{
-			Path:     entryPath,
-			Status:   "untracked",
-			IsStaged: false,
-			Size:     info.Size(),
-			IsDir:    entry.IsDir(),
+			Path:          entryPath,
+			Status:        "untracked",
+			IsStaged:      false,
+			Size:          info.Size(),
+			IsDir:         entry.IsDir(),
+			IsGitDir:      isGitDir,
+			IsGitWorktree: isGitWorktree,
 		})
 	}
 
@@ -732,17 +757,19 @@ func getGitStatus(dir string) (*GitStatusResult, error) {
 		}
 
 		// Get file size and check if directory
-		size, isDir := getFileSize(dir, filePath)
+		size, isDir, isGitDir, isGitWorktree := getFileSize(dir, filePath)
 
 		// Staged change
 		if indexStatus != ' ' && indexStatus != '?' {
 			status := parseStatusChar(indexStatus)
 			result.Files = append(result.Files, GitStatusFile{
-				Path:     filePath,
-				Status:   status,
-				IsStaged: true,
-				Size:     size,
-				IsDir:    isDir,
+				Path:          filePath,
+				Status:        status,
+				IsStaged:      true,
+				Size:          size,
+				IsDir:         isDir,
+				IsGitDir:      isGitDir,
+				IsGitWorktree: isGitWorktree,
 			})
 		}
 
@@ -753,11 +780,13 @@ func getGitStatus(dir string) (*GitStatusResult, error) {
 				status = "untracked"
 			}
 			result.Files = append(result.Files, GitStatusFile{
-				Path:     filePath,
-				Status:   status,
-				IsStaged: false,
-				Size:     size,
-				IsDir:    isDir,
+				Path:          filePath,
+				Status:        status,
+				IsStaged:      false,
+				Size:          size,
+				IsDir:         isDir,
+				IsGitDir:      isGitDir,
+				IsGitWorktree: isGitWorktree,
 			})
 		}
 	}
@@ -765,14 +794,29 @@ func getGitStatus(dir string) (*GitStatusResult, error) {
 	return result, nil
 }
 
-// getFileSize returns the size of a file in bytes and whether it's a directory
-func getFileSize(dir, filePath string) (int64, bool) {
+// getFileSize returns the size of a file in bytes, whether it's a directory, whether it's a git repository, and whether it's a git worktree
+func getFileSize(dir, filePath string) (int64, bool, bool, bool) {
 	fullPath := filepath.Join(dir, filePath)
 	info, err := os.Stat(fullPath)
 	if err != nil {
-		return 0, false
+		return 0, false, false, false
 	}
-	return info.Size(), info.IsDir()
+
+	// Check if this is a git repository (has .git file or directory)
+	isGitDir := false
+	isGitWorktree := false
+	if info.IsDir() {
+		gitPath := filepath.Join(fullPath, ".git")
+		if gitInfo, err := os.Stat(gitPath); err == nil {
+			isGitDir = true
+			// Check if it's a worktree (.git is a file, not a directory)
+			if !gitInfo.IsDir() {
+				isGitWorktree = true
+			}
+		}
+	}
+
+	return info.Size(), info.IsDir(), isGitDir, isGitWorktree
 }
 
 // parseStatusChar converts a git status character to a human-readable status
@@ -1390,4 +1434,220 @@ func findFreeModel() (freeModels []string, selectedModel string, err error) {
 		selectedModel = freeModels[0]
 	}
 	return freeModels, selectedModel, nil
+}
+
+// Worktree represents a git worktree
+type Worktree struct {
+	Path   string `json:"path"`
+	Branch string `json:"branch"`
+	IsMain bool   `json:"isMain"`
+	IsBare bool   `json:"isBare"`
+}
+
+// handleListWorktrees lists all worktrees for a repository
+func handleListWorktrees(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Dir string `json:"dir"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	worktrees, err := getWorktrees(req.Dir)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, worktrees)
+}
+
+// getWorktrees returns all worktrees for a git repository
+func getWorktrees(dir string) ([]Worktree, error) {
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list worktrees: %w", err)
+	}
+
+	return parseWorktrees(string(output)), nil
+}
+
+// parseWorktrees parses the porcelain output from git worktree list
+func parseWorktrees(output string) []Worktree {
+	var worktrees []Worktree
+	var current Worktree
+
+	for _, line := range strings.Split(output, "\n") {
+		if line == "" {
+			// Empty line indicates end of a worktree entry
+			if current.Path != "" {
+				worktrees = append(worktrees, current)
+				current = Worktree{}
+			}
+			continue
+		}
+
+		if strings.HasPrefix(line, "worktree ") {
+			current.Path = strings.TrimPrefix(line, "worktree ")
+		} else if strings.HasPrefix(line, "HEAD ") {
+			// HEAD line, could extract commit if needed
+		} else if strings.HasPrefix(line, "branch ") {
+			branchRef := strings.TrimPrefix(line, "branch ")
+			// Extract branch name from refs/heads/branch-name
+			current.Branch = strings.TrimPrefix(branchRef, "refs/heads/")
+		} else if line == "bare" {
+			current.IsBare = true
+		} else if line == "detached" {
+			// Detached HEAD state
+		}
+	}
+
+	// Don't forget the last worktree
+	if current.Path != "" {
+		worktrees = append(worktrees, current)
+	}
+
+	// Mark the first worktree (main) as IsMain
+	if len(worktrees) > 0 {
+		worktrees[0].IsMain = true
+	}
+
+	return worktrees
+}
+
+// handleCreateWorktree creates a new worktree
+func handleCreateWorktree(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Branch string `json:"branch"`
+		Path   string `json:"path"`
+		Dir    string `json:"dir"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if req.Branch == "" || req.Path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Branch and path are required"})
+		return
+	}
+
+	cmd := exec.Command("git", "worktree", "add", req.Path, req.Branch)
+	if req.Dir != "" {
+		cmd.Dir = req.Dir
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("Failed to create worktree: %s", string(output)),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "success",
+		"message": string(output),
+	})
+}
+
+// handleRemoveWorktree removes a worktree
+func handleRemoveWorktree(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Path  string `json:"path"`
+		Force bool   `json:"force"`
+		Dir   string `json:"dir"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if req.Path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Path is required"})
+		return
+	}
+
+	args := []string{"worktree", "remove"}
+	if req.Force {
+		args = append(args, "--force")
+	}
+	args = append(args, req.Path)
+
+	cmd := exec.Command("git", args...)
+	if req.Dir != "" {
+		cmd.Dir = req.Dir
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("Failed to remove worktree: %s", string(output)),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "success",
+		"message": string(output),
+	})
+}
+
+// handleMoveWorktree moves a worktree to a new location
+func handleMoveWorktree(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		OldPath string `json:"oldPath"`
+		NewPath string `json:"newPath"`
+		Dir     string `json:"dir"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if req.OldPath == "" || req.NewPath == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Old path and new path are required"})
+		return
+	}
+
+	// Git worktree move command: git worktree move <old-path> <new-path>
+	cmd := exec.Command("git", "worktree", "move", req.OldPath, req.NewPath)
+	if req.Dir != "" {
+		cmd.Dir = req.Dir
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("Failed to move worktree: %s", string(output)),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "success",
+		"message": string(output),
+	})
 }

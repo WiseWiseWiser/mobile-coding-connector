@@ -20,21 +20,25 @@ Starts a quick-test server with the latest code and opens a browser debugger.
 This script runs quick-test (which manages vite and server) and opens a browser debugger for JS code evaluation.
 
 Options:
-  -h, --help      Show this help message
-  --port PORT     Port for quick-test server (default: 3580)
-  --no-headless   Run browser with visible window
-  --no-vite       Pass to quick-test: don't auto-start vite (use built frontend)
+  -h, --help        Show this help message
+  --port PORT       Port for quick-test server (default: 3580)
+  --no-headless     Run browser with visible window
+  --no-vite         Pass to quick-test: don't auto-start vite (use built frontend)
+  --restart-exec    Use exec restart when port is in use (preserves PID, faster but riskier)
 `
 
 func main() {
+	fmt.Println("DEBUG: Starting main.go")
 	err := run(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
+	fmt.Println("DEBUG: main.go completed successfully")
 }
 
 func run(args []string) error {
+	fmt.Println("DEBUG: run() called with args:", args)
 	var opts lib.QuickTestOptions
 	var noHeadless bool
 
@@ -42,11 +46,15 @@ func run(args []string) error {
 		Int("--port", &opts.Port).
 		Bool("--no-headless", &noHeadless).
 		Bool("--no-vite", &opts.NoVite).
+		Bool("--restart-exec", &opts.RestartExec).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
 		return err
 	}
+
+	fmt.Println("DEBUG: args after parsing:", args)
+	fmt.Println("DEBUG: opts.Port:", opts.Port, "noHeadless:", noHeadless, "restartExec:", opts.RestartExec)
 
 	if len(args) > 0 {
 		return fmt.Errorf("unknown args: %v", args)
@@ -116,7 +124,7 @@ func run(args []string) error {
 	if result != nil && result.ViteCmd != nil && result.ViteCmd.Process != nil {
 		fmt.Println("Stopping Vite dev server...")
 		result.ViteCmd.Process.Signal(syscall.SIGTERM)
-		result.ViteCmd.Wait()
+		result.ViteCmd.Process.Wait()
 	}
 
 	if debugErr != nil {

@@ -252,6 +252,34 @@
     background: #1d4ed8;
 }
 
+/* Upgrade Button */
+.diagnose-tool-upgrade-btn {
+    padding: 4px 12px;
+    background: #f59e0b;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, opacity 0.15s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.diagnose-tool-upgrade-btn:hover:not(:disabled) {
+    background: #d97706;
+}
+
+.diagnose-tool-upgrade-btn:active:not(:disabled) {
+    background: #b45309;
+}
+
+.diagnose-tool-upgrade-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* Install Streaming Logs */
 .diagnose-tool-install-logs {
     padding: 10px 0;

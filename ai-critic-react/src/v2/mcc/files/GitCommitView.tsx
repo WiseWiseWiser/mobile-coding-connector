@@ -73,6 +73,32 @@ function parseDiffToFileDiff(file: DiffFile): FileDiff {
     };
 }
 
+// Helper function to render file tags (Git dir, Big File, Large File)
+function renderFileTags(f: GitStatusFile): React.ReactNode {
+    const tags: React.ReactNode[] = [];
+
+    // Git directory tag - show different tag for worktrees
+    if (f.isDir && f.isGitDir) {
+        if (f.isGitWorktree) {
+            tags.push(<span key="git" className="mcc-file-tag mcc-file-tag-git-worktree">Git Worktree</span>);
+        } else {
+            tags.push(<span key="git" className="mcc-file-tag mcc-file-tag-git">Git</span>);
+        }
+    }
+
+    // Large file tags (only for files, not directories)
+    if (!f.isDir && f.size) {
+        if (f.size > 1000 * 1000) { // > 1MB
+            tags.push(<span key="large" className="mcc-file-tag mcc-file-tag-large">Large File</span>);
+        } else if (f.size > 100 * 1000) { // > 100KB
+            tags.push(<span key="big" className="mcc-file-tag mcc-file-tag-big">Big File</span>);
+        }
+    }
+
+    if (tags.length === 0) return null;
+    return <span className="mcc-file-tags">{tags}</span>;
+}
+
 export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewProps) {
     const [stagedFiles, setStagedFiles] = useState<GitStatusFile[]>([]);
     const [unstagedFiles, setUnstagedFiles] = useState<GitStatusFile[]>([]);
@@ -232,6 +258,10 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
     const handleStageAll = async () => {
         try {
             for (const f of unstagedFiles) {
+                // Skip directories that are git repositories or git worktrees
+                if (f.isDir && f.isGitDir) {
+                    continue;
+                }
                 await stageFile(f.path, projectDir);
             }
             await refresh();
@@ -356,7 +386,8 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                             {statusBadge(f.status)}
                             <div className="mcc-changed-file-info">
                                 <span className="mcc-changed-file-path">{f.path}</span>
-                                <span className="mcc-changed-file-size">{formatFileSize(f.size)}</span>
+                                <span className="mcc-changed-file-size">{formatFileSize(f.size ?? 0)}</span>
+                                {renderFileTags(f)}
                                 <span className="mcc-changed-file-suffix">{getFileIcon(f.path)}{getFileSuffix(f.path)}</span>
                             </div>
                             <span className="mcc-git-file-actions">
@@ -411,7 +442,8 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                                 {statusBadge(f.isDir ? 'dir' : 'added')}
                                 <div className="mcc-changed-file-info">
                                     <span className="mcc-changed-file-path">{(() => { const name = f.path.split('/').pop() || ''; return f.isDir && !name.endsWith('/') ? name + '/' : name; })()}</span>
-                                    <span className="mcc-changed-file-size">{f.isDir ? 'dir' : formatFileSize(f.size)}</span>
+                                    <span className="mcc-changed-file-size">{f.isDir ? 'dir' : formatFileSize(f.size ?? 0)}</span>
+                                    {renderFileTags(f)}
                                 </div>
                                 <span className="mcc-git-file-actions">
                                     {!f.isDir && (
@@ -449,7 +481,8 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                             {statusBadge(f.isDir ? 'dir' : (f.status === 'untracked' ? 'added' : f.status))}
                             <div className="mcc-changed-file-info">
                                 <span className="mcc-changed-file-path">{f.isDir && !f.path.endsWith('/') ? f.path + '/' : f.path}</span>
-                                <span className="mcc-changed-file-size">{f.isDir ? 'dir' : formatFileSize(f.size)}</span>
+                                <span className="mcc-changed-file-size">{f.isDir ? 'dir' : formatFileSize(f.size ?? 0)}</span>
+                                {renderFileTags(f)}
                                 {!f.isDir && <span className="mcc-changed-file-suffix">{getFileIcon(f.path)}{getFileSuffix(f.path)}</span>}
                             </div>
                             <span className="mcc-git-file-actions">

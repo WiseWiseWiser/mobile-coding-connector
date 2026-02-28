@@ -4,7 +4,7 @@ import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, CodexWebUI } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './logs';
 import './App.css';
@@ -172,6 +172,8 @@ function App() {
                             <Route path="download-file" element={<DownloadFileView />} />
                             <Route path="manage-server" element={<ManageServerView />} />
                             <Route path="ssh-servers" element={<SSHServersView />} />
+                            <Route path="experimental" element={<ExperimentalView />} />
+                            <Route path="codex-web" element={<CodexWebUI />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
@@ -199,7 +201,8 @@ function App() {
                         </Route>
                     </Route>
                     {/* Project-specific routes: MobileCodingConnector as layout */}
-                    <Route path="project/:projectName" element={<MobileCodingConnector />}>
+                    {/* Supports both /project/name and /project/name~worktreeId */}
+                    <Route path="project/:projectName*" element={<MobileCodingConnector />}>
                         <Route index element={<ProjectConfigView />} />
                         <Route path="home">
                             <Route index element={<WorkspaceListView />} />
@@ -217,6 +220,8 @@ function App() {
                             <Route path="manage-server" element={<ManageServerView />} />
                             <Route path="manage-files" element={<ManageFilesView />} />
                             <Route path="ssh-servers" element={<SSHServersView />} />
+                            <Route path="experimental" element={<ExperimentalView />} />
+                            <Route path="codex-web" element={<CodexWebUI />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />

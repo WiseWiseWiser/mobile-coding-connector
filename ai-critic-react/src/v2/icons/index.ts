@@ -20,3 +20,5 @@ export { GitHubIcon } from './GitHubIcon';
 export { LockIcon } from './LockIcon';
 export { LogsIcon } from './LogsIcon';
 export { TrashIcon } from './TrashIcon';
+export { BeakerIcon } from './BeakerIcon';
+export { ProjectDetailIcon } from './ProjectDetailIcon';

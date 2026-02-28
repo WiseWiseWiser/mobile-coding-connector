@@ -20,6 +20,7 @@ type QuickTestOptions struct {
 	FrontendPort int  // If > 0, proxy to this port (default: ViteDevPort if !NoVite)
 	Keep         bool // If true, add --keep flag
 	ProjectDir   string
+	RestartExec  bool // If true, use exec restart when port is in use (faster but riskier)
 
 	Stdout io.Writer
 	Stderr io.Writer
@@ -63,6 +64,7 @@ func (o *QuickTestOptions) GetFrontendPort() int {
 }
 
 func QuickTestPrepare(opts *QuickTestOptions) error {
+	fmt.Println("DEBUG: QuickTestPrepare called")
 	port := opts.GetPort()
 	projectDir := opts.GetProjectDir()
 
@@ -74,13 +76,26 @@ func QuickTestPrepare(opts *QuickTestOptions) error {
 	binaryPath := "/tmp/ai-critic-quick"
 
 	if CheckPort(port) {
-		fmt.Printf("Port %d is in use, trying exec-restart...\n", port)
-		if tryExecRestart(port, binaryPath) {
-			fmt.Println("Server restarted via exec (PID preserved)")
-			opts.restarted = true
-			return nil
+		if opts.RestartExec {
+			fmt.Printf("Port %d is in use, trying exec-restart (RestartExec flag is set)...\n", port)
+			if tryExecRestart(port, binaryPath) {
+				fmt.Println("Server restarted via exec (PID preserved)")
+				opts.restarted = true
+				return nil
+			}
+			return fmt.Errorf("port %d is in use but exec-restart failed - ensure quick-test server is running", port)
 		}
-		return fmt.Errorf("port %d is in use but exec-restart failed - ensure quick-test server is running", port)
+
+		fmt.Printf("Port %d is in use, killing existing server...\n", port)
+		killedPid, err := KillPortPid(port)
+		if err != nil {
+			return fmt.Errorf("failed to kill process on port %d: %v", port, err)
+		}
+		if killedPid > 0 {
+			fmt.Printf("Killed previous server (PID: %d), waiting for port to be released...\n", killedPid)
+			// Wait a moment for the port to be released
+			time.Sleep(500 * time.Millisecond)
+		}
 	}
 
 	if !opts.NoVite {
