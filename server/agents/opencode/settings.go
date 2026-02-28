@@ -30,6 +30,7 @@ type WebServerConfig struct {
 type Settings struct {
 	Model         string          `json:"model,omitempty"`
 	DefaultDomain string          `json:"default_domain,omitempty"`
+	BinaryPath    string          `json:"binary_path,omitempty"`
 	WebServer     WebServerConfig `json:"web_server"`
 }
 
@@ -91,6 +92,7 @@ func copySettings(s *Settings) *Settings {
 	return &Settings{
 		Model:         s.Model,
 		DefaultDomain: s.DefaultDomain,
+		BinaryPath:    s.BinaryPath,
 		WebServer: WebServerConfig{
 			Enabled:          s.WebServer.Enabled,
 			Port:             s.WebServer.Port,

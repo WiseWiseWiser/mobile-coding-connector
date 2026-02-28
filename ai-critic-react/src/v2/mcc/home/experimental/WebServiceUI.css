@@ -1,4 +1,4 @@
-/* Codex Web UI Styles */
+/* Web Service UI Styles */
 
 .codex-web-view {
     display: flex;
@@ -24,6 +24,36 @@
     color: #94a3b8;
 }
 
+.codex-web-focus-toggle {
+    margin-left: 8px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid #475569;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.75);
+    color: #e2e8f0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.codex-web-focus-toggle:hover {
+    background: #334155;
+    border-color: #64748b;
+}
+
+.codex-web-focus-icon {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+}
+
 .mcc-status-dot {
     width: 8px;
     height: 8px;
@@ -43,14 +73,92 @@
 
 .codex-web-content {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.codex-web-controls {
+    display: flex;
+    gap: 10px;
+    padding: 12px;
+    border-bottom: 1px solid #1e293b;
+    background: #0b1224;
+}
+
+.codex-web-action-status {
+    margin: 10px 12px 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    color: #bfdbfe;
+    font-size: 12px;
+}
+
+.codex-web-action-error {
+    margin: 10px 12px 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #fecaca;
+    font-size: 12px;
+}
+
+.codex-web-log-panel {
+    margin: 10px 12px 0;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    background: #111827;
+    overflow: hidden;
+}
+
+.codex-web-log-title {
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #cbd5e1;
+    border-bottom: 1px solid #334155;
+    background: #0f172a;
+}
+
+.codex-web-target-link {
+    margin: 10px 12px 0;
+    font-size: 13px;
+}
+
+.codex-web-main {
+    flex: 1;
     position: relative;
     overflow: hidden;
+}
+
+.codex-web-focus-toggle-floating {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 20;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(2px);
 }
 
 .codex-web-iframe {
     width: 100%;
     height: 100%;
     border: none;
+    background: #0f172a;
+}
+
+.codex-web-iframe-host {
+    width: 100%;
+    height: 100%;
+}
+
+.codex-web-persistent-host {
+    position: fixed;
+    overflow: hidden;
+    z-index: 5;
     background: #0f172a;
 }
 
@@ -183,6 +291,11 @@
     line-height: 1.8;
 }
 
+.mcc-btn-secondary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .codex-web-error-help code {
     background: #334155;
     padding: 2px 6px;
@@ -193,6 +306,10 @@
 }
 
 @media (max-width: 640px) {
+    .codex-web-controls {
+        flex-direction: column;
+    }
+
     .codex-web-error-actions {
         flex-direction: column;
         width: 100%;

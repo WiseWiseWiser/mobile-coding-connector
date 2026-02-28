@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchTools, installTool, upgradeTool } from '../../../api/tools';
+import { fetchTools, fetchToolsQuick, installTool, upgradeTool } from '../../../api/tools';
 import type { ToolInfo, ToolsResponse } from '../../../api/tools';
 import { consumeSSEStream } from '../../../api/sse';
 import { LogViewer } from '../../LogViewer';
@@ -12,16 +12,36 @@ export function DiagnoseView() {
     const navigate = useNavigate();
     const [data, setData] = useState<ToolsResponse | null>(null);
     const [loading, setLoading] = useState(true);
+    const [statusLoading, setStatusLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const loadTools = (showLoading = true) => {
-        if (showLoading) {
-            setLoading(true);
-        }
+    const loadTools = async (showLoading = true) => {
         setError(null);
-        fetchTools()
-            .then(d => { setData(d); setLoading(false); })
-            .catch(err => { setError(err.message); setLoading(false); });
+
+        if (showLoading) {
+            if (!data) {
+                setLoading(true);
+            }
+            try {
+                const quickData = await fetchToolsQuick();
+                setData(quickData);
+                setLoading(false);
+            } catch {
+                // Ignore quick-fetch errors and continue with full status fetch.
+            }
+        }
+
+        setStatusLoading(true);
+        try {
+            const fullData = await fetchTools();
+            setData(fullData);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            setError(message);
+        } finally {
+            setStatusLoading(false);
+            setLoading(false);
+        }
     };
 
     useEffect(() => {
@@ -30,6 +50,8 @@ export function DiagnoseView() {
 
     const installedCount = data?.tools.filter(t => t.installed).length ?? 0;
     const totalCount = data?.tools.length ?? 0;
+    const checkingCount = data?.tools.filter(t => t.checking).length ?? 0;
+    const checkedCount = totalCount - checkingCount;
 
     return (
         <div className="diagnose-view">
@@ -38,19 +60,24 @@ export function DiagnoseView() {
                 <h2>Server Tools</h2>
             </div>
 
-            {loading ? (
+            {loading && !data ? (
                 <div className="diagnose-loading">Checking installed tools...</div>
-            ) : error ? (
-                <div className="diagnose-error">Error: {error}</div>
             ) : data ? (
                 <>
+                    {error && <div className="diagnose-error">Error: {error}</div>}
                     <div className="diagnose-summary">
                         <div className="diagnose-summary-icon">
-                            {installedCount === totalCount ? '✅' : installedCount > 0 ? '⚠️' : '❌'}
+                            {statusLoading || checkingCount > 0 ? '⏳' : installedCount === totalCount ? '✅' : installedCount > 0 ? '⚠️' : '❌'}
                         </div>
                         <div className="diagnose-summary-text">
-                            <span className="diagnose-summary-count">{installedCount}/{totalCount}</span>
-                            <span className="diagnose-summary-label">tools installed</span>
+                            <span className="diagnose-summary-count">
+                                {checkingCount > 0 ? `${checkedCount}/${totalCount}` : `${installedCount}/${totalCount}`}
+                            </span>
+                            <span className="diagnose-summary-label">
+                                {checkingCount > 0
+                                    ? `tools checked (${checkingCount} pending)`
+                                    : 'tools installed'}
+                            </span>
                         </div>
                         <div className="diagnose-os-badge">
                             {data.os === 'darwin' ? 'macOS' : data.os === 'linux' ? 'Linux' : data.os === 'windows' ? 'Windows' : data.os}
@@ -68,9 +95,11 @@ export function DiagnoseView() {
                     </div>
 
                     <button className="diagnose-refresh-btn" onClick={() => loadTools()}>
-                        Refresh
+                        {statusLoading ? 'Refreshing...' : 'Refresh'}
                     </button>
                 </>
+            ) : error ? (
+                <div className="diagnose-error">Error: {error}</div>
             ) : null}
         </div>
     );
@@ -188,13 +217,19 @@ function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
         <div className={`diagnose-tool-card ${tool.installed ? 'installed' : 'not-installed'}`}>
             <div className="diagnose-tool-header" onClick={() => setExpanded(!expanded)}>
                 <span className="diagnose-tool-status">
-                    {tool.installed ? '✅' : installing ? <span className="diagnose-tool-spinner" /> : '❌'}
+                    {tool.checking
+                        ? <span className="diagnose-tool-spinner" />
+                        : tool.installed
+                            ? '✅'
+                            : installing
+                                ? <span className="diagnose-tool-spinner" />
+                                : '❌'}
                 </span>
                 <span className="diagnose-tool-name">{tool.name}</span>
                 {tool.installed && tool.version && (
                     <span className="diagnose-tool-version">{tool.version}</span>
                 )}
-                {!tool.installed && tool.auto_install_cmd && (
+                {!tool.checking && !tool.installed && tool.auto_install_cmd && (
                     <button
                         className="diagnose-tool-install-btn"
                         onClick={handleInstall}
@@ -216,6 +251,12 @@ function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
 
             {expanded && (
                 <div className="diagnose-tool-details">
+                    {tool.checking && (
+                        <div className="diagnose-tool-row">
+                            <span className="diagnose-tool-label">Status:</span>
+                            <span className="diagnose-tool-value">Checking...</span>
+                        </div>
+                    )}
                     <div className="diagnose-tool-row">
                         <span className="diagnose-tool-label">Description:</span>
                         <span className="diagnose-tool-value">{tool.description}</span>
@@ -230,7 +271,7 @@ function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
                             <code className="diagnose-tool-path">{tool.path}</code>
                         </div>
                     )}
-                    {!tool.installed && !showLogs && (
+                    {!tool.checking && !tool.installed && !showLogs && (
                         <div className="diagnose-tool-install">
                             <span className="diagnose-tool-install-label">Install ({os === 'darwin' ? 'macOS' : os === 'linux' ? 'Linux' : 'Windows'}):</span>
                             <code className="diagnose-tool-install-cmd">{getInstallCommand()}</code>

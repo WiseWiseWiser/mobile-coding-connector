@@ -17,7 +17,7 @@ type PortProtectionConfig struct {
 	ProtectedPorts map[int]bool `json:"protected_ports"`
 }
 
-var help = `Usage: go run ./script/gokill <pid> [options]
+var help = `Usage: go run ./cmd/safekill <pid> [options]
 
 Kills the process with the given PID.
 Protects certain ports from being killed.
@@ -31,8 +31,8 @@ Options:
   -h, --help   Show this help message
 
 Example:
-  go run ./script/gokill 12345
-  go run ./script/gokill 12345 -9
+  go run ./cmd/safekill 12345
+  go run ./cmd/safekill 12345 -9
 `
 
 func main() {

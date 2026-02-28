@@ -30,6 +30,14 @@ body:has(.mcc) {
     flex-shrink: 0;
 }
 
+.mcc-project-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
 .mcc-menu-btn,
 .mcc-settings-btn,
 .mcc-profile-btn {
@@ -62,6 +70,7 @@ body:has(.mcc) {
 .mcc-project-dropdown {
     flex: 1;
     position: relative;
+    min-width: 0;
 }
 
 .mcc-project-current {
@@ -83,12 +92,19 @@ body:has(.mcc) {
 }
 
 .mcc-project-name {
+    flex: 1;
+    min-width: 0;
     font-weight: 600;
     font-size: 16px;
     color: #f1f5f9;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.mcc-profile-btn {
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
 .mcc-project-chevron {

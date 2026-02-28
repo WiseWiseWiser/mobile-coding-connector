@@ -18,6 +18,7 @@ type ToolInfo struct {
 	Name           string `json:"name"`
 	Description    string `json:"description"`
 	Purpose        string `json:"purpose"`
+	Checking       bool   `json:"checking,omitempty"`
 	Installed      bool   `json:"installed"`
 	Path           string `json:"path,omitempty"`
 	Version        string `json:"version,omitempty"`
@@ -319,6 +320,26 @@ var requiredTools = []toolDef{
 		upgradeWindows: "npm update -g @openai/codex",
 	},
 	{
+		name:        "openclaw",
+		description: "OpenClaw CLI for AI agent orchestration",
+		purpose:     "Run OpenClaw agent and gateway workflows from the terminal",
+		versionCmd:  []string{"openclaw", "--version"},
+		installMacOS: []string{
+			"npm install -g openclaw@latest",
+		},
+		installLinux: []string{
+			"npm install -g openclaw@latest",
+		},
+		installWindows: "npm install -g openclaw@latest",
+		upgradeMacOS: []string{
+			"npm update -g openclaw",
+		},
+		upgradeLinux: []string{
+			"npm update -g openclaw",
+		},
+		upgradeWindows: "npm update -g openclaw",
+	},
+	{
 		name:        "github-copilot",
 		description: "GitHub Copilot CLI - AI-powered code assistant",
 		purpose:     "AI coding agent powered by GitHub Copilot for code generation and editing",
@@ -510,6 +531,21 @@ func joinInstallSteps(steps []string) string {
 	return strings.Join(steps, "\n")
 }
 
+func buildToolInfo(tool toolDef) ToolInfo {
+	return ToolInfo{
+		Name:           tool.name,
+		Description:    tool.description,
+		Purpose:        tool.purpose,
+		InstallMacOS:   joinInstallSteps(tool.installMacOS),
+		InstallLinux:   joinInstallSteps(tool.installLinux),
+		InstallWindows: tool.installWindows,
+		SettingsPath:   tool.settingsPath,
+		UpgradeMacOS:   joinInstallSteps(tool.upgradeMacOS),
+		UpgradeLinux:   joinInstallSteps(tool.upgradeLinux),
+		UpgradeWindows: tool.upgradeWindows,
+	}
+}
+
 // getAutoInstallScript checks if the install steps can be auto-installed
 // and returns the bash script. Returns empty string if not auto-installable.
 func getAutoInstallScript(steps []string) string {
@@ -584,18 +620,7 @@ func CheckTools() *ToolsResponse {
 	}
 
 	for _, tool := range requiredTools {
-		info := ToolInfo{
-			Name:           tool.name,
-			Description:    tool.description,
-			Purpose:        tool.purpose,
-			InstallMacOS:   joinInstallSteps(tool.installMacOS),
-			InstallLinux:   joinInstallSteps(tool.installLinux),
-			InstallWindows: tool.installWindows,
-			SettingsPath:   tool.settingsPath,
-			UpgradeMacOS:   joinInstallSteps(tool.upgradeMacOS),
-			UpgradeLinux:   joinInstallSteps(tool.upgradeLinux),
-			UpgradeWindows: tool.upgradeWindows,
-		}
+		info := buildToolInfo(tool)
 
 		// Check if tool is installed — use the version command's binary name
 		// when available, since the display name may differ (e.g. "cursor-agent" → "cursor")
@@ -629,10 +654,28 @@ func CheckTools() *ToolsResponse {
 					info.Version = version
 				}
 			}
+		} else {
+			// Not installed — expose auto-install command when safe.
+			info.AutoInstallCmd = getAutoInstallScript(getInstallStepsForOS(tool))
 		}
 		resp.Tools = append(resp.Tools, info)
 	}
 
+	return resp
+}
+
+// CheckToolsQuick returns tool definitions without expensive status checks.
+func CheckToolsQuick() *ToolsResponse {
+	resp := &ToolsResponse{
+		OS:    runtime.GOOS,
+		Tools: make([]ToolInfo, 0, len(requiredTools)),
+	}
+
+	for _, tool := range requiredTools {
+		info := buildToolInfo(tool)
+		info.Checking = true
+		resp.Tools = append(resp.Tools, info)
+	}
 	return resp
 }
 
@@ -721,7 +764,13 @@ func handleTools(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := CheckTools()
+	quick := r.URL.Query().Get("quick")
+	var resp *ToolsResponse
+	if quick == "1" || strings.EqualFold(quick, "true") {
+		resp = CheckToolsQuick()
+	} else {
+		resp = CheckTools()
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }

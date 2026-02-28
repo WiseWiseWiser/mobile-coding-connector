@@ -242,23 +242,28 @@
     padding: 16px;
     max-width: 1200px;
     margin: 0 auto;
+    color: #f1f5f9;
 }
 
-.mcc-section-header {
-    margin-bottom: 24px;
+.mcc-experimental-container .mcc-section-header {
+    margin-bottom: 8px;
 }
 
-.mcc-section-header h2 {
+.mcc-experimental-container .mcc-section-header h2 {
     font-size: 1.5rem;
     font-weight: 600;
     margin: 0 0 8px 0;
-    color: var(--text-primary, #1a1a1a);
+    color: #f1f5f9;
 }
 
-.mcc-section-subtitle {
-    color: var(--text-secondary, #666);
+.mcc-experimental-container .mcc-section-subtitle {
+    color: #94a3b8;
     font-size: 0.875rem;
     margin: 0;
+}
+
+.mcc-experimental-subtitle {
+    margin: 0 16px 18px;
 }
 
 .mcc-experimental-cards {
@@ -269,8 +274,8 @@
 }
 
 .mcc-experimental-card {
-    background: var(--bg-secondary, #f5f5f5);
-    border: 2px solid var(--border-color, #e0e0e0);
+    background: #111827;
+    border: 1px solid #334155;
     border-radius: 12px;
     padding: 20px;
     display: flex;
@@ -281,15 +286,15 @@
 }
 
 .mcc-experimental-card:hover:not(.mcc-experimental-card-disabled) {
-    border-color: var(--primary-color, #4a90d9);
+    border-color: #60a5fa;
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.45);
 }
 
 .mcc-experimental-card-disabled {
     opacity: 0.6;
     cursor: not-allowed;
-    background: var(--bg-tertiary, #fafafa);
+    background: #0f172a;
 }
 
 .mcc-experimental-card-icon {
@@ -317,41 +322,45 @@
     margin: 0 0 8px 0;
     font-size: 1.125rem;
     font-weight: 600;
-    color: var(--text-primary, #1a1a1a);
+    color: #f1f5f9;
 }
 
 .mcc-experimental-card-content p {
     margin: 0 0 12px 0;
     font-size: 0.875rem;
-    color: var(--text-secondary, #666);
+    color: #94a3b8;
     line-height: 1.5;
 }
 
 .mcc-experimental-status {
     display: inline-block;
     padding: 4px 10px;
-    background: var(--bg-tertiary, #e0e0e0);
+    background: #1e293b;
     border-radius: 4px;
     font-size: 0.75rem;
     font-weight: 500;
-    color: var(--text-tertiary, #888);
+    color: #cbd5e1;
 }
 
-.mcc-back-btn {
-    background: var(--bg-secondary, #f5f5f5);
-    border: 1px solid var(--border-color, #e0e0e0);
-    border-radius: 8px;
-    padding: 10px 20px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--text-secondary, #666);
+.mcc-experimental-status-active {
+    background: rgba(34, 197, 94, 0.15);
+    color: #86efac;
+    border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.mcc-experimental-container .mcc-back-btn {
+    background: none;
+    border: none;
+    color: #60a5fa;
+    font-size: 14px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    padding: 4px 8px;
+    margin-right: 8px;
 }
 
-.mcc-back-btn:hover {
-    background: var(--bg-tertiary, #e8e8e8);
-    color: var(--text-primary, #1a1a1a);
+.mcc-experimental-container .mcc-back-btn:hover {
+    background: none;
+    color: #93c5fd;
 }
 
 /* Experimental button in workspace list */

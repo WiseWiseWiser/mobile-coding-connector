@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
     fetchOpencodeAuthStatus,
     fetchOpencodeConfig,
+    fetchAgentEffectivePath,
     fetchOpencodeProviders,
     fetchOpencodeSettings,
     fetchOpencodeWebStatus,
@@ -12,10 +13,9 @@ import {
     unmapOpencodeDomain,
     mapOpencodeDomainStreaming,
 } from '../../../api/agents';
-import type { OpencodeAuthStatus, AgentSessionInfo, OpencodeSettings, OpencodeWebStatus } from '../../../api/agents';
+import type { OpencodeAuthStatus, AgentEffectivePath, AgentSessionInfo, OpencodeSettings, OpencodeWebStatus } from '../../../api/agents';
 import { fetchProviders } from '../../../api/ports';
 import { AgentChatHeader } from './AgentChatHeader';
-import { AgentPathSettingsSection } from './AgentPathSettingsSection';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import { useReconnectingStreamingAction } from '../../../hooks/useReconnectingStreamingAction';
 import { LogViewer } from '../../LogViewer';
@@ -32,10 +32,12 @@ export interface OpencodeSettingsProps {
 export function OpencodeSettings({ agentId, session, projectName, onBack, onRefreshAgents }: OpencodeSettingsProps) {
     const [authStatus, setAuthStatus] = useState<OpencodeAuthStatus | null>(null);
     const [webStatus, setWebStatus] = useState<OpencodeWebStatus | null>(null);
+    const [effectivePath, setEffectivePath] = useState<AgentEffectivePath | null>(null);
 
     // Settings state
     const [savedSettings, setSavedSettings] = useState<OpencodeSettings>({});
     const [defaultDomain, setDefaultDomain] = useState<string>('');
+    const [binaryPath, setBinaryPath] = useState<string>('');
     const [password, setPassword] = useState<string>('');
     const [webServerPort, setWebServerPort] = useState<number>(4096);
     const [webServerEnabled, setWebServerEnabled] = useState<boolean>(false);
@@ -93,6 +95,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     const hasChanges = selectedModel?.modelID !== savedModel?.modelID || selectedModel?.providerID !== savedModel?.providerID;
     const hasSettingsChanges = webServerEnabled !== (savedSettings.web_server?.enabled ?? false)
         || defaultDomain !== (savedSettings.default_domain || '') 
+        || binaryPath !== (savedSettings.binary_path || '')
         || webServerPort !== (savedSettings.web_server?.port || 4096)
         || password !== (savedSettings.web_server?.password || '')
         || authProxyEnabled !== (savedSettings.web_server?.auth_proxy_enabled ?? false);
@@ -105,20 +108,23 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
         setLoading(true);
         try {
             // Load settings and web status (always needed)
-            const [settings, webStat, auth] = await Promise.all([
+            const [settings, webStat, auth, pathInfo] = await Promise.all([
                 fetchOpencodeSettings(),
                 fetchOpencodeWebStatus(),
                 fetchOpencodeAuthStatus(),
+                fetchAgentEffectivePath(agentId),
             ]);
             
             setSavedSettings(settings);
             setDefaultDomain(settings.default_domain || '');
+            setBinaryPath(settings.binary_path || '');
             setPassword(settings.web_server?.password || '');
             setWebServerPort(settings.web_server?.port || 4096);
             setWebServerEnabled(settings.web_server?.enabled ?? false);
             setAuthProxyEnabled(settings.web_server?.auth_proxy_enabled ?? false);
             setWebStatus(webStat);
             setAuthStatus(auth);
+            setEffectivePath(pathInfo);
 
             // Initialize model selection from saved settings
             let savedModelKey: { modelID: string; providerID: string } | null = null;
@@ -221,6 +227,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
             await updateOpencodeSettings({
                 ...savedSettings,
                 default_domain: defaultDomain,
+                binary_path: binaryPath,
                 web_server: {
                     enabled: webServerEnabled,
                     port: webServerPort,
@@ -232,6 +239,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
             setSavedSettings({
                 ...savedSettings,
                 default_domain: defaultDomain,
+                binary_path: binaryPath,
                 web_server: {
                     enabled: webServerEnabled,
                     port: webServerPort,
@@ -240,6 +248,8 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                     auth_proxy_enabled: authProxyEnabled,
                 },
             });
+            setEffectivePath(await fetchAgentEffectivePath(agentId));
+            onRefreshAgents?.();
             setSuccess('Settings saved successfully');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to save settings');
@@ -251,6 +261,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     const handleCancel = () => {
         setSelectedModel(savedModel ? { ...savedModel } : null);
         setDefaultDomain(savedSettings.default_domain || '');
+        setBinaryPath(savedSettings.binary_path || '');
         setPassword(savedSettings.web_server?.password || '');
         setWebServerEnabled(savedSettings.web_server?.enabled ?? false);
         setAuthProxyEnabled(savedSettings.web_server?.auth_proxy_enabled ?? false);
@@ -316,9 +327,45 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                 <div className="mcc-agent-loading">Loading settings...</div>
             ) : (
                 <div className="mcc-agent-settings-form">
-                    {/* Binary Path Settings (always shown) */}
-                    <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #334155' }}>
-                        <AgentPathSettingsSection agentId={agentId} onRefreshAgents={onRefreshAgents} />
+                    {/* Binary Path Settings (stored in opencode settings) */}
+                    <div className="mcc-agent-settings-field" style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #334155' }}>
+                        <label className="mcc-agent-settings-label">
+                            OpenCode Binary Path
+                        </label>
+                        <div className="mcc-agent-settings-hint" style={{ marginBottom: 8, fontSize: '13px', color: '#94a3b8' }}>
+                            Custom path to the OpenCode binary. Leave empty to use PATH resolution.
+                        </div>
+                        <input
+                            type="text"
+                            value={binaryPath}
+                            onChange={(e) => setBinaryPath(e.target.value)}
+                            placeholder={`e.g. /usr/local/bin/${agentId}`}
+                            disabled={saving}
+                            style={{
+                                width: '100%',
+                                padding: '10px 12px',
+                                background: '#1e293b',
+                                border: binaryPath !== (savedSettings.binary_path || '') ? '1px solid #3b82f6' : '1px solid #334155',
+                                borderRadius: 8,
+                                color: '#e2e8f0',
+                                fontSize: '14px',
+                            }}
+                        />
+                        <div style={{
+                            marginTop: 10,
+                            padding: '10px 12px',
+                            background: effectivePath?.found ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                            border: `1px solid ${effectivePath?.found ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                            borderRadius: 8,
+                            fontFamily: 'monospace',
+                            fontSize: '13px',
+                            color: effectivePath?.found ? '#86efac' : '#fca5a5',
+                            wordBreak: 'break-all',
+                        }}>
+                            {effectivePath?.found
+                                ? `Effective Path: ${effectivePath.effective_path}`
+                                : `Effective Path: Not found${effectivePath?.error ? ` (${effectivePath.error})` : ''}`}
+                        </div>
                     </div>
 
                     {/* Login Status (always shown) */}

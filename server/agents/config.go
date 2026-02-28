@@ -111,28 +111,28 @@ func SaveConfig(cfg *AgentsConfig) error {
 }
 
 // GetAgentBinaryPath returns the custom binary path for an agent, or empty string if not configured
-func GetAgentBinaryPath(agentID string) string {
+func GetAgentBinaryPath(agentID AgentID) string {
 	cfg, err := LoadConfig()
 	if err != nil {
 		return ""
 	}
-	if ac, ok := cfg.Agents[agentID]; ok {
+	if ac, ok := cfg.Agents[string(agentID)]; ok {
 		return ac.BinaryPath
 	}
 	return ""
 }
 
 // SetAgentBinaryPath sets the custom binary path for an agent
-func SetAgentBinaryPath(agentID, binaryPath string) error {
+func SetAgentBinaryPath(agentID AgentID, binaryPath string) error {
 	cfg, err := LoadConfig()
 	if err != nil {
 		cfg = &AgentsConfig{Agents: make(map[string]AgentConfig)}
 	}
 
 	if binaryPath == "" {
-		delete(cfg.Agents, agentID)
+		delete(cfg.Agents, string(agentID))
 	} else {
-		cfg.Agents[agentID] = AgentConfig{BinaryPath: binaryPath}
+		cfg.Agents[string(agentID)] = AgentConfig{BinaryPath: binaryPath}
 	}
 
 	return SaveConfig(cfg)

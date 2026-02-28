@@ -1,0 +1,11 @@
+.external-agent-link {
+    color: #7dd3fc;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.external-agent-link:hover {
+    color: #bae6fd;
+}

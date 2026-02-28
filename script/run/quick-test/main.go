@@ -9,6 +9,7 @@ import (
 
 	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
+	serverenv "github.com/xhd2015/lifelog-private/ai-critic/server/env"
 )
 
 var help = `
@@ -17,6 +18,7 @@ Usage: go run ./script/run quick-test [options]
 Options:
   -h, --help               Show this help message
   --keep                   Keep server running indefinitely (disable auto-shutdown)
+  --local                  Use current directory's .ai-critic instead of $HOME/.ai-critic
   --no-vite                Don't auto-start vite (serve static frontend instead)
   --frontend-port PORT     Proxy frontend to PORT (assumes vite/frontend started externally)
   --port PORT              Port to run on (default: 3580)
@@ -32,9 +34,14 @@ func main() {
 
 func Handle(args []string) error {
 	var opts lib.QuickTestOptions
+	if err := serverenv.Load(); err != nil {
+		return err
+	}
+	opts.Local = os.Getenv(lib.EnvQuickTestDefaultConfig) == lib.QuickTestDefaultConfigLocal
 
 	args, err := flags.
 		Bool("--keep", &opts.Keep).
+		Bool("--local", &opts.Local).
 		Bool("--no-vite", &opts.NoVite).
 		Int("--frontend-port", &opts.FrontendPort).
 		Int("--port", &opts.Port).

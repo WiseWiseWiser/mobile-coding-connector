@@ -4,6 +4,7 @@ export interface ToolInfo {
     name: string;
     description: string;
     purpose: string;
+    checking?: boolean;
     installed: boolean;
     path?: string;
     version?: string;
@@ -25,6 +26,14 @@ export interface ToolsResponse {
 
 export async function fetchTools(): Promise<ToolsResponse> {
     const resp = await fetch('/api/tools');
+    if (!resp.ok) {
+        throw new Error('Failed to fetch tools');
+    }
+    return resp.json();
+}
+
+export async function fetchToolsQuick(): Promise<ToolsResponse> {
+    const resp = await fetch('/api/tools?quick=1');
     if (!resp.ok) {
         throw new Error('Failed to fetch tools');
     }

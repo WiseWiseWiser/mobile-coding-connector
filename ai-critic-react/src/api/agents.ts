@@ -454,6 +454,7 @@ export async function fetchAgentEffectivePath(agentId: string): Promise<AgentEff
 export interface OpencodeSettings {
     model?: string;
     default_domain?: string;
+    binary_path?: string;
     web_server?: {
         enabled: boolean;
         port: number;

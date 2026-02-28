@@ -31,6 +31,7 @@ import (
 	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/codexweb"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cursorweb"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/exposedurls"
@@ -533,6 +534,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Codex Web API
 	codexweb.RegisterRoutes(mux)
+
+	// Cursor Web API
+	cursorweb.RegisterRoutes(mux)
 
 	// Graceful shutdown endpoint
 	mux.HandleFunc("/api/shutdown", shutdownHandler)

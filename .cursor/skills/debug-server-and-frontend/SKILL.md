@@ -1,3 +1,8 @@
+---
+name: debug-server-and-frontend
+description: Debug server and frontend integration using Puppeteer
+---
+
 # Debug Server and Frontend Skill
 
 ## Overview

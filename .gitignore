@@ -2,10 +2,14 @@
 node_modules
 dist
 *.bin
+*.png
+*.jpg
 
 .DS_Store
 
 .opencode
+.env
+.env.local
 
 /cloudflared
 /rules

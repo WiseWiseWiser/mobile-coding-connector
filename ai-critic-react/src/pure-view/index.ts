@@ -10,3 +10,7 @@ export { ActionCard } from './ActionCard';
 export type { ActionCardProps } from './ActionCard';
 export { SessionsSection } from './SessionsSection';
 export type { SessionsSectionProps, SessionItem } from './SessionsSection';
+export { ExternalAgentLink } from './link';
+export type { ExternalAgentLinkProps } from './link';
+export { EnterFocusIcon, ExitFocusIcon } from './icon';
+export type { EnterFocusIconProps, ExitFocusIconProps } from './icon';

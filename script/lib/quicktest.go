@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/xhd2015/xgo/support/cmd"
@@ -19,6 +20,7 @@ type QuickTestOptions struct {
 	NoVite       bool // If true, don't start vite and use static frontend
 	FrontendPort int  // If > 0, proxy to this port (default: ViteDevPort if !NoVite)
 	Keep         bool // If true, add --keep flag
+	Local        bool // If true, run server from current dir to use local .ai-critic
 	ProjectDir   string
 	RestartExec  bool // If true, use exec restart when port is in use (faster but riskier)
 
@@ -46,11 +48,7 @@ func (o *QuickTestOptions) GetProjectDir() string {
 	if o.ProjectDir != "" {
 		return o.ProjectDir
 	}
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(homeDir, "mobile-coding-connector")
+	return resolveDefaultProjectDir()
 }
 
 func (o *QuickTestOptions) GetFrontendPort() int {
@@ -155,14 +153,29 @@ func tryExecRestart(port int, binaryPath string) bool {
 
 func QuickTestBuild(projectDir string) error {
 	if projectDir == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home directory: %v", err)
+		projectDir = resolveDefaultProjectDir()
+		if projectDir == "" {
+			return fmt.Errorf("failed to resolve project directory")
 		}
-		projectDir = filepath.Join(homeDir, "mobile-coding-connector")
 	}
 
 	return cmd.Debug().Dir(projectDir).Run("go", "build", "-o", "/tmp/ai-critic-quick", "./")
+}
+
+func resolveDefaultProjectDir() string {
+	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err == nil {
+		repoRoot := strings.TrimSpace(string(out))
+		if repoRoot != "" {
+			return repoRoot
+		}
+	}
+
+	cwd, err := os.Getwd()
+	if err == nil {
+		return cwd
+	}
+	return ""
 }
 
 func QuickTestStart(ctx context.Context, opts *QuickTestOptions) (*QuickTestResult, error) {
@@ -174,9 +187,19 @@ func QuickTestStart(ctx context.Context, opts *QuickTestOptions) (*QuickTestResu
 	projectDir := opts.GetProjectDir()
 	frontendPort := opts.GetFrontendPort()
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %v", err)
+	runDir := ""
+	if opts.Local {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current directory: %v", err)
+		}
+		runDir = cwd
+	} else {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %v", err)
+		}
+		runDir = homeDir
 	}
 
 	var viteCmd *exec.Cmd
@@ -223,7 +246,7 @@ func QuickTestStart(ctx context.Context, opts *QuickTestOptions) (*QuickTestResu
 	fmt.Printf("Executing: /tmp/ai-critic-quick %s\n", argsToString(args))
 
 	serverCmd := exec.Command("/tmp/ai-critic-quick", args...)
-	serverCmd.Dir = homeDir
+	serverCmd.Dir = runDir
 
 	if opts.Stdout != nil {
 		serverCmd.Stdout = opts.Stdout

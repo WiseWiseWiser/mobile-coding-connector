@@ -134,11 +134,18 @@ function MobileCodingConnectorInner() {
     const buildPath = (tab: NavTab, view?: string): string => {
         const proj = currentProjectRef.current;
         const wt = currentWorktreeRef.current;
-        if (proj) {
-            // Build project name with worktree suffix if not root
-            let projBase = `/project/${encodeURIComponent(proj.name)}`;
-            if (wt && wt.id !== 0) {
-                projBase += `~${wt.id}`;
+        const routeProject = fullProjectName;
+        if (proj || routeProject) {
+            let projBase: string;
+            if (proj) {
+                // Build project name with worktree suffix if not root
+                projBase = `/project/${encodeURIComponent(proj.name)}`;
+                if (wt && wt.id !== 0) {
+                    projBase += `~${wt.id}`;
+                }
+            } else {
+                // Preserve project/worktree from URL while project context is hydrating
+                projBase = `/project/${encodeURIComponent(routeProject as string)}`;
             }
             if (tab === NavTabs.Home && !view) return `${projBase}/home`;
             if (view) return `${projBase}/${tab}/${view}`;
@@ -151,26 +158,36 @@ function MobileCodingConnectorInner() {
     };
 
     // Preserve route history per tab
-    const tabViewHistoryRef = useRef<Record<string, string>>({});
+    type TabRouteHistory = {
+        view: string;
+        search: string;
+    };
+    const tabViewHistoryRef = useRef<Record<string, TabRouteHistory>>({});
     const activeTabRef = useCurrent(activeTab);
     const viewFromUrlRef = useCurrent(viewFromUrl);
+    const searchRef = useCurrent(location.search);
 
     // Keep tab history in sync with current URL view
     useEffect(() => {
-        if (viewFromUrl) {
-            tabViewHistoryRef.current[activeTab] = viewFromUrl;
+        if (viewFromUrl || location.search) {
+            tabViewHistoryRef.current[activeTab] = {
+                view: viewFromUrl,
+                search: location.search,
+            };
         }
-    }, [activeTab, viewFromUrl]);
+    }, [activeTab, location.search, viewFromUrl]);
 
     const handleSelectProject = (project: ProjectInfo) => {
         setCurrentProject(project);
         // Stay on the current tab when switching projects
-        const savedView = tabViewHistoryRef.current[activeTab];
+        const savedRoute = tabViewHistoryRef.current[activeTab];
+        const savedView = savedRoute?.view || '';
+        const savedSearch = savedRoute?.search || '';
         const projBase = `/project/${encodeURIComponent(project.name)}`;
         if (activeTab === NavTabs.Home && !savedView) {
             navigate(`${projBase}/home`);
         } else if (savedView) {
-            navigate(`${projBase}/${activeTab}/${savedView}`);
+            navigate(`${projBase}/${activeTab}/${savedView}${savedSearch}`);
         } else {
             navigate(`${projBase}/${activeTab}`);
         }
@@ -179,12 +196,14 @@ function MobileCodingConnectorInner() {
     const handleTabChange = (tab: NavTab) => {
         // Save current view for the current tab before leaving
         const currentView = viewFromUrlRef.current;
-        if (currentView) {
-            tabViewHistoryRef.current[activeTabRef.current] = currentView;
-        }
+        tabViewHistoryRef.current[activeTabRef.current] = {
+            view: currentView,
+            search: searchRef.current,
+        };
         // Restore saved view for the target tab
-        const savedView = tabViewHistoryRef.current[tab];
-        navigate(buildPath(tab, savedView || undefined));
+        const savedRoute = tabViewHistoryRef.current[tab];
+        const targetPath = buildPath(tab, savedRoute?.view || undefined);
+        navigate(`${targetPath}${savedRoute?.search || ''}`);
     };
 
     const [menuOpen, setMenuOpen] = useState(false);

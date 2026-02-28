@@ -19,7 +19,7 @@ export { GitSettings } from './settings/GitSettings';
 export { CloneRepoView } from './settings/CloneRepoView';
 export { SSHServersView } from './SSHServersView';
 export { ManageFilesView } from './ManageFilesView';
-export { ExperimentalView } from './ExperimentalView';
+export { ExperimentalView } from './experimental/ExperimentalView';
 
 interface HomeOutletContext {
     onSelectProject: (project: ProjectInfo) => void;
@@ -127,7 +127,7 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
                 <GitIcon />
                 <span>Git Settings</span>
             </button>
-            <button className="mcc-diagnose-btn" onClick={() => navigate('diagnose')}>
+            <button className="mcc-diagnose-btn" onClick={() => navigate('tools')}>
                 <DiagnoseIcon />
                 <span>Server Tools</span>
             </button>

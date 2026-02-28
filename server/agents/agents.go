@@ -23,8 +23,17 @@ import (
 )
 
 // AgentDef defines a supported coding agent
+type AgentID string
+
+const (
+	AgentIDOpenCode    AgentID = "opencode"
+	AgentIDClaudeCode  AgentID = "claude-code"
+	AgentIDCodex       AgentID = "codex"
+	AgentIDCursorAgent AgentID = "cursor-agent"
+)
+
 type AgentDef struct {
-	ID          string `json:"id"`
+	ID          AgentID `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Command     string `json:"command"`
@@ -37,26 +46,26 @@ type AgentDef struct {
 // All supported agents - add new agents here
 var agentDefs = []AgentDef{
 	{
-		ID:          "opencode",
+		ID:          AgentIDOpenCode,
 		Name:        "OpenCode",
 		Description: "AI-powered coding assistant with headless server mode",
 		Command:     "opencode",
 		Headless:    true,
 	},
 	{
-		ID:          "claude-code",
+		ID:          AgentIDClaudeCode,
 		Name:        "Claude Code",
 		Description: "Anthropic's Claude coding agent (CLI)",
 		Command:     "claude",
 	},
 	{
-		ID:          "codex",
+		ID:          AgentIDCodex,
 		Name:        "Codex",
 		Description: "OpenAI Codex CLI agent",
 		Command:     "codex",
 	},
 	{
-		ID:          "cursor-agent",
+		ID:          AgentIDCursorAgent,
 		Name:        "Cursor Agent",
 		Description: "Cursor's AI coding agent (chat mode via stream-json adapter)",
 		Command:     "cursor-agent",
@@ -166,10 +175,11 @@ func findFreePort() (int, error) {
 }
 
 func (m *agentSessionManager) launch(agentID, projectDir, apiKey string) (*agentSession, error) {
+	aid := AgentID(agentID)
 	// Find the agent def
 	var agentDef *AgentDef
 	for i := range agentDefs {
-		if agentDefs[i].ID == agentID {
+		if agentDefs[i].ID == aid {
 			agentDef = &agentDefs[i]
 			break
 		}
@@ -192,7 +202,7 @@ func (m *agentSessionManager) launch(agentID, projectDir, apiKey string) (*agent
 	m.mu.Unlock()
 
 	// For cursor-agent, use the in-process adapter instead of an external HTTP server
-	if agentDef.ID == "cursor-agent" {
+	if agentDef.ID == AgentIDCursorAgent {
 		return m.launchCursorAdapter(id, agentDef, projectDir, apiKey)
 	}
 
@@ -287,7 +297,7 @@ func (m *agentSessionManager) launchCursorAdapter(id string, agentDef *AgentDef,
 
 	s := &agentSession{
 		id:            id,
-		agentID:       agentDef.ID,
+		agentID:       string(agentDef.ID),
 		agentName:     agentDef.Name,
 		projectDir:    projectDir,
 		createdAt:     time.Now(),
@@ -539,9 +549,12 @@ func handleListAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 // isAgentInstalled checks if an agent is installed, considering custom binary paths
-func isAgentInstalled(agentID, defaultCommand string) bool {
+func isAgentInstalled(agentID AgentID, defaultCommand string) bool {
 	// Check for custom binary path first
 	customPath := GetAgentBinaryPath(agentID)
+	if agentID == AgentIDOpenCode {
+		customPath = getOpencodeBinaryPath()
+	}
 	if customPath != "" {
 		_, err := tool_resolve.LookPath(customPath)
 		return err == nil
@@ -550,10 +563,24 @@ func isAgentInstalled(agentID, defaultCommand string) bool {
 	return tool_resolve.IsAvailable(defaultCommand)
 }
 
+func getOpencodeBinaryPath() string {
+	settings, err := opencode.LoadSettings()
+	if err == nil && settings != nil {
+		if path := strings.TrimSpace(settings.BinaryPath); path != "" {
+			return path
+		}
+	}
+	// Backward compatibility: if not migrated yet, still honor legacy agent config.
+	return GetAgentBinaryPath(AgentIDOpenCode)
+}
+
 // getAgentBinaryPath returns the binary path to use for an agent
-func getAgentBinaryPath(agentID, defaultCommand string) (string, error) {
+func getAgentBinaryPath(agentID AgentID, defaultCommand string) (string, error) {
 	// Check for custom binary path first
 	customPath := GetAgentBinaryPath(agentID)
+	if agentID == AgentIDOpenCode {
+		customPath = getOpencodeBinaryPath()
+	}
 	if customPath != "" {
 		return tool_resolve.LookPath(customPath)
 	}
@@ -654,7 +681,7 @@ func handleOpencodeWebServerStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	customPath := GetAgentBinaryPath("opencode")
+	customPath := getOpencodeBinaryPath()
 
 	acceptHeader := r.Header.Get("Accept")
 	if acceptHeader == "text/event-stream" {
@@ -681,19 +708,35 @@ func handleOpencodeWebServerStartStreaming(w http.ResponseWriter, r *http.Reques
 	}
 
 	sseWriter.SendLog("Starting OpenCode web server...")
-	server, err := opencode.GetOrStartOpencodeServer()
+	customPath := getOpencodeBinaryPath()
+	resp, err := opencode.StartWebServer(customPath)
 	if err != nil {
 		sseWriter.SendError(fmt.Sprintf("Failed to start web server: %v", err))
 		sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
 		return
 	}
+	if resp == nil || !resp.Success {
+		message := "Failed to start web server"
+		if resp != nil && resp.Message != "" {
+			message = resp.Message
+		}
+		sseWriter.SendError(message)
+		sseWriter.SendDone(map[string]string{"success": "false", "message": message, "running": "false"})
+		return
+	}
+
+	status, statusErr := opencode.GetWebServerStatus()
+	port := opencode.GetWebServerPort()
+	if statusErr == nil && status != nil && status.Port > 0 {
+		port = status.Port
+	}
 
 	sseWriter.SendStatus("running", map[string]string{
-		"port":    fmt.Sprintf("%d", server.Port),
+		"port":    fmt.Sprintf("%d", port),
 		"message": "Web server is running",
 	})
-	sseWriter.SendLog(fmt.Sprintf("✓ Web server started successfully on port %d", server.Port))
-	sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server started successfully", "running": "true", "port": fmt.Sprintf("%d", server.Port)})
+	sseWriter.SendLog(fmt.Sprintf("✓ Web server started successfully on port %d", port))
+	sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server started successfully", "running": "true", "port": fmt.Sprintf("%d", port)})
 }
 
 // handleOpencodeWebServerStop handles stopping the web server
@@ -703,7 +746,7 @@ func handleOpencodeWebServerStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	customPath := GetAgentBinaryPath("opencode")
+	customPath := getOpencodeBinaryPath()
 
 	acceptHeader := r.Header.Get("Accept")
 	if acceptHeader == "text/event-stream" {
@@ -746,7 +789,7 @@ func handleOpencodeWebServerStopStreaming(w http.ResponseWriter, r *http.Request
 	sseWriter.SendLog("Stopping OpenCode web server...")
 	sseWriter.SendStatus("stopping", map[string]string{"port": fmt.Sprintf("%d", settings.WebServer.Port)})
 
-	customPath := GetAgentBinaryPath("opencode")
+	customPath := getOpencodeBinaryPath()
 	_, err = opencode.StopWebServer(customPath)
 	if err != nil {
 		sseWriter.SendError(fmt.Sprintf("Failed to stop web server: %v", err))
@@ -957,8 +1000,9 @@ func handleAgentEffectivePath(w http.ResponseWriter, r *http.Request) {
 
 	// Find the agent definition to get the default command
 	var defaultCommand string
+	aid := AgentID(agentID)
 	for _, def := range agentDefs {
-		if def.ID == agentID {
+		if def.ID == aid {
 			defaultCommand = def.Command
 			break
 		}
@@ -969,7 +1013,7 @@ func handleAgentEffectivePath(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the effective path
-	effectivePath, err := getAgentBinaryPath(agentID, defaultCommand)
+	effectivePath, err := getAgentBinaryPath(aid, defaultCommand)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1018,7 +1062,7 @@ func handleAgentConfig(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		if err := SetAgentBinaryPath(agentID, req.BinaryPath); err != nil {
+		if err := SetAgentBinaryPath(AgentID(agentID), req.BinaryPath); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
