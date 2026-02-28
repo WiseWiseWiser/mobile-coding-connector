@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/cursor"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/cursor_acp"
 	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
 	opencode_internal "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
@@ -152,6 +153,9 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/sessions/", handleAgentSessionProxy)
 	// External opencode sessions (from CLI/web)
 	mux.HandleFunc("/api/agents/external-sessions", handleExternalSessions)
+
+	// Cursor ACP API
+	cursor_acp.RegisterAPI(mux)
 
 	// Custom agents API
 	RegisterCustomAgentsAPI(mux)

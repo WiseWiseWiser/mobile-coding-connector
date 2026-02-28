@@ -151,7 +151,7 @@
 }
 
 .codex-web-action-status {
-    margin: 6px 12px 0;
+    margin: 6px 12px 8px;
     padding: 8px 10px;
     border-radius: 8px;
     background: rgba(59, 130, 246, 0.15);
@@ -161,7 +161,7 @@
 }
 
 .codex-web-action-error {
-    margin: 6px 12px 0;
+    margin: 6px 12px 8px;
     padding: 8px 10px;
     border-radius: 8px;
     background: rgba(239, 68, 68, 0.15);
@@ -172,7 +172,7 @@
 
 .codex-web-log-panel {
     position: relative;
-    margin: 6px 12px 10px;
+    margin: 6px 12px 0;
     border: 1px solid #334155;
     border-radius: 10px;
     background: #111827;

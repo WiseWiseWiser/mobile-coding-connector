@@ -51,9 +51,10 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get project root: %v", err)
 	}
-	if err := loadProjectEnv(projectRoot); err != nil {
-		return fmt.Errorf("failed to load project env: %v", err)
+	if err := envpkg.Load(); err != nil {
+		return fmt.Errorf("failed to load env: %v", err)
 	}
+	opts.Local = os.Getenv(lib.EnvQuickTestDefaultConfig) == lib.QuickTestDefaultConfigLocal
 	defaultHeadless := envBool("BROWSER_DEBUG_DEFAULT_HEADLESS")
 	headless := defaultHeadless
 
@@ -176,18 +177,6 @@ func getProjectRoot() (string, error) {
 		return "", err
 	}
 	return string(output[:len(output)-1]), nil
-}
-
-func loadProjectEnv(projectRoot string) error {
-	wd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	if err := os.Chdir(projectRoot); err != nil {
-		return err
-	}
-	defer os.Chdir(wd)
-	return envpkg.Load()
 }
 
 func envBool(key string) bool {

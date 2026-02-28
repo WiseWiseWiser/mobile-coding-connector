@@ -11,7 +11,6 @@ import (
 	common "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/common_opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/logs"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
 )
 
 var (
@@ -135,9 +134,7 @@ func findAvailablePort() (int, error) {
 }
 
 func startOpencodeWebServer(server *OpencodeServer) error {
-	cmd, err := common.StartWebProcess(server.Port, &tool_exec.Options{
-		Dir: "/root/mobile-coding-connector",
-	}, server.StopChan)
+	cmd, err := common.StartWebProcess(server.Port, nil, server.StopChan)
 	if err != nil {
 		return err
 	}

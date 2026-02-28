@@ -61,6 +61,21 @@ export function ExperimentalView() {
                         <span className="mcc-experimental-status mcc-experimental-status-active">Click to Open</span>
                     </div>
                 </div>
+                <div
+                    className="mcc-experimental-card mcc-experimental-card-clickable"
+                    onClick={() => navigate('../acp/cursor')}
+                >
+                    <div className="mcc-experimental-card-icon">
+                        <BeakerIcon />
+                    </div>
+                    <div className="mcc-experimental-card-content">
+                        <h3>Cursor UI (ACP)</h3>
+                        <p>
+                            Native Cursor agent UI via Agent Client Protocol. Direct communication with cursor-agent CLI.
+                        </p>
+                        <span className="mcc-experimental-status mcc-experimental-status-active">Click to Open</span>
+                    </div>
+                </div>
             </div>
         </div>
     );

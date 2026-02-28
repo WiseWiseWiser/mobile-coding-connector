@@ -4,7 +4,7 @@ import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, CodexWebUI, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, CodexWebUI, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './logs';
 import './App.css';
@@ -177,6 +177,9 @@ function App() {
                             <Route path="cursor-web" element={<CursorWebUI />} />
                             <Route path="opencode-web" element={<OpencodeWebUI />} />
                             <Route path="opencode-web/settings" element={<OpencodeWebSettingsView />} />
+                            <Route path="acp/cursor" element={<CursorACPUI />} />
+                            <Route path="acp/cursor/settings" element={<CursorACPSettings />} />
+                            <Route path="acp/cursor/:sessionId" element={<CursorACPChat />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
@@ -205,7 +208,7 @@ function App() {
                     </Route>
                     {/* Project-specific routes: MobileCodingConnector as layout */}
                     {/* Supports both /project/name and /project/name~worktreeId */}
-                    <Route path="project/:projectName*" element={<MobileCodingConnector />}>
+                    <Route path="project/:projectName/*" element={<MobileCodingConnector />}>
                         <Route index element={<ProjectConfigView />} />
                         <Route path="home">
                             <Route index element={<WorkspaceListView />} />
@@ -228,6 +231,9 @@ function App() {
                             <Route path="cursor-web" element={<CursorWebUI />} />
                             <Route path="opencode-web" element={<OpencodeWebUI />} />
                             <Route path="opencode-web/settings" element={<OpencodeWebSettingsView />} />
+                            <Route path="acp/cursor" element={<CursorACPUI />} />
+                            <Route path="acp/cursor/settings" element={<CursorACPSettings />} />
+                            <Route path="acp/cursor/:sessionId" element={<CursorACPChat />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />

@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { OpencodeWebTargetPreferences } from '../../../../api/agents';
-import type { OpencodeWebTargetPreference } from '../../../../api/agents';
-import { consumeSSEStream } from '../../../../api/sse';
-import { LogViewer } from '../../../LogViewer';
-import type { LogLine } from '../../../LogViewer';
-import { BeakerIcon, OpenInNewIcon, SettingsIcon } from '../../../icons';
-import { RefreshIcon } from '../../../icons/RefreshIcon';
-import { EnterFocusIcon, ExitFocusIcon } from '../../../../pure-view/icon';
+import { OpencodeWebTargetPreferences } from '../../../../api/agents.ts';
+import type { OpencodeWebTargetPreference } from '../../../../api/agents.ts';
+import { consumeSSEStream } from '../../../../api/sse.ts';
+import { LogViewer } from '../../../LogViewer.tsx';
+import type { LogLine } from '../../../LogViewer.tsx';
+import { BeakerIcon, OpenInNewIcon, SettingsIcon } from '../../../icons/index.ts';
+import { RefreshIcon } from '../../../icons/RefreshIcon.tsx';
+import { EnterFocusIcon, ExitFocusIcon } from '../../../../pure-view/icon/index.ts';
 import { ExternalIFrame } from './ExternalIFrame.tsx';
 import './WebServiceUI.css';
 
@@ -154,16 +154,13 @@ export function WebServiceUI({
             setTargetUrl(resolveWebServiceTargetUrl(status, nextPort));
             if (status.running) {
                 setServerStatus('running');
+                setError(null);
                 if (!silent) {
-                    setError(null);
                     setIsLoading(true);
                 }
                 return;
             }
             setServerStatus('not-running');
-            if (!silent) {
-                setError(`${title} server is not running on port ${nextPort}. Click Start Server to launch it.`);
-            }
         } catch (e) {
             const message = e instanceof Error ? e.message : `Failed to fetch ${title} status`;
             setServerStatus('not-running');
@@ -202,8 +199,11 @@ export function WebServiceUI({
         endpoint: string,
         method: 'GET' | 'POST',
         pendingMessage: string,
+        opts?: { clearLogs?: boolean },
     ) => {
-        setActionLogs([]);
+        if (opts?.clearLogs) {
+            setActionLogs([]);
+        }
         setShowActionLogs(true);
         setActionError(null);
         setActionMessage(pendingMessage);
@@ -260,6 +260,7 @@ export function WebServiceUI({
                     startStreamEndpoint,
                     'POST',
                     `Starting ${title} server on port ${resolvedPort}...`,
+                    { clearLogs: true },
                 );
                 await refreshStatus();
                 return;
@@ -289,6 +290,7 @@ export function WebServiceUI({
         setActionState('stop');
         setActionError(null);
         setActionMessage(`Stopping ${title} server...`);
+        setError(null);
         try {
             if (stopStreamEndpoint) {
                 await runStreamAction(
@@ -449,6 +451,23 @@ export function WebServiceUI({
                                 <span>{toggleServerButtonLabel}</span>
                             </button>
                         </div>
+                        {showActionLogs && (actionLogs.length > 0 || actionBusy) && (
+                            <div className="codex-web-log-panel">
+                                <button
+                                    className="codex-web-action-dismiss codex-web-log-dismiss"
+                                    onClick={handleDismissActionLogs}
+                                    aria-label="Dismiss action logs"
+                                >
+                                    <DismissIcon />
+                                </button>
+                                <LogViewer
+                                    lines={actionLogs}
+                                    pending={actionBusy}
+                                    pendingMessage="Streaming logs..."
+                                    maxHeight={180}
+                                />
+                            </div>
+                        )}
                         {actionMessage && (
                             <div className="codex-web-action-status codex-web-action-banner">
                                 <span>{actionMessage}</span>
@@ -473,23 +492,6 @@ export function WebServiceUI({
                                 </button>
                             </div>
                         )}
-                        {showActionLogs && (actionLogs.length > 0 || actionBusy) && (
-                            <div className="codex-web-log-panel">
-                                <button
-                                    className="codex-web-action-dismiss codex-web-log-dismiss"
-                                    onClick={handleDismissActionLogs}
-                                    aria-label="Dismiss action logs"
-                                >
-                                    <DismissIcon />
-                                </button>
-                                <LogViewer
-                                    lines={actionLogs}
-                                    pending={actionBusy}
-                                    pendingMessage="Streaming logs..."
-                                    maxHeight={180}
-                                />
-                            </div>
-                        )}
                     </>
                 )}
                 <div className="codex-web-main">
@@ -503,7 +505,7 @@ export function WebServiceUI({
                             <ExitFocusIcon className="codex-web-focus-icon" />
                         </button>
                     )}
-                    {error ? (
+                    {error && (
                         <div className="codex-web-error">
                             <div className="codex-web-error-icon">⚠️</div>
                             <h3>Connection Error</h3>
@@ -526,24 +528,21 @@ export function WebServiceUI({
                                 </ol>
                             </div>
                         </div>
-                    ) : (
-                        <>
-                            {isLoading && serverStatus === 'running' && (
-                                <div className="codex-web-loading">
-                                    <div className="mcc-loading-spinner"></div>
-                                    <span>{`Loading ${title} UI...`}</span>
-                                </div>
-                            )}
-                            <ExternalIFrame
-                                active={serverStatus === 'running'}
-                                targetUrl={targetUrl}
-                                title={title}
-                                persistenceKey={effectiveIframeKey}
-                                onLoadingChange={handleIframeLoadingChange}
-                                onError={handleIframeError}
-                            />
-                        </>
                     )}
+                    {isLoading && serverStatus === 'running' && (
+                        <div className="codex-web-loading">
+                            <div className="mcc-loading-spinner"></div>
+                            <span>{`Loading ${title} UI...`}</span>
+                        </div>
+                    )}
+                    <ExternalIFrame
+                        active={serverStatus === 'running'}
+                        targetUrl={targetUrl}
+                        title={title}
+                        persistenceKey={effectiveIframeKey}
+                        onLoadingChange={handleIframeLoadingChange}
+                        onError={handleIframeError}
+                    />
                 </div>
             </div>
         </div>

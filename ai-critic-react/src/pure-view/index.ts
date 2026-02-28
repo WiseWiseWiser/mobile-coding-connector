@@ -14,3 +14,5 @@ export { ExternalAgentLink } from './link';
 export type { ExternalAgentLinkProps } from './link';
 export { EnterFocusIcon, ExitFocusIcon } from './icon';
 export type { EnterFocusIconProps, ExitFocusIconProps } from './icon';
+export { ModelSelector } from './selector';
+export type { ModelOption, ModelSelectorProps } from './selector';

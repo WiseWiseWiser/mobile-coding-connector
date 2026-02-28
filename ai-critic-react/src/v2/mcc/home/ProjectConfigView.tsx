@@ -44,6 +44,16 @@ export function ProjectConfigView() {
         }
     });
 
+    const subProjects = useMemo(() =>
+        projectsList.filter(p => p.parent_id === project?.id),
+        [projectsList, project?.id]
+    );
+    const [showAddSubProject, setShowAddSubProject] = useState(false);
+    const [newSubProjectName, setNewSubProjectName] = useState('');
+    const [newSubProjectDir, setNewSubProjectDir] = useState('');
+    const [addingSubProject, setAddingSubProject] = useState(false);
+    const [subProjectError, setSubProjectError] = useState('');
+
     useEffect(() => {
         const keys = loadSSHKeys();
         setSshKeys(keys);
@@ -51,6 +61,12 @@ export function ProjectConfigView() {
             setSelectedKeyId(project.ssh_key_id);
         }
     }, [project?.ssh_key_id]);
+
+    useEffect(() => {
+        if (project?.dir && !newSubProjectDir) {
+            setNewSubProjectDir(project.dir);
+        }
+    }, [project?.dir, newSubProjectDir]);
 
     if (!project) {
         return (
@@ -142,21 +158,6 @@ export function ProjectConfigView() {
     const currentKey = sshKeys.find(k => k.id === project.ssh_key_id);
 
     const isSubProject = !!project.parent_id;
-    const subProjects = useMemo(() => 
-        projectsList.filter(p => p.parent_id === project.id),
-        [projectsList, project.id]
-    );
-    const [showAddSubProject, setShowAddSubProject] = useState(false);
-    const [newSubProjectName, setNewSubProjectName] = useState('');
-    const [newSubProjectDir, setNewSubProjectDir] = useState('');
-    const [addingSubProject, setAddingSubProject] = useState(false);
-    const [subProjectError, setSubProjectError] = useState('');
-
-    useEffect(() => {
-        if (project.dir && !newSubProjectDir) {
-            setNewSubProjectDir(project.dir);
-        }
-    }, [project.dir, newSubProjectDir]);
 
     const handleAddSubProject = async () => {
         if (!newSubProjectDir.trim()) {

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { usePortForwards } from '../hooks/usePortForwards';
 import type { UsePortForwardsReturn } from '../hooks/usePortForwards';
 import { useLocalPorts } from '../hooks/useLocalPorts';
@@ -17,6 +17,7 @@ interface V2ContextValue {
     getSubProjectsCount: (projectId: string) => number;
     projectsLoading: boolean;
     fetchProjects: () => void;
+    getProjectDir: (name: string) => Promise<string>;
     currentProject: ProjectInfo | null;
     setCurrentProject: (project: ProjectInfo | null) => void;
     portForwards: UsePortForwardsReturn;
@@ -54,10 +55,35 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
     const [projectsList, setProjectsList] = useState<ProjectInfo[]>([]);
     const [projectsLoading, setProjectsLoading] = useState(true);
 
+    const projectsListRef = useRef<ProjectInfo[]>([]);
+    const projectsLoadedRef = useRef<{ promise: Promise<void>; resolve: () => void } | null>(null);
+    if (!projectsLoadedRef.current) {
+        let resolve!: () => void;
+        const promise = new Promise<void>(r => { resolve = r; });
+        projectsLoadedRef.current = { promise, resolve };
+    }
+
     const fetchProjects = () => {
         apiFetchProjects({ all: true })
-            .then(data => { setProjectsList(data); setProjectsLoading(false); })
-            .catch(() => setProjectsLoading(false));
+            .then(data => {
+                setProjectsList(data);
+                projectsListRef.current = data;
+                setProjectsLoading(false);
+                projectsLoadedRef.current?.resolve();
+            })
+            .catch(() => {
+                setProjectsLoading(false);
+                projectsLoadedRef.current?.resolve();
+            });
+    };
+
+    const getProjectDir = async (name: string): Promise<string> => {
+        console.log("DEBUG getProjectDir waiting for projects, name=", name);
+        await projectsLoadedRef.current!.promise;
+        const projects = projectsListRef.current;
+        const project = projects.find(p => p.name === name);
+        console.log("DEBUG getProjectDir resolved", { name, projectCount: projects.length, projectNames: projects.map(p => p.name), found: !!project, dir: project?.dir });
+        return project?.dir || '';
     };
 
     useEffect(() => {
@@ -205,6 +231,7 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
             getSubProjectsCount,
             projectsLoading,
             fetchProjects,
+            getProjectDir,
             currentProject,
             setCurrentProject,
             portForwards,

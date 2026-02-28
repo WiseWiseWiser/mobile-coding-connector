@@ -24,7 +24,6 @@ Starts a quick-test server (port 3580) and opens a browser debugger.
 
 Options:
 - `--port PORT` - Port for quick-test server (default: 3580)
-- `--headless` - Run browser in headless mode
 
 ## Script Variables
 
