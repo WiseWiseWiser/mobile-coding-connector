@@ -1,5 +1,4 @@
-// Package opencode provides authentication status checking for OpenCode.
-package opencode
+package exposed_opencode
 
 import (
 	"encoding/json"
@@ -9,8 +8,8 @@ import (
 
 // AuthProvider represents an authenticated provider in OpenCode.
 type AuthProvider struct {
-	Name         string `json:"name"`
-	HasAPIKey    bool   `json:"has_api_key"` // Indicates whether an API key is configured
+	Name      string `json:"name"`
+	HasAPIKey bool   `json:"has_api_key"` // Indicates whether an API key is configured
 }
 
 // AuthStatus represents the authentication status for OpenCode.

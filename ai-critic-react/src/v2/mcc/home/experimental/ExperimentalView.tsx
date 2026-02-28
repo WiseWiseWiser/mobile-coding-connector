@@ -54,7 +54,7 @@ export function ExperimentalView() {
                         <BeakerIcon />
                     </div>
                     <div className="mcc-experimental-card-content">
-                        <h3>OpenCode Web</h3>
+                        <h3>OpenCode</h3>
                         <p>
                             Web interface for the existing exposed OpenCode server managed by this system.
                         </p>

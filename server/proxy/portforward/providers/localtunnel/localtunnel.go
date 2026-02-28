@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward"
 )
 
 // Provider implements portforward.Provider using npx localtunnel

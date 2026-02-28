@@ -6,14 +6,16 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
+	envpkg "github.com/xhd2015/lifelog-private/ai-critic/server/env"
 )
 
-const help = `Usage: go run ./script/debug-server-and-frontend [options]
+const help = `Usage: go run ./script/debug-server-and-frontend [options] [script]
 
 Starts a quick-test server with the latest code and opens a browser debugger.
 
@@ -22,10 +24,14 @@ This script runs quick-test (which manages vite and server) and opens a browser 
 Options:
   -h, --help        Show this help message
   --port PORT       Port for quick-test server (default: 3580)
-  --no-headless     Run browser with visible window
+  --headless        Run browser in headless mode
   --no-vite         Pass to quick-test: don't auto-start vite (use built frontend)
   --restart-exec    Use exec restart when port is in use (preserves PID, faster but riskier)
+
+If script is omitted, a default script is used to open the root page and print the title.
 `
+
+const defaultDebugScript = "await navigate('/'); console.log('Page title:', await page.title());"
 
 func main() {
 	fmt.Println("DEBUG: Starting main.go")
@@ -40,11 +46,20 @@ func main() {
 func run(args []string) error {
 	fmt.Println("DEBUG: run() called with args:", args)
 	var opts lib.QuickTestOptions
-	var noHeadless bool
 
-	args, err := flags.
+	projectRoot, err := getProjectRoot()
+	if err != nil {
+		return fmt.Errorf("failed to get project root: %v", err)
+	}
+	if err := loadProjectEnv(projectRoot); err != nil {
+		return fmt.Errorf("failed to load project env: %v", err)
+	}
+	defaultHeadless := envBool("BROWSER_DEBUG_DEFAULT_HEADLESS")
+	headless := defaultHeadless
+
+	args, err = flags.
 		Int("--port", &opts.Port).
-		Bool("--no-headless", &noHeadless).
+		Bool("--headless", &headless).
 		Bool("--no-vite", &opts.NoVite).
 		Bool("--restart-exec", &opts.RestartExec).
 		Help("-h,--help", help).
@@ -54,13 +69,16 @@ func run(args []string) error {
 	}
 
 	fmt.Println("DEBUG: args after parsing:", args)
-	fmt.Println("DEBUG: opts.Port:", opts.Port, "noHeadless:", noHeadless, "restartExec:", opts.RestartExec)
+	fmt.Println("DEBUG: opts.Port:", opts.Port, "headless:", headless, "restartExec:", opts.RestartExec)
 
-	if len(args) > 0 {
-		return fmt.Errorf("unknown args: %v", args)
+	if len(args) > 1 {
+		return fmt.Errorf("at most one script argument is supported")
+	}
+	scriptArg := defaultDebugScript
+	if len(args) == 1 {
+		scriptArg = args[0]
 	}
 
-	headless := !noHeadless
 	opts.Stdout = os.Stdout
 	opts.Stderr = os.Stderr
 
@@ -75,10 +93,6 @@ func run(args []string) error {
 		cancel()
 	}()
 
-	projectRoot, err := getProjectRoot()
-	if err != nil {
-		return fmt.Errorf("failed to get project root: %v", err)
-	}
 	opts.ProjectDir = projectRoot
 
 	err = lib.QuickTestPrepare(&opts)
@@ -105,9 +119,8 @@ func run(args []string) error {
 
 	fmt.Println("Starting browser debugger...")
 	debugCmd := exec.CommandContext(ctx, "go", "run", "./script/debug-port", fmt.Sprintf("--port=%d", opts.GetPort()))
-	if !headless {
-		debugCmd.Args = append(debugCmd.Args, "--no-headless")
-	}
+	debugCmd.Args = append(debugCmd.Args, fmt.Sprintf("--headless=%v", headless))
+	debugCmd.Args = append(debugCmd.Args, scriptArg)
 	debugCmd.Dir = projectRoot
 	debugCmd.Stdin = os.Stdin
 	debugCmd.Stdout = os.Stdout
@@ -128,6 +141,12 @@ func run(args []string) error {
 	}
 
 	if debugErr != nil {
+		if !headless {
+			return fmt.Errorf(
+				"failed to launch browser in non-headless mode: %v\n\nTry one of:\n  1) set BROWSER_DEBUG_DEFAULT_HEADLESS=true in .env/.env.local\n  2) pass --headless=true\n  3) pass --headless=false to force visible mode when your machine supports it",
+				debugErr,
+			)
+		}
 		return fmt.Errorf("debug-port exited with error: %v", debugErr)
 	}
 
@@ -157,4 +176,26 @@ func getProjectRoot() (string, error) {
 		return "", err
 	}
 	return string(output[:len(output)-1]), nil
+}
+
+func loadProjectEnv(projectRoot string) error {
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	if err := os.Chdir(projectRoot); err != nil {
+		return err
+	}
+	defer os.Chdir(wd)
+	return envpkg.Load()
+}
+
+func envBool(key string) bool {
+	val := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch val {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }

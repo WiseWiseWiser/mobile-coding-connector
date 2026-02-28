@@ -1,4 +1,4 @@
-package opencode
+package exposed_opencode
 
 import (
 	"encoding/json"

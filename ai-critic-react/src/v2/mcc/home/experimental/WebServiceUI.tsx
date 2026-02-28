@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { OpencodeWebTargetPreferences } from '../../../../api/agents';
+import type { OpencodeWebTargetPreference } from '../../../../api/agents';
 import { consumeSSEStream } from '../../../../api/sse';
 import { LogViewer } from '../../../LogViewer';
 import type { LogLine } from '../../../LogViewer';
-import { BeakerIcon } from '../../../icons';
+import { BeakerIcon, OpenInNewIcon, SettingsIcon } from '../../../icons';
+import { RefreshIcon } from '../../../icons/RefreshIcon';
 import { EnterFocusIcon, ExitFocusIcon } from '../../../../pure-view/icon';
-import { ExternalAgentLink } from '../../../../pure-view/link';
-import { ExternalIFrame } from './ExternalIFrame';
+import { ExternalIFrame } from './ExternalIFrame.tsx';
 import './WebServiceUI.css';
 
 export interface WebServiceUIProps {
@@ -24,11 +26,16 @@ export interface WebServiceUIProps {
     backPath?: string;
     enableFocusMode?: boolean;
     iframePersistenceKey?: string;
+    settingsPath?: string;
 }
 
 interface WebServiceStatusResponse {
     running: boolean;
     port: number;
+    domain?: string;
+    port_mapped?: boolean;
+    target_preference?: OpencodeWebTargetPreference;
+    exposed_domain?: string;
 }
 
 interface WebServiceActionResponse {
@@ -43,6 +50,66 @@ async function fetchWebServiceStatus(statusEndpoint: string, serviceTitle: strin
         throw new Error(`Failed to fetch ${serviceTitle} status`);
     }
     return resp.json();
+}
+
+function normalizeWebTargetUrl(urlLike: string, protocol: 'http' | 'https'): string {
+    const trimmed = urlLike.trim();
+    if (!trimmed) {
+        return '';
+    }
+    if (/^https?:\/\//i.test(trimmed)) {
+        return trimmed;
+    }
+    return `${protocol}://${trimmed}`;
+}
+
+function resolveProtocol(urlLike: string): 'http' | 'https' {
+    const trimmed = urlLike.trim();
+    if (!trimmed) {
+        return 'https';
+    }
+    const withoutScheme = trimmed.replace(/^https?:\/\//i, '');
+    const hostPart = withoutScheme.split('/')[0].split('?')[0];
+    const host = hostPart.split(':')[0].toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1') {
+        return 'http';
+    }
+    return 'https';
+}
+
+function resolveMappedTargetUrl(status: WebServiceStatusResponse): string {
+    const exposedDomain = status.exposed_domain?.trim();
+    if (exposedDomain) {
+        return normalizeWebTargetUrl(exposedDomain, resolveProtocol(exposedDomain));
+    }
+
+    const configuredDomain = status.domain?.trim();
+    if (!configuredDomain) {
+        return '';
+    }
+
+    return normalizeWebTargetUrl(configuredDomain, resolveProtocol(configuredDomain));
+}
+
+function resolveWebServiceTargetUrl(status: WebServiceStatusResponse, fallbackPort: number): string {
+    if (status.target_preference === OpencodeWebTargetPreferences.Localhost) {
+        return `http://localhost:${fallbackPort}`;
+    }
+
+    const mappedTargetUrl = resolveMappedTargetUrl(status);
+    if (mappedTargetUrl) {
+        return mappedTargetUrl;
+    }
+    return `http://localhost:${fallbackPort}`;
+}
+
+function DismissIcon() {
+    return (
+        <svg className="codex-web-dismiss-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6l12 12" />
+            <path d="M18 6L6 18" />
+        </svg>
+    );
 }
 
 export function WebServiceUI({
@@ -60,6 +127,7 @@ export function WebServiceUI({
     backPath = '../experimental',
     enableFocusMode = false,
     iframePersistenceKey,
+    settingsPath,
 }: WebServiceUIProps) {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -67,30 +135,42 @@ export function WebServiceUI({
     const [error, setError] = useState<string | null>(null);
     const [serverStatus, setServerStatus] = useState<'checking' | 'running' | 'not-running'>('checking');
     const [resolvedPort, setResolvedPort] = useState(port);
+    const [targetUrl, setTargetUrl] = useState(`http://localhost:${port}`);
     const [actionState, setActionState] = useState<'refresh' | 'start' | 'stop' | null>(null);
     const [actionMessage, setActionMessage] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
     const [actionLogs, setActionLogs] = useState<LogLine[]>([]);
+    const [showActionLogs, setShowActionLogs] = useState(true);
 
-    const refreshStatus = async () => {
-        setServerStatus('checking');
+    const refreshStatus = async (opts?: { silent?: boolean }) => {
+        const silent = opts?.silent === true;
+        if (!silent) {
+            setServerStatus('checking');
+        }
         try {
             const status = await fetchWebServiceStatus(statusEndpoint, title);
             const nextPort = status.port || port;
             setResolvedPort(nextPort);
+            setTargetUrl(resolveWebServiceTargetUrl(status, nextPort));
             if (status.running) {
                 setServerStatus('running');
-                setError(null);
-                setIsLoading(true);
+                if (!silent) {
+                    setError(null);
+                    setIsLoading(true);
+                }
                 return;
             }
             setServerStatus('not-running');
-            setError(`${title} server is not running on port ${nextPort}. Click Start Server to launch it.`);
+            if (!silent) {
+                setError(`${title} server is not running on port ${nextPort}. Click Start Server to launch it.`);
+            }
         } catch (e) {
             const message = e instanceof Error ? e.message : `Failed to fetch ${title} status`;
             setServerStatus('not-running');
-            setError(message);
-            setActionError(message);
+            if (!silent) {
+                setError(message);
+                setActionError(message);
+            }
         }
     };
 
@@ -98,12 +178,33 @@ export function WebServiceUI({
         void refreshStatus();
     }, [port]);
 
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            if (actionState !== null) {
+                return;
+            }
+            void refreshStatus({ silent: true });
+        }, 5000);
+        return () => window.clearInterval(timer);
+    }, [actionState, port, statusEndpoint, title]);
+
+    const appendActionLog = (line: LogLine) => {
+        setActionLogs(prev => {
+            const last = prev[prev.length - 1];
+            if (last && last.text === line.text && Boolean(last.error) === Boolean(line.error)) {
+                return prev;
+            }
+            return [...prev, line];
+        });
+    };
+
     const runStreamAction = async (
         endpoint: string,
         method: 'GET' | 'POST',
         pendingMessage: string,
     ) => {
         setActionLogs([]);
+        setShowActionLogs(true);
         setActionError(null);
         setActionMessage(pendingMessage);
         let success = false;
@@ -116,27 +217,35 @@ export function WebServiceUI({
             }
 
             await consumeSSEStream(resp, {
-                onLog: (line) => setActionLogs(prev => [...prev, line]),
+                onLog: appendActionLog,
                 onError: (line) => {
-                    setActionLogs(prev => [...prev, line]);
+                    appendActionLog(line);
                     setActionError(line.text);
+                    setActionMessage(null);
                 },
                 onDone: (message, data) => {
-                    if (message) {
-                        setActionLogs(prev => [...prev, { text: message }]);
-                        setActionMessage(message);
-                    }
                     success = data.success !== 'false';
-                    if (!success && data.message) {
-                        setActionError(data.message);
+                    const doneMessage = (message || data.message || '').trim();
+                    if (doneMessage) {
+                        appendActionLog({ text: doneMessage, error: !success });
+                    }
+                    if (success) {
+                        setActionMessage(doneMessage || null);
+                        setActionError(null);
+                    } else {
+                        setActionMessage(null);
+                        if (doneMessage) {
+                            setActionError(doneMessage);
+                        }
                     }
                 },
             });
             return success;
         } catch (e) {
             const message = e instanceof Error ? e.message : String(e);
-            setActionLogs(prev => [...prev, { text: message, error: true }]);
+            appendActionLog({ text: message, error: true });
             setActionError(message);
+            setActionMessage(null);
             return false;
         }
     };
@@ -147,14 +256,12 @@ export function WebServiceUI({
         setActionMessage(`Starting ${title} server on port ${resolvedPort}...`);
         try {
             if (startStreamEndpoint) {
-                const success = await runStreamAction(
+                await runStreamAction(
                     startStreamEndpoint,
                     'POST',
                     `Starting ${title} server on port ${resolvedPort}...`,
                 );
-                if (success) {
-                    await refreshStatus();
-                }
+                await refreshStatus();
                 return;
             }
 
@@ -184,14 +291,12 @@ export function WebServiceUI({
         setActionMessage(`Stopping ${title} server...`);
         try {
             if (stopStreamEndpoint) {
-                const success = await runStreamAction(
+                await runStreamAction(
                     stopStreamEndpoint,
                     'POST',
                     `Stopping ${title} server...`,
                 );
-                if (success) {
-                    await refreshStatus();
-                }
+                await refreshStatus();
                 return;
             }
 
@@ -214,19 +319,40 @@ export function WebServiceUI({
     const handleRefreshStatus = async () => {
         setActionState('refresh');
         setActionError(null);
-        setActionMessage('Refreshing server status...');
+        setActionMessage(null);
         try {
             if (statusStreamEndpoint) {
                 await runStreamAction(statusStreamEndpoint, 'GET', 'Refreshing server status...');
             }
             await refreshStatus();
+            setActionMessage(null);
         } finally {
             setActionState(null);
         }
     };
 
     const actionBusy = actionState !== null;
-    const targetUrl = `http://localhost:${resolvedPort}`;
+    const isServerRunning = serverStatus === 'running';
+    const toggleServerButtonLabel =
+        actionState === 'start'
+            ? 'Starting...'
+            : actionState === 'stop'
+                ? 'Stopping...'
+                : isServerRunning
+                    ? 'Stop Server'
+                    : 'Start Server';
+    const toggleServerOperationClass = isServerRunning ? 'mcc-btn-op-stop' : 'mcc-btn-op-start';
+    const toggleServerIcon = isServerRunning ? '■' : '▶';
+    const handleToggleServer = async () => {
+        if (isServerRunning) {
+            await handleStopServer();
+            return;
+        }
+        await handleStartServer();
+    };
+    const handleOpenTargetInNewTab = () => {
+        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    };
     const effectiveIframeKey = iframePersistenceKey || statusEndpoint || title;
     const focusMode = enableFocusMode && searchParams.get('focus') === '1';
     const hidePanels = enableFocusMode && focusMode;
@@ -239,13 +365,20 @@ export function WebServiceUI({
         }
         setSearchParams(nextParams, { replace: true });
     };
-    const handleIframeLoadingChange = useCallback((loading: boolean) => {
+    const handleIframeLoadingChange = (loading: boolean) => {
         setIsLoading(loading);
-    }, []);
-    const handleIframeError = useCallback((message: string) => {
+    };
+    const handleIframeError = (message: string) => {
         setIsLoading(false);
         setError(message);
-    }, []);
+    };
+    const handleDismissActionMessage = () => {
+        setActionMessage(null);
+        setActionError(null);
+    };
+    const handleDismissActionLogs = () => {
+        setShowActionLogs(false);
+    };
 
     return (
         <div className={`codex-web-view${hidePanels ? ' codex-web-view-focus' : ''}`}>
@@ -256,12 +389,40 @@ export function WebServiceUI({
                     <h2>{title}</h2>
                     <div className="mcc-header-status">
                         <span className={`mcc-status-dot mcc-status-${serverStatus}`}></span>
-                        <span className="mcc-status-text">
-                            {serverStatus === 'checking' && 'Checking...'}
-                            {serverStatus === 'running' && 'Connected'}
-                            {serverStatus === 'not-running' && 'Disconnected'}
-                        </span>
+                        <button
+                            className="mcc-status-refresh-btn"
+                            onClick={handleRefreshStatus}
+                            disabled={actionBusy}
+                            title="Refresh status"
+                            aria-label="Refresh status"
+                        >
+                            <span className={`mcc-status-refresh-icon${actionState === 'refresh' ? ' spinning' : ''}`}>
+                                <RefreshIcon />
+                            </span>
+                        </button>
                     </div>
+                    {serverStatus === 'running' && (
+                        <button
+                            className="codex-web-focus-toggle"
+                            onClick={handleOpenTargetInNewTab}
+                            title="Open target in new tab"
+                            aria-label="Open target in new tab"
+                        >
+                            <OpenInNewIcon className="codex-web-focus-icon" />
+                        </button>
+                    )}
+                    {settingsPath && (
+                        <button
+                            className="codex-web-focus-toggle"
+                            onClick={() => navigate(settingsPath)}
+                            title="Open settings"
+                            aria-label="Open settings"
+                        >
+                            <span className="codex-web-settings-icon">
+                                <SettingsIcon />
+                            </span>
+                        </button>
+                    )}
                     {enableFocusMode && (
                         <button
                             className="codex-web-focus-toggle"
@@ -279,42 +440,54 @@ export function WebServiceUI({
                 {!hidePanels && (
                     <>
                         <div className="codex-web-controls">
-                            <button className="mcc-btn-secondary" onClick={handleRefreshStatus} disabled={actionBusy}>
-                                {actionState === 'refresh' ? 'Refreshing...' : 'Refresh Status'}
-                            </button>
                             <button
-                                className="mcc-btn-primary"
-                                onClick={handleStartServer}
-                                disabled={actionBusy || serverStatus === 'running'}
+                                className={`mcc-btn-secondary ${toggleServerOperationClass} codex-web-action-btn`}
+                                onClick={handleToggleServer}
+                                disabled={actionBusy || serverStatus === 'checking'}
                             >
-                                {actionState === 'start' ? 'Starting...' : 'Start Server'}
-                            </button>
-                            <button
-                                className="mcc-btn-secondary"
-                                onClick={handleStopServer}
-                                disabled={actionBusy || serverStatus !== 'running'}
-                            >
-                                {actionState === 'stop' ? 'Stopping...' : 'Stop Server'}
+                                <span className="codex-web-action-btn-icon" aria-hidden="true">{toggleServerIcon}</span>
+                                <span>{toggleServerButtonLabel}</span>
                             </button>
                         </div>
-                        {actionMessage && <div className="codex-web-action-status">{actionMessage}</div>}
-                        {actionError && <div className="codex-web-action-error">{actionError}</div>}
-                        {(actionLogs.length > 0 || actionBusy) && (
+                        {actionMessage && (
+                            <div className="codex-web-action-status codex-web-action-banner">
+                                <span>{actionMessage}</span>
+                                <button
+                                    className="codex-web-action-dismiss"
+                                    onClick={handleDismissActionMessage}
+                                    aria-label="Dismiss status message"
+                                >
+                                    <DismissIcon />
+                                </button>
+                            </div>
+                        )}
+                        {actionError && (
+                            <div className="codex-web-action-error codex-web-action-banner">
+                                <span>{actionError}</span>
+                                <button
+                                    className="codex-web-action-dismiss"
+                                    onClick={handleDismissActionMessage}
+                                    aria-label="Dismiss error message"
+                                >
+                                    <DismissIcon />
+                                </button>
+                            </div>
+                        )}
+                        {showActionLogs && (actionLogs.length > 0 || actionBusy) && (
                             <div className="codex-web-log-panel">
-                                <div className="codex-web-log-title">Action Logs</div>
+                                <button
+                                    className="codex-web-action-dismiss codex-web-log-dismiss"
+                                    onClick={handleDismissActionLogs}
+                                    aria-label="Dismiss action logs"
+                                >
+                                    <DismissIcon />
+                                </button>
                                 <LogViewer
                                     lines={actionLogs}
                                     pending={actionBusy}
                                     pendingMessage="Streaming logs..."
                                     maxHeight={180}
                                 />
-                            </div>
-                        )}
-                        {serverStatus === 'running' && (
-                            <div className="codex-web-target-link">
-                                <ExternalAgentLink href={targetUrl}>
-                                    Open target server in new tab ↗
-                                </ExternalAgentLink>
                             </div>
                         )}
                     </>
@@ -349,7 +522,7 @@ export function WebServiceUI({
                                     <li>Install required package: <code>{installCommand}</code></li>
                                     <li>{authHint}</li>
                                     <li>Start the server: <code>{startCommandPrefix} {resolvedPort}</code></li>
-                                    <li>Click <strong>Refresh Status</strong> above</li>
+                                    <li>Click the refresh icon in the status indicator</li>
                                 </ol>
                             </div>
                         </div>

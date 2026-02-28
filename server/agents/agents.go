@@ -16,7 +16,8 @@ import (
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/cursor"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode"
+	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
+	opencode_internal "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
@@ -34,9 +35,9 @@ const (
 
 type AgentDef struct {
 	ID          AgentID `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Command     string `json:"command"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Command     string  `json:"command"`
 	// Installed is set dynamically by checking if the command is available
 	Installed bool `json:"installed"`
 	// Headless indicates this agent supports headless server mode
@@ -159,7 +160,7 @@ func RegisterAPI(mux *http.ServeMux) {
 // Shutdown stops the agents module (stops health checks, but leaves opencode running)
 func Shutdown() {
 	fmt.Println("Stopping opencode health check...")
-	opencode.StopHealthCheck()
+	opencode_exposed.StopHealthCheck()
 }
 
 // ------ Agent Session Manager ------
@@ -367,7 +368,7 @@ func (s *agentSession) applyPreferredModel() {
 	}
 
 	// Try to apply the saved model from settings first
-	savedModel := opencode.GetModel()
+	savedModel := opencode_exposed.GetModel()
 	if savedModel != "" {
 		body := fmt.Sprintf(`{"model":"%s"}`, savedModel)
 		req, err := http.NewRequest("PATCH", baseURL+"/config", strings.NewReader(body))
@@ -564,7 +565,7 @@ func isAgentInstalled(agentID AgentID, defaultCommand string) bool {
 }
 
 func getOpencodeBinaryPath() string {
-	settings, err := opencode.LoadSettings()
+	settings, err := opencode_exposed.LoadSettings()
 	if err == nil && settings != nil {
 		if path := strings.TrimSpace(settings.BinaryPath); path != "" {
 			return path
@@ -595,7 +596,7 @@ func handleOpencodeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, err := opencode.GetAuthStatus()
+	status, err := opencode_exposed.GetAuthStatus()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -609,7 +610,7 @@ func handleOpencodeAuth(w http.ResponseWriter, r *http.Request) {
 func handleOpencodeSettings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		settings, err := opencode.LoadSettings()
+		settings, err := opencode_exposed.LoadSettings()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -618,12 +619,12 @@ func handleOpencodeSettings(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(settings)
 
 	case http.MethodPost:
-		var req opencode.Settings
+		var req opencode_exposed.Settings
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		if err := opencode.SaveSettings(&req); err != nil {
+		if err := opencode_exposed.SaveSettings(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -642,7 +643,7 @@ func handleOpencodeWebStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, err := opencode.GetWebServerStatus()
+	status, err := opencode_exposed.GetWebServerStatus()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -661,7 +662,7 @@ func handleOpencodeServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get or start the opencode server
-	server, err := opencode.GetOrStartOpencodeServer()
+	server, err := opencode_internal.GetOrStartOpencodeServer()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -681,15 +682,13 @@ func handleOpencodeWebServerStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	customPath := getOpencodeBinaryPath()
-
 	acceptHeader := r.Header.Get("Accept")
 	if acceptHeader == "text/event-stream" {
 		handleOpencodeWebServerStartStreaming(w, r)
 		return
 	}
 
-	resp, err := opencode.StartWebServer(customPath)
+	resp, err := opencode_exposed.StartWebServer()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -708,8 +707,7 @@ func handleOpencodeWebServerStartStreaming(w http.ResponseWriter, r *http.Reques
 	}
 
 	sseWriter.SendLog("Starting OpenCode web server...")
-	customPath := getOpencodeBinaryPath()
-	resp, err := opencode.StartWebServer(customPath)
+	resp, err := opencode_exposed.StartWebServer()
 	if err != nil {
 		sseWriter.SendError(fmt.Sprintf("Failed to start web server: %v", err))
 		sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
@@ -725,8 +723,8 @@ func handleOpencodeWebServerStartStreaming(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	status, statusErr := opencode.GetWebServerStatus()
-	port := opencode.GetWebServerPort()
+	status, statusErr := opencode_exposed.GetWebServerStatus()
+	port := opencode_exposed.GetWebServerPort()
 	if statusErr == nil && status != nil && status.Port > 0 {
 		port = status.Port
 	}
@@ -746,15 +744,13 @@ func handleOpencodeWebServerStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	customPath := getOpencodeBinaryPath()
-
 	acceptHeader := r.Header.Get("Accept")
 	if acceptHeader == "text/event-stream" {
 		handleOpencodeWebServerStopStreaming(w, r)
 		return
 	}
 
-	resp, err := opencode.StopWebServer(customPath)
+	resp, err := opencode_exposed.StopWebServer()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -772,14 +768,14 @@ func handleOpencodeWebServerStopStreaming(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	settings, err := opencode.LoadSettings()
+	settings, err := opencode_exposed.LoadSettings()
 	if err != nil {
 		sseWriter.SendError(fmt.Sprintf("Failed to load settings: %v", err))
 		sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
 		return
 	}
 
-	if !opencode.IsWebServerRunning(settings.WebServer.Port) {
+	if !opencode_exposed.IsWebServerRunning(settings.WebServer.Port) {
 		sseWriter.SendStatus("stopped", map[string]string{"message": "Web server is already stopped"})
 		sseWriter.SendLog("Web server is already stopped")
 		sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server is already stopped", "running": "false"})
@@ -789,30 +785,36 @@ func handleOpencodeWebServerStopStreaming(w http.ResponseWriter, r *http.Request
 	sseWriter.SendLog("Stopping OpenCode web server...")
 	sseWriter.SendStatus("stopping", map[string]string{"port": fmt.Sprintf("%d", settings.WebServer.Port)})
 
-	customPath := getOpencodeBinaryPath()
-	_, err = opencode.StopWebServer(customPath)
+	stopResp, err := opencode_exposed.StopWebServer()
 	if err != nil {
 		sseWriter.SendError(fmt.Sprintf("Failed to stop web server: %v", err))
 		sseWriter.SendDone(map[string]string{"success": "false", "message": err.Error()})
 		return
 	}
 
-	running := opencode.IsWebServerRunning(settings.WebServer.Port)
+	running := false
+	message := "Web server stopped successfully"
+	if stopResp != nil {
+		running = stopResp.Running
+		if stopResp.Message != "" {
+			message = stopResp.Message
+		}
+	}
 
 	if !running {
 		sseWriter.SendStatus("stopped", map[string]string{
 			"port":    fmt.Sprintf("%d", settings.WebServer.Port),
-			"message": "Web server stopped successfully",
+			"message": message,
 		})
-		sseWriter.SendLog("✓ Web server stopped successfully")
-		sseWriter.SendDone(map[string]string{"success": "true", "message": "Web server stopped successfully", "running": "false"})
+		sseWriter.SendLog(fmt.Sprintf("✓ %s", message))
+		sseWriter.SendDone(map[string]string{"success": "true", "message": message, "running": "false"})
 	} else {
 		sseWriter.SendStatus("failed", map[string]string{
 			"port":    fmt.Sprintf("%d", settings.WebServer.Port),
-			"message": "Server may still be running",
+			"message": message,
 		})
-		sseWriter.SendError("Web server may still be running")
-		sseWriter.SendDone(map[string]string{"success": "false", "message": "Web server may still be running", "running": "true"})
+		sseWriter.SendError(message)
+		sseWriter.SendDone(map[string]string{"success": "false", "message": message, "running": "true"})
 	}
 }
 
@@ -820,13 +822,13 @@ func handleOpencodeWebServerStopStreaming(w http.ResponseWriter, r *http.Request
 func handleOpencodeWebServerDomainMap(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
-		var req opencode.MapDomainRequest
+		var req opencode_exposed.MapDomainRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			// Allow empty body - use defaults
-			req = opencode.MapDomainRequest{}
+			req = opencode_exposed.MapDomainRequest{}
 		}
 
-		resp, err := opencode.MapDomainViaCloudflare(req.Provider)
+		resp, err := opencode_exposed.MapDomainViaCloudflare(req.Provider)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -836,7 +838,7 @@ func handleOpencodeWebServerDomainMap(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(resp)
 
 	case http.MethodDelete:
-		resp, err := opencode.UnmapDomain()
+		resp, err := opencode_exposed.UnmapDomain()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -870,15 +872,15 @@ func handleOpencodeWebServerDomainMapStreaming(w http.ResponseWriter, r *http.Re
 	// For POST requests, start a new mapping operation
 	var provider string
 	if r.Method == http.MethodPost {
-		var req opencode.MapDomainRequest
+		var req opencode_exposed.MapDomainRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			req = opencode.MapDomainRequest{}
+			req = opencode_exposed.MapDomainRequest{}
 		}
 		provider = req.Provider
 	}
 
 	// Start or get existing session
-	session, err := opencode.MapDomainViaCloudflareStreaming(provider, sessionID)
+	session, err := opencode_exposed.MapDomainViaCloudflareStreaming(provider, sessionID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1097,7 +1099,7 @@ func handleExternalSessions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get or start the opencode server
-	server, err := opencode.GetOrStartOpencodeServer()
+	server, err := opencode_internal.GetOrStartOpencodeServer()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1226,7 +1228,7 @@ func handleAgentSessions(w http.ResponseWriter, r *http.Request) {
 
 // handleExternalSessionProxy proxies requests to an external opencode server for external sessions.
 func handleExternalSessionProxy(w http.ResponseWriter, r *http.Request, parts []string) {
-	server, err := opencode.GetOrStartOpencodeServer()
+	server, err := opencode_internal.GetOrStartOpencodeServer()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1241,12 +1243,12 @@ func handleExternalSessionProxy(w http.ResponseWriter, r *http.Request, parts []
 	r.URL.RawPath = ""
 
 	if strings.Contains(restPath, "/message") && r.Method == http.MethodGet {
-		opencode.ProxyMessages(w, r, server.Port)
+		opencode_exposed.ProxyMessages(w, r, server.Port)
 		return
 	}
 
 	if restPath == "/event" || restPath == "/global/event" {
-		opencode.ProxySSE(w, r, server.Port)
+		opencode_exposed.ProxySSE(w, r, server.Port)
 		return
 	}
 
@@ -1314,19 +1316,19 @@ func handleAgentSessionProxy(w http.ResponseWriter, r *http.Request) {
 
 	// For config PATCH, transform model from object to string for opencode
 	if restPath == "/config" && r.Method == http.MethodPatch {
-		opencode.ProxyConfigUpdate(w, r, s.port)
+		opencode_exposed.ProxyConfigUpdate(w, r, s.port)
 		return
 	}
 
 	// For SSE endpoints, convert OpenCode events to ACP
 	if restPath == "/event" || restPath == "/global/event" {
-		opencode.ProxySSE(w, r, s.port)
+		opencode_exposed.ProxySSE(w, r, s.port)
 		return
 	}
 
 	// For message endpoints, convert response to ACP format
 	if strings.Contains(restPath, "/message") && r.Method == http.MethodGet {
-		opencode.ProxyMessages(w, r, s.port)
+		opencode_exposed.ProxyMessages(w, r, s.port)
 		return
 	}
 

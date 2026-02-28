@@ -28,3 +28,4 @@ export { WebServiceUI } from './mcc/home/experimental/WebServiceUI';
 export { CodexWebUI } from './mcc/home/experimental/CodexWebUI';
 export { CursorWebUI } from './mcc/home/experimental/CursorWebUI';
 export { OpencodeWebUI } from './mcc/home/experimental/OpencodeWebUI';
+export { OpencodeWebSettingsView } from './mcc/home/experimental/OpencodeWebSettingsView';

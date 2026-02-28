@@ -22,3 +22,4 @@ export { LogsIcon } from './LogsIcon';
 export { TrashIcon } from './TrashIcon';
 export { BeakerIcon } from './BeakerIcon';
 export { ProjectDetailIcon } from './ProjectDetailIcon';
+export { OpenInNewIcon } from './OpenInNewIcon';

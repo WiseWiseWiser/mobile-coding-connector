@@ -8,6 +8,15 @@
     color: #f1f5f9;
 }
 
+.codex-web-view .mcc-section-header {
+    gap: 8px;
+    padding: 10px 14px 8px;
+}
+
+.codex-web-view .mcc-section-header h2 {
+    font-size: 18px;
+}
+
 .mcc-header-icon {
     width: 20px;
     height: 20px;
@@ -25,7 +34,7 @@
 }
 
 .codex-web-focus-toggle {
-    margin-left: 8px;
+    margin-left: 4px;
     width: 32px;
     height: 32px;
     padding: 0;
@@ -54,6 +63,20 @@
     fill: none;
 }
 
+.codex-web-settings-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.codex-web-settings-icon > svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+}
+
 .mcc-status-dot {
     width: 8px;
     height: 8px;
@@ -71,6 +94,47 @@
     background: #ef4444;
 }
 
+.mcc-status-refresh-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid #475569;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.75);
+    color: #e2e8f0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mcc-status-refresh-btn:hover {
+    background: #334155;
+    border-color: #64748b;
+}
+
+.mcc-status-refresh-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.mcc-status-refresh-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mcc-status-refresh-icon > svg {
+    width: 16px;
+    height: 16px;
+}
+
+.mcc-status-refresh-icon.spinning {
+    animation: mcc-spin 1s linear infinite;
+}
+
 .codex-web-content {
     flex: 1;
     display: flex;
@@ -81,13 +145,13 @@
 .codex-web-controls {
     display: flex;
     gap: 10px;
-    padding: 12px;
+    padding: 8px 12px;
     border-bottom: 1px solid #1e293b;
     background: #0b1224;
 }
 
 .codex-web-action-status {
-    margin: 10px 12px 0;
+    margin: 6px 12px 0;
     padding: 8px 10px;
     border-radius: 8px;
     background: rgba(59, 130, 246, 0.15);
@@ -97,7 +161,7 @@
 }
 
 .codex-web-action-error {
-    margin: 10px 12px 0;
+    margin: 6px 12px 0;
     padding: 8px 10px;
     border-radius: 8px;
     background: rgba(239, 68, 68, 0.15);
@@ -107,24 +171,61 @@
 }
 
 .codex-web-log-panel {
-    margin: 10px 12px 0;
+    position: relative;
+    margin: 6px 12px 10px;
     border: 1px solid #334155;
     border-radius: 10px;
     background: #111827;
     overflow: hidden;
 }
 
-.codex-web-log-title {
-    padding: 8px 10px;
-    font-size: 12px;
-    font-weight: 600;
-    color: #cbd5e1;
-    border-bottom: 1px solid #334155;
-    background: #0f172a;
+.codex-web-action-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.codex-web-action-dismiss {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.78;
+    flex-shrink: 0;
+}
+
+.codex-web-action-dismiss:hover {
+    background: rgba(15, 23, 42, 0.8);
+    opacity: 1;
+}
+
+.codex-web-dismiss-icon {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+}
+
+.codex-web-log-dismiss {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
 }
 
 .codex-web-target-link {
-    margin: 10px 12px 0;
+    margin: 6px 12px 0;
     font-size: 13px;
 }
 
@@ -267,6 +368,26 @@
     background: #475569;
 }
 
+.mcc-btn-op-start {
+    border: 1px solid rgba(74, 222, 128, 0.45);
+    background: rgba(74, 222, 128, 0.16);
+    color: #86efac;
+}
+
+.mcc-btn-op-start:hover {
+    background: rgba(74, 222, 128, 0.24);
+}
+
+.mcc-btn-op-stop {
+    border: 1px solid rgba(248, 113, 113, 0.45);
+    background: rgba(248, 113, 113, 0.16);
+    color: #fca5a5;
+}
+
+.mcc-btn-op-stop:hover {
+    background: rgba(248, 113, 113, 0.24);
+}
+
 .codex-web-error-help {
     background: #1e293b;
     border: 1px solid #334155;
@@ -291,9 +412,21 @@
     line-height: 1.8;
 }
 
+.mcc-btn-primary:disabled,
 .mcc-btn-secondary:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.codex-web-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.codex-web-action-btn-icon {
+    font-size: 12px;
+    line-height: 1;
 }
 
 .codex-web-error-help code {

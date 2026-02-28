@@ -12,9 +12,9 @@ import (
 
 const defaultPort = 5173
 
-const help = `Usage: go run ./script/debug-port [options] [script]
+const help = `Usage: go run ./script/debug-port [options] "<script>"
 
-Debug a port using Puppeteer browser automation.
+Debug a port using Playwright browser automation.
 
 Options:
   -h, --help      Show this help message
@@ -22,12 +22,10 @@ Options:
   --headless      Run in headless mode (default: true)
   --no-headless   Run with visible browser
 
-The script argument is JavaScript code to execute in the browser context.
-If no script is provided, reads from stdin.
+The script argument is required JavaScript code to execute in the browser context.
 
 Example:
-  go run ./script/debug-port --port=3580 "console.log(await page.title())"
-  echo "await navigate('/'); console.log(await page.title())" | go run ./script/debug-port --port=3580
+  go run ./script/debug-port --port=3580 "await navigate('/'); console.log(await page.title())"
 `
 
 func main() {
@@ -61,10 +59,10 @@ func run(args []string) error {
 		port = defaultPort
 	}
 
-	var scriptArg string
-	if len(args) > 0 {
-		scriptArg = args[0]
+	if len(args) != 1 {
+		return fmt.Errorf("exactly one script argument is required")
 	}
+	scriptArg := args[0]
 
 	projectRoot, err := getProjectRoot()
 	if err != nil {
@@ -78,7 +76,6 @@ func run(args []string) error {
 
 	cmd := exec.Command("node", debugScript)
 	cmd.Dir = filepath.Join(projectRoot, "script", "debug-port")
-	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -87,9 +84,7 @@ func run(args []string) error {
 		fmt.Sprintf("HEADLESS=%v", headless),
 	)
 
-	if scriptArg != "" {
-		cmd.Args = append(cmd.Args, scriptArg)
-	}
+	cmd.Args = append(cmd.Args, scriptArg)
 
 	return cmd.Run()
 }

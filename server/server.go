@@ -25,13 +25,13 @@ import (
 	"github.com/xhd2015/kool/pkgs/web"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/actions"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode"
+	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/web/codexweb"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/web/cursorweb"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/checkpoint"
 	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/codexweb"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cursorweb"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/exposedurls"
@@ -40,11 +40,11 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/keepalive"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/logs"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
-	pfcloudflare "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/cloudflare"
-	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/portforward/providers/localtunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/proxyconfig"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward"
+	pfcloudflare "github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward/providers/cloudflare"
+	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward/providers/localtunnel"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/proxyconfig"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
@@ -94,14 +94,14 @@ func GetQuickTestQuitChan() <-chan struct{} {
 
 func RunBackgroundTasks() {
 	fmt.Printf("[auto-task] Running background tasks\n")
-	opencode.StartHealthCheck()
+	opencode_exposed.StartHealthCheck()
 	cloudflareSettings.StartGlobalHealthChecks()
 }
 
 func RunStartupTasks() {
 	fmt.Printf("[auto-task] Running startup tasks\n")
 	domains.AutoStartTunnels()
-	opencode.AutoStartWebServer()
+	opencode_exposed.AutoStartWebServer()
 
 	go func() {
 		time.Sleep(2 * time.Second)
@@ -289,9 +289,9 @@ func Serve(port int, dev bool) error {
 			agents.Shutdown()
 
 			// Stop opencode web server if enabled
-			if opencode.IsWebServerEnabled() {
+			if opencode_exposed.IsWebServerEnabled() {
 				fmt.Println("Stopping opencode web server...")
-				_, err := opencode.StopWebServer("")
+				_, err := opencode_exposed.StopWebServer()
 				if err != nil {
 					fmt.Printf("Warning: failed to stop opencode web server: %v\n", err)
 				}

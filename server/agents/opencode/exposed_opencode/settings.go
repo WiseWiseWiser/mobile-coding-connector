@@ -1,6 +1,4 @@
-// Package opencode provides an adapter for the OpenCode agent server,
-// converting its native event format to standard ACP messages.
-package opencode
+package exposed_opencode
 
 import (
 	"encoding/json"
@@ -10,16 +8,31 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
+type TargetPreference string
+
+const (
+	TargetPreferenceDomain    TargetPreference = "domain"
+	TargetPreferenceLocalhost TargetPreference = "localhost"
+)
+
+func NormalizeTargetPreference(pref TargetPreference) TargetPreference {
+	if pref == TargetPreferenceLocalhost {
+		return pref
+	}
+	return TargetPreferenceDomain
+}
+
 // WebServerConfig holds the web server configuration.
 // These are user-configured preferences, NOT runtime state.
 // The Enabled field indicates user's preference to auto-start on boot (not current running status).
 // The Port field is the user-configured port preference, not the actual runtime port.
 type WebServerConfig struct {
-	Enabled          bool   `json:"enabled"` // User preference: auto-start on boot
-	Port             int    `json:"port"`    // User preference: desired port (default 4096)
-	ExposedDomain    string `json:"exposed_domain,omitempty"`
-	Password         string `json:"password,omitempty"`
-	AuthProxyEnabled bool   `json:"auth_proxy_enabled"`
+	Enabled          bool             `json:"enabled"`                     // User preference: auto-start on boot
+	Port             int              `json:"port"`                        // User preference: desired port (default 4096)
+	TargetPreference TargetPreference `json:"target_preference,omitempty"` // Preferred web target: domain or localhost
+	ExposedDomain    string           `json:"exposed_domain,omitempty"`
+	Password         string           `json:"password,omitempty"`
+	AuthProxyEnabled bool             `json:"auth_proxy_enabled"`
 }
 
 // Settings holds the persisted opencode configuration.
@@ -68,6 +81,7 @@ func LoadSettings() (*Settings, error) {
 		if os.IsNotExist(err) {
 			// Set default values
 			s.WebServer.Port = 4096
+			s.WebServer.TargetPreference = TargetPreferenceDomain
 			settingsCache = s
 			return copySettings(s), nil
 		}
@@ -78,10 +92,11 @@ func LoadSettings() (*Settings, error) {
 		return nil, err
 	}
 
-	// Set default port if not specified
+	// Set defaults if not specified
 	if s.WebServer.Port == 0 {
 		s.WebServer.Port = 4096
 	}
+	s.WebServer.TargetPreference = NormalizeTargetPreference(s.WebServer.TargetPreference)
 
 	settingsCache = s
 	return copySettings(s), nil
@@ -96,6 +111,7 @@ func copySettings(s *Settings) *Settings {
 		WebServer: WebServerConfig{
 			Enabled:          s.WebServer.Enabled,
 			Port:             s.WebServer.Port,
+			TargetPreference: s.WebServer.TargetPreference,
 			ExposedDomain:    s.WebServer.ExposedDomain,
 			Password:         s.WebServer.Password,
 			AuthProxyEnabled: s.WebServer.AuthProxyEnabled,
@@ -126,10 +142,11 @@ func SaveSettings(s *Settings) error {
 		return err
 	}
 
-	// Set default port if not specified
+	// Set defaults if not specified
 	if s.WebServer.Port == 0 {
 		s.WebServer.Port = 4096
 	}
+	s.WebServer.TargetPreference = NormalizeTargetPreference(s.WebServer.TargetPreference)
 
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {

@@ -1,22 +1,18 @@
 ---
 name: debug-server-and-frontend
-description: Debug server and frontend integration using Puppeteer
+description: Debug server/frontend integration with quick-test and Playwright
 ---
 
 # Debug Server and Frontend Skill
 
 ## Overview
 
-This skill provides automated debugging for the server and frontend integration using Puppeteer. It starts a quick-test server and opens a browser debugger.
+This skill provides automated debugging for the server and frontend integration using Playwright. It starts a quick-test server and opens a browser debugger.
 
 ## Quick Start
 
 ```bash
-# Start server and debug interactively
-go run ./script/debug-server-and-frontend
-
-# Run with visible browser
-go run ./script/debug-server-and-frontend --no-headless
+go run ./script/debug-server-and-frontend "await navigate('/project/lifelog-private/home/opencode-web', { waitUntil: 'domcontentloaded' }); console.log('title:', await page.title());"
 ```
 
 **Note:** Quick-test mode automatically manages backend and frontend lifecycle, including killing any existing processes on the port.
@@ -28,14 +24,14 @@ Starts a quick-test server (port 3580) and opens a browser debugger.
 
 Options:
 - `--port PORT` - Port for quick-test server (default: 3580)
-- `--no-headless` - Run browser with visible window
+- `--headless` - Run browser in headless mode
 
 ## Script Variables
 
 | Variable | Description |
 |----------|-------------|
-| page | Puppeteer Page object |
-| browser | Puppeteer Browser object |
+| page | Playwright Page object |
+| browser | Playwright Browser object |
 | console | Node console |
 | fs | Node fs module |
 | BASE_URL | Base URL string (http://localhost:{port}) |

@@ -1,6 +1,4 @@
-// Package opencode provides an adapter for the OpenCode agent server,
-// converting its native event format to standard ACP messages.
-package opencode
+package exposed_opencode
 
 import (
 	"bufio"
@@ -70,11 +68,7 @@ func ProxySSE(w http.ResponseWriter, r *http.Request, port int) {
 }
 
 // ProxyConfigUpdate handles PATCH /config by transforming the model field
-// from object format {model: {modelID: "xxx"}} to string format {model: "xxx"}
-// which is what the opencode server expects.
-// Also persists the model to local settings.
-// Note: The model is saved locally and NOT proxied to the opencode server to avoid
-// the server creating a config.json file in the project directory.
+// from object format {model: {modelID: "xxx"}} to string format {model: "xxx"}.
 func ProxyConfigUpdate(w http.ResponseWriter, r *http.Request, port int) {
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -88,12 +82,9 @@ func ProxyConfigUpdate(w http.ResponseWriter, r *http.Request, port int) {
 		return
 	}
 
-	// Transform model from {modelID: "xxx"} to plain string "xxx"
-	// and save to local settings
 	if modelObj, ok := body["model"].(map[string]interface{}); ok {
 		if modelID, ok := modelObj["modelID"].(string); ok {
 			body["model"] = modelID
-			// Persist the model selection locally
 			if err := SetModel(modelID); err != nil {
 				http.Error(w, fmt.Sprintf("failed to save model: %v", err), http.StatusInternalServerError)
 				return
@@ -101,15 +92,12 @@ func ProxyConfigUpdate(w http.ResponseWriter, r *http.Request, port int) {
 		}
 	}
 
-	// Return success without proxying to the opencode server.
-	// The model is persisted locally and applied when starting new sessions.
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 
-// ProxyConfigWithModel handles GET /config and injects the saved model preference
-// if no model is currently set in the opencode config.
+// ProxyConfigWithModel handles GET /config and injects the saved model preference.
 func ProxyConfigWithModel(w http.ResponseWriter, r *http.Request, port int) {
 	targetURL := fmt.Sprintf("http://127.0.0.1:%d/config", port)
 
@@ -135,7 +123,6 @@ func ProxyConfigWithModel(w http.ResponseWriter, r *http.Request, port int) {
 		return
 	}
 
-	// If no model is set, inject the saved model preference
 	if config["model"] == nil || config["model"] == "" {
 		savedModel := GetModel()
 		if savedModel != "" {
@@ -148,8 +135,7 @@ func ProxyConfigWithModel(w http.ResponseWriter, r *http.Request, port int) {
 	json.NewEncoder(w).Encode(config)
 }
 
-// ProxyMessages fetches messages from the opencode server,
-// converts them to ACP format, and writes them to the response.
+// ProxyMessages fetches messages from the opencode server, converts them to ACP, and writes them.
 func ProxyMessages(w http.ResponseWriter, r *http.Request, port int) {
 	targetURL := fmt.Sprintf("http://127.0.0.1:%d%s", port, r.URL.Path)
 	if r.URL.RawQuery != "" {

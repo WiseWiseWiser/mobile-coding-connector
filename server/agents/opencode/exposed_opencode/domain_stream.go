@@ -1,4 +1,4 @@
-package opencode
+package exposed_opencode
 
 import (
 	"context"
@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/portforward"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward"
 )
 
-// StreamSession represents an active domain mapping streaming session
+// StreamSession represents an active domain mapping streaming session.
 type StreamSession struct {
 	ID        string
 	Port      int
@@ -27,14 +27,14 @@ type StreamSession struct {
 	doneChan  chan struct{}
 }
 
-// LogEntry represents a single log line with timestamp
+// LogEntry represents a single log line with timestamp.
 type LogEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 	Message   string    `json:"message"`
 	IsError   bool      `json:"is_error"`
 }
 
-// SessionManager manages active streaming sessions
+// SessionManager manages active streaming sessions.
 type SessionManager struct {
 	sessions map[string]*StreamSession
 	mu       sync.RWMutex
@@ -45,7 +45,7 @@ var (
 	sessionManagerOnce sync.Once
 )
 
-// GetSessionManager returns the global session manager singleton
+// GetSessionManager returns the global session manager singleton.
 func GetSessionManager() *SessionManager {
 	sessionManagerOnce.Do(func() {
 		sessionManager = &SessionManager{
@@ -55,7 +55,7 @@ func GetSessionManager() *SessionManager {
 	return sessionManager
 }
 
-// CreateSession creates a new streaming session
+// CreateSession creates a new streaming session.
 func (sm *SessionManager) CreateSession(id string, port int, domain string, provider string) *StreamSession {
 	session := &StreamSession{
 		ID:        id,
@@ -73,13 +73,13 @@ func (sm *SessionManager) CreateSession(id string, port int, domain string, prov
 	sm.sessions[id] = session
 	sm.mu.Unlock()
 
-	// Clean up old sessions after 1 hour
+	// Clean up old sessions after 1 hour.
 	go sm.cleanupOldSessions()
 
 	return session
 }
 
-// GetSession retrieves a session by ID
+// GetSession retrieves a session by ID.
 func (sm *SessionManager) GetSession(id string) (*StreamSession, bool) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
@@ -87,7 +87,7 @@ func (sm *SessionManager) GetSession(id string) (*StreamSession, bool) {
 	return session, ok
 }
 
-// cleanupOldSessions removes sessions older than 1 hour
+// cleanupOldSessions removes sessions older than 1 hour.
 func (sm *SessionManager) cleanupOldSessions() {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -100,7 +100,7 @@ func (sm *SessionManager) cleanupOldSessions() {
 	}
 }
 
-// AddLog adds a log entry to the session
+// AddLog adds a log entry to the session.
 func (s *StreamSession) AddLog(message string, isError bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -112,7 +112,7 @@ func (s *StreamSession) AddLog(message string, isError bool) {
 	s.UpdatedAt = time.Now()
 }
 
-// SetStatus updates the session status
+// SetStatus updates the session status.
 func (s *StreamSession) SetStatus(status string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -120,7 +120,7 @@ func (s *StreamSession) SetStatus(status string) {
 	s.UpdatedAt = time.Now()
 }
 
-// SetResult sets the final result and marks session as done
+// SetResult sets the final result and marks session as done.
 func (s *StreamSession) SetResult(success bool, publicURL string, err string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -132,7 +132,7 @@ func (s *StreamSession) SetResult(success bool, publicURL string, err string) {
 	close(s.doneChan)
 }
 
-// GetLogsSince returns logs after a specific index
+// GetLogsSince returns logs after a specific index.
 func (s *StreamSession) GetLogsSince(startIndex int) []LogEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -142,27 +142,25 @@ func (s *StreamSession) GetLogsSince(startIndex int) []LogEntry {
 	return s.Logs[startIndex:]
 }
 
-// WaitDone returns a channel that closes when the session is done
+// WaitDone returns a channel that closes when the session is done.
 func (s *StreamSession) WaitDone() <-chan struct{} {
 	return s.doneChan
 }
 
-// IsDone checks if the session is complete
+// IsDone checks if the session is complete.
 func (s *StreamSession) IsDone() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.Done
 }
 
-// MapDomainViaCloudflareStreaming starts a domain mapping operation with streaming support
-// Returns a session ID that can be used to reconnect and get updates
+// MapDomainViaCloudflareStreaming starts a domain mapping operation with streaming support.
 func MapDomainViaCloudflareStreaming(provider string, sessionID string) (*StreamSession, error) {
 	settings, err := LoadSettings()
 	if err != nil {
 		return nil, err
 	}
 
-	// Create or get session
 	manager := GetSessionManager()
 	var session *StreamSession
 
@@ -173,12 +171,10 @@ func MapDomainViaCloudflareStreaming(provider string, sessionID string) (*Stream
 	}
 
 	if session == nil {
-		// Create new session
 		if sessionID == "" {
 			sessionID = fmt.Sprintf("domain-map-%d", time.Now().UnixNano())
 		}
 
-		// Validate settings
 		if settings.DefaultDomain == "" {
 			session = manager.CreateSession(sessionID, 0, "", provider)
 			session.AddLog("Error: No default domain configured", true)
@@ -193,7 +189,6 @@ func MapDomainViaCloudflareStreaming(provider string, sessionID string) (*Stream
 			return session, nil
 		}
 
-		// Check if domain matches an owned domain
 		matches, _ := DomainMatchesOwned(settings.DefaultDomain)
 		if !matches {
 			session = manager.CreateSession(sessionID, settings.WebServer.Port, settings.DefaultDomain, provider)
@@ -202,34 +197,28 @@ func MapDomainViaCloudflareStreaming(provider string, sessionID string) (*Stream
 			return session, nil
 		}
 
-		// Default to cloudflare_owned if not specified
 		if provider == "" {
 			provider = portforward.ProviderCloudflareOwned
 		}
 
 		session = manager.CreateSession(sessionID, settings.WebServer.Port, settings.DefaultDomain, provider)
-
-		// Start the mapping process in background
 		go runDomainMapping(session, settings, provider)
 	}
 
 	return session, nil
 }
 
-// runDomainMapping performs the actual domain mapping with progress logging
+// runDomainMapping performs the actual domain mapping with progress logging.
 func runDomainMapping(session *StreamSession, settings *Settings, provider string) {
 	session.AddLog(fmt.Sprintf("Starting domain mapping for %s via %s...", session.Domain, provider), false)
 	session.SetStatus("mapping")
 
-	// Create a label for this port forward
 	label := session.Domain
 
-	// Subscribe to port forward changes to get status updates
 	pfManager := portforward.GetDefaultManager()
 	subID, subChan := pfManager.Subscribe()
 	defer pfManager.Unsubscribe(subID)
 
-	// Start the port forward
 	session.AddLog("Creating Cloudflare tunnel...", false)
 	pf, err := pfManager.Add(session.Port, label, provider)
 	if err != nil {
@@ -240,7 +229,6 @@ func runDomainMapping(session *StreamSession, settings *Settings, provider strin
 
 	session.AddLog(fmt.Sprintf("Port forward created with status: %s", pf.Status), false)
 
-	// Monitor the port forward until it's active or errors
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -250,11 +238,8 @@ func runDomainMapping(session *StreamSession, settings *Settings, provider strin
 			session.AddLog("Timeout waiting for tunnel to become active", true)
 			session.SetResult(false, "", "Timeout waiting for tunnel to become active")
 			return
-
 		case <-session.WaitDone():
-			// Session was already completed (maybe cancelled)
 			return
-
 		case ports, ok := <-subChan:
 			if !ok {
 				session.AddLog("Port forward subscription closed", true)
@@ -262,7 +247,6 @@ func runDomainMapping(session *StreamSession, settings *Settings, provider strin
 				return
 			}
 
-			// Find our port forward
 			for _, port := range ports {
 				if port.LocalPort == session.Port {
 					switch port.Status {
@@ -270,23 +254,19 @@ func runDomainMapping(session *StreamSession, settings *Settings, provider strin
 						session.AddLog(fmt.Sprintf("✓ Tunnel is active! Public URL: %s", port.PublicURL), false)
 						session.SetStatus("active")
 
-						// Save the exposed domain
 						settings.WebServer.ExposedDomain = port.PublicURL
 						SaveSettings(settings)
 
 						session.SetResult(true, port.PublicURL, "")
 						return
-
 					case portforward.StatusError:
 						session.AddLog(fmt.Sprintf("✗ Tunnel failed: %s", port.Error), true)
 						session.SetStatus("error")
 						session.SetResult(false, "", port.Error)
 						return
-
 					case portforward.StatusConnecting:
 						session.AddLog("Tunnel is connecting...", false)
 						session.SetStatus("connecting")
-
 					case portforward.StatusStopped:
 						session.AddLog("Tunnel was stopped", true)
 						session.SetStatus("stopped")
@@ -300,7 +280,7 @@ func runDomainMapping(session *StreamSession, settings *Settings, provider strin
 	}
 }
 
-// GetSessionLogs returns all logs from a session starting from a given index
+// GetSessionLogs returns all logs from a session starting from a given index.
 func GetSessionLogs(sessionID string, startIndex int) ([]LogEntry, bool, error) {
 	manager := GetSessionManager()
 	session, ok := manager.GetSession(sessionID)

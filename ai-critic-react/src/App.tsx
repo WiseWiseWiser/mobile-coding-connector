@@ -4,7 +4,7 @@ import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, CodexWebUI, CursorWebUI, OpencodeWebUI } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, CodexWebUI, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './logs';
 import './App.css';
@@ -176,6 +176,7 @@ function App() {
                             <Route path="codex-web" element={<CodexWebUI />} />
                             <Route path="cursor-web" element={<CursorWebUI />} />
                             <Route path="opencode-web" element={<OpencodeWebUI />} />
+                            <Route path="opencode-web/settings" element={<OpencodeWebSettingsView />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
@@ -226,6 +227,7 @@ function App() {
                             <Route path="codex-web" element={<CodexWebUI />} />
                             <Route path="cursor-web" element={<CursorWebUI />} />
                             <Route path="opencode-web" element={<OpencodeWebUI />} />
+                            <Route path="opencode-web/settings" element={<OpencodeWebSettingsView />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />

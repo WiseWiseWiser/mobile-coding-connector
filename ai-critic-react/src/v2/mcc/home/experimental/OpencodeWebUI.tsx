@@ -4,7 +4,7 @@ export function OpencodeWebUI() {
     return (
         <WebServiceUI
             port={4096}
-            title="OpenCode Web"
+            title="OpenCode"
             statusEndpoint="/api/agents/opencode/web-status"
             startEndpoint="/api/agents/opencode/exposed-server/start"
             stopEndpoint="/api/agents/opencode/exposed-server/stop"
@@ -15,6 +15,7 @@ export function OpencodeWebUI() {
             startCommandPrefix="opencode web --port"
             backPath="../experimental"
             enableFocusMode={true}
+            settingsPath="settings"
         />
     );
 }

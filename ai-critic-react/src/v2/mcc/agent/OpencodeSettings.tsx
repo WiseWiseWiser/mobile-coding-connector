@@ -224,30 +224,20 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
         setSuccess('');
         try {
             const currentConfig = savedSettings.web_server || { enabled: false, port: 4096 };
-            await updateOpencodeSettings({
+            const nextSettings = {
                 ...savedSettings,
                 default_domain: defaultDomain,
                 binary_path: binaryPath,
                 web_server: {
+                    ...currentConfig,
                     enabled: webServerEnabled,
                     port: webServerPort,
-                    exposed_domain: currentConfig.exposed_domain,
                     password: password,
                     auth_proxy_enabled: authProxyEnabled,
                 },
-            });
-            setSavedSettings({
-                ...savedSettings,
-                default_domain: defaultDomain,
-                binary_path: binaryPath,
-                web_server: {
-                    enabled: webServerEnabled,
-                    port: webServerPort,
-                    exposed_domain: currentConfig.exposed_domain,
-                    password: password,
-                    auth_proxy_enabled: authProxyEnabled,
-                },
-            });
+            };
+            await updateOpencodeSettings(nextSettings);
+            setSavedSettings(nextSettings);
             setEffectivePath(await fetchAgentEffectivePath(agentId));
             onRefreshAgents?.();
             setSuccess('Settings saved successfully');

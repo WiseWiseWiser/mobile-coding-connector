@@ -451,6 +451,13 @@ export async function fetchAgentEffectivePath(agentId: string): Promise<AgentEff
 
 // ---- OpenCode Settings ----
 
+export const OpencodeWebTargetPreferences = {
+    Localhost: 'localhost',
+    Domain: 'domain',
+} as const;
+
+export type OpencodeWebTargetPreference = typeof OpencodeWebTargetPreferences[keyof typeof OpencodeWebTargetPreferences];
+
 export interface OpencodeSettings {
     model?: string;
     default_domain?: string;
@@ -458,6 +465,7 @@ export interface OpencodeSettings {
     web_server?: {
         enabled: boolean;
         port: number;
+        target_preference?: OpencodeWebTargetPreference;
         exposed_domain?: string;
         password?: string;
         auth_proxy_enabled?: boolean;
@@ -488,6 +496,8 @@ export interface OpencodeWebStatus {
     port: number;
     domain: string;
     port_mapped: boolean;
+    target_preference?: OpencodeWebTargetPreference;
+    exposed_domain?: string;
     config_path: string;
     auth_proxy_running: boolean;
     auth_proxy_found: boolean;
