@@ -4,7 +4,7 @@ import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, CodexWebUI, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, CodexWebUI, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings, CursorACPSessionSettings } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './logs';
 import './App.css';
@@ -180,6 +180,7 @@ function App() {
                             <Route path="acp/cursor" element={<CursorACPUI />} />
                             <Route path="acp/cursor/settings" element={<CursorACPSettings />} />
                             <Route path="acp/cursor/:sessionId" element={<CursorACPChat />} />
+                            <Route path="acp/cursor/:sessionId/settings" element={<CursorACPSessionSettings />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
@@ -234,6 +235,7 @@ function App() {
                             <Route path="acp/cursor" element={<CursorACPUI />} />
                             <Route path="acp/cursor/settings" element={<CursorACPSettings />} />
                             <Route path="acp/cursor/:sessionId" element={<CursorACPChat />} />
+                            <Route path="acp/cursor/:sessionId/settings" element={<CursorACPSessionSettings />} />
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />

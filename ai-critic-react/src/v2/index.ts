@@ -35,3 +35,4 @@ export { ACPChat } from './mcc/home/experimental/acp/ACPChat';
 export { CursorACPUI } from './mcc/home/experimental/acp/CursorACPUI';
 export { CursorACPChat } from './mcc/home/experimental/acp/CursorACPChat';
 export { CursorACPSettings } from './mcc/home/experimental/acp/CursorACPSettings';
+export { CursorACPSessionSettings } from './mcc/home/experimental/acp/CursorACPSessionSettings';

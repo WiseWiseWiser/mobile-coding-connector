@@ -1,0 +1,156 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "*": "ask",
+    
+    "bash": {
+      "*": "ask",
+      
+      "=== SAFE GIT COMMANDS ===": "allow",
+      "git status*": "allow",
+      "git status": "allow",
+      "git add*": "allow",
+      "git commit*": "allow",
+      "git log*": "allow",
+      "git diff*": "allow",
+      "git branch*": "allow",
+      "git checkout*": "deny",
+      "git push*": "allow",
+      "git pull*": "allow",
+      "git fetch*": "allow",
+      "git merge*": "allow",
+      "git rebase*": "allow",
+      "git stash*": "allow",
+      "git tag*": "allow",
+      "git show*": "allow",
+      "git remote*": "allow",
+      "git config*": "allow",
+      "git clone*": "allow",
+      "git init*": "allow",
+      
+      "=== DESTRUCTIVE GIT COMMANDS - BLOCKED ===": "deny",
+      "git reset*": "deny",
+      "git reset --hard*": "deny",
+      "git checkout -f*": "deny",
+      "git checkout --force*": "deny",
+      "git clean -f*": "deny",
+      "git clean -xfd*": "deny",
+      "git push --force*": "deny",
+      "git push -f*": "deny",
+      "git branch -D*": "deny",
+      "git rebase --abort*": "deny",
+      
+      "=== PROCESS TERMINATION - BLOCKED ===": "deny",
+      "kill*": "deny",
+      "killall*": "deny",
+      "pkill*": "deny",
+      
+      "=== FILE SYSTEM DESTRUCTIVE - BLOCKED ===": "deny",
+      "rm -rf*": "deny",
+      "rm --recursive*": "deny",
+      "rmdir*": "deny",
+      "dd*": "deny",
+      "mkfs*": "deny",
+      "fdisk*": "deny",
+      "mv* /dev/null*": "deny",
+      
+      "=== HISTORY MANIPULATION - BLOCKED ===": "deny",
+      "history -c*": "deny",
+      
+      "=== SAFE READ-ONLY COMMANDS ===": "allow",
+      "ls*": "allow",
+      "cat*": "allow",
+      "find*": "allow",
+      "grep*": "allow",
+      "head*": "allow",
+      "tail*": "allow",
+      "less*": "allow",
+      "more*": "allow",
+      "wc*": "allow",
+      "sort*": "allow",
+      "uniq*": "allow",
+      "awk*": "allow",
+      "sed*": "allow",
+      "cut*": "allow",
+      "tr*": "allow",
+      "echo*": "allow",
+      "printf*": "allow",
+      "pwd*": "allow",
+      "which*": "allow",
+      "whoami*": "allow",
+      "id*": "allow",
+      "uname*": "allow",
+      "env*": "allow",
+      "printenv*": "allow",
+      "date*": "allow",
+      "time*": "allow",
+      "cal*": "allow",
+      
+      "=== BUILD/TEST COMMANDS ===": "ask",
+      "npm*": "ask",
+      "yarn*": "ask",
+      "pnpm*": "ask",
+      "bun*": "ask",
+      "node*": "ask",
+      "python*": "ask",
+      "python3*": "ask",
+      "pip*": "ask",
+      "pip3*": "ask",
+      "go*": "ask",
+      "cargo*": "ask",
+      "rustc*": "ask",
+      "make*": "ask",
+      "cmake*": "ask",
+      "docker*": "ask",
+      "kubectl*": "ask",
+      "terraform*": "ask",
+      "ansible*": "ask",
+      "pytest*": "ask",
+      "jest*": "ask",
+      "vitest*": "ask",
+      "mocha*": "ask",
+      "cypress*": "ask",
+      "playwright*": "ask",
+      "curl*": "ask",
+      "wget*": "ask",
+      
+      "=== VERSION CONTROL (non-git) ===": "ask",
+      "hg*": "ask",
+      "svn*": "ask"
+    },
+    
+    "edit": {
+      "*": "ask"
+    },
+    
+    "write": {
+      "*": "ask"
+    },
+    
+    "glob": {
+      "*": "allow"
+    },
+    
+    "grep": {
+      "*": "allow"
+    },
+    
+    "list": {
+      "*": "allow"
+    },
+    
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny"
+    },
+    
+    "task": {
+      "*": "ask"
+    },
+    
+    "webfetch": {
+      "*": "ask"
+    }
+  }
+}
