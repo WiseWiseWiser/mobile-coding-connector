@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { BeakerIcon } from '../../../../icons';
+import { BeakerIcon } from '../../../../../pure-view/icons/BeakerIcon';
 import './ACPUI.css';
 
 const API_PREFIX = '/api/agent/acp/cursor';
