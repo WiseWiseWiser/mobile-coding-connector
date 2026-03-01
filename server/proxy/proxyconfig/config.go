@@ -2,11 +2,14 @@ package proxyconfig
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"sync"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
 
 var (
@@ -81,6 +84,7 @@ func SaveConfig(cfg *ProxyConfig) error {
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/proxy/servers", handleProxyServers)
 	mux.HandleFunc("/api/proxy/config", handleProxyConfig)
+	mux.HandleFunc("/api/proxy/test", handleProxyTest)
 }
 
 func handleProxyServers(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +126,57 @@ func handleProxyServers(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func handleProxyTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ProxyURL  string `json:"proxyUrl"`
+		TargetURL string `json:"targetUrl"`
+		Enabled   bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.TargetURL == "" {
+		http.Error(w, "targetUrl is required", http.StatusBadRequest)
+		return
+	}
+
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	sw.SendLog("Testing proxy connection...")
+	sw.SendLog(fmt.Sprintf("Target: %s", req.TargetURL))
+
+	args := []string{"-v", "-s", "-o", "/dev/null", "-w", "\\nHTTP Code: %{http_code}\\nTime Total: %{time_total}s\\n", "--max-time", "15"}
+	if req.Enabled && req.ProxyURL != "" {
+		sw.SendLog(fmt.Sprintf("Proxy: %s", req.ProxyURL))
+		args = append(args, "-x", req.ProxyURL)
+	} else {
+		sw.SendLog("Proxy: disabled (direct connection)")
+	}
+	args = append(args, req.TargetURL)
+
+	sw.SendLog(fmt.Sprintf("Running: curl %s", req.TargetURL))
+	cmd := exec.Command("curl", args...)
+	err := sw.StreamCmd(cmd)
+	if err != nil {
+		sw.SendError(fmt.Sprintf("curl failed: %v", err))
+		sw.SendDone(map[string]string{"success": "false"})
+		return
+	}
+
+	sw.SendLog("Connection test completed successfully.")
+	sw.SendDone(map[string]string{"success": "true", "message": "Proxy connection test passed"})
 }
 
 func handleProxyConfig(w http.ResponseWriter, r *http.Request) {

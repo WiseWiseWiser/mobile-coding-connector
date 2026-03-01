@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/acp"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
 // CursorAgent implements acp.Agent using cursor-agent CLI's native
@@ -431,11 +432,11 @@ func resolveAgentPath() (string, error) {
 		return "", fmt.Errorf("configured binary path does not exist: %s", settings.BinaryPath)
 	}
 
-	if path, err := exec.LookPath("cursor-agent"); err == nil {
+	if path, err := tool_resolve.LookPath("cursor-agent"); err == nil {
 		return path, nil
 	}
 
-	if path, err := exec.LookPath("agent"); err == nil {
+	if path, err := tool_resolve.LookPath("agent"); err == nil {
 		out, err := exec.Command(path, "--help").CombinedOutput()
 		if err == nil && strings.Contains(string(out), "Start the Cursor Agent") {
 			return path, nil

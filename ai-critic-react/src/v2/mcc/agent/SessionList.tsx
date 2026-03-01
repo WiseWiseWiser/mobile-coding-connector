@@ -9,7 +9,7 @@ import type { AgentSessionInfo, OpencodeSettings } from '../../../api/agents';
 import { ACPRoles } from '../../../api/acp';
 import { convertMessages } from '../../../api/acp_adapter';
 import { AgentChatHeader } from './AgentChatHeader';
-import { SettingsIcon } from '../../icons';
+import { SettingsIcon } from '../../../pure-view/icons/SettingsIcon';
 import { truncate } from './utils';
 
 export interface SessionListProps {

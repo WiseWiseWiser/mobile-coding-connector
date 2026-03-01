@@ -11,11 +11,11 @@ import (
 	"strings"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/ai"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/commit_msg"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
 )
 
 // initialDir stores the initial directory set via --dir flag
@@ -1188,21 +1188,15 @@ Be concise and helpful.`
 	flusher.Flush()
 }
 
-type GenerateCommitMessageRequest struct {
-	Dir string `json:"dir"`
-}
-
-type GenerateCommitMessageResponse struct {
-	Message string `json:"message"`
-}
-
 func handleGenerateCommitMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var req GenerateCommitMessageRequest
+	var req struct {
+		Dir string `json:"dir"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 		return
@@ -1214,227 +1208,25 @@ func handleGenerateCommitMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	sw := sse.NewWriter(w)
+	if sw == nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Streaming not supported"})
 		return
 	}
 
-	sendLog := func(msg string) {
-		data, _ := json.Marshal(map[string]string{"type": "log", "message": msg})
-		fmt.Fprintf(w, "data: %s\n\n", data)
-		flusher.Flush()
-	}
-
-	sendError := func(msg string) {
-		data, _ := json.Marshal(map[string]string{"type": "error", "message": msg})
-		fmt.Fprintf(w, "data: %s\n\n", data)
-		flusher.Flush()
-	}
-
-	sendDone := func(msg string) {
-		data, _ := json.Marshal(map[string]string{"type": "done", "message": msg})
-		fmt.Fprintf(w, "data: %s\n\n", data)
-		flusher.Flush()
-	}
-
-	sendLog("$ git diff --cached")
-	stagedDiffOutput, err := gitrunner.DiffCached().Dir(dir).Output()
+	msg, err := commit_msg.Generate(dir, &sseLogger{sw})
 	if err != nil {
-		sendError(fmt.Sprintf("Failed to get staged diff: %v", err))
-		sendDone("")
+		sw.SendError(err.Error())
+		sw.SendDone(nil)
 		return
 	}
-
-	stagedDiff := string(stagedDiffOutput)
-	if stagedDiff == "" {
-		sendError("No staged changes to generate commit message for")
-		sendDone("")
-		return
-	}
-
-	fileCount := strings.Count(stagedDiff, "diff --git")
-	if fileCount == 0 && len(stagedDiff) > 0 {
-		fileCount = 1
-	}
-
-	sendLog(fmt.Sprintf("Staged files: %d, Diff length: %d chars", fileCount, len(stagedDiff)))
-	sendLog(fmt.Sprintf("Passing diff to agent..."))
-
-	commitPrompt := fmt.Sprintf(`Generate a brief git commit message (1 line title, max 50 characters, plus a short description if needed) for the following staged changes (git diff). Focus on what changed and why.
-
-Git diff:
-%s
-
-Respond with ONLY the commit message in this format:
-Title: <short title>
-Description: <optional short description>`, stagedDiff)
-
-	sendLog("$ opencode models")
-	freeModels, selectedModel, err := findFreeModel()
-	if err != nil {
-		sendLog(fmt.Sprintf("Warning: Could not get free models: %v", err))
-	} else {
-		sendLog(fmt.Sprintf("Free models: %s", strings.Join(freeModels, ", ")))
-		if selectedModel != "" {
-			sendLog(fmt.Sprintf("Using model: %s", selectedModel))
-		}
-	}
-
-	var args []string
-	promptSummary := fmt.Sprintf("\"Generate brief git commit message (title + optional desc) for %d staged file(s), %d chars\"", fileCount, len(stagedDiff))
-	if selectedModel != "" {
-		args = []string{"run", commitPrompt, "--model", selectedModel, "--format", "json"}
-		sendLog(fmt.Sprintf("$ opencode run %s --model %s --format json", promptSummary, selectedModel))
-	} else {
-		args = []string{"run", commitPrompt, "--format", "json"}
-		sendLog(fmt.Sprintf("$ opencode run %s --format json", promptSummary))
-	}
-
-	sendLog("Running agent...")
-
-	cmd, err := tool_exec.New("opencode", args, &tool_exec.Options{
-		Dir: dir,
-	})
-	if err != nil {
-		sendError(fmt.Sprintf("Failed to run opencode: %v", err))
-		sendDone("")
-		return
-	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		sendError(fmt.Sprintf("Failed to create stdout pipe: %v", err))
-		sendDone("")
-		return
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		sendError(fmt.Sprintf("Failed to create stderr pipe: %v", err))
-		sendDone("")
-		return
-	}
-
-	if err := cmd.Start(); err != nil {
-		sendError(fmt.Sprintf("Failed to start opencode: %v", err))
-		sendDone("")
-		return
-	}
-
-	var fullOutput strings.Builder
-	doneChan := make(chan struct{})
-
-	go func() {
-		buf := make([]byte, 1024)
-		for {
-			n, err := stderr.Read(buf)
-			if n > 0 {
-				line := string(buf[:n])
-				sendLog(line)
-			}
-			if err != nil {
-				break
-			}
-		}
-	}()
-
-	go func() {
-		buf := make([]byte, 1024)
-		for {
-			n, err := stdout.Read(buf)
-			if n > 0 {
-				line := string(buf[:n])
-				fullOutput.WriteString(line)
-				sendLog(line)
-			}
-			if err != nil {
-				break
-			}
-		}
-		doneChan <- struct{}{}
-	}()
-
-	<-doneChan
-
-	err = cmd.Wait()
-	output := fullOutput.String()
-
-	if err != nil {
-		sendError(fmt.Sprintf("Failed to generate commit message: %v", err))
-		sendDone("")
-		return
-	}
-
-	commitMessage := parseOpencodeJSONOutput(output)
-	if commitMessage == "" {
-		sendError("Failed to parse commit message from opencode output")
-		sendDone("")
-		return
-	}
-
-	commitMessage = strings.TrimPrefix(commitMessage, "Title:")
-	commitMessage = strings.TrimPrefix(commitMessage, "title:")
-	commitMessage = strings.TrimSpace(commitMessage)
-
-	sendDone(commitMessage)
+	sw.SendDone(map[string]string{"message": msg})
 }
 
-func parseOpencodeJSONOutput(output string) string {
-	lines := strings.Split(output, "\n")
-	var fullText strings.Builder
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var event map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue
-		}
-		eventType, ok := event["type"].(string)
-		if !ok || eventType != "text" {
-			continue
-		}
-		part, ok := event["part"].(map[string]interface{})
-		if !ok {
-			continue
-		}
-		text, ok := part["text"].(string)
-		if !ok {
-			continue
-		}
-		fullText.WriteString(text)
-	}
-	return strings.TrimSpace(fullText.String())
-}
+type sseLogger struct{ w *sse.Writer }
 
-func findFreeModel() (freeModels []string, selectedModel string, err error) {
-	cmd, err := tool_exec.New("opencode", []string{"models"}, nil)
-	if err != nil {
-		return nil, "", err
-	}
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, "", err
-	}
-
-	models := strings.Split(string(output), "\n")
-	for _, model := range models {
-		model = strings.TrimSpace(model)
-		if strings.Contains(model, "free") || strings.HasPrefix(model, "opencode/") && strings.Contains(model, "-free") {
-			freeModels = append(freeModels, model)
-		}
-	}
-
-	if len(freeModels) > 0 {
-		selectedModel = freeModels[0]
-	}
-	return freeModels, selectedModel, nil
-}
+func (l *sseLogger) Log(msg string)   { l.w.SendLog(msg) }
+func (l *sseLogger) Error(msg string) { l.w.SendError(msg) }
 
 // Worktree represents a git worktree
 type Worktree struct {

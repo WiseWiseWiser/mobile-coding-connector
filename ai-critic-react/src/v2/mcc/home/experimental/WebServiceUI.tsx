@@ -5,9 +5,12 @@ import type { OpencodeWebTargetPreference } from '../../../../api/agents.ts';
 import { consumeSSEStream } from '../../../../api/sse.ts';
 import { LogViewer } from '../../../LogViewer.tsx';
 import type { LogLine } from '../../../LogViewer.tsx';
-import { BeakerIcon, OpenInNewIcon, SettingsIcon } from '../../../icons/index.ts';
-import { RefreshIcon } from '../../../icons/RefreshIcon.tsx';
-import { EnterFocusIcon, ExitFocusIcon } from '../../../../pure-view/icon/index.ts';
+import { BeakerIcon } from '../../../../pure-view/icons/BeakerIcon';
+import { OpenInNewIcon } from '../../../../pure-view/icons/OpenInNewIcon';
+import { SettingsIcon } from '../../../../pure-view/icons/SettingsIcon';
+import { RefreshIcon } from '../../../../pure-view/icons/RefreshIcon';
+import { EnterFocusIcon } from '../../../../pure-view/icons/EnterFocusIcon';
+import { ExitFocusIcon } from '../../../../pure-view/icons/ExitFocusIcon';
 import { ExternalIFrame } from './ExternalIFrame.tsx';
 import './WebServiceUI.css';
 

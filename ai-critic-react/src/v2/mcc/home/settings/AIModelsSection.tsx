@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { fetchAIConfig, saveAIConfig, type AIProvider, type AIModel } from '../../../../api/ai';
-import { EditIcon } from '../../../icons';
+import { EditIcon } from '../../../../pure-view/icons/EditIcon';
 import { FlexInput } from '../../../../pure-view/FlexInput';
 import './AIModelsSection.css';
 

@@ -4,7 +4,7 @@ import { encryptWithServerKey, EncryptionNotAvailableError } from '../crypto';
 import { fetchGithubRepos, cloneRepo } from '../../../../api/auth';
 import type { GithubRepo } from '../../../../api/auth';
 import { LogViewer } from '../../../LogViewer';
-import { LockIcon } from '../../../icons';
+import { LockIcon } from '../../../../pure-view/icons/LockIcon';
 import { loadSSHKeys, loadGitHubToken } from './gitStorage';
 import type { SSHKey } from './gitStorage';
 import { FlexInput } from '../../../../pure-view/FlexInput';

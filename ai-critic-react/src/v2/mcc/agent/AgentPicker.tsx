@@ -1,12 +1,12 @@
 import type { AgentDef, AgentSessionInfo, ExternalOpencodeSession } from '../../../api/agents';
-import { SettingsIcon } from '../../icons';
+import { SettingsIcon } from '../../../pure-view/icons/SettingsIcon';
 import { SessionsSection, type SessionItem } from '../../../pure-view/SessionsSection';
 import type { CustomAgent } from '../../../api/customAgents';
 import { fetchCustomAgents, deleteCustomAgent } from '../../../api/customAgents';
 import { CustomAgentCard } from './CustomAgentCard';
 import { useState, useEffect } from 'react';
 import { AgentEditor } from './AgentEditor';
-import { PlusIcon } from '../../icons';
+import { PlusIcon } from '../../../pure-view/icons/PlusIcon';
 import { Pagination } from './Pagination';
 
 export interface AgentPickerProps {

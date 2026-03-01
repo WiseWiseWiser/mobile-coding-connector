@@ -1,7 +1,8 @@
 import type { CustomAgent } from '../../../api/customAgents';
 import { useV2Context } from '../../V2Context';
 import { launchCustomAgent } from '../../../api/customAgents';
-import { SettingsIcon, TrashIcon } from '../../icons';
+import { SettingsIcon } from '../../../pure-view/icons/SettingsIcon';
+import { TrashIcon } from '../../../pure-view/icons/TrashIcon';
 
 interface AgentCardProps {
   agent: CustomAgent;

@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { fetchProxyConfig, saveProxyConfig, type ProxyServer, generateProxyServerId } from '../../../../api/proxyConfig';
+import { consumeSSEStream } from '../../../../api/sse';
 import { FlexInput } from '../../../../pure-view/FlexInput';
+import { LogViewer } from '../../../LogViewer';
+import type { LogLine } from '../../../LogViewer';
+import { TestButton } from '../../../../pure-view/buttons';
+import { parseProxyUrl } from '../../../../lib/url';
 import './ProxySettingsSection.css';
 
 export function ProxySettingsSection() {
@@ -12,7 +17,9 @@ export function ProxySettingsSection() {
     const [success, setSuccess] = useState(false);
     
     // Form state for new/edit server
+    const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [parseInput, setParseInput] = useState('');
     const [formName, setFormName] = useState('');
     const [formHost, setFormHost] = useState('');
     const [formPort, setFormPort] = useState('');
@@ -20,6 +27,11 @@ export function ProxySettingsSection() {
     const [formUsername, setFormUsername] = useState('');
     const [formPassword, setFormPassword] = useState('');
     const [formDomains, setFormDomains] = useState('');
+
+    // Test proxy state
+    const [testUrl, setTestUrl] = useState('');
+    const [testRunning, setTestRunning] = useState(false);
+    const [testLogs, setTestLogs] = useState<LogLine[]>([]);
 
     useEffect(() => {
         loadConfig();
@@ -38,6 +50,7 @@ export function ProxySettingsSection() {
     };
 
     const resetForm = () => {
+        setShowForm(false);
         setEditingId(null);
         setFormName('');
         setFormHost('');
@@ -46,6 +59,81 @@ export function ProxySettingsSection() {
         setFormUsername('');
         setFormPassword('');
         setFormDomains('');
+    };
+
+    const handleAdd = () => {
+        setEditingId(null);
+        setFormName('');
+        setFormHost('');
+        setFormPort('');
+        setFormProtocol('http');
+        setFormUsername('');
+        setFormPassword('');
+        setFormDomains('');
+        setShowForm(true);
+    };
+
+    const handleParseUrl = () => {
+        const raw = parseInput.trim();
+        if (!raw) return;
+
+        try {
+            const result = parseProxyUrl(raw);
+            setFormProtocol(result.protocol);
+            setFormHost(result.host);
+            if (result.port) setFormPort(result.port);
+            if (result.username) setFormUsername(result.username);
+            if (result.password) setFormPassword(result.password);
+            if (!formName) setFormName(result.host);
+            setError(null);
+        } catch {
+            setError(`Failed to parse URL: "${raw}"`);
+        }
+    };
+
+    const buildProxyUrl = () => {
+        const auth = formUsername ? `${formUsername}${formPassword ? `:${formPassword}` : ''}@` : '';
+        return `${formProtocol}://${auth}${formHost}:${formPort}`;
+    };
+
+    const handleTestProxy = async () => {
+        const target = testUrl.trim() || 'https://api.ipify.org?format=json';
+        setTestRunning(true);
+        setTestLogs([]);
+
+        try {
+            const resp = await fetch('/api/proxy/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    proxyUrl: formHost && formPort ? buildProxyUrl() : '',
+                    targetUrl: target,
+                    enabled: !!(formHost && formPort),
+                }),
+            });
+
+            if (!resp.ok) {
+                const text = await resp.text();
+                setTestLogs([{ text: text || `Request failed (${resp.status})`, error: true }]);
+                setTestRunning(false);
+                return;
+            }
+
+            await consumeSSEStream(resp, {
+                onLog: (line) => setTestLogs(prev => [...prev, line]),
+                onError: (line) => setTestLogs(prev => [...prev, line]),
+                onDone: (_message, data) => {
+                    const msg = data.message || '';
+                    if (msg) {
+                        setTestLogs(prev => [...prev, { text: msg, error: data.success === 'false' }]);
+                    }
+                },
+            });
+        } catch (e) {
+            setTestLogs(prev => [...prev, { text: e instanceof Error ? e.message : String(e), error: true }]);
+        }
+
+        setTestRunning(false);
     };
 
     const handleEdit = (server: ProxyServer) => {
@@ -57,6 +145,7 @@ export function ProxySettingsSection() {
         setFormUsername(server.username || '');
         setFormPassword(server.password || '');
         setFormDomains(server.domains?.join('\n') || '');
+        setShowForm(true);
     };
 
     const handleDelete = (id: string) => {
@@ -157,10 +246,17 @@ export function ProxySettingsSection() {
 
                 {/* Proxy Servers List */}
                 <div className="proxy-section-group">
-                    <label className="proxy-section-label">Configured Proxy Servers</label>
+                    <div className="proxy-section-list-header">
+                        <label className="proxy-section-label">Configured Proxy Servers</label>
+                        {!showForm && (
+                            <button className="proxy-section-btn proxy-section-btn-add" onClick={handleAdd}>
+                                + Add
+                            </button>
+                        )}
+                    </div>
                     
-                    {servers.length === 0 ? (
-                        <p className="proxy-section-empty">No proxy servers configured. Add one below.</p>
+                    {servers.length === 0 && !showForm ? (
+                        <p className="proxy-section-empty">No proxy servers configured.</p>
                     ) : (
                         <div className="proxy-section-servers">
                             {servers.map(server => (
@@ -204,10 +300,24 @@ export function ProxySettingsSection() {
                 </div>
 
                 {/* Add/Edit Form */}
-                <div className="proxy-section-group proxy-section-form">
+                {showForm && <div className="proxy-section-group proxy-section-form">
                     <label className="proxy-section-label">
                         {editingId ? 'Edit Proxy Server' : 'Add New Proxy Server'}
                     </label>
+
+                    {/* Quick Parse URL */}
+                    <div className="proxy-section-parse-row">
+                        <FlexInput
+                            inputClassName="proxy-section-input proxy-section-parse-input"
+                            value={parseInput}
+                            onChange={setParseInput}
+                            placeholder="http://user:pass@proxy.example.com:8080"
+                            onKeyDown={e => { if (e.key === 'Enter') handleParseUrl(); }}
+                        />
+                        <button className="proxy-section-btn proxy-section-btn-parse" onClick={handleParseUrl}>
+                            Parse
+                        </button>
+                    </div>
                     
                     <div className="proxy-section-form-grid">
                         <div className="proxy-section-form-field">
@@ -290,15 +400,47 @@ export function ProxySettingsSection() {
                         </p>
                     </div>
                     
+                    {/* Usage hint */}
+                    {formHost && formPort && (
+                        <div className="proxy-section-usage-hint">
+                            <span className="proxy-section-usage-hint-title">How this proxy will be used:</span>
+                            <code>export http_proxy={formProtocol}://{formUsername ? `${formUsername}@` : ''}{formHost}:{formPort}</code>
+                            <code>curl -x {formProtocol}://{formHost}:{formPort} https://example.com</code>
+                            <code>git -c http.proxy={formProtocol}://{formHost}:{formPort} clone ...</code>
+                        </div>
+                    )}
+
+                    {/* Test Proxy */}
+                    {formHost && formPort && (
+                        <div className="proxy-section-test">
+                            <span className="proxy-section-test-title">Test Connection</span>
+                            <FlexInput
+                                inputClassName="proxy-section-input"
+                                value={testUrl}
+                                onChange={setTestUrl}
+                                placeholder="https://api.ipify.org?format=json"
+                                multiline
+                                rows={1}
+                                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && testUrl.trim()) { e.preventDefault(); handleTestProxy(); } }}
+                            />
+                            <TestButton
+                                onClick={handleTestProxy}
+                                disabled={!testUrl.trim()}
+                                running={testRunning}
+                            />
+                            {testLogs.length > 0 && (
+                                <LogViewer lines={testLogs} pending={testRunning} pendingMessage="Running..." maxHeight={200} />
+                            )}
+                        </div>
+                    )}
+
                     <div className="proxy-section-form-actions">
-                        {editingId && (
-                            <button
-                                className="proxy-section-btn proxy-section-btn-secondary"
-                                onClick={resetForm}
-                            >
-                                Cancel
-                            </button>
-                        )}
+                        <button
+                            className="proxy-section-btn proxy-section-btn-secondary"
+                            onClick={resetForm}
+                        >
+                            Cancel
+                        </button>
                         <button
                             className="proxy-section-btn"
                             onClick={handleSaveForm}
@@ -306,7 +448,7 @@ export function ProxySettingsSection() {
                             {editingId ? 'Update Proxy Server' : 'Add Proxy Server'}
                         </button>
                     </div>
-                </div>
+                </div>}
 
                 {error && <div className="proxy-section-error">{error}</div>}
                 {success && <div className="proxy-section-success">Proxy configuration saved successfully!</div>}

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { WorktreeInfo } from '../context/WorktreeContext';
 import { useWorktreeRoute } from '../hooks/useWorktreeRoute';
-import { FolderIcon } from '../icons/FolderIcon';
+import { FolderIcon } from '../../pure-view/icons/FolderIcon';
 import './WorktreeSelector.css';
 
 interface WorktreeSelectorProps {
