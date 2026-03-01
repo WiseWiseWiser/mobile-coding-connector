@@ -36,6 +36,28 @@
     background: var(--mcc-bg-hover, rgba(255, 255, 255, 0.05));
 }
 
+.acp-ui-debug-toggle {
+    background: none;
+    border: 1px solid var(--mcc-border-default, #334155);
+    color: var(--mcc-text-muted, #64748b);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--mcc-radius-sm, 4px);
+    font-size: var(--mcc-font-size-sm, 12px);
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.acp-ui-debug-toggle:hover {
+    color: var(--mcc-text-primary, #f1f5f9);
+    background: var(--mcc-bg-hover, rgba(255, 255, 255, 0.05));
+}
+
+.acp-ui-debug-toggle.active {
+    color: var(--mcc-accent-green, #4ade80);
+    border-color: var(--mcc-accent-green, #4ade80);
+    background: rgba(74, 222, 128, 0.1);
+}
+
 .acp-ui-model {
     flex-shrink: 0;
     font-size: var(--mcc-font-size-sm, 12px);

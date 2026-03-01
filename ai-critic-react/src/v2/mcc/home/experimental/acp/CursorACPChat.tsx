@@ -23,7 +23,7 @@ export function CursorACPChat() {
         (async () => {
             const cwd = projectName ? await getProjectDirRef.current(projectName) : '';
             console.log("DEBUG CursorACPChat firing connect, cwd=", cwd);
-            chatRef.current?.connect(cwd);
+            chatRef.current?.connect(undefined, cwd);
         })();
     }, [isNewSession, projectName]);
 

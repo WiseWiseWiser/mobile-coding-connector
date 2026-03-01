@@ -1,0 +1,58 @@
+.proxy-test-view {
+    padding: var(--mcc-gap-xl);
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.proxy-test-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mcc-gap-xl);
+    margin-top: var(--mcc-gap-xl);
+}
+
+.proxy-test-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mcc-gap-sm);
+}
+
+.proxy-test-select {
+    width: 100%;
+    max-width: 400px;
+}
+
+.proxy-test-form {
+    background: var(--mcc-bg-card);
+    border: 1px solid var(--mcc-border-default);
+    border-radius: var(--mcc-radius-md);
+    padding: var(--mcc-gap-lg);
+}
+
+.proxy-test-target-input {
+    width: 100%;
+}
+
+.proxy-test-btn {
+    align-self: flex-start;
+    padding: var(--mcc-gap-md) var(--mcc-gap-xxl);
+}
+
+.proxy-test-result {
+    padding: var(--mcc-gap-lg);
+    border-radius: var(--mcc-radius-md);
+    font-size: var(--mcc-font-size-md);
+    font-weight: 500;
+}
+
+.proxy-test-result.success {
+    color: var(--mcc-status-active-text);
+    background: var(--mcc-status-active-bg);
+    border: 1px solid var(--mcc-status-active-border);
+}
+
+.proxy-test-result.error {
+    color: var(--mcc-status-error-text);
+    background: var(--mcc-status-error-bg);
+    border: 1px solid var(--mcc-status-error-border);
+}

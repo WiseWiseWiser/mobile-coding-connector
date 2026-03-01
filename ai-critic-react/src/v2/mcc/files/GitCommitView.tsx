@@ -262,6 +262,12 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
                 if (f.isDir && f.isGitDir) {
                     continue;
                 }
+                // Skip big files (>100KB) and large files (>1MB)
+                if (!f.isDir && f.size) {
+                    if (f.size > 100 * 1000) { // > 100KB (Big File or Large File)
+                        continue;
+                    }
+                }
                 await stageFile(f.path, projectDir);
             }
             await refresh();

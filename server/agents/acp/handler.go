@@ -144,8 +144,11 @@ func handleAgentConnect(w http.ResponseWriter, r *http.Request, agent Agent) {
 	var body struct {
 		CWD       string `json:"cwd"`
 		SessionID string `json:"sessionId"`
+		Debug     bool   `json:"debug"`
 	}
 	json.NewDecoder(r.Body).Decode(&body)
+
+	debug := body.Debug
 
 	cwdSource := "request"
 	cwd := body.CWD
@@ -170,7 +173,7 @@ func handleAgentConnect(w http.ResponseWriter, r *http.Request, agent Agent) {
 		writeSSE(w, flusher, SessionUpdate{Type: "log", Message: message})
 	}
 
-	sessionID, err := agent.Connect(cwd, body.SessionID, logFn)
+	sessionID, err := agent.Connect(cwd, body.SessionID, debug, logFn)
 	if err != nil {
 		writeSSE(w, flusher, SessionUpdate{Type: "error", Message: err.Error()})
 		fmt.Fprintf(w, "data: [DONE]\n\n")
@@ -210,6 +213,7 @@ func handleAgentPrompt(w http.ResponseWriter, r *http.Request, agent Agent) {
 		SessionID string `json:"sessionId"`
 		Prompt    string `json:"prompt"`
 		Model     string `json:"model"`
+		Debug     bool   `json:"debug"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)

@@ -17,13 +17,13 @@ import (
 //
 // cursor-agent stream-json output format reference (--print --output-format stream-json --stream-partial-output):
 //
-//   {"type":"system","subtype":"init","apiKeySource":"login","cwd":"/path/to/workspace","session_id":"<uuid>","model":"Claude 4.6 Opus","permissionMode":"default"}
-//   {"type":"user","message":{"role":"user","content":[{"type":"text","text":"<prompt>"}]},"session_id":"<uuid>"}
-//   {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello"}]},"session_id":"<uuid>","timestamp_ms":1772275089783}
-//   {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":" to"}]},"session_id":"<uuid>","timestamp_ms":1772275089815}
-//   {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":" you!"}]},"session_id":"<uuid>","timestamp_ms":1772275089865}
-//   {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello to you!"}]},"session_id":"<uuid>"}
-//   {"type":"result","subtype":"success","duration_ms":7372,"duration_api_ms":7372,"is_error":false,"result":"Hello to you!","session_id":"<uuid>","request_id":"<uuid>"}
+//	{"type":"system","subtype":"init","apiKeySource":"login","cwd":"/path/to/workspace","session_id":"<uuid>","model":"Claude 4.6 Opus","permissionMode":"default"}
+//	{"type":"user","message":{"role":"user","content":[{"type":"text","text":"<prompt>"}]},"session_id":"<uuid>"}
+//	{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello"}]},"session_id":"<uuid>","timestamp_ms":1772275089783}
+//	{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":" to"}]},"session_id":"<uuid>","timestamp_ms":1772275089815}
+//	{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":" you!"}]},"session_id":"<uuid>","timestamp_ms":1772275089865}
+//	{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello to you!"}]},"session_id":"<uuid>"}
+//	{"type":"result","subtype":"success","duration_ms":7372,"duration_api_ms":7372,"is_error":false,"result":"Hello to you!","session_id":"<uuid>","request_id":"<uuid>"}
 //
 // Notes:
 // - Streaming chunks (with timestamp_ms) contain text deltas, not accumulated text
@@ -38,6 +38,9 @@ type CursorAgent struct {
 	cwd          string
 	sessionStore *acp.SessionStore
 	messageStore *acp.MessageStore
+	debug        bool
+	// pendingPrompt stores the last prompt text for retry after trust confirmation
+	pendingPrompt string
 }
 
 var _ acp.Agent = (*CursorAgent)(nil)
@@ -125,12 +128,16 @@ func (a *CursorAgent) Status() acp.StatusInfo {
 	return info
 }
 
-func (a *CursorAgent) Connect(cwd string, resumeSessionID string, log acp.LogFunc) (string, error) {
+func (a *CursorAgent) Connect(cwd string, resumeSessionID string, debug bool, log acp.LogFunc) (string, error) {
 	a.mu.Lock()
 	if a.chatID != "" {
 		a.mu.Unlock()
 		return "", fmt.Errorf("already connected")
 	}
+	a.mu.Unlock()
+
+	a.mu.Lock()
+	a.debug = debug
 	a.mu.Unlock()
 
 	if log == nil {
@@ -218,13 +225,30 @@ func (a *CursorAgent) Disconnect() {
 }
 
 func (a *CursorAgent) SendPrompt(sessionID string, text string, model string) (*acp.PromptResult, error) {
+	return a.sendPromptInternal(sessionID, text, model, false)
+}
+
+// sendPromptInternal is the internal implementation that supports trust-aware retries
+func (a *CursorAgent) sendPromptInternal(sessionID string, text string, model string, trustEnabled bool) (*acp.PromptResult, error) {
 	a.mu.Lock()
 	if a.chatID == "" || a.chatID != sessionID {
 		a.mu.Unlock()
 		return nil, fmt.Errorf("invalid session")
 	}
 	cwd := a.cwd
+	debug := a.debug
 	a.mu.Unlock()
+
+	sendDebug := func(msg string) {
+		if debug {
+			select {
+			case a.updates <- acp.SessionUpdate{Type: "debug", Message: msg}:
+			default:
+			}
+		}
+	}
+
+	sendDebug(fmt.Sprintf("SendPrompt: sessionID=%s cwd=%s debug=%v model=%s trustEnabled=%v", sessionID, cwd, debug, model, trustEnabled))
 
 	if model != "" {
 		a.sessionStore.UpdateModel(sessionID, model)
@@ -247,6 +271,10 @@ func (a *CursorAgent) SendPrompt(sessionID string, text string, model string) (*
 	}
 	if model != "" {
 		args = append(args, "--model", model)
+	}
+	// Add trust flag if trust is enabled for this session
+	if trustEnabled {
+		args = append(args, "--trust")
 	}
 	args = append(args, text)
 	cmd := cursorCommand(agentPath, args...)
@@ -272,10 +300,45 @@ func (a *CursorAgent) SendPrompt(sessionID string, text string, model string) (*
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
 
+	trustPromptDetected := false
+	var fullOutput strings.Builder
+
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
+		}
+
+		// Check for trust prompt in raw output
+		lineStr := string(line)
+		fullOutput.WriteString(lineStr)
+		fullOutput.WriteString("\n")
+
+		// Detect trust prompt patterns
+		if !trustEnabled && !trustPromptDetected {
+			if strings.Contains(lineStr, "Workspace Trust Required") ||
+				strings.Contains(lineStr, "trust workspace") ||
+				strings.Contains(lineStr, "trust this workspace") ||
+				strings.Contains(lineStr, "--trust") {
+				trustPromptDetected = true
+				// Send trust prompt update to client
+				select {
+				case a.updates <- acp.SessionUpdate{
+					Type:    "trust_prompt",
+					Message: "Workspace trust is required to continue. Enable trust for this session?",
+				}:
+				default:
+				}
+				// Kill the command
+				cmd.Process.Kill()
+				cmd.Wait()
+				a.mu.Lock()
+				a.promptCmd = nil
+				// Store the pending prompt for retry
+				a.pendingPrompt = text
+				a.mu.Unlock()
+				return nil, fmt.Errorf("trust_prompt")
+			}
 		}
 
 		var msg cursorMessage
@@ -285,6 +348,12 @@ func (a *CursorAgent) SendPrompt(sessionID string, text string, model string) (*
 
 		update := parseMessage(msg)
 		if update != nil {
+			if debug {
+				select {
+				case a.updates <- acp.SessionUpdate{Type: "debug", Message: fmt.Sprintf("update: %s", string(line))}:
+				default:
+				}
+			}
 			select {
 			case a.updates <- *update:
 			default:
@@ -301,6 +370,23 @@ func (a *CursorAgent) SendPrompt(sessionID string, text string, model string) (*
 		return &acp.PromptResult{StopReason: "error"}, nil
 	}
 	return &acp.PromptResult{StopReason: "end_turn"}, nil
+}
+
+// RetryPromptWithTrust retries the last prompt with trust enabled
+func (a *CursorAgent) RetryPromptWithTrust(sessionID string) {
+	a.mu.Lock()
+	pendingPrompt := a.pendingPrompt
+	a.pendingPrompt = ""
+	a.mu.Unlock()
+
+	if pendingPrompt == "" {
+		return
+	}
+
+	// Retry with trust enabled
+	go func() {
+		_, _ = a.sendPromptInternal(sessionID, pendingPrompt, "", true)
+	}()
 }
 
 func (a *CursorAgent) Cancel(sessionID string) error {

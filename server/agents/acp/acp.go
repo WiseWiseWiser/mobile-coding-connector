@@ -13,6 +13,10 @@ type SessionEntry struct {
 	Model     string `json:"model,omitempty"`
 	Agent     string `json:"agent,omitempty"`
 	CWD       string `json:"cwd,omitempty"`
+	// TrustWorkspace indicates if the workspace is trusted (for cursor-agent)
+	TrustWorkspace bool `json:"trustWorkspace,omitempty"`
+	// YoloMode indicates if --yolo flag should be passed to cursor-agent
+	YoloMode bool `json:"yoloMode,omitempty"`
 }
 
 func NewSessionEntry(id, model, agent, cwd string) SessionEntry {
@@ -64,6 +68,30 @@ func (s *SessionStore) UpdateModel(id, model string) {
 		for i := range *entries {
 			if (*entries)[i].ID == id {
 				(*entries)[i].Model = model
+				break
+			}
+		}
+		return nil
+	})
+}
+
+func (s *SessionStore) UpdateTrustWorkspace(id string, trust bool) {
+	s.file.Update(func(entries *[]SessionEntry) error {
+		for i := range *entries {
+			if (*entries)[i].ID == id {
+				(*entries)[i].TrustWorkspace = trust
+				break
+			}
+		}
+		return nil
+	})
+}
+
+func (s *SessionStore) UpdateYoloMode(id string, yolo bool) {
+	s.file.Update(func(entries *[]SessionEntry) error {
+		for i := range *entries {
+			if (*entries)[i].ID == id {
+				(*entries)[i].YoloMode = yolo
 				break
 			}
 		}
@@ -162,8 +190,9 @@ type Agent interface {
 
 	// Connect creates a new session or resumes an existing one.
 	// If resumeSessionID is non-empty, it resumes that session instead of creating new.
+	// If debug is true, debug logs are streamed back.
 	// The log callback is called with progress messages during connection.
-	Connect(cwd string, resumeSessionID string, log LogFunc) (sessionID string, err error)
+	Connect(cwd string, resumeSessionID string, debug bool, log LogFunc) (sessionID string, err error)
 
 	// Disconnect terminates the agent process and cleans up resources.
 	Disconnect()

@@ -65,6 +65,8 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
     const [selectedModel, setSelectedModel] = useState<{ modelID: string; providerID: string } | undefined>();
     const [connectLogs, setConnectLogs] = useState<string[]>([]);
     const [showConnectLogs, setShowConnectLogs] = useState(true);
+    const [debugMode, setDebugMode] = useState(false);
+    const [debugLogs, setDebugLogs] = useState<string[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -98,6 +100,7 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
     const modelsRef = useCurrent(models);
     const isNewSessionRef = useCurrent(isNewSession);
     const locationRef = useCurrent(location);
+    const debugModeRef = useCurrent(debugMode);
 
     const connect = async (resumeSessionId?: string, cwdOverride?: string) => {
         const effectiveCwd = cwdOverride ?? cwdRef.current;
@@ -107,11 +110,13 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
         setStatus('connecting');
         setStatusMessage(`Initializing ${agentName} agent...`);
         setConnectLogs([]);
+        setDebugLogs([]);
         setShowConnectLogs(true);
         try {
-            const body: Record<string, string> = {};
+            const body: Record<string, string | boolean> = {};
             if (resumeSessionId) body.sessionId = resumeSessionId;
             if (effectiveCwd) body.cwd = effectiveCwd;
+            body.debug = debugModeRef.current;
 
             const resp = await fetch(`${apiPrefix}/connect`, {
                 method: 'POST',
@@ -139,6 +144,9 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
 
                     try {
                         const update = JSON.parse(data);
+                        if (debugModeRef.current) {
+                            setDebugLogs(prev => [...prev, `[${update.type}] ${JSON.stringify(update)}`]);
+                        }
                         if (update.type === 'log') {
                             setConnectLogs(prev => [...prev, update.message]);
                         } else if (update.type === 'connected') {
@@ -199,6 +207,8 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
                 const current = data.find((m: ModelOption & { is_current?: boolean }) => (m as any).is_current);
                 if (current) {
                     setSelectedModel({ modelID: current.id, providerID: current.providerId });
+                } else if (data.length > 0) {
+                    setSelectedModel({ modelID: data[0].id, providerID: data[0].providerId });
                 }
             } catch { /* ignore */ }
         })();
@@ -255,7 +265,7 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
             const resp = await fetch(`${apiPrefix}/prompt`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionId: currentSessionId, prompt: userMessage, model: selectedModelRef.current?.modelID || '' }),
+                body: JSON.stringify({ sessionId: currentSessionId, prompt: userMessage, model: selectedModelRef.current?.modelID || '', debug: debugModeRef.current }),
                 signal: controller.signal,
             });
 
@@ -285,6 +295,9 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
 
                     try {
                         const update = JSON.parse(data);
+                        if (debugModeRef.current) {
+                            setDebugLogs(prev => [...prev, `[${update.type}] ${JSON.stringify(update)}`]);
+                        }
                         if (update.type === 'session_info') {
                             if (update.model) {
                                 setModel(update.model);
@@ -415,6 +428,13 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
                     placeholder={model || 'Select model...'}
                     disabled={models.length === 0}
                 />
+                <button
+                    className={`acp-ui-debug-toggle ${debugMode ? 'active' : ''}`}
+                    onClick={() => setDebugMode(!debugMode)}
+                    title="Toggle debug mode"
+                >
+                    Debug
+                </button>
                 <div className="acp-ui-cwd-container">
                     <span className="acp-ui-cwd-label">cwd:</span>
                     {status === 'connected' || status === 'connecting' ? (
@@ -430,7 +450,7 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
                 </div>
             </div>
 
-            {showConnectLogs && connectLogs.length > 0 && (
+            {(showConnectLogs && connectLogs.length > 0) && (
                 <div className="acp-ui-connect-logs">
                     <button
                         className="acp-ui-connect-logs-dismiss"
@@ -442,7 +462,7 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
                             <path d="M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                         </svg>
                     </button>
-                    {connectLogs.map((log, i) => (
+                    {(debugMode ? debugLogs : connectLogs).map((log, i) => (
                         <div key={i} className="acp-ui-connect-log-line">{log}</div>
                     ))}
                 </div>
