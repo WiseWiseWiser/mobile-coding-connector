@@ -5,7 +5,7 @@ import { fetchPortLogs as apiFetchPortLogs, fetchDomainHealthLogs } from '../../
 import { fetchOwnedDomains } from '../../api/cloudflare';
 import { useV2Context } from '../V2Context';
 import { LogViewer } from '../LogViewer';
-import { PlusIcon } from '../icons';
+import { PlusIcon } from '../../pure-view/icons/PlusIcon';
 import { LocalPortsTable } from './LocalPortsTable';
 import type { LocalPortInfo } from '../../api/ports';
 

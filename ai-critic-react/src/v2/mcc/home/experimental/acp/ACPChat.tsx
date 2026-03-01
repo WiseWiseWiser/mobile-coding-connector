@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useCurrent } from '../../../../../hooks/useCurrent';
-import { BeakerIcon } from '../../../../icons';
+import { BeakerIcon } from '../../../../../pure-view/icons/BeakerIcon';
 import { ModelSelector, type ModelOption } from '../../../../../pure-view/selector/ModelSelector';
 import './ACPUI.css';
 

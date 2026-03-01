@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { BeakerIcon } from '../../../icons';
+import { BeakerIcon } from '../../../../pure-view/icons/BeakerIcon';
 
 export function ExperimentalView() {
     const navigate = useNavigate();

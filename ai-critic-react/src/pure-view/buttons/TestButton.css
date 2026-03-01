@@ -1,0 +1,13 @@
+.test-btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    background: #0ea5e9;
+    color: white;
+    white-space: nowrap;
+}
+
+.test-btn:hover:not(:disabled) {
+    background: #0284c7;
+}

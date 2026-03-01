@@ -4,7 +4,11 @@ import { pingKeepAlive, getKeepAliveStatus, uploadBinary, getUploadTarget, getBu
 import type { KeepAliveStatus, UploadTarget, BuildableProject } from '../../../api/keepalive';
 import { consumeSSEStream } from '../../../api/sse';
 import { fetchLogFiles, addLogFile, removeLogFile, streamLogFile, type LogFile } from '../../../api/logs';
-import { BackIcon, UploadIcon, DownloadIcon, FolderIcon, PlusIcon } from '../../icons';
+import { BackIcon } from '../../../pure-view/icons/BackIcon';
+import { UploadIcon } from '../../../pure-view/icons/UploadIcon';
+import { DownloadIcon } from '../../../pure-view/icons/DownloadIcon';
+import { FolderIcon } from '../../../pure-view/icons/FolderIcon';
+import { PlusIcon } from '../../../pure-view/icons/PlusIcon';
 import { LogViewer } from '../../LogViewer';
 import type { LogLine } from '../../LogViewer';
 import { useTabHistory } from '../../../hooks/useTabHistory';

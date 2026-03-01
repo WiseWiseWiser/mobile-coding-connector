@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchProxyConfig, type ProxyServer } from '../../../../api/proxyConfig';
 import { FlexInput } from '../../../../pure-view/FlexInput';
-import { BackIcon } from '../../../icons';
+import { BackIcon } from '../../../../pure-view/icons/BackIcon';
 import './ProxyTestView.css';
 
 export function ProxyTestView() {

@@ -31,6 +31,8 @@
 .server-settings-value {
     font-size: 13px;
     color: #e2e8f0;
+    min-width: 0;
+    word-break: break-all;
 }
 
 .server-settings-mono {

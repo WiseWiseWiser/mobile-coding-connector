@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BeakerIcon } from '../../../../icons';
+import { BeakerIcon } from '../../../../../pure-view/icons/BeakerIcon';
 import './ACPUI.css';
 
 interface SessionEntry {

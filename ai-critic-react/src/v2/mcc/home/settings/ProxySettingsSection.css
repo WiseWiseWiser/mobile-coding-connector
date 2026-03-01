@@ -45,6 +45,17 @@
     cursor: pointer;
 }
 
+.proxy-section-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.proxy-section-btn-add {
+    padding: var(--mcc-gap-xs) var(--mcc-gap-lg);
+    font-size: var(--mcc-font-size-sm);
+}
+
 .proxy-section-empty {
     font-size: var(--mcc-font-size-md);
     color: var(--mcc-text-muted);
@@ -152,6 +163,73 @@
     border: 1px solid var(--mcc-border-default);
     border-radius: var(--mcc-radius-md);
     padding: var(--mcc-gap-lg);
+}
+
+/* Parse URL row */
+.proxy-section-parse-row {
+    display: flex;
+    gap: var(--mcc-gap-sm);
+    align-items: stretch;
+}
+
+.proxy-section-parse-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.proxy-section-btn-parse {
+    flex-shrink: 0;
+    padding: var(--mcc-gap-sm) var(--mcc-gap-xl);
+    font-size: var(--mcc-font-size-md);
+    white-space: nowrap;
+}
+
+/* Usage hint */
+.proxy-section-usage-hint {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mcc-gap-xs);
+    padding: var(--mcc-gap-md);
+    background: var(--mcc-bg-item);
+    border: 1px solid var(--mcc-border-default);
+    border-radius: var(--mcc-radius-md);
+    margin-top: var(--mcc-gap-sm);
+}
+
+.proxy-section-usage-hint-title {
+    font-size: var(--mcc-font-size-xs);
+    font-weight: 600;
+    color: var(--mcc-text-secondary);
+    margin-bottom: var(--mcc-gap-xs);
+}
+
+.proxy-section-usage-hint code {
+    display: block;
+    font-family: var(--mcc-font-mono);
+    font-size: var(--mcc-font-size-xs);
+    color: var(--mcc-text-muted);
+    background: var(--mcc-bg-card);
+    padding: var(--mcc-gap-xs) var(--mcc-gap-sm);
+    border-radius: var(--mcc-radius-sm);
+    word-break: break-all;
+}
+
+/* Test section */
+.proxy-section-test {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mcc-gap-sm);
+    margin-top: var(--mcc-gap-sm);
+    padding: var(--mcc-gap-md);
+    background: var(--mcc-bg-item);
+    border: 1px solid var(--mcc-border-default);
+    border-radius: var(--mcc-radius-md);
+}
+
+.proxy-section-test-title {
+    font-size: var(--mcc-font-size-sm);
+    font-weight: 600;
+    color: var(--mcc-text-secondary);
 }
 
 .proxy-section-form-grid {

@@ -13,11 +13,11 @@ import {
 } from '../../../api/review';
 import { ServerFileBrowser, SelectModes } from './ServerFileBrowser';
 import { CustomSelect } from './CustomSelect';
-import { PlusIcon } from '../../icons/PlusIcon';
-import { TrashIcon } from '../../icons/TrashIcon';
-import { RefreshIcon } from '../../icons/RefreshIcon';
-import { FolderMoveIcon } from '../../icons/FolderMoveIcon';
-import { CheckCircleIcon } from '../../icons/CheckCircleIcon';
+import { PlusIcon } from '../../../pure-view/icons/PlusIcon';
+import { TrashIcon } from '../../../pure-view/icons/TrashIcon';
+import { RefreshIcon } from '../../../pure-view/icons/RefreshIcon';
+import { FolderMoveIcon } from '../../../pure-view/icons/FolderMoveIcon';
+import { CheckCircleIcon } from '../../../pure-view/icons/CheckCircleIcon';
 
 interface WorktreesSectionProps {
     project: ProjectInfo;

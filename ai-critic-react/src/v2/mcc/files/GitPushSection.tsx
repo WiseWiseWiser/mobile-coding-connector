@@ -5,7 +5,7 @@ import { encryptProjectSSHKey, EncryptionNotAvailableError } from '../home/crypt
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import { StreamingLogs } from '../../StreamingComponents';
 import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
-import { UploadIcon } from '../../icons';
+import { UploadIcon } from '../../../pure-view/icons/UploadIcon';
 import './GitCommitView.css';
 
 export interface GitPushSectionProps {

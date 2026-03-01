@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { LocalPortInfo } from '../../api/ports';
 import { fetchProtectedPorts, addProtectedPort, removeProtectedPort } from '../../api/ports';
-import { PlusIcon } from '../icons';
+import { PlusIcon } from '../../pure-view/icons/PlusIcon';
 import { installTool } from '../../api/tools';
 import { consumeSSEStream } from '../../api/sse';
 import { LogViewer } from '../LogViewer';

@@ -9,6 +9,7 @@ import { TerminalSection } from './settings/TerminalSection';
 import { ServerSettingsSection } from './settings/ServerSettingsSection';
 import { AIModelsSection } from './settings/AIModelsSection';
 import { ProxySettingsSection } from './settings/ProxySettingsSection';
+import { ExportButton, ImportButton } from '../../../pure-view/buttons';
 import './DiagnoseView.css'; // Shared styles: .diagnose-view, .diagnose-section, .diagnose-section-title, .diagnose-loading, .diagnose-error
 import './settings/GitSettings.css';
 import './settings/CloudflareSettingsView.css';
@@ -57,12 +58,8 @@ export function SettingsView() {
             </div>
 
             <div className="settings-export-import">
-                <button className="settings-export-import-btn" onClick={() => navigate('export')}>
-                    Export
-                </button>
-                <button className="settings-export-import-btn" onClick={() => navigate('import')}>
-                    Import
-                </button>
+                <ImportButton onClick={() => navigate('import')} />
+                <ExportButton onClick={() => navigate('export')} />
             </div>
         </div>
     );

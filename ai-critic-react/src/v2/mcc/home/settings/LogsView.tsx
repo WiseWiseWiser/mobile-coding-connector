@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getLogs, clearLogs, getLogsAsText, type LogEntry } from '../../../../logs';
-import { BackIcon } from '../../../icons';
+import { BackIcon } from '../../../../pure-view/icons/BackIcon';
 import { FlexInput } from '../../../../pure-view/FlexInput';
 import './LogsView.css';
 

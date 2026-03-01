@@ -4,7 +4,9 @@ import { fetchSSHServers, createSSHServer, updateSSHServer, deleteSSHServer } fr
 import type { SSHServer } from '../../../api/sshservers';
 import { loadSSHKeys, type SSHKey } from './settings/gitStorage';
 import { EmbeddedTerminal } from './EmbeddedTerminal';
-import { TerminalIcon, PlusIcon, KeyIcon } from '../../icons';
+import { TerminalIcon } from '../../../pure-view/icons/TerminalIcon';
+import { PlusIcon } from '../../../pure-view/icons/PlusIcon';
+import { KeyIcon } from '../../../pure-view/icons/KeyIcon';
 import './SSHServersView.css';
 
 export function SSHServersView() {

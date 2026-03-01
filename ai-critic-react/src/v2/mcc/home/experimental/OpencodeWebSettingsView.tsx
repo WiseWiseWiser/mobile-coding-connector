@@ -9,7 +9,7 @@ import type {
     OpencodeSettings,
     OpencodeWebTargetPreference,
 } from '../../../../api/agents';
-import { BeakerIcon } from '../../../icons';
+import { BeakerIcon } from '../../../../pure-view/icons/BeakerIcon';
 
 function normalizeTargetPreference(preference?: OpencodeWebTargetPreference): OpencodeWebTargetPreference {
     if (preference === OpencodeWebTargetPreferences.Localhost) {

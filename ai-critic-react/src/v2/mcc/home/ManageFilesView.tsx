@@ -6,7 +6,8 @@ import { FileViewer } from './FileViewer';
 import { FileEditor } from './FileEditor';
 import { fetchHomeDir, fetchServerFiles } from '../../../api/files';
 import type { FileEntry } from '../../../api/files';
-import { TerminalIcon, BackIcon } from '../../icons';
+import { TerminalIcon } from '../../../pure-view/icons/TerminalIcon';
+import { BackIcon } from '../../../pure-view/icons/BackIcon';
 import './ManageFilesView.css';
 
 interface FileInfo {

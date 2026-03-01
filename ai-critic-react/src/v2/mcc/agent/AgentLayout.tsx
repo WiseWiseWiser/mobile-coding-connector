@@ -9,7 +9,7 @@ import {
 } from '../../../api/agents';
 import type { AgentDef, AgentSessionInfo, ExternalOpencodeSession } from '../../../api/agents';
 import { useV2Context } from '../../V2Context';
-import { AgentEmptyIcon } from '../../icons';
+import { AgentEmptyIcon } from '../../../pure-view/icons/AgentEmptyIcon';
 import { loadCursorAPIKey } from './cursorStorage';
 import './AgentView.css';
 
