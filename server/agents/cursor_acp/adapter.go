@@ -129,7 +129,7 @@ func (a *CursorAgent) Status() acp.StatusInfo {
 	return info
 }
 
-func (a *CursorAgent) Connect(cwd string, resumeSessionID string, debug bool, log acp.LogFunc) (string, error) {
+func (a *CursorAgent) Connect(cwd string, resumeSessionID string, debug bool, log acp.LogFunc, projectName string, worktreeID string, resolvedDir string) (string, error) {
 	a.mu.Lock()
 	if a.chatID != "" {
 		a.mu.Unlock()
@@ -182,6 +182,11 @@ func (a *CursorAgent) Connect(cwd string, resumeSessionID string, debug bool, lo
 				cwd = entry.CWD
 				log(fmt.Sprintf("Loaded stored cwd: %s", cwd))
 			}
+			// Load the resolved directory from stored session
+			if entry.Dir != "" && resolvedDir == "" {
+				resolvedDir = entry.Dir
+				log(fmt.Sprintf("Loaded stored project directory: %s", resolvedDir))
+			}
 		}
 	} else {
 		log("Creating chat session...")
@@ -199,7 +204,15 @@ func (a *CursorAgent) Connect(cwd string, resumeSessionID string, debug bool, lo
 		}
 		log(fmt.Sprintf("Chat session created: %s", chatID))
 
-		a.sessionStore.Add(acp.NewSessionEntry(chatID, model, "cursor", cwd))
+		// Log project directory info if available
+		if projectName != "" {
+			log(fmt.Sprintf("Project: %s, WorktreeID: %s", projectName, worktreeID))
+		}
+		if resolvedDir != "" {
+			log(fmt.Sprintf("Resolved project directory: %s", resolvedDir))
+		}
+
+		a.sessionStore.Add(acp.NewSessionEntry(chatID, model, "cursor", cwd, resolvedDir, projectName, worktreeID))
 	}
 
 	a.mu.Lock()

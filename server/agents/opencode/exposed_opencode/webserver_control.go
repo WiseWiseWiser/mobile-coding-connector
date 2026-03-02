@@ -225,7 +225,26 @@ func AutoStartWebServer() {
 	}
 
 	isRunning := IsWebServerRunning(port)
+	fmt.Printf("[opencode] AutoStartWebServer: loaded settings - DefaultDomain=%q, WebServer.Enabled=%v, WebServer.Port=%d, AuthProxyEnabled=%v\n",
+		settings.DefaultDomain, settings.WebServer.Enabled, settings.WebServer.Port, settings.WebServer.AuthProxyEnabled)
 	fmt.Printf("[opencode] AutoStartWebServer: web server running on port %d? %v\n", port, isRunning)
+
+	// Check if we need to restart with auth proxy
+	if settings.WebServer.AuthProxyEnabled {
+		isProxyRunning := IsAuthProxyRunning(port)
+		fmt.Printf("[opencode] AutoStartWebServer: auth proxy running on port %d? %v\n", port, isProxyRunning)
+
+		if isRunning && !isProxyRunning {
+			// Something is running on the port but it's not the proxy
+			// We need to stop it and restart with the proxy
+			fmt.Printf("[opencode] AutoStartWebServer: server running on port %d but auth proxy is not running, stopping existing server...\n", port)
+			if _, err := StopWebServer(); err != nil {
+				fmt.Printf("[opencode] AutoStartWebServer: warning: failed to stop existing web server: %v\n", err)
+			}
+			// Wait a bit for the port to be released
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
 
 	tg := cloudflare.GetTunnelGroupManager().GetExtensionGroup()
 	logFn := func(msg string) {

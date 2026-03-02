@@ -547,6 +547,12 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Quick-test only endpoint for instant exec restart
 	if quicktest.Enabled() {
 		mux.HandleFunc("/api/quick-test/exec-restart", handleQuickTestExecRestart)
+		// Register all quick-test specific APIs
+		quicktest.RegisterQuickTestAPI(mux)
+		// Register the autostart callback so it can be triggered manually in quick-test mode
+		quicktest.AutostartCallback = func() {
+			opencode_exposed.AutoStartWebServer()
+		}
 	}
 
 	return nil

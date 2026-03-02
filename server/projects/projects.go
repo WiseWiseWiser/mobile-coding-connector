@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -581,4 +583,108 @@ func handleTodos(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// WorktreeInfo holds information about a git worktree
+type WorktreeInfo struct {
+	Path      string `json:"path"`
+	Branch    string `json:"branch"`
+	WorktreeID int    `json:"worktreeId"`
+}
+
+// ResolveProjectDir resolves the actual project directory based on project name and optional worktree ID.
+// It looks up the project in the project list and returns its directory.
+// If worktreeID is provided, it resolves the correct worktree directory.
+func ResolveProjectDir(projectName, worktreeID string) (string, error) {
+	projects, err := List()
+	if err != nil {
+		return "", fmt.Errorf("failed to list projects: %w", err)
+	}
+
+	// Find the project by name
+	var projectDir string
+	for _, p := range projects {
+		if p.Name == projectName {
+			projectDir = p.Dir
+			break
+		}
+	}
+
+	if projectDir == "" {
+		return "", fmt.Errorf("project not found: %s", projectName)
+	}
+
+	// If no worktree ID specified, return the project directory directly
+	if worktreeID == "" {
+		return projectDir, nil
+	}
+
+	// Parse worktree ID
+	worktreeIDInt, err := strconv.Atoi(worktreeID)
+	if err != nil {
+		return "", fmt.Errorf("invalid worktree ID: %s", worktreeID)
+	}
+
+	// Get worktrees for the project
+	worktrees, err := GetWorktreesForProject(projectDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to get worktrees: %w", err)
+	}
+
+	// Find the worktree with matching ID
+	for _, wt := range worktrees {
+		if wt.WorktreeID == worktreeIDInt {
+			return wt.Path, nil
+		}
+	}
+
+	return "", fmt.Errorf("worktree not found: %d", worktreeIDInt)
+}
+
+// GetWorktreesForProject returns all worktrees for a given git repository
+func GetWorktreesForProject(repoDir string) ([]WorktreeInfo, error) {
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd.Dir = repoDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list worktrees: %w", err)
+	}
+
+	return ParseWorktreesOutput(string(output)), nil
+}
+
+// ParseWorktreesOutput parses the output of `git worktree list --porcelain`
+func ParseWorktreesOutput(output string) []WorktreeInfo {
+	var worktrees []WorktreeInfo
+	var current *WorktreeInfo
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "worktree ") {
+			if current != nil {
+				worktrees = append(worktrees, *current)
+			}
+			path := strings.TrimPrefix(line, "worktree ")
+			current = &WorktreeInfo{
+				Path: path,
+			}
+		} else if strings.HasPrefix(line, "branch ") && current != nil {
+			branch := strings.TrimPrefix(line, "branch ")
+			// Extract just the branch name (remove refs/heads/ prefix)
+			branch = strings.TrimPrefix(branch, "refs/heads/")
+			current.Branch = branch
+		}
+	}
+
+	// Don't forget the last one
+	if current != nil {
+		worktrees = append(worktrees, *current)
+	}
+
+	// Assign worktree IDs (main is always 0, others start from 1)
+	for i := range worktrees {
+		worktrees[i].WorktreeID = i
+	}
+
+	return worktrees
 }

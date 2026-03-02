@@ -28,7 +28,7 @@ interface PlanEntry {
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 export interface ACPChatHandle {
-    connect(cwd?: string, resumeSessionId?: string): void;
+    connect(cwd?: string, resumeSessionId?: string, projectName?: string, worktreeId?: string): void;
 }
 
 export interface ACPChatProps {
@@ -60,6 +60,7 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
     const [input, setInput] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [cwd, setCwd] = useState(defaultCwd ?? '');
+    const [dir, setDir] = useState('');
     const [model, setModel] = useState('');
     const [models, setModels] = useState<ModelOption[]>([]);
     const [selectedModel, setSelectedModel] = useState<{ modelID: string; providerID: string } | undefined>();
@@ -102,9 +103,9 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
     const locationRef = useCurrent(location);
     const debugModeRef = useCurrent(debugMode);
 
-    const connect = async (resumeSessionId?: string, cwdOverride?: string) => {
+    const connect = async (resumeSessionId?: string, cwdOverride?: string, projectName?: string, worktreeId?: string) => {
         const effectiveCwd = cwdOverride ?? cwdRef.current;
-        console.log("DEBUG ACPChat.connect", { resumeSessionId, cwdOverride, cwdRefCurrent: cwdRef.current, effectiveCwd });
+        console.log("DEBUG ACPChat.connect", { resumeSessionId, cwdOverride, cwdRefCurrent: cwdRef.current, effectiveCwd, projectName, worktreeId });
         if (cwdOverride !== undefined) setCwd(cwdOverride);
 
         setStatus('connecting');
@@ -116,6 +117,8 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
             const body: Record<string, string | boolean> = {};
             if (resumeSessionId) body.sessionId = resumeSessionId;
             if (effectiveCwd) body.cwd = effectiveCwd;
+            if (projectName) body.projectName = projectName;
+            if (worktreeId) body.worktreeId = worktreeId;
             body.debug = debugModeRef.current;
 
             const resp = await fetch(`${apiPrefix}/connect`, {
@@ -159,6 +162,10 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
                                     setSelectedModel({ modelID: match.id, providerID: match.providerId });
                                 }
                             }
+                            // Handle the resolved directory from the backend
+                            if (update.dir !== undefined) {
+                                setDir(update.dir);
+                            }
                             setStatus('connected');
                             setStatusMessage(`Session: ${newId.slice(0, 12)}...`);
                             if (isNewSessionRef.current) {
@@ -182,14 +189,19 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
     };
 
     useImperativeHandle(ref, () => ({
-        connect(cwdOverride?: string, resumeSessionId?: string) {
-            connect(resumeSessionId, cwdOverride);
+        connect(cwdOverride?: string, resumeSessionId?: string, projectName?: string, worktreeId?: string) {
+            connect(resumeSessionId, cwdOverride, projectName, worktreeId);
         },
     }));
 
     useEffect(() => {
         if (connectStarted.current) return;
         connectStarted.current = true;
+
+        // Extract project name and worktree ID from URL query params
+        const urlParams = new URLSearchParams(location.search);
+        const projectName = urlParams.get('project') || '';
+        const worktreeId = urlParams.get('worktree') || '';
 
         (async () => {
             try {
@@ -214,7 +226,19 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
         })();
 
         if (!isNewSession && paramSessionId) {
+            // For existing sessions, fetch session info to get the dir
             (async () => {
+                try {
+                    // Fetch session info first
+                    const sessionResp = await fetch(`${apiPrefix}/session?sessionId=${encodeURIComponent(paramSessionId)}`);
+                    if (sessionResp.ok) {
+                        const sessionData = await sessionResp.json();
+                        if (sessionData.dir) {
+                            setDir(sessionData.dir);
+                        }
+                    }
+                } catch { /* ignore */ }
+
                 try {
                     const resp = await fetch(`${apiPrefix}/session/messages?sessionId=${encodeURIComponent(paramSessionId)}`);
                     if (resp.ok) {
@@ -225,9 +249,9 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
                     }
                 } catch { /* ignore */ }
             })();
-            connect(paramSessionId);
+            connect(paramSessionId, undefined, projectName, worktreeId);
         }
-    }, [isNewSession, paramSessionId, apiPrefix]);
+    }, [isNewSession, paramSessionId, apiPrefix, location.search]);
 
     const inputRef2 = useCurrent(input);
     const sessionIdRef = useCurrent(sessionId);
@@ -459,6 +483,12 @@ export const ACPChat = forwardRef<ACPChatHandle, ACPChatProps>(function ACPChat(
                             placeholder="Working directory..."
                         />
                     )}
+                </div>
+                <div className="acp-ui-cwd-container">
+                    <span className="acp-ui-cwd-label">Dir:</span>
+                    <span className="acp-ui-cwd-display">
+                        {dir || (status === 'connected' || status === 'connecting' ? 'loading...' : 'N/A')}
+                    </span>
                 </div>
             </div>
 

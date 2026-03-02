@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
 )
 
 // RegisterAgentAPI registers HTTP endpoints for a given ACP agent at the specified prefix.
@@ -14,6 +16,9 @@ import (
 //   - POST /api/cursor-acp/prompt
 //   - POST /api/cursor-acp/cancel
 func RegisterAgentAPI(mux *http.ServeMux, prefix string, agent Agent) {
+	mux.HandleFunc(prefix+"/session", func(w http.ResponseWriter, r *http.Request) {
+		handleAgentSession(w, r, agent)
+	})
 	mux.HandleFunc(prefix+"/session/messages", func(w http.ResponseWriter, r *http.Request) {
 		handleSessionMessages(w, r, agent)
 	})
@@ -41,6 +46,28 @@ func RegisterAgentAPI(mux *http.ServeMux, prefix string, agent Agent) {
 	mux.HandleFunc(prefix+"/cancel", func(w http.ResponseWriter, r *http.Request) {
 		handleAgentCancel(w, r, agent)
 	})
+}
+
+func handleAgentSession(w http.ResponseWriter, r *http.Request, agent Agent) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	sessionID := r.URL.Query().Get("sessionId")
+	if sessionID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "sessionId required"})
+		return
+	}
+	for _, entry := range agent.Sessions() {
+		if entry.ID == sessionID {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(entry)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNotFound)
+	json.NewEncoder(w).Encode(map[string]string{"error": "session not found"})
 }
 
 func handleAgentStatus(w http.ResponseWriter, _ *http.Request, agent Agent) {
@@ -142,9 +169,11 @@ func handleAgentConnect(w http.ResponseWriter, r *http.Request, agent Agent) {
 	}
 
 	var body struct {
-		CWD       string `json:"cwd"`
-		SessionID string `json:"sessionId"`
-		Debug     bool   `json:"debug"`
+		CWD         string `json:"cwd"`
+		SessionID   string `json:"sessionId"`
+		Debug       bool   `json:"debug"`
+		ProjectName string `json:"projectName,omitempty"`
+		WorktreeID  string `json:"worktreeId,omitempty"`
 	}
 	json.NewDecoder(r.Body).Decode(&body)
 
@@ -152,12 +181,25 @@ func handleAgentConnect(w http.ResponseWriter, r *http.Request, agent Agent) {
 
 	cwdSource := "request"
 	cwd := body.CWD
+
+	// If no cwd but we have project info, resolve the directory
+	var resolvedDir string
+	if cwd == "" && body.ProjectName != "" {
+		resolvedCwd, err := projects.ResolveProjectDir(body.ProjectName, body.WorktreeID)
+		if err == nil && resolvedCwd != "" {
+			cwd = resolvedCwd
+			cwdSource = "project-resolve"
+		}
+	}
+	// Track the resolved directory for session storage
+	resolvedDir = cwd
+
 	if cwd == "" {
 		status := agent.Status()
 		cwd = status.CWD
 		cwdSource = "status-fallback"
 	}
-	fmt.Printf("DEBUG handleAgentConnect cwd=%q source=%s sessionId=%q\n", cwd, cwdSource, body.SessionID)
+	fmt.Printf("DEBUG handleAgentConnect cwd=%q source=%s sessionId=%q project=%q worktree=%q\n", cwd, cwdSource, body.SessionID, body.ProjectName, body.WorktreeID)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -173,7 +215,10 @@ func handleAgentConnect(w http.ResponseWriter, r *http.Request, agent Agent) {
 		writeSSE(w, flusher, SessionUpdate{Type: "log", Message: message})
 	}
 
-	sessionID, err := agent.Connect(cwd, body.SessionID, debug, logFn)
+	// Log the actual project directory being used
+	logFn(fmt.Sprintf("Using project directory: %s", resolvedDir))
+
+	sessionID, err := agent.Connect(cwd, body.SessionID, debug, logFn, body.ProjectName, body.WorktreeID, resolvedDir)
 	if err != nil {
 		writeSSE(w, flusher, SessionUpdate{Type: "error", Message: err.Error()})
 		fmt.Fprintf(w, "data: [DONE]\n\n")
@@ -186,6 +231,7 @@ func handleAgentConnect(w http.ResponseWriter, r *http.Request, agent Agent) {
 		Type:    "connected",
 		Message: sessionID,
 		Model:   status.Model,
+		Dir:     resolvedDir,
 	})
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()

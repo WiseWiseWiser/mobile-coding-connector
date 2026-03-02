@@ -36,6 +36,16 @@ func IsPortAvailable(port int) bool {
 	return true
 }
 
+func findFreePort() (int, error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	return port, nil
+}
+
 func StartWithSettings(port int, password string, customPath string) (*OpencodeManager, error) {
 	managerMutex.Lock()
 	defer managerMutex.Unlock()
@@ -72,7 +82,10 @@ func StartWithSettings(port int, password string, customPath string) (*OpencodeM
 		defer atomic.StoreInt32(&managerStarting, 0)
 
 		if port == 0 {
-			port = 4096
+			port, err = findFreePort()
+			if err != nil {
+				return fmt.Errorf("failed to find free port: %w", err)
+			}
 		}
 
 		if !IsPortAvailable(port) {

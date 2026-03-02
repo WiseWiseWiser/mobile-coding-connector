@@ -8,24 +8,30 @@ import (
 )
 
 type SessionEntry struct {
-	ID        string `json:"id"`
-	CreatedAt int64  `json:"createdAt"`
-	Model     string `json:"model,omitempty"`
-	Agent     string `json:"agent,omitempty"`
-	CWD       string `json:"cwd,omitempty"`
+	ID          string `json:"id"`
+	CreatedAt   int64  `json:"createdAt"`
+	Model       string `json:"model,omitempty"`
+	Agent       string `json:"agent,omitempty"`
+	CWD         string `json:"cwd,omitempty"`
+	Dir         string `json:"dir,omitempty"`
+	ProjectName string `json:"projectName,omitempty"`
+	WorktreeID  string `json:"worktreeId,omitempty"`
 	// TrustWorkspace indicates if the workspace is trusted (for cursor-agent)
 	TrustWorkspace bool `json:"trustWorkspace,omitempty"`
 	// YoloMode indicates if --yolo flag should be passed to cursor-agent
 	YoloMode bool `json:"yoloMode,omitempty"`
 }
 
-func NewSessionEntry(id, model, agent, cwd string) SessionEntry {
+func NewSessionEntry(id, model, agent, cwd, dir, projectName, worktreeID string) SessionEntry {
 	return SessionEntry{
-		ID:        id,
-		CreatedAt: time.Now().UnixMilli(),
-		Model:     model,
-		Agent:     agent,
-		CWD:       cwd,
+		ID:          id,
+		CreatedAt:   time.Now().UnixMilli(),
+		Model:       model,
+		Agent:       agent,
+		CWD:         cwd,
+		Dir:         dir,
+		ProjectName: projectName,
+		WorktreeID:  worktreeID,
 	}
 }
 
@@ -145,6 +151,7 @@ type SessionUpdate struct {
 	Entries    json.RawMessage `json:"entries,omitempty"`
 	Message    string          `json:"message,omitempty"`
 	Model      string          `json:"model,omitempty"`
+	Dir        string          `json:"dir,omitempty"`
 }
 
 type PromptResult struct {
@@ -192,7 +199,8 @@ type Agent interface {
 	// If resumeSessionID is non-empty, it resumes that session instead of creating new.
 	// If debug is true, debug logs are streamed back.
 	// The log callback is called with progress messages during connection.
-	Connect(cwd string, resumeSessionID string, debug bool, log LogFunc) (sessionID string, err error)
+	// projectName, worktreeID, and resolvedDir are used for tracking the project context.
+	Connect(cwd string, resumeSessionID string, debug bool, log LogFunc, projectName string, worktreeID string, resolvedDir string) (sessionID string, err error)
 
 	// Disconnect terminates the agent process and cleans up resources.
 	Disconnect()

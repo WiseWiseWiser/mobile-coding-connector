@@ -268,8 +268,8 @@
 
 .mcc-experimental-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
     margin-bottom: 24px;
 }
 
@@ -277,10 +277,10 @@
     background: #111827;
     border: 1px solid #334155;
     border-radius: 12px;
-    padding: 20px;
+    padding: 14px;
     display: flex;
     align-items: flex-start;
-    gap: 16px;
+    gap: 12px;
     transition: all 0.2s ease;
     cursor: pointer;
 }
@@ -299,10 +299,10 @@
 
 .mcc-experimental-card-icon {
     flex-shrink: 0;
-    width: 48px;
-    height: 48px;
+    width: 36px;
+    height: 36px;
     background: var(--primary-color, #4a90d9);
-    border-radius: 10px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -310,26 +310,27 @@
 }
 
 .mcc-experimental-card-icon svg {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
 }
 
 .mcc-experimental-card-content {
     flex: 1;
+    min-width: 0;
 }
 
 .mcc-experimental-card-content h3 {
-    margin: 0 0 8px 0;
-    font-size: 1.125rem;
+    margin: 0 0 4px 0;
+    font-size: 1rem;
     font-weight: 600;
     color: #f1f5f9;
 }
 
 .mcc-experimental-card-content p {
-    margin: 0 0 12px 0;
-    font-size: 0.875rem;
+    margin: 0 0 8px 0;
+    font-size: 0.8rem;
     color: #94a3b8;
-    line-height: 1.5;
+    line-height: 1.4;
 }
 
 .mcc-experimental-status {
