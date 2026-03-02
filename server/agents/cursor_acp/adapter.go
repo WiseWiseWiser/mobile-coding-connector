@@ -190,7 +190,7 @@ func (a *CursorAgent) Connect(cwd string, resumeSessionID string, debug bool, lo
 		}
 	} else {
 		log("Creating chat session...")
-		createCmd := cursorCommand(agentPath, "create-chat")
+		createCmd := cursorCommand(agentPath, "--trust", "create-chat")
 		if cwd != "" {
 			createCmd.Dir = cwd
 		}
@@ -286,10 +286,8 @@ func (a *CursorAgent) sendPromptInternal(sessionID string, text string, model st
 	if model != "" {
 		args = append(args, "--model", model)
 	}
-	// Add trust flag if trust is enabled for this session
-	if trustEnabled {
-		args = append(args, "--trust")
-	}
+	// Always add trust flag to avoid trust prompt
+	args = append(args, "--trust")
 	args = append(args, text)
 	cmd := cursorCommand(agentPath, args...)
 	if cwd != "" {

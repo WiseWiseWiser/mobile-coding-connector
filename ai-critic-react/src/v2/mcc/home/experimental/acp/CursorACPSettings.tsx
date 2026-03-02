@@ -10,6 +10,11 @@ interface EffectivePathInfo {
     error?: string;
 }
 
+interface SimpleModelOption {
+    id: string;
+    name: string;
+}
+
 export function CursorACPSettings() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
@@ -19,6 +24,9 @@ export function CursorACPSettings() {
     const [apiKey, setApiKey] = useState('');
     const [binaryPath, setBinaryPath] = useState('');
     const [effectivePath, setEffectivePath] = useState<EffectivePathInfo | null>(null);
+    const [defaultModel, setDefaultModel] = useState<string>('');
+    const [availableModels, setAvailableModels] = useState<SimpleModelOption[]>([]);
+    const [loadingModels, setLoadingModels] = useState(false);
 
     const loadSettings = useCallback(async () => {
         setLoading(true);
@@ -30,6 +38,9 @@ export function CursorACPSettings() {
             if (data.effective_path) {
                 setEffectivePath(data.effective_path);
             }
+            if (data.default_model) {
+                setDefaultModel(data.default_model);
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to load settings');
         } finally {
@@ -37,9 +48,28 @@ export function CursorACPSettings() {
         }
     }, []);
 
+    const fetchAvailableModels = useCallback(async () => {
+        setLoadingModels(true);
+        try {
+            const resp = await fetch(`${API_PREFIX}/models`);
+            if (!resp.ok) {
+                throw new Error(`Failed to load models: ${resp.status}`);
+            }
+            const data = await resp.json();
+            if (data.models && Array.isArray(data.models)) {
+                setAvailableModels(data.models.map((m: string) => ({ id: m, name: m })));
+            }
+        } catch (err) {
+            console.error('Failed to fetch models:', err);
+        } finally {
+            setLoadingModels(false);
+        }
+    }, []);
+
     useEffect(() => {
         loadSettings();
-    }, [loadSettings]);
+        fetchAvailableModels();
+    }, [loadSettings, fetchAvailableModels]);
 
     const handleSave = async () => {
         setSaving(true);
@@ -49,7 +79,11 @@ export function CursorACPSettings() {
             const resp = await fetch(`${API_PREFIX}/settings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ api_key: apiKey.trim(), binary_path: binaryPath.trim() }),
+                body: JSON.stringify({ 
+                    api_key: apiKey.trim(), 
+                    binary_path: binaryPath.trim(),
+                    default_model: defaultModel,
+                }),
             });
             if (!resp.ok) {
                 const data = await resp.json().catch(() => ({}));
@@ -147,6 +181,39 @@ export function CursorACPSettings() {
                             <span style={{ fontSize: 12, color: 'var(--mcc-text-muted, #64748b)' }}>
                                 If set, this key will be passed to cursor-agent via --api-key flag.
                                 Leave empty to use the default authentication (cursor-agent login).
+                            </span>
+                        </div>
+
+                        {/* Default Model */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <label style={{ fontSize: 13, color: 'var(--mcc-text-secondary, #cbd5e1)' }}>
+                                Default Model
+                            </label>
+                            {loadingModels ? (
+                                <div style={{ padding: '10px 12px', color: 'var(--mcc-text-muted, #64748b)' }}>
+                                    Loading models...
+                                </div>
+                            ) : availableModels.length > 0 ? (
+                                <select
+                                    value={defaultModel}
+                                    onChange={e => setDefaultModel(e.target.value)}
+                                    disabled={saving}
+                                    style={inputStyle}
+                                >
+                                    <option value="">Select a default model...</option>
+                                    {availableModels.map(model => (
+                                        <option key={model.id} value={model.id}>
+                                            {model.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <div style={{ padding: '10px 12px', color: 'var(--mcc-text-muted, #64748b)' }}>
+                                    No models available. Make sure cursor-agent is installed and accessible.
+                                </div>
+                            )}
+                            <span style={{ fontSize: 12, color: 'var(--mcc-text-muted, #64748b)' }}>
+                                The default model to use when creating new sessions. This can be overridden per session.
                             </span>
                         </div>
 
