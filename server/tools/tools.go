@@ -16,6 +16,7 @@ import (
 // ToolInfo describes a required tool and its status.
 type ToolInfo struct {
 	Name           string `json:"name"`
+	DisplayName    string `json:"display_name,omitempty"`
 	Description    string `json:"description"`
 	Purpose        string `json:"purpose"`
 	Checking       bool   `json:"checking,omitempty"`
@@ -51,6 +52,7 @@ type ToolsResponse struct {
 // installWindows is a plain text instruction (no auto-install).
 type toolDef struct {
 	name           string
+	displayName    string // shown in UI instead of name when set
 	description    string
 	purpose        string
 	versionCmd     []string
@@ -288,6 +290,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "agent",
+		displayName: "cursor agent",
 		description: "Cursor Agent CLI for AI-powered coding",
 		purpose:     "Run cursor agent for code generation and editing from the terminal",
 		versionCmd:  []string{"agent", "--version"},
@@ -534,6 +537,7 @@ func joinInstallSteps(steps []string) string {
 func buildToolInfo(tool toolDef) ToolInfo {
 	return ToolInfo{
 		Name:           tool.name,
+		DisplayName:    tool.displayName,
 		Description:    tool.description,
 		Purpose:        tool.purpose,
 		InstallMacOS:   joinInstallSteps(tool.installMacOS),
@@ -814,9 +818,9 @@ func handleInstallTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prepend "set -e" so any command failure aborts the script immediately,
-	// preventing false "success" messages when intermediate commands fail.
-	fullScript := "set -e\n" + script
+	// Prepend "set -eo pipefail" so any command failure (including inside
+	// pipelines like "curl ... | bash") aborts the script immediately.
+	fullScript := "set -eo pipefail\n" + script
 
 	sw.SendLog(fmt.Sprintf("$ %s", strings.ReplaceAll(script, "\n", "\n$ ")))
 
