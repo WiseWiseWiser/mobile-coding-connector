@@ -10,6 +10,7 @@ import type { DiagnosticsData } from '../api/ports';
 import { fetchAgents, fetchExternalSessions } from '../api/agents';
 import type { AgentDef, AgentSessionInfo, ExternalOpencodeSession } from '../api/agents';
 import type { NavTab } from './mcc/types';
+import type { ServerConfig } from '../api/config';
 
 interface V2ContextValue {
     projectsList: ProjectInfo[];
@@ -41,6 +42,8 @@ interface V2ContextValue {
     pushTabHistory: (tab: NavTab, path: string) => void;
     popTabHistory: (tab: NavTab) => string | undefined;
     clearTabHistory: (tab: NavTab) => void;
+    serverConfig: ServerConfig | null;
+    serverConfigLoading: boolean;
 }
 
 const V2Ctx = createContext<V2ContextValue | null>(null);
@@ -110,6 +113,25 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
     }, [subProjectsCountMap]);
 
     const [currentProject, setCurrentProject] = useState<ProjectInfo | null>(null);
+
+    // Server config state
+    const [serverConfig, setServerConfig] = useState<ServerConfig | null>(null);
+    const [serverConfigLoading, setServerConfigLoading] = useState(true);
+
+    // Load server config
+    useEffect(() => {
+        import('../api/config').then(({ fetchServerConfig }) => {
+            fetchServerConfig()
+                .then(config => {
+                    setServerConfig(config);
+                    setServerConfigLoading(false);
+                })
+                .catch(err => {
+                    console.error('Failed to load server config:', err);
+                    setServerConfigLoading(false);
+                });
+        });
+    }, []);
 
     // Port forwarding
     const portForwards = usePortForwards();
@@ -255,6 +277,8 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
             pushTabHistory,
             popTabHistory,
             clearTabHistory,
+            serverConfig,
+            serverConfigLoading,
         }}>
             {children}
         </V2Ctx.Provider>

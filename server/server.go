@@ -529,6 +529,12 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// AI config API
 	registerAIConfigAPI(mux)
 
+	// Server config API
+	mux.HandleFunc("/api/config", serverconfig.Handler)
+
+	// Server config API
+	mux.HandleFunc("/api/config", serverconfig.Handler)
+
 	// Build from source API
 	registerBuildAPI(mux)
 

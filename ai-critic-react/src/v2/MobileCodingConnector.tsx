@@ -15,6 +15,7 @@ import { FilesIcon } from '../pure-view/icons/FilesIcon';
 import { LogsIcon } from '../pure-view/icons/LogsIcon';
 import { BeakerIcon } from '../pure-view/icons/BeakerIcon';
 import { ProjectDetailIcon } from '../pure-view/icons/ProjectDetailIcon';
+import { LayoutIcon } from '../pure-view/icons/LayoutIcon';
 import { ServerIcon } from '../pure-view/icons/ServerIcon';
 import { NavButton } from '../pure-view/buttons';
 import { ProjectDropdown } from './mcc/ProjectDropdown';
@@ -55,6 +56,7 @@ function MobileCodingConnectorInner() {
     const {
         projectsList, projectsLoading,
         currentProject, setCurrentProject,
+        serverConfig,
     } = useV2Context();
 
     // Worktree context
@@ -288,6 +290,12 @@ function MobileCodingConnectorInner() {
                         <BeakerIcon />
                         <span>Experimental</span>
                     </button>
+                    {serverConfig?.enableMockupInMenu && (
+                        <button className="mcc-drawer-item" onClick={() => handleMenuNavigate('/mockups')}>
+                            <LayoutIcon />
+                            <span>Mockups</span>
+                        </button>
+                    )}
 
                 </nav>
             </div>
