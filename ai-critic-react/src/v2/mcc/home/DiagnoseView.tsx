@@ -226,27 +226,32 @@ function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
                                 : '❌'}
                 </span>
                 <span className="diagnose-tool-name">{tool.name}</span>
+                {tool.display_name && (
+                    <span className="diagnose-tool-display-name">{tool.display_name}</span>
+                )}
                 {tool.installed && tool.version && (
                     <span className="diagnose-tool-version">{tool.version}</span>
                 )}
-                {!tool.checking && !tool.installed && tool.auto_install_cmd && (
-                    <button
-                        className="diagnose-tool-install-btn"
-                        onClick={handleInstall}
-                        disabled={installing}
-                    >
-                        {installing ? 'Installing...' : 'Install'}
-                    </button>
-                )}
-                {tool.installed && tool.settings_path && (
-                    <button
-                        className="diagnose-tool-settings-btn"
-                        onClick={(e) => { e.stopPropagation(); navigate(tool.settings_path!); }}
-                    >
-                        Settings
-                    </button>
-                )}
-                <span className={`diagnose-tool-chevron ${expanded ? 'expanded' : ''}`}>›</span>
+                <div className="diagnose-tool-actions">
+                    {!tool.checking && !tool.installed && tool.auto_install_cmd && (
+                        <button
+                            className="diagnose-tool-install-btn"
+                            onClick={handleInstall}
+                            disabled={installing}
+                        >
+                            {installing ? 'Installing...' : 'Install'}
+                        </button>
+                    )}
+                    {tool.installed && tool.settings_path && (
+                        <button
+                            className="diagnose-tool-settings-btn"
+                            onClick={(e) => { e.stopPropagation(); navigate(tool.settings_path!); }}
+                        >
+                            Settings
+                        </button>
+                    )}
+                    <span className={`diagnose-tool-chevron ${expanded ? 'expanded' : ''}`}>›</span>
+                </div>
             </div>
 
             {expanded && (

@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	ContainerName  = "ai-critic-sandbox"
-	ContainerImage = "docker.io/library/debian:bookworm-slim"
+	ContainerName      = "ai-critic-sandbox"
+	ContainerNameFresh = "ai-critic-sandbox-fresh"
+	ContainerImage     = "docker.io/library/debian:bookworm-slim"
 )
 
 // EnsurePodman checks that podman is installed and the machine is running.

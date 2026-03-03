@@ -46,10 +46,6 @@ export const EffectivePathSection: React.FC = () => {
     fetchPathInfo();
   }, []);
 
-  if (loading) return <div style={{ padding: 16, color: 'var(--mcc-text-secondary)' }}>Loading path info...</div>;
-  if (error) return <div style={{ padding: 16, color: 'var(--mcc-error-color)' }}>Error: {error}</div>;
-  if (!pathInfo) return null;
-
   const formatPath = (pathStr: string) => pathStr ? pathStr.split(':') : [];
 
   return (
@@ -60,8 +56,14 @@ export const EffectivePathSection: React.FC = () => {
       marginBottom: '16px',
       border: '1px solid var(--mcc-border-color)'
     }}>
-      <h2 style={{ marginTop: 0, marginBottom: '16px', color: 'var(--mcc-text-primary)' }}>Effective Path</h2>
+      <h2 style={{ marginTop: 0, marginBottom: '16px', color: 'var(--mcc-text-primary)' }}>
+        Effective Path
+        {loading && <span style={{ fontSize: '14px', fontWeight: 'normal', marginLeft: '12px', color: 'var(--mcc-text-muted)' }}>Loading...</span>}
+      </h2>
+      {error && <div style={{ padding: '8px', marginBottom: '12px', color: 'var(--mcc-error-color)' }}>Error: {error}</div>}
+      {!pathInfo && !loading && !error && <div style={{ color: 'var(--mcc-text-muted)' }}>No path info available.</div>}
       
+      {pathInfo && (<>
       {/* System PATH */}
       <div style={{ marginBottom: '12px' }}>
         <strong style={{ color: 'var(--mcc-text-primary)' }}>1. System PATH:</strong>
@@ -129,7 +131,7 @@ export const EffectivePathSection: React.FC = () => {
       <div style={{ marginBottom: '12px' }}>
         <strong style={{ color: 'var(--mcc-text-primary)' }}>4. First Pass (System + User + Extra):</strong>
         <div style={{ 
-          backgroundColor: '#1e3a5f', 
+          backgroundColor: 'var(--mcc-bg-secondary)', 
           padding: '8px', 
           borderRadius: '4px',
           fontFamily: 'monospace',
@@ -148,7 +150,7 @@ export const EffectivePathSection: React.FC = () => {
       <div style={{ marginBottom: '12px' }}>
         <strong style={{ color: 'var(--mcc-text-primary)' }}>5. Second Pass (Prioritized by Node Version):</strong>
         <div style={{ 
-          backgroundColor: '#3d2a1e', 
+          backgroundColor: 'var(--mcc-bg-secondary)', 
           padding: '8px', 
           borderRadius: '4px',
           fontFamily: 'monospace',
@@ -167,14 +169,13 @@ export const EffectivePathSection: React.FC = () => {
       <div style={{ marginBottom: '12px' }}>
         <strong style={{ color: 'var(--mcc-text-primary)' }}>6. Final PATH:</strong>
         <div style={{ 
-          backgroundColor: '#1a3d2e', 
+          backgroundColor: 'var(--mcc-bg-secondary)', 
           padding: '8px', 
           borderRadius: '4px',
           fontFamily: 'monospace',
           fontSize: '12px',
           maxHeight: '100px',
           overflowY: 'auto',
-          border: '2px solid var(--mcc-success-color)',
           color: 'var(--mcc-text-primary)'
         }}>
           {formatPath(pathInfo.final_path).map((p, i) => (
@@ -199,7 +200,6 @@ export const EffectivePathSection: React.FC = () => {
             <thead>
               <tr style={{ backgroundColor: 'var(--mcc-bg-card)' }}>
                 <th style={{ padding: '8px', textAlign: 'left', borderBottom: '2px solid var(--mcc-border-color)', color: 'var(--mcc-text-primary)' }}>Version</th>
-                <th style={{ padding: '8px', textAlign: 'left', borderBottom: '2px solid var(--mcc-border-color)', color: 'var(--mcc-text-primary)' }}>Directory</th>
                 <th style={{ padding: '8px', textAlign: 'left', borderBottom: '2px solid var(--mcc-border-color)', color: 'var(--mcc-text-primary)' }}>Full Path</th>
               </tr>
             </thead>
@@ -209,10 +209,7 @@ export const EffectivePathSection: React.FC = () => {
                   <td style={{ padding: '8px', borderBottom: '1px solid var(--mcc-border-color)', fontFamily: 'monospace', color: 'var(--mcc-text-primary)' }}>
                     <strong>{node.version}</strong>
                   </td>
-                  <td style={{ padding: '8px', borderBottom: '1px solid var(--mcc-border-color)', fontSize: '12px', color: 'var(--mcc-text-secondary)' }}>
-                    {node.dir}
-                  </td>
-                  <td style={{ padding: '8px', borderBottom: '1px solid var(--mcc-border-color)', fontFamily: 'monospace', fontSize: '11px', color: 'var(--mcc-text-muted)' }}>
+                  <td style={{ padding: '8px', borderBottom: '1px solid var(--mcc-border-color)', fontFamily: 'monospace', fontSize: '12px', color: 'var(--mcc-text-secondary)' }}>
                     {node.path}
                   </td>
                 </tr>
@@ -221,6 +218,7 @@ export const EffectivePathSection: React.FC = () => {
           </table>
         </div>
       )}
+      </>)}
 
       {/* Refresh Button */}
       <div style={{ marginTop: '20px', textAlign: 'center' }}>
