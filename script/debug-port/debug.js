@@ -1,7 +1,7 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 
-const BASE_URL = process.env.BASE_URL || 'https://port-5173-ae2842d.xhd2015.xyz';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
 const VIEWPORT_WIDTH = parseInt(process.env.VIEWPORT_WIDTH || '375');
 const VIEWPORT_HEIGHT = parseInt(process.env.VIEWPORT_HEIGHT || '800');
 const HEADLESS = process.env.HEADLESS !== 'false';

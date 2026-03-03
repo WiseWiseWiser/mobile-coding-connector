@@ -1,14 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BeakerIcon } from '../../../../../pure-view/icons/BeakerIcon';
-
-const API_PREFIX = '/api/agent/acp/cursor';
-
-interface EffectivePathInfo {
-    found: boolean;
-    effective_path?: string;
-    error?: string;
-}
+import {
+    fetchCursorACPSettings,
+    saveCursorACPSettings,
+    validateCursorAPIKey,
+    cursorAPI,
+    type EffectivePathInfo,
+    type CursorACPModelInfo,
+} from '../../../../../api/cursor-acp';
 
 interface SimpleModelOption {
     id: string;
@@ -26,13 +26,16 @@ export function CursorACPSettings() {
     const [effectivePath, setEffectivePath] = useState<EffectivePathInfo | null>(null);
     const [defaultModel, setDefaultModel] = useState<string>('');
     const [availableModels, setAvailableModels] = useState<SimpleModelOption[]>([]);
+    const [defaultModelName, setDefaultModelName] = useState('');
     const [loadingModels, setLoadingModels] = useState(false);
+    const [modelsError, setModelsError] = useState('');
+    const [validating, setValidating] = useState(false);
+    const [validateMsg, setValidateMsg] = useState('');
 
     const loadSettings = useCallback(async () => {
         setLoading(true);
         try {
-            const resp = await fetch(`${API_PREFIX}/settings`);
-            const data = await resp.json();
+            const data = await fetchCursorACPSettings();
             setApiKey(data.api_key || '');
             setBinaryPath(data.binary_path || '');
             if (data.effective_path) {
@@ -40,6 +43,9 @@ export function CursorACPSettings() {
             }
             if (data.default_model) {
                 setDefaultModel(data.default_model);
+            }
+            if (data.default_model_name) {
+                setDefaultModelName(data.default_model_name);
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to load settings');
@@ -50,17 +56,14 @@ export function CursorACPSettings() {
 
     const fetchAvailableModels = useCallback(async () => {
         setLoadingModels(true);
+        setModelsError('');
         try {
-            const resp = await fetch(`${API_PREFIX}/models`);
-            if (!resp.ok) {
-                throw new Error(`Failed to load models: ${resp.status}`);
-            }
-            const data = await resp.json();
-            if (data.models && Array.isArray(data.models)) {
-                setAvailableModels(data.models.map((m: string) => ({ id: m, name: m })));
-            }
+            const models = await cursorAPI.fetchModels();
+            setAvailableModels(models.map((m: CursorACPModelInfo) => ({ id: m.id, name: m.name || m.id })));
         } catch (err) {
-            console.error('Failed to fetch models:', err);
+            const msg = err instanceof Error ? err.message : String(err);
+            setModelsError(msg);
+            console.error('Failed to fetch models:', msg);
         } finally {
             setLoadingModels(false);
         }
@@ -76,25 +79,31 @@ export function CursorACPSettings() {
         setError('');
         setSuccess('');
         try {
-            const resp = await fetch(`${API_PREFIX}/settings`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    api_key: apiKey.trim(), 
-                    binary_path: binaryPath.trim(),
-                    default_model: defaultModel,
-                }),
+            await saveCursorACPSettings({
+                api_key: apiKey.trim(),
+                binary_path: binaryPath.trim(),
+                default_model: defaultModel,
+                default_model_name: defaultModelName,
             });
-            if (!resp.ok) {
-                const data = await resp.json().catch(() => ({}));
-                throw new Error(data.error || `Failed (${resp.status})`);
-            }
             setSuccess('Settings saved');
             await loadSettings();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to save settings');
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleValidate = async () => {
+        setValidating(true);
+        setValidateMsg('');
+        try {
+            const msg = await validateCursorAPIKey(apiKey.trim());
+            setValidateMsg(msg);
+        } catch (err) {
+            setValidateMsg(err instanceof Error ? err.message : 'Validation failed');
+        } finally {
+            setValidating(false);
         }
     };
 
@@ -178,6 +187,24 @@ export function CursorACPSettings() {
                                 placeholder="Enter API key (leave empty to use default login)"
                                 style={inputStyle}
                             />
+                            <div>
+                                <button
+                                    className="mcc-btn-secondary"
+                                    onClick={handleValidate}
+                                    disabled={validating || !apiKey.trim()}
+                                    style={{ padding: '8px 16px', borderRadius: 8, fontSize: 13 }}
+                                >
+                                    {validating ? 'Validating...' : 'Validate'}
+                                </button>
+                            </div>
+                            {validateMsg && (
+                                <span style={{
+                                    fontSize: 12,
+                                    color: validateMsg.includes('valid') ? 'var(--mcc-accent-green, #22c55e)' : 'var(--mcc-accent-red, #f87171)',
+                                }}>
+                                    {validateMsg}
+                                </span>
+                            )}
                             <span style={{ fontSize: 12, color: 'var(--mcc-text-muted, #64748b)' }}>
                                 If set, this key will be passed to cursor-agent via --api-key flag.
                                 Leave empty to use the default authentication (cursor-agent login).
@@ -189,29 +216,41 @@ export function CursorACPSettings() {
                             <label style={{ fontSize: 13, color: 'var(--mcc-text-secondary, #cbd5e1)' }}>
                                 Default Model
                             </label>
-                            {loadingModels ? (
-                                <div style={{ padding: '10px 12px', color: 'var(--mcc-text-muted, #64748b)' }}>
-                                    Loading models...
-                                </div>
-                            ) : availableModels.length > 0 ? (
-                                <select
-                                    value={defaultModel}
-                                    onChange={e => setDefaultModel(e.target.value)}
-                                    disabled={saving}
-                                    style={inputStyle}
-                                >
-                                    <option value="">Select a default model...</option>
-                                    {availableModels.map(model => (
-                                        <option key={model.id} value={model.id}>
-                                            {model.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            ) : (
-                                <div style={{ padding: '10px 12px', color: 'var(--mcc-text-muted, #64748b)' }}>
-                                    No models available. Make sure cursor-agent is installed and accessible.
-                                </div>
-                            )}
+                            {(() => {
+                                const mergedModels = [...availableModels];
+                                if (defaultModel && !mergedModels.some(m => m.id === defaultModel)) {
+                                    mergedModels.unshift({ id: defaultModel, name: defaultModelName || defaultModel });
+                                }
+                                return (
+                                    <>
+                                        <select
+                                            value={defaultModel}
+                                            onChange={e => {
+                                                const id = e.target.value;
+                                                setDefaultModel(id);
+                                                const match = mergedModels.find(m => m.id === id);
+                                                setDefaultModelName(match ? match.name : id);
+                                            }}
+                                            disabled={saving}
+                                            style={inputStyle}
+                                        >
+                                            <option value="">
+                                                {loadingModels ? 'Loading models...' : 'Select a default model...'}
+                                            </option>
+                                            {mergedModels.map(model => (
+                                                <option key={model.id} value={model.id}>
+                                                    {model.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {modelsError && (
+                                            <span style={{ fontSize: 12, color: 'var(--mcc-accent-red, #f87171)' }}>
+                                                {modelsError}
+                                            </span>
+                                        )}
+                                    </>
+                                );
+                            })()}
                             <span style={{ fontSize: 12, color: 'var(--mcc-text-muted, #64748b)' }}>
                                 The default model to use when creating new sessions. This can be overridden per session.
                             </span>

@@ -3,9 +3,6 @@ package cloudflare
 import (
 	"fmt"
 	"sync"
-
-	"github.com/xhd2015/lifelog-private/ai-critic/server/logs"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 )
 
 const (
@@ -39,9 +36,6 @@ func (m *TunnelGroupManager) GetCoreGroup() *TunnelGroup {
 		tunnelMgr := NewUnifiedTunnelManager(GroupCore)
 		m.core = NewTunnelGroup(GroupCore, tunnelMgr)
 		fmt.Printf("[tunnel-group-manager] Created core group with tunnel manager\n")
-		if quicktest.Enabled() {
-			logs.PrintCallerStack()
-		}
 	}
 	return m.core
 }
@@ -54,9 +48,6 @@ func (m *TunnelGroupManager) GetExtensionGroup() *TunnelGroup {
 		tunnelMgr := NewUnifiedTunnelManager(GroupExtension)
 		m.extension = NewTunnelGroup(GroupExtension, tunnelMgr)
 		fmt.Printf("[tunnel-group-manager] Created extension group with tunnel manager\n")
-		if quicktest.Enabled() {
-			logs.PrintCallerStack()
-		}
 	}
 	return m.extension
 }

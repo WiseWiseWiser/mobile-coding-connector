@@ -26,6 +26,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	acp.RegisterAgentAPI(mux, "/api/agent/acp/cursor", getAgent())
 
 	mux.HandleFunc("/api/agent/acp/cursor/settings", handleSettings)
+	mux.HandleFunc("/api/agent/acp/cursor/settings/validate", handleValidateAPIKey)
 	mux.HandleFunc("/api/agent/acp/cursor/session/settings", handleSessionSettings)
 	mux.HandleFunc("/api/agent/acp/cursor/session/trust-response", handleTrustResponse)
 }
@@ -173,4 +174,40 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func handleValidateAPIKey(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		APIKey string `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
+	}
+	if body.APIKey == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "api_key is required"})
+		return
+	}
+
+	agentPath, err := resolveAgentPath()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "cursor-agent not found: " + err.Error()})
+		return
+	}
+
+	if err := validateAPIKey(agentPath, body.APIKey); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"message": "API key is valid"})
 }

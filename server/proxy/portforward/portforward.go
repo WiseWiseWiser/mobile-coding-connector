@@ -18,6 +18,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/jsonfile"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 )
 
 // PortProtectionConfig holds the list of protected ports
@@ -425,6 +426,7 @@ func (m *Manager) Add(port int, label string, providerName string) (*PortForward
 	m.mu.Unlock()
 
 	fmt.Printf("[Manager.Add] Starting tunnel with provider: %s, label: %q\n", providerName, label)
+	quicktest.LogHeavyOperationWithCallerStack("[Manager.Add] provider=%s label=%q", providerName, label)
 
 	// Start the tunnel
 	handle, err := p.Start(port, label)

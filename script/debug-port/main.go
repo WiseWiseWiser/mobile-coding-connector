@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/xhd2015/less-gen/flags"
+	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 )
 
 const defaultPort = 5173
@@ -79,8 +80,9 @@ func run(args []string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	baseURL := lib.QuickTestBaseURL(port)
 	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("BASE_URL=http://localhost:%d", port),
+		fmt.Sprintf("BASE_URL=%s", baseURL),
 		fmt.Sprintf("HEADLESS=%v", headless),
 	)
 

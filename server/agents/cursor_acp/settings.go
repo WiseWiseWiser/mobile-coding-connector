@@ -8,8 +8,10 @@ import (
 const settingsFile = ".ai-critic/cursor-agent.json"
 
 type CursorAgentSettings struct {
-	APIKey     string `json:"api_key,omitempty"`
-	BinaryPath string `json:"binary_path,omitempty"`
+	APIKey           string `json:"api_key,omitempty"`
+	BinaryPath       string `json:"binary_path,omitempty"`
+	DefaultModel     string `json:"default_model,omitempty"`
+	DefaultModelName string `json:"default_model_name,omitempty"`
 }
 
 type EffectivePathInfo struct {

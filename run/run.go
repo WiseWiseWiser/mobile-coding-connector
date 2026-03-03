@@ -14,6 +14,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
+	serverenv "github.com/xhd2015/lifelog-private/ai-critic/server/env"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 
 	"github.com/xhd2015/less-gen/flags"
@@ -31,6 +32,7 @@ Usage: ai-critic [options]
 Options:
   --dev                   Run in development mode (auto-start vite dev server)
   --frontend-port PORT    Proxy frontend to PORT (assumes vite/frontend started externally)
+  --frontend-host HOST    Host for frontend proxy (default: localhost; use for container setups)
   --quick-test           Run in quick-test mode: no auto mapping, health checks, or external webservers.
                         - Listens on port 3580
                         - Exits after 10 minutes of no requests
@@ -57,6 +59,9 @@ Request Actions:
 `, config.DefaultServerPort, config.CredentialsFile, config.EncKeyFile, config.DomainsFile)
 
 func Run(args []string) error {
+	if err := serverenv.Load(); err != nil {
+		return err
+	}
 	// Handle subcommands before flag parsing
 	if len(args) > 0 {
 		switch args[0] {
@@ -81,6 +86,7 @@ func Run(args []string) error {
 
 	var devFlag bool
 	var frontendPortFlag int
+	var frontendHostFlag string
 	var quickTestMode bool
 	var quickTestKeep bool
 	var component string
@@ -95,6 +101,7 @@ func Run(args []string) error {
 	args, err := flags.
 		Bool("--dev", &devFlag).
 		Int("--frontend-port", &frontendPortFlag).
+		String("--frontend-host", &frontendHostFlag).
 		Bool("--quick-test", &quickTestMode).
 		Bool("--keep", &quickTestKeep).
 		String("--component", &component).
@@ -118,6 +125,9 @@ func Run(args []string) error {
 
 	if frontendPortFlag > 0 {
 		server.SetFrontendPort(frontendPortFlag)
+	}
+	if frontendHostFlag != "" {
+		server.SetFrontendHost(frontendHostFlag)
 	}
 
 	if component == "list" {

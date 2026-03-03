@@ -6,12 +6,19 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/acp"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
+
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+
+func stripANSI(s string) string {
+	return ansiRe.ReplaceAllString(s, "")
+}
 
 // CursorAgent implements acp.Agent using cursor-agent CLI's native
 // --print --output-format stream-json interface.
@@ -99,12 +106,20 @@ func (a *CursorAgent) Models() ([]acp.ModelInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cursor-agent not found: %w", err)
 	}
+	if err := ensureAuth(agentPath); err != nil {
+		return nil, err
+	}
 	cmd := cursorCommand(agentPath, "models")
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list models: %w", err)
 	}
-	return parseModels(string(out)), nil
+	cleaned := stripANSI(string(out))
+	models := parseModels(cleaned)
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no models available for this account (check API key or login)")
+	}
+	return models, nil
 }
 
 func (a *CursorAgent) Status() acp.StatusInfo {
@@ -117,11 +132,12 @@ func (a *CursorAgent) Status() acp.StatusInfo {
 	a.mu.Unlock()
 
 	info := acp.StatusInfo{
-		Available: available,
-		Connected: a.IsConnected(),
-		SessionID: a.SessionID(),
-		CWD:       cwd,
-		Model:     model,
+		Available:  available,
+		Connected:  a.IsConnected(),
+		SessionID:  a.SessionID(),
+		CWD:        cwd,
+		ProjectDir: cwd,
+		Model:      model,
 	}
 	if !available {
 		info.Message = "cursor-agent not found in PATH. Install Cursor CLI: curl https://cursor.com/install -fsSL | bash"

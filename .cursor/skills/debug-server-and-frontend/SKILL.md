@@ -42,7 +42,7 @@ Options:
 
 - Quick-test server runs on port 3580
 - Quick-test mode handles process lifecycle (build, start, kill existing)
-- Port 3580 is publicly accessible at `https://port-3580-ae2842d.xhd2015.xyz` (equivalent to `localhost:3580`)
+- Accessible at `http://localhost:3580` by default (configurable via `QUICK_TEST_DOMAIN` and `QUICK_TEST_PORT` env vars)
 - Server exits after **10 minutes of inactivity**
 - Server runs from home directory
 

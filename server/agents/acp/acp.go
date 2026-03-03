@@ -159,12 +159,13 @@ type PromptResult struct {
 }
 
 type StatusInfo struct {
-	Available bool   `json:"available"`
-	Connected bool   `json:"connected"`
-	SessionID string `json:"sessionId,omitempty"`
-	CWD       string `json:"cwd,omitempty"`
-	Message   string `json:"message,omitempty"`
-	Model     string `json:"model,omitempty"`
+	Available  bool   `json:"available"`
+	Connected  bool   `json:"connected"`
+	SessionID  string `json:"sessionId,omitempty"`
+	CWD        string `json:"cwd,omitempty"`
+	ProjectDir string `json:"projectDir,omitempty"`
+	Message    string `json:"message,omitempty"`
+	Model      string `json:"model,omitempty"`
 }
 
 // LogFunc is called by Agent implementations to report progress during operations.

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useCurrent } from '../../../../hooks/useCurrent';
 import { encryptWithServerKey, EncryptionNotAvailableError } from '../crypto';
 import { fetchGithubRepos, cloneRepo } from '../../../../api/auth';
@@ -13,10 +14,12 @@ import { updateProject } from '../../../../api/projects';
 import './GitSettings.css';
 
 export function CloneRepoView() {
+    const navigate = useNavigate();
     return (
         <div className="mcc-git-settings">
             <div className="mcc-git-tabs">
                 <div className="mcc-section-header">
+                    <button className="mcc-back-btn" onClick={() => navigate('..')}>&larr;</button>
                     <h2>Clone Repository</h2>
                 </div>
             </div>

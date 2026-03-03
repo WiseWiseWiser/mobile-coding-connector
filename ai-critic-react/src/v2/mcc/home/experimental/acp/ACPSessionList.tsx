@@ -1,6 +1,8 @@
-import { useState, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { BeakerIcon } from '../../../../../pure-view/icons/BeakerIcon';
+import { createACPAPI } from '../../../../../api/cursor-acp';
+import { resolveProjectDir } from '../../../../../api/projects';
 import './ACPUI.css';
 
 interface SessionEntry {
@@ -27,27 +29,26 @@ export function ACPSessionList({
     settingsPath,
 }: ACPSessionListProps) {
     const navigate = useNavigate();
+    const { projectName } = useParams<{ projectName?: string }>();
+    const api = useMemo(() => createACPAPI(apiPrefix), [apiPrefix]);
     const [statusMessage, setStatusMessage] = useState('');
     const [statusOk, setStatusOk] = useState(false);
     const [sessions, setSessions] = useState<SessionEntry[]>([]);
-    const [cwd, setCwd] = useState('');
+    const [projectDir, setProjectDir] = useState('');
 
     const fetchSessions = useCallback(async () => {
         try {
-            const resp = await fetch(`${apiPrefix}/sessions`);
-            const data = await resp.json();
-            setSessions(Array.isArray(data) ? data : []);
+            const data = await api.fetchSessions();
+            setSessions(data as SessionEntry[]);
         } catch { /* ignore */ }
-    }, [apiPrefix]);
+    }, [api]);
 
     const checkStatus = useCallback(async () => {
         try {
-            const resp = await fetch(`${apiPrefix}/status`);
-            const data = await resp.json();
+            const data = await api.fetchStatus();
             if (data.available) {
                 setStatusOk(true);
                 setStatusMessage(`${agentName} agent available`);
-                if (data.cwd) setCwd(data.cwd);
             } else {
                 setStatusOk(false);
                 setStatusMessage(data.message || `${agentName} agent not available`);
@@ -56,12 +57,17 @@ export function ACPSessionList({
             setStatusOk(false);
             setStatusMessage(`Failed to check ${agentName} agent status`);
         }
-    }, [apiPrefix, agentName]);
+    }, [api, agentName]);
 
     useEffect(() => {
         checkStatus();
         fetchSessions();
     }, [checkStatus, fetchSessions]);
+
+    useEffect(() => {
+        if (!projectName) return;
+        resolveProjectDir(projectName).then(setProjectDir).catch(() => {});
+    }, [projectName]);
 
     const formatTime = (ts: number) => {
         const d = new Date(ts);
@@ -106,7 +112,7 @@ export function ACPSessionList({
                     >
                         + New Session
                     </button>
-                    {cwd && <span className="acp-ui-cwd" title={cwd}>cwd: {cwd}</span>}
+                    {projectDir && <span className="acp-ui-cwd" title={projectDir}>Project Dir: {projectDir}</span>}
                 </div>
 
                 {sessions.length > 0 ? (
