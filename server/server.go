@@ -31,7 +31,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/checkpoint"
 	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	serverconfig "github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/exposedurls"
@@ -448,7 +448,7 @@ func RegisterAPI(mux *http.ServeMux) error {
 	portforward.RegisterDefaultProvider(&pfcloudflare.OwnedProvider{})
 
 	// Register cloudflare_tunnel provider from config if available
-	if cfg := config.Get(); cfg != nil {
+	if cfg := serverconfig.Get(); cfg != nil {
 		for _, provCfg := range cfg.PortForwarding.Providers {
 			if !provCfg.IsEnabled() {
 				continue
@@ -528,9 +528,6 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// AI config API
 	registerAIConfigAPI(mux)
-
-	// Server config API
-	mux.HandleFunc("/api/config", serverconfig.Handler)
 
 	// Server config API
 	mux.HandleFunc("/api/config", serverconfig.Handler)
@@ -751,7 +748,7 @@ func findBuildableProjects() ([]buildableProject, error) {
 	}
 
 	// Then check projects from projects.json
-	projectsFile := config.ProjectsFile
+	projectsFile := serverconfig.ProjectsFile
 	data, err := os.ReadFile(projectsFile)
 	if err != nil {
 		if os.IsNotExist(err) {
