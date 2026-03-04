@@ -1,62 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
-import type { ProjectInfo } from '../../api/projects';
+import { ProjectChooser } from '../../components/chooser/ProjectChooser';
+import type { ProjectChooserProps } from '../../components/chooser/ProjectChooser';
 
-export interface ProjectDropdownProps {
-    projects: ProjectInfo[];
-    currentProject: ProjectInfo | null;
-    onProjectSelect: (project: ProjectInfo) => void;
-    worktreeBranch?: string | null;
-}
+export type ProjectDropdownProps = ProjectChooserProps;
 
-export function ProjectDropdown({ projects, currentProject, onProjectSelect, worktreeBranch }: ProjectDropdownProps) {
-    const [dropdownOpen, setDropdownOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
-    // Close dropdown on outside click
-    useEffect(() => {
-        if (!dropdownOpen) return;
-        const handler = (e: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-                setDropdownOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [dropdownOpen]);
-
-    const handleProjectClick = (project: ProjectInfo) => {
-        onProjectSelect(project);
-        setDropdownOpen(false);
-    };
-
-    return (
-        <div className="mcc-project-dropdown" ref={dropdownRef}>
-            <div
-                className="mcc-project-current"
-                onClick={() => setDropdownOpen(!dropdownOpen)}
-            >
-                <span className="mcc-project-name">
-                    {currentProject ? currentProject.name : 'No Project'}
-                    {worktreeBranch && (
-                        <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: 6 }}>({worktreeBranch})</span>
-                    )}
-                </span>
-                <span className="mcc-project-chevron">▾</span>
-            </div>
-            {dropdownOpen && (
-                <div className="mcc-project-menu">
-                    {projects.map(project => (
-                        <button
-                            key={project.id}
-                            className={`mcc-project-option${currentProject?.id === project.id ? ' mcc-project-option-active' : ''}`}
-                            onClick={() => handleProjectClick(project)}
-                        >
-                            <span className="mcc-project-option-name">{project.name}</span>
-                            <span className="mcc-project-option-path">{project.dir}</span>
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
+export function ProjectDropdown(props: ProjectDropdownProps) {
+    return <ProjectChooser {...props} />;
 }

@@ -26,7 +26,6 @@ import { fetchTerminalSessions } from '../api/terminal';
 import { WorktreeProvider, useWorktreeContext } from '../hooks/project/WorktreeContext';
 import { useWorktreeRoute } from '../hooks/project/useWorktreeRoute';
 import { listWorktrees } from '../api/review';
-import { WorktreeSelector } from './components/WorktreeSelector';
 import { projectPath, buildWorktreeProjectName, buildProjectNavPath } from '../route/route';
 import './MobileCodingConnector.css';
 
@@ -70,7 +69,6 @@ function MobileCodingConnectorInner() {
         getWorktreeById,
     } = useWorktreeContext();
 
-    const [worktreesLoading, setWorktreesLoading] = useState(false);
     const terminalManagerRef = useRef<TerminalManagerHandle>(null);
 
     // Restore project from URL on mount
@@ -86,7 +84,6 @@ function MobileCodingConnectorInner() {
     // Load worktrees when project changes
     useEffect(() => {
         if (!currentProject) return;
-        setWorktreesLoading(true);
         listWorktrees(currentProject.dir).then((gitWorktrees) => {
             const mapped = gitWorktrees.map(wt => ({
                 id: wt.worktreeId,
@@ -102,7 +99,7 @@ function MobileCodingConnectorInner() {
             if (target) {
                 setCurrentWorktree(target);
             }
-        }).finally(() => setWorktreesLoading(false));
+        });
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentProject?.id]);
 
@@ -221,15 +218,10 @@ function MobileCodingConnectorInner() {
                         currentProject={currentProject}
                         onProjectSelect={handleSelectProject}
                         worktreeBranch={currentWorktree && !currentWorktree.isMain ? currentWorktree.branch : null}
+                        worktrees={worktrees}
+                        currentWorktree={currentWorktree}
+                        onSelectWorktree={handleSelectWorktree}
                     />
-                    {worktrees.length > 1 && (
-                        <WorktreeSelector
-                            worktrees={worktrees}
-                            currentWorktree={currentWorktree}
-                            onSelectWorktree={handleSelectWorktree}
-                            disabled={worktreesLoading}
-                        />
-                    )}
                 </div>
                 <button className="mcc-profile-btn" onClick={() => {
                     const name = fullProjectName || currentProject?.name;
