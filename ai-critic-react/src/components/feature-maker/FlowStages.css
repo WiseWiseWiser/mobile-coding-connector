@@ -1,0 +1,72 @@
+.fm-flow-stages {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 4px 0;
+}
+
+.fm-flow-stage {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 20px;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.fm-flow-stage.current {
+    background: #1e3a5f;
+    border-color: #3b82f6;
+}
+
+.fm-flow-stage.completed {
+    background: #14532d;
+    border-color: #22c55e;
+}
+
+.fm-stage-indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.fm-flow-stage.completed .fm-stage-indicator {
+    background: #22c55e;
+    color: #052e16;
+}
+
+.fm-flow-stage.active .fm-stage-indicator,
+.fm-flow-stage.current .fm-stage-indicator {
+    background: #3b82f6;
+    color: white;
+    animation: pulse 1.5s infinite;
+}
+
+.fm-flow-stage.pending .fm-stage-indicator {
+    background: #404040;
+    color: #737373;
+}
+
+.fm-stage-title {
+    font-size: 11px;
+    font-weight: 500;
+    color: #d4d4d4;
+}
+
+@media (min-width: 768px) {
+    .fm-flow-stages {
+        flex-wrap: wrap;
+        overflow-x: visible;
+    }
+}

@@ -1,0 +1,208 @@
+.fm-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.fm-project-path {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.fm-project-path .fm-driver-control {
+    margin-top: 12px;
+    margin-left: 0;
+}
+
+.fm-project-path .fm-driver-btn {
+    width: 100%;
+    justify-content: center;
+}
+
+.fm-project-path .fm-driver-paused-controls {
+    display: flex;
+}
+
+.fm-project-path .fm-driver-paused-controls .fm-driver-btn {
+    flex: 1;
+}
+
+.fm-current-step-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.fm-current-step-card h3 {
+    margin: 0 0 6px 0;
+    font-size: 14px;
+    color: #60a5fa;
+    font-weight: 600;
+}
+
+.fm-current-step-card p {
+    margin: 0;
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.4;
+}
+
+.fm-main-agent {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.fm-main-agent h3 {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fm-main-agent .fm-agent-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #60a5fa;
+    margin-bottom: 12px;
+}
+
+.fm-agent-prompt {
+    margin-bottom: 12px;
+}
+
+.fm-agent-prompt h4,
+.fm-agent-tools h4 {
+    margin: 0 0 8px 0;
+    font-size: 11px;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fm-prompt-content {
+    background: #0f172a;
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 11px;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.fm-prompt-section {
+    margin-bottom: 8px;
+}
+
+.fm-prompt-section:last-child {
+    margin-bottom: 0;
+}
+
+.fm-prompt-section-title {
+    display: block;
+    font-weight: 600;
+    color: #60a5fa;
+    margin-bottom: 2px;
+}
+
+.fm-prompt-section-content {
+    display: block;
+    color: #94a3b8;
+    line-height: 1.4;
+}
+
+.fm-tools-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.fm-tool-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 10px;
+    background: #0f172a;
+    border-radius: 6px;
+}
+
+.fm-tool-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: #22c55e;
+    font-family: monospace;
+}
+
+.fm-tool-desc {
+    font-size: 11px;
+    color: #64748b;
+}
+
+.fm-subagents {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.fm-subagents h3 {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fm-agent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fm-agent {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #0f172a;
+}
+
+.fm-agent-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #475569;
+}
+
+.fm-agent.active .fm-agent-status-dot {
+    background: #22c55e;
+    box-shadow: 0 0 6px #22c55e;
+}
+
+.fm-agent-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: #e2e8f0;
+}
+
+.fm-agent-role {
+    font-size: 11px;
+    color: #64748b;
+    margin-left: auto;
+}
+
+@media (min-width: 768px) {
+    .fm-sidebar {
+        width: 260px;
+        flex-shrink: 0;
+        flex-direction: column;
+    }
+}

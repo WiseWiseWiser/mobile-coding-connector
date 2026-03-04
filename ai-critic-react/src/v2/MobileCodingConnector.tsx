@@ -17,7 +17,7 @@ import { BeakerIcon } from '../pure-view/icons/BeakerIcon';
 import { ProjectDetailIcon } from '../pure-view/icons/ProjectDetailIcon';
 import { LayoutIcon } from '../pure-view/icons/LayoutIcon';
 import { ServerIcon } from '../pure-view/icons/ServerIcon';
-import { NavButton } from '../pure-view/buttons';
+import { NavButton } from '../pure-view/buttons/NavButton';
 import { ProjectDropdown } from './mcc/ProjectDropdown';
 import { TerminalManager } from './mcc/terminal/TerminalManager';
 import type { TerminalManagerHandle } from './mcc/terminal/TerminalManager';

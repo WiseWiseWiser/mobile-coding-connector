@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import type { DomainWithStatus, CloudflareStatus } from '../../../../api/domains';
 import { DomainProviders } from '../../../../api/domains';
-import { Button } from '../../../../pure-view/buttons';
+import { Button } from '../../../../pure-view/buttons/Button';
 import './DomainStatusView.css';
 
 interface DomainStatusViewProps {

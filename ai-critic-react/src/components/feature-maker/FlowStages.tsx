@@ -1,4 +1,5 @@
 import type { FlowStep, FlowStatus } from './types';
+import './FlowStages.css';
 
 interface FlowStagesProps {
     steps: FlowStatus[];

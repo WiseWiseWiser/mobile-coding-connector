@@ -9,5 +9,5 @@ export { CloudflareDiagnosticsRoute } from './CloudflareDiagnosticsRoute';
 export { PortDiagnoseRoute } from './PortDiagnoseRoute';
 export { TerminalView, TerminalManager } from './terminal';
 export type { TerminalManagerHandle } from './terminal';
-export { AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute } from './agent';
+export { AgentLayout, AgentPickerRoute, AgentEditorRoute, SessionListRoute, AgentChatRoute } from './agent';
 export type { AgentOutletContext } from './agent';

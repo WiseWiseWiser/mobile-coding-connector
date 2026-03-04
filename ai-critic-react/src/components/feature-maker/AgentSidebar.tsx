@@ -1,5 +1,6 @@
 import { PathInput } from '../../pure-view/PathInput';
-import { mockMainAgent, mockSubAgents } from './mockData';
+import { mockMainAgent, mockSubAgents } from '../../mockups/featureMakerMockData';
+import './AgentSidebar.css';
 
 interface AgentSidebarProps {
     showPathInput: boolean;

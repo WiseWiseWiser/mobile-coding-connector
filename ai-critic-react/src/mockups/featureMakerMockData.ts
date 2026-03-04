@@ -1,4 +1,4 @@
-import type { FlowStatus, Insight } from './types';
+import type { FlowStatus, Insight } from '../components/feature-maker/types';
 
 export const flowSteps: FlowStatus[] = [
     {

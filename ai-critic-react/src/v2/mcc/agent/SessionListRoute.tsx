@@ -1,15 +1,103 @@
 import { useOutletContext, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import type { AgentOutletContext } from './AgentLayout';
 import { SessionList } from './SessionList';
 import { AgentPicker } from './AgentPicker';
 import { ExternalSessionList } from './ExternalSessionList';
+import { fetchCustomAgentSessions, launchCustomAgent, type CustomAgentSession } from '../../../api/customAgents';
+import { useV2Context } from '../../V2Context';
+import { ActionButton } from '../../../pure-view/buttons/ActionButton';
 
 export function SessionListRoute() {
     const ctx = useOutletContext<AgentOutletContext>();
+    const { currentProject } = useV2Context();
     const params = useParams<{ agentId?: string }>();
     const agentId = params.agentId || '';
 
     const session = ctx.sessions[agentId];
+    const isCustomAgent = !ctx.agents.some(a => a.id === agentId);
+
+    const [customSessions, setCustomSessions] = useState<CustomAgentSession[]>([]);
+    const [loadingCustom, setLoadingCustom] = useState(false);
+    const [launching, setLaunching] = useState(false);
+
+    useEffect(() => {
+        if (!isCustomAgent) return;
+        setLoadingCustom(true);
+        fetchCustomAgentSessions()
+            .then(sessions => {
+                setCustomSessions(sessions.filter(s => s.agent_id === agentId));
+            })
+            .catch(() => setCustomSessions([]))
+            .finally(() => setLoadingCustom(false));
+    }, [isCustomAgent, agentId]);
+
+    const handleNewSession = async () => {
+        const projectDir = currentProject?.dir;
+        if (!projectDir) {
+            alert('Please select a project first');
+            return;
+        }
+        setLaunching(true);
+        try {
+            const result = await launchCustomAgent(agentId, projectDir);
+            ctx.navigateToView(`${agentId}/${result.sessionId}`);
+        } catch (err) {
+            alert('Failed to launch: ' + (err instanceof Error ? err.message : String(err)));
+        } finally {
+            setLaunching(false);
+        }
+    };
+
+    // Custom agent session list
+    if (isCustomAgent) {
+        if (loadingCustom) {
+            return <div className="mcc-agent-view"><div className="mcc-agent-loading">Loading sessions...</div></div>;
+        }
+        return (
+            <div className="mcc-agent-view">
+                <div className="mcc-section-header">
+                    <button className="mcc-back-btn" onClick={() => ctx.navigateToView('')}>
+                        &larr;
+                    </button>
+                    <h2>{agentId}</h2>
+                </div>
+                {customSessions.length === 0 ? (
+                    <div className="mcc-agent-empty" style={{ padding: '0 16px' }}>
+                        <p>No sessions yet for this agent.</p>
+                    </div>
+                ) : (
+                    <div className="mcc-agent-list">
+                        {customSessions.map(s => (
+                            <div
+                                key={s.id}
+                                className="mcc-agent-card"
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => ctx.navigateToView(`${agentId}/${s.id}`)}
+                            >
+                                <div className="mcc-agent-card-header">
+                                    <div className="mcc-agent-card-info">
+                                        <span className="mcc-agent-card-name">{s.id.slice(0, 12)}</span>
+                                        <span className={`mcc-agent-card-status ${s.status === 'running' ? 'installed' : ''}`}>
+                                            {s.status}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="mcc-agent-card-desc">
+                                    {s.project_dir} &middot; {new Date(s.created_at).toLocaleString()}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                <div style={{ padding: '12px 16px' }}>
+                    <ActionButton onClick={handleNewSession} disabled={launching}>
+                        {launching ? 'Starting...' : 'New Session'}
+                    </ActionButton>
+                </div>
+            </div>
+        );
+    }
 
     // For opencode with external sessions but no internal session, show external session list
     const hasExternalSessions = agentId === 'opencode' && ctx.externalSessions.length > 0;
@@ -21,11 +109,9 @@ export function SessionListRoute() {
                 projectName={ctx.projectName}
                 onBack={() => ctx.navigateToView('')}
                 onSelectSession={(sessionId) => {
-                    // Navigate to the session within the same window
                     ctx.navigateToView(`${agentId}/${sessionId}`);
                 }}
                 onNewSession={() => {
-                    // Launch headless to create an internal session
                     if (agent) {
                         ctx.onLaunchHeadless(agent);
                     }

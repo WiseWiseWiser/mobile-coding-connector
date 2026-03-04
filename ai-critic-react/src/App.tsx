@@ -4,7 +4,7 @@ import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, ToolsView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, FeatureListView, FeatureDetailView, CodexWebUI, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings, CursorACPSessionSettings } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, ToolsView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, AgentEditorRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, FeatureListView, FeatureDetailView, CodexWebUI, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings, CursorACPSessionSettings } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './logs';
 import './App.css';
@@ -186,7 +186,9 @@ function App() {
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
+                            <Route path="new" element={<AgentEditorRoute />} />
                             <Route path=":agentId" element={<SessionListRoute />} />
+                            <Route path=":agentId/edit" element={<AgentEditorRoute />} />
                             <Route path=":agentId/settings" element={<AgentSettingsRoute />} />
                             <Route path=":agentId/:sessionId" element={<AgentChatRoute />} />
                         </Route>
@@ -243,7 +245,9 @@ function App() {
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
+                            <Route path="new" element={<AgentEditorRoute />} />
                             <Route path=":agentId" element={<SessionListRoute />} />
+                            <Route path=":agentId/edit" element={<AgentEditorRoute />} />
                             <Route path=":agentId/settings" element={<AgentSettingsRoute />} />
                             <Route path=":agentId/:sessionId" element={<AgentChatRoute />} />
                         </Route>

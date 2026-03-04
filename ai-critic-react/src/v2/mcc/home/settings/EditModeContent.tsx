@@ -4,7 +4,7 @@ import { FlexInput } from '../../../../pure-view/FlexInput';
 import { InlineError } from '../../../../pure-view/InlineError';
 import { FormField } from '../../../../pure-view/form';
 import { FormSelect } from '../../../../pure-view/form';
-import { Button } from '../../../../pure-view/buttons';
+import { Button } from '../../../../pure-view/buttons/Button';
 import { ButtonGroup } from '../../../../pure-view/ButtonGroup';
 import '../../../../pure-view/form/FormInput.css';
 import './EditModeContent.css';

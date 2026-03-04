@@ -1,8 +1,7 @@
 import type { CustomAgent } from '../../../api/customAgents';
-import { useV2Context } from '../../V2Context';
-import { launchCustomAgent } from '../../../api/customAgents';
 import { SettingsIcon } from '../../../pure-view/icons/SettingsIcon';
 import { TrashIcon } from '../../../pure-view/icons/TrashIcon';
+import { ActionButton } from '../../../pure-view/buttons/ActionButton';
 
 interface AgentCardProps {
   agent: CustomAgent;
@@ -12,22 +11,8 @@ interface AgentCardProps {
 }
 
 export function CustomAgentCard({ agent, onEdit, onDelete, onLaunch }: AgentCardProps) {
-  const { currentProject } = useV2Context();
-  const projectDir = currentProject?.dir;
-
-  const handleLaunch = async () => {
-    if (!projectDir) {
-      alert('Please select a project first');
-      return;
-    }
-    try {
-      const result = await launchCustomAgent(agent.id, projectDir);
-      // Navigate to the specific session view instead of generic agent view
-      onLaunch(`${agent.id}/${result.sessionId}`);
-    } catch (err) {
-      console.error('Failed to launch agent:', err);
-      alert('Failed to launch agent: ' + (err instanceof Error ? err.message : String(err)));
-    }
+  const handleLaunch = () => {
+    onLaunch(agent.id);
   };
 
   const toolCount = agent.tools ? Object.values(agent.tools).filter(Boolean).length : 0;
@@ -63,13 +48,9 @@ export function CustomAgentCard({ agent, onEdit, onDelete, onLaunch }: AgentCard
         <span className="mcc-agent-meta-tools">{toolCount} tools</span>
       </div>
       <div className="mcc-agent-card-actions">
-        <button
-          className="mcc-forward-btn mcc-agent-launch-btn"
-          onClick={handleLaunch}
-          disabled={!projectDir}
-        >
+        <ActionButton onClick={handleLaunch}>
           Start Chat
-        </button>
+        </ActionButton>
       </div>
     </div>
   );

@@ -20,10 +20,14 @@ export interface Insight {
 export type DriverAgentStatus = 'idle' | 'running' | 'paused' | 'finished';
 
 export interface FeatureMakerContentProps {
-    initialProjectDir?: string;
     featureTitle?: string;
     featureDescription?: string;
-    onFeatureTitleChange?: (title: string) => void;
-    onFeatureDescriptionChange?: (description: string) => void;
-    useRealData?: boolean;
+    editing?: boolean;
+    editTitle?: string;
+    editDescription?: string;
+    onEditTitleChange?: (title: string) => void;
+    onEditDescriptionChange?: (description: string) => void;
+    onEdit?: () => void;
+    onSave?: () => void;
+    onCancel?: () => void;
 }

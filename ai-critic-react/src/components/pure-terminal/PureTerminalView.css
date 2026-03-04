@@ -23,11 +23,13 @@
     width: 100%;
     padding: 8px;
     box-sizing: border-box;
+    background: inherit !important;
 }
 
 .pure-terminal-container .xterm-viewport {
     overflow-y: auto !important;
     width: 100% !important;
+    background: inherit !important;
 }
 
 /* Enable text selection on the terminal */

@@ -1,5 +1,6 @@
 import type { Insight } from './types';
-import { mockArchitecturalDecisions, mockInsights } from './mockData';
+import { mockArchitecturalDecisions, mockInsights } from '../../mockups/featureMakerMockData';
+import './FlowPanels.css';
 
 interface FlowPanelsProps {
     selectedInsight: Insight | null;

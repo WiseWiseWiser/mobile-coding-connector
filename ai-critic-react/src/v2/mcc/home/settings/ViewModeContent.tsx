@@ -2,7 +2,7 @@ import type { DomainWithStatus, CloudflareStatus } from '../../../../api/domains
 import type { LogLine } from '../../../LogViewer';
 import { DomainRowView } from './DomainRowView';
 import { InlineError } from '../../../../pure-view/InlineError';
-import { Button } from '../../../../pure-view/buttons';
+import { Button } from '../../../../pure-view/buttons/Button';
 import './ViewModeContent.css';
 
 export interface ViewModeContentProps {

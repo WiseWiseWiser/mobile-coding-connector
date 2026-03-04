@@ -4,7 +4,7 @@ import { consumeSSEStream } from '../../../../api/sse';
 import { FlexInput } from '../../../../pure-view/FlexInput';
 import { LogViewer } from '../../../LogViewer';
 import type { LogLine } from '../../../LogViewer';
-import { TestButton } from '../../../../pure-view/buttons';
+import { TestButton } from '../../../../pure-view/buttons/TestButton';
 import { parseProxyUrl } from '../../../../lib/url';
 import { Loading } from '../../../../pure-view/Loading';
 import { Section } from '../../../../pure-view/Section';

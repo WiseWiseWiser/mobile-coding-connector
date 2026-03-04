@@ -25,8 +25,7 @@ export function AgentChatRoute() {
 
     const isExternalSession = !session && agentId === 'opencode' && ctx.externalSessions.length > 0;
 
-    // Check if this is a custom agent
-    const isCustomAgent = agentId.startsWith('custom-agent-') || (agentId === 'go-api-refactorer');
+    const isCustomAgent = !ctx.agents.some(a => a.id === agentId);
 
     useEffect(() => {
         if (isExternalSession && !externalServerPort) {

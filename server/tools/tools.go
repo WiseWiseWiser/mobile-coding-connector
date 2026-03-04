@@ -379,6 +379,22 @@ var requiredTools = []toolDef{
 		installWindows: "Download from https://github.com/junegunn/fzf/releases",
 	},
 	{
+		name:        "vim",
+		category:    CategoryFoundation,
+		description: "Terminal-based text editor",
+		purpose:     "Edit files directly in the terminal",
+		docURL:      "https://www.vim.org/docs.php",
+		versionCmd:  []string{"vim", "--version"},
+		installMacOS: []string{
+			"brew install vim",
+		},
+		installLinux: []string{
+			"apt-get update",
+			"apt-get install -y vim",
+		},
+		installWindows: "Download from https://www.vim.org/download.php",
+	},
+	{
 		name:        "agent",
 		displayName: "cursor agent",
 		category:    CategoryCoding,
@@ -551,7 +567,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "lsof",
-		category:    CategoryFoundation,
+		category:    CategoryNetwork,
 		description: "List open files and network connections",
 		purpose:     "Detect local listening ports for port forwarding",
 		docURL:      "https://man7.org/linux/man-pages/man8/lsof.8.html",
@@ -653,7 +669,7 @@ var requiredTools = []toolDef{
 		category:    CategoryTesting,
 		description: "Chrome extension & CLI/MCP for AI agent browser control",
 		purpose:     "Run Playwright snippets in a persistent Chrome session via CLI or MCP for authenticated flows and dashboard testing",
-		docURL:      "https://github.com/nichochar/playwriter",
+		docURL:      "https://github.com/remorses/playwriter",
 		versionCmd:  []string{"playwriter", "--version"},
 		installMacOS: []string{
 			"npm install -g playwriter",
@@ -672,7 +688,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "dig",
-		category:    CategoryFoundation,
+		category:    CategoryNetwork,
 		description: "DNS lookup utility",
 		purpose:     "Query DNS records for diagnosing domain and network issues",
 		docURL:      "https://man7.org/linux/man-pages/man1/dig.1.html",
@@ -685,6 +701,21 @@ var requiredTools = []toolDef{
 			"apt-get install -y dnsutils",
 		},
 		installWindows: "Download from https://www.isc.org/bind/",
+	},
+	{
+		name:        "tailscale",
+		category:    CategoryNetwork,
+		description: "Mesh VPN built on WireGuard",
+		purpose:     "Create secure private networks between devices",
+		docURL:      "https://tailscale.com/kb/",
+		versionCmd:  []string{"tailscale", "version"},
+		installMacOS: []string{
+			"brew install tailscale",
+		},
+		installLinux: []string{
+			"curl -fsSL https://tailscale.com/install.sh | sh",
+		},
+		installWindows: "Download from https://tailscale.com/download/windows",
 	},
 }
 

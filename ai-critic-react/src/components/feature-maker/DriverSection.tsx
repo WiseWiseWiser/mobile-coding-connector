@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import type { StreamEvent } from '../../mockups/fake';
 import type { DriverAgentStatus } from './types';
+import './DriverSection.css';
 
 interface DriverSectionProps {
     status: DriverAgentStatus;

@@ -2,7 +2,7 @@ import { DomainProviders } from '../../../../api/domains';
 import type { DomainWithStatus, CloudflareStatus } from '../../../../api/domains';
 import { LogViewer } from '../../../LogViewer';
 import type { LogLine } from '../../../LogViewer';
-import { EditButton } from '../../../../pure-view/buttons';
+import { EditButton } from '../../../../pure-view/buttons/EditButton';
 import { DomainStatusView } from './DomainStatusView';
 import './DomainRowView.css';
 

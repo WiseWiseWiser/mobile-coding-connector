@@ -5,8 +5,8 @@ import type { CustomAgent } from '../../../api/customAgents';
 import { fetchCustomAgents, deleteCustomAgent } from '../../../api/customAgents';
 import { CustomAgentCard } from './CustomAgentCard';
 import { useState, useEffect } from 'react';
-import { AgentEditor } from './AgentEditor';
-import { PlusIcon } from '../../../pure-view/icons/PlusIcon';
+import { ActionButton } from '../../../pure-view/buttons/ActionButton';
+import { CreateButton } from '../../../pure-view/buttons/CreateButton';
 import { Pagination } from './Pagination';
 
 export interface AgentPickerProps {
@@ -19,6 +19,8 @@ export interface AgentPickerProps {
     onStopAgent: (agentId: string) => void;
     onConfigureAgent: (agentId: string) => void;
     onNavigateToView?: (view: string) => void;
+    onCreateAgent?: () => void;
+    onEditAgent?: (agent: CustomAgent) => void;
     // External sessions from CLI/web opencode
     externalSessions?: ExternalOpencodeSession[];
     externalSessionsTotal?: number;
@@ -41,6 +43,8 @@ export function AgentPicker({
     onStopAgent,
     onConfigureAgent,
     onNavigateToView,
+    onCreateAgent,
+    onEditAgent,
     externalSessions = [],
     externalSessionsTotal = 0,
     externalSessionsPage = 1,
@@ -52,8 +56,6 @@ export function AgentPicker({
 }: AgentPickerProps) {
     const [customAgents, setCustomAgents] = useState<CustomAgent[]>([]);
     const [customAgentsLoading, setCustomAgentsLoading] = useState(true);
-    const [showEditor, setShowEditor] = useState(false);
-    const [editingAgent, setEditingAgent] = useState<CustomAgent | null>(null);
 
     useEffect(() => {
         loadCustomAgents();
@@ -70,16 +72,6 @@ export function AgentPicker({
         }
     };
 
-    const handleCreateAgent = () => {
-        setEditingAgent(null);
-        setShowEditor(true);
-    };
-
-    const handleEditAgent = (agent: CustomAgent) => {
-        setEditingAgent(agent);
-        setShowEditor(true);
-    };
-
     const handleDeleteAgent = async (agent: CustomAgent) => {
         if (!confirm(`Delete agent "${agent.name}"?`)) return;
         try {
@@ -89,12 +81,6 @@ export function AgentPicker({
             console.error('Failed to delete agent:', err);
             alert('Failed to delete agent');
         }
-    };
-
-    const handleSaveAgent = () => {
-        setShowEditor(false);
-        setEditingAgent(null);
-        loadCustomAgents();
     };
 
     // Convert external sessions to SessionItem format for the SessionsSection
@@ -115,21 +101,6 @@ export function AgentPicker({
             onRefreshExternalSessions(newPage);
         }
     };
-
-    if (showEditor) {
-        return (
-            <div className="mcc-agent-view">
-                <AgentEditor
-                    agent={editingAgent}
-                    onSave={handleSaveAgent}
-                    onCancel={() => {
-                        setShowEditor(false);
-                        setEditingAgent(null);
-                    }}
-                />
-            </div>
-        );
-    }
 
     return (
         <div className="mcc-agent-view">
@@ -157,9 +128,6 @@ export function AgentPicker({
             {/* Custom Agents Section */}
             <div className="mcc-agent-header">
                 <h2>Agents</h2>
-                <button className="mcc-agent-add-btn" onClick={handleCreateAgent}>
-                    <PlusIcon /> New Agent
-                </button>
             </div>
 
             {customAgentsLoading ? (
@@ -167,9 +135,6 @@ export function AgentPicker({
             ) : customAgents.length === 0 ? (
                 <div className="mcc-agent-empty">
                     <p>No custom agents yet. Create one to get started!</p>
-                    <button className="mcc-forward-btn mcc-agent-launch-btn" onClick={handleCreateAgent}>
-                        Create Agent
-                    </button>
                 </div>
             ) : (
                 <div className="mcc-agent-list">
@@ -177,13 +142,17 @@ export function AgentPicker({
                         <CustomAgentCard
                             key={agent.id}
                             agent={agent}
-                            onEdit={handleEditAgent}
+                            onEdit={onEditAgent || (() => {})}
                             onDelete={handleDeleteAgent}
                             onLaunch={onNavigateToView || (() => {})}
                         />
                     ))}
                 </div>
             )}
+
+            <div className="mcc-agent-create-wrapper">
+                <CreateButton onClick={onCreateAgent}>Create Agent</CreateButton>
+            </div>
 
             {/* Coding Tools Section (external agents) */}
             <div className="mcc-agent-header">
@@ -222,12 +191,9 @@ export function AgentPicker({
                             <div className="mcc-agent-card-actions">
                                 {agent.headless && agent.installed && agentSession && (
                                     <>
-                                        <button
-                                            className="mcc-forward-btn mcc-agent-launch-btn"
-                                            onClick={() => onOpenSessions(agent.id)}
-                                        >
+                                        <ActionButton onClick={() => onOpenSessions(agent.id)}>
                                             Open Sessions
-                                        </button>
+                                        </ActionButton>
                                         <button
                                             className="mcc-agent-stop-btn"
                                             onClick={() => onStopAgent(agent.id)}
@@ -238,20 +204,14 @@ export function AgentPicker({
                                 )}
                                 {/* Show Open Sessions for opencode when external sessions exist (even without internal session) */}
                                 {agent.headless && agent.installed && !agentSession && agent.id === 'opencode' && externalSessions.length > 0 && (
-                                    <button
-                                        className="mcc-forward-btn mcc-agent-launch-btn"
-                                        onClick={() => onOpenSessions(agent.id)}
-                                    >
+                                    <ActionButton onClick={() => onOpenSessions(agent.id)}>
                                         Open Sessions ({externalSessions.length})
-                                    </button>
+                                    </ActionButton>
                                 )}
                                 {agent.headless && agent.installed && !agentSession && !(agent.id === 'opencode' && externalSessions.length > 0) && (
-                                    <button
-                                        className="mcc-forward-btn mcc-agent-launch-btn"
-                                        onClick={() => onLaunchHeadless(agent)}
-                                    >
+                                    <ActionButton onClick={() => onLaunchHeadless(agent)}>
                                         Start Chat
-                                    </button>
+                                    </ActionButton>
                                 )}
                                 {!agent.headless && agent.installed && (
                                     <span className="mcc-agent-card-note">Terminal-only agent</span>

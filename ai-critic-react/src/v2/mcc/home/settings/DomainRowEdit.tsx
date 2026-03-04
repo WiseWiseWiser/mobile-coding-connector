@@ -4,7 +4,7 @@ import type { DomainEntry } from '../../../../api/domains';
 import { FlexInput } from '../../../../pure-view/FlexInput';
 import { FormField } from '../../../../pure-view/form';
 import { FormSelect } from '../../../../pure-view/form';
-import { Button } from '../../../../pure-view/buttons';
+import { Button } from '../../../../pure-view/buttons/Button';
 import '../../../../pure-view/form/FormInput.css';
 import './DomainRowEdit.css';
 
