@@ -17,6 +17,7 @@ import (
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/cursor"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/cursor_acp"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/common_opencode"
 	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
 	opencode_internal "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
@@ -139,6 +140,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/config", handleAgentConfig)
 	mux.HandleFunc("/api/agents/effective-path", handleAgentEffectivePath)
 	mux.HandleFunc("/api/agents/opencode/auth", handleOpencodeAuth)
+	mux.HandleFunc("/api/agents/opencode/auth-keys", handleOpencodeAuthKeys)
 	mux.HandleFunc("/api/agents/opencode/settings", handleOpencodeSettings)
 	mux.HandleFunc("/api/agents/opencode/web-status", handleOpencodeWebStatus)
 	mux.HandleFunc("/api/agents/opencode/server", handleOpencodeServer)
@@ -610,6 +612,64 @@ func handleOpencodeAuth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(status)
 }
 
+// handleOpencodeAuthKeys handles CRUD for opencode provider API keys in auth.json
+func handleOpencodeAuthKeys(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case http.MethodGet:
+		keys, err := opencode_exposed.GetAuthKeys()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		if keys == nil {
+			keys = []opencode_exposed.AuthKeyEntry{}
+		}
+		json.NewEncoder(w).Encode(keys)
+
+	case http.MethodPost:
+		var body struct {
+			Provider string `json:"provider"`
+			Key      string `json:"key"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+			return
+		}
+		if body.Provider == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "provider is required"})
+			return
+		}
+		if err := opencode_exposed.SetAuthKey(body.Provider, body.Key); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"message": "Key saved"})
+
+	case http.MethodDelete:
+		provider := r.URL.Query().Get("provider")
+		if provider == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "provider query param is required"})
+			return
+		}
+		if err := opencode_exposed.DeleteAuthKey(provider); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"message": "Key deleted"})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 // handleOpencodeSettings handles GET/POST for opencode web server settings
 func handleOpencodeSettings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -1021,10 +1081,16 @@ func handleAgentEffectivePath(w http.ResponseWriter, r *http.Request) {
 	// Get the effective path
 	effectivePath, err := getAgentBinaryPath(aid, defaultCommand)
 
+	var version string
+	if err == nil && aid == AgentIDOpenCode {
+		version = common_opencode.GetVersion(effectivePath)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"effective_path": effectivePath,
 		"found":          err == nil,
+		"version":        version,
 		"error": func() string {
 			if err != nil {
 				return err.Error()

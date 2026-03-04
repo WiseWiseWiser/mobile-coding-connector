@@ -14,15 +14,17 @@ type SandboxCLIParsed struct {
 	ArchFlag string
 }
 
-// ParseSandboxCLI parses common sandbox CLI flags (--arch, --reset)
-// and handles the container reset flow. Returns nil (with no error) if
-// the user aborted the reset prompt.
+// ParseSandboxCLI parses common sandbox CLI flags (--arch, --recreate-container,
+// --force-recreate-container) and handles the container recreation flow.
+// Returns nil (with no error) if the user aborted the prompt.
 func ParseSandboxCLI(args []string, help string, containerName string) (*SandboxCLIParsed, error) {
 	var archFlag string
-	var reset bool
+	var recreate bool
+	var forceRecreate bool
 	_, err := flags.
 		String("--arch", &archFlag).
-		Bool("--reset", &reset).
+		Bool("--recreate-container", &recreate).
+		Bool("--force-recreate-container", &forceRecreate).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
@@ -32,9 +34,13 @@ func ParseSandboxCLI(args []string, help string, containerName string) (*Sandbox
 		archFlag = "auto"
 	}
 
-	if reset {
+	if forceRecreate {
+		recreate = true
+	}
+
+	if recreate {
 		if _, err := InspectContainerStatus(containerName); err == nil {
-			if IsStdinTTY() {
+			if !forceRecreate && IsStdinTTY() {
 				fmt.Printf("Container %q exists. Destroy and recreate? [y/N] ", containerName)
 				reader := bufio.NewReader(os.Stdin)
 				answer, _ := reader.ReadString('\n')
@@ -43,7 +49,7 @@ func ParseSandboxCLI(args []string, help string, containerName string) (*Sandbox
 					return nil, nil
 				}
 			}
-			fmt.Println("Resetting: removing existing container...")
+			fmt.Println("Removing existing container...")
 			_ = RunVerbose("podman", "rm", "-f", containerName)
 		}
 	}
@@ -57,8 +63,8 @@ type SandboxBootOptions struct {
 	Sandbox SandboxOptions
 }
 
-// RunSandboxBoot parses common sandbox CLI flags (--arch, --reset),
-// handles container reset, and runs the sandbox.
+// RunSandboxBoot parses common sandbox CLI flags (--arch, --recreate-container),
+// handles container recreation, and runs the sandbox.
 func RunSandboxBoot(args []string, opts SandboxBootOptions) error {
 	parsed, err := ParseSandboxCLI(args, opts.Help, opts.Sandbox.ContainerName)
 	if err != nil {

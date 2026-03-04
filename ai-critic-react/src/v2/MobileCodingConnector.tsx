@@ -358,9 +358,9 @@ function MobileCodingConnectorInner() {
                 />
                 <NavButton
                     icon={<PortsIcon />}
-                    label="Ports"
-                    active={activeTab === NavTabs.Ports}
-                    onClick={() => handleTabChange(NavTabs.Ports)}
+                    label="Network"
+                    active={activeTab === NavTabs.Network}
+                    onClick={() => handleTabChange(NavTabs.Network)}
                 />
                 <NavButton
                     icon={<FilesIcon />}

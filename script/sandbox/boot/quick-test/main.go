@@ -18,7 +18,8 @@ and the server inside the container proxies frontend requests to it.
 
 Options:
   --arch ARCH   Target architecture: auto, amd64, arm64 (default: auto)
-  --reset       Destroy existing container and start fresh
+  --recreate-container        Destroy existing container and start fresh (prompts for confirmation)
+  --force-recreate-container  Same as --recreate-container but skips confirmation
   -h, --help    Show this help message
 `
 

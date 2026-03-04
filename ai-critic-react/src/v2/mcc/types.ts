@@ -3,7 +3,7 @@ export const NavTabs = {
     Home: 'home',
     Agent: 'agent',
     Terminal: 'terminal',
-    Ports: 'ports',
+    Network: 'network',
     Files: 'files',
     Experimental: 'experimental',
 } as const;

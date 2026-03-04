@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BeakerIcon } from '../../../../../pure-view/icons/BeakerIcon';
+import { StreamingActionButton } from '../../../../../v2/StreamingActionButton';
 import {
     fetchCursorACPSettings,
     saveCursorACPSettings,
@@ -29,8 +30,6 @@ export function CursorACPSettings() {
     const [defaultModelName, setDefaultModelName] = useState('');
     const [loadingModels, setLoadingModels] = useState(false);
     const [modelsError, setModelsError] = useState('');
-    const [validating, setValidating] = useState(false);
-    const [validateMsg, setValidateMsg] = useState('');
 
     const loadSettings = useCallback(async () => {
         setLoading(true);
@@ -91,19 +90,6 @@ export function CursorACPSettings() {
             setError(err instanceof Error ? err.message : 'Failed to save settings');
         } finally {
             setSaving(false);
-        }
-    };
-
-    const handleValidate = async () => {
-        setValidating(true);
-        setValidateMsg('');
-        try {
-            const msg = await validateCursorAPIKey(apiKey.trim());
-            setValidateMsg(msg);
-        } catch (err) {
-            setValidateMsg(err instanceof Error ? err.message : 'Validation failed');
-        } finally {
-            setValidating(false);
         }
     };
 
@@ -187,24 +173,14 @@ export function CursorACPSettings() {
                                 placeholder="Enter API key (leave empty to use default login)"
                                 style={inputStyle}
                             />
-                            <div>
-                                <button
-                                    className="mcc-btn-secondary"
-                                    onClick={handleValidate}
-                                    disabled={validating || !apiKey.trim()}
-                                    style={{ padding: '8px 16px', borderRadius: 8, fontSize: 13 }}
-                                >
-                                    {validating ? 'Validating...' : 'Validate'}
-                                </button>
-                            </div>
-                            {validateMsg && (
-                                <span style={{
-                                    fontSize: 12,
-                                    color: validateMsg.includes('valid') ? 'var(--mcc-accent-green, #22c55e)' : 'var(--mcc-accent-red, #f87171)',
-                                }}>
-                                    {validateMsg}
-                                </span>
-                            )}
+                            <StreamingActionButton
+                                label="Validate"
+                                runningLabel="Validating..."
+                                action={() => validateCursorAPIKey(apiKey.trim())}
+                                disabled={!apiKey.trim()}
+                                className="mcc-btn-secondary"
+                                logMaxHeight={120}
+                            />
                             <span style={{ fontSize: 12, color: 'var(--mcc-text-muted, #64748b)' }}>
                                 If set, this key will be passed to cursor-agent via --api-key flag.
                                 Leave empty to use the default authentication (cursor-agent login).

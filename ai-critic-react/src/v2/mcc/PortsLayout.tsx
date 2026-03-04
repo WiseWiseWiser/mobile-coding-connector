@@ -37,7 +37,7 @@ export function PortsLayout() {
     const {
         portForwards: { ports, providers: availableProviders, loading, error, addPort, removePort },
     } = useV2Context();
-    const navigateToView = useTabNavigate(NavTabs.Ports);
+    const navigateToView = useTabNavigate(NavTabs.Network);
 
     const [showNewPortForm, setShowNewPortForm] = useState(false);
     const [newPortNumber, setNewPortNumber] = useState('');

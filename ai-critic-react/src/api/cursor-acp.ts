@@ -216,17 +216,17 @@ export async function saveCursorACPSessionSettings(req: SaveSessionSettingsReque
     }
 }
 
-export async function validateCursorAPIKey(apiKey: string): Promise<string> {
+export async function validateCursorAPIKey(apiKey: string): Promise<Response> {
     const resp = await fetch(`${CURSOR_ACP_PREFIX}/settings/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ api_key: apiKey }),
     });
-    const data = await resp.json();
     if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
         throw new Error(data.error || `Validation failed (${resp.status})`);
     }
-    return data.message;
+    return resp;
 }
 
 export { cursorAPI };

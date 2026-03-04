@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/acp"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
 
 var (
@@ -177,7 +178,6 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleValidateAPIKey(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -187,11 +187,13 @@ func handleValidateAPIKey(w http.ResponseWriter, r *http.Request) {
 		APIKey string `json:"api_key"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
 		return
 	}
 	if body.APIKey == "" {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "api_key is required"})
 		return
@@ -199,15 +201,25 @@ func handleValidateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	agentPath, err := resolveAgentPath()
 	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "cursor-agent not found: " + err.Error()})
 		return
 	}
 
-	if err := validateAPIKey(agentPath, body.APIKey); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "streaming not supported"})
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]string{"message": "API key is valid"})
+
+	sw.SendLog("Resolving cursor-agent path: " + agentPath)
+
+	if err := validateAPIKey(agentPath, body.APIKey, sw.SendLog); err != nil {
+		sw.SendDone(map[string]string{"success": "false", "message": err.Error()})
+		return
+	}
+	sw.SendDone(map[string]string{"success": "true", "message": "API key is valid"})
 }

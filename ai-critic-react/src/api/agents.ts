@@ -441,6 +441,7 @@ export async function updateAgentPathConfig(agentId: string, binaryPath: string)
 export interface AgentEffectivePath {
     effective_path: string;
     found: boolean;
+    version: string;
     error: string;
 }
 
@@ -649,4 +650,37 @@ export interface OpencodeAuthStatus {
 export async function fetchOpencodeAuthStatus(): Promise<OpencodeAuthStatus> {
     const resp = await fetch('/api/agents/opencode/auth');
     return resp.json();
+}
+
+export interface OpencodeAuthKeyEntry {
+    provider: string;
+    type: string;
+    masked_key: string;
+}
+
+export async function fetchOpencodeAuthKeys(): Promise<OpencodeAuthKeyEntry[]> {
+    const resp = await fetch('/api/agents/opencode/auth-keys');
+    return resp.json();
+}
+
+export async function setOpencodeAuthKey(provider: string, key: string): Promise<void> {
+    const resp = await fetch('/api/agents/opencode/auth-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, key }),
+    });
+    if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || `Failed (${resp.status})`);
+    }
+}
+
+export async function deleteOpencodeAuthKey(provider: string): Promise<void> {
+    const resp = await fetch(`/api/agents/opencode/auth-keys?provider=${encodeURIComponent(provider)}`, {
+        method: 'DELETE',
+    });
+    if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || `Failed (${resp.status})`);
+    }
 }

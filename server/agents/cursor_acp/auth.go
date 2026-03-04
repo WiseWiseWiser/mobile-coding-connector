@@ -63,30 +63,41 @@ func ensureAuth(agentPath string) error {
 	return nil
 }
 
+type LogFunc func(message string)
+
 // validateAPIKey checks if a given API key is valid by bootstrapping auth
 // with it and verifying the resulting auth.json.
 // It temporarily backs up the existing auth.json to avoid corrupting a working key.
-func validateAPIKey(agentPath, apiKey string) error {
+func validateAPIKey(agentPath, apiKey string, log LogFunc) error {
+	if log == nil {
+		log = func(string) {}
+	}
+
 	authPath := cursorAuthPath()
 	backupPath := authPath + ".orig"
 
 	_, existsErr := os.Stat(authPath)
 	hasOrig := existsErr == nil
 	if hasOrig {
+		log("Backing up existing auth.json...")
 		if err := os.Rename(authPath, backupPath); err != nil {
 			return fmt.Errorf("failed to backup auth.json: %w", err)
 		}
 	}
 	defer func() {
 		if hasOrig {
+			log("Restoring original auth.json...")
 			os.Remove(authPath)
 			os.Rename(backupPath, authPath)
 		}
 	}()
 
+	log("Running cursor-agent to validate API key...")
 	if err := bootstrapAuth(agentPath, apiKey); err != nil {
 		return fmt.Errorf("failed to bootstrap auth: %w", err)
 	}
+
+	log("Reading auth response...")
 	auth, err := readCursorAuth()
 	if err != nil {
 		return fmt.Errorf("auth.json not created after validation: %w", err)
