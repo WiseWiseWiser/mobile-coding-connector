@@ -1,0 +1,156 @@
+.project-picker-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.project-picker-modal {
+    background: #1e1e2e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    width: 480px;
+    max-width: 90vw;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.project-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid #333;
+}
+.project-picker-header h3 {
+    margin: 0;
+    font-size: 16px;
+    color: #e0e0e0;
+}
+.project-picker-close {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 22px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+.project-picker-close:hover {
+    color: #fff;
+}
+
+.project-picker-search {
+    margin: 12px 16px 8px;
+    padding: 8px 12px;
+    background: #2a2a3c;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 6px;
+    font-size: 13px;
+}
+.project-picker-search:focus {
+    outline: none;
+    border-color: #4f46e5;
+}
+
+.project-picker-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px 12px;
+}
+
+.project-picker-empty {
+    text-align: center;
+    color: #666;
+    padding: 24px;
+    font-size: 13px;
+}
+
+.project-picker-item-group {
+    margin-bottom: 2px;
+}
+
+.project-picker-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.12s;
+}
+.project-picker-item:hover {
+    background: #2a2a3c;
+}
+
+.project-picker-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.project-picker-item-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #e0e0e0;
+}
+
+.project-picker-item-dir {
+    font-size: 11px;
+    color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.project-picker-expand {
+    font-size: 11px;
+    color: #888;
+    padding: 4px 6px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: color 0.12s;
+}
+.project-picker-expand:hover {
+    color: #fff;
+}
+
+.project-picker-worktrees {
+    margin-left: 20px;
+    border-left: 2px solid #333;
+    padding-left: 8px;
+}
+
+.project-picker-worktree {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.12s;
+}
+.project-picker-worktree:hover {
+    background: #2a2a3c;
+}
+
+.project-picker-wt-branch {
+    color: #60a5fa;
+    font-weight: 500;
+}
+
+.project-picker-wt-path {
+    color: #666;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

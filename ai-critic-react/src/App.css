@@ -266,6 +266,16 @@
     margin: 0 16px 18px;
 }
 
+.mcc-experimental-section-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 12px;
+    padding: 0;
+}
+
 .mcc-experimental-cards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

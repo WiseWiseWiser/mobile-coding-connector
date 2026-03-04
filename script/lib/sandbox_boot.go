@@ -12,19 +12,22 @@ import (
 // SandboxCLIParsed holds the result of ParseSandboxCLI.
 type SandboxCLIParsed struct {
 	ArchFlag string
+	DevMode  bool
 }
 
 // ParseSandboxCLI parses common sandbox CLI flags (--arch, --recreate-container,
-// --force-recreate-container) and handles the container recreation flow.
+// --force-recreate-container, --dev) and handles the container recreation flow.
 // Returns nil (with no error) if the user aborted the prompt.
 func ParseSandboxCLI(args []string, help string, containerName string) (*SandboxCLIParsed, error) {
 	var archFlag string
 	var recreate bool
 	var forceRecreate bool
+	var devMode bool
 	_, err := flags.
 		String("--arch", &archFlag).
 		Bool("--recreate-container", &recreate).
 		Bool("--force-recreate-container", &forceRecreate).
+		Bool("--dev", &devMode).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
@@ -54,7 +57,7 @@ func ParseSandboxCLI(args []string, help string, containerName string) (*Sandbox
 		}
 	}
 
-	return &SandboxCLIParsed{ArchFlag: archFlag}, nil
+	return &SandboxCLIParsed{ArchFlag: archFlag, DevMode: devMode}, nil
 }
 
 // SandboxBootOptions configures RunSandboxBoot.
@@ -74,6 +77,7 @@ func RunSandboxBoot(args []string, opts SandboxBootOptions) error {
 		return nil
 	}
 	opts.Sandbox.ArchFlag = parsed.ArchFlag
+	opts.Sandbox.DevMode = parsed.DevMode
 	return RunSandbox(opts.Sandbox)
 }
 

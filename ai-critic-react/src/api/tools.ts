@@ -6,6 +6,7 @@ export interface ToolInfo {
     category: string;
     description: string;
     purpose: string;
+    doc_url?: string;
     checking?: boolean;
     installed: boolean;
     path?: string;
@@ -40,6 +41,15 @@ export async function fetchToolsQuick(): Promise<ToolsResponse> {
         throw new Error('Failed to fetch tools');
     }
     return resp.json();
+}
+
+/** Start streaming tool checks via SSE, returns the raw Response. */
+export async function streamToolsCheck(): Promise<Response> {
+    const resp = await fetch('/api/tools/stream');
+    if (!resp.ok) {
+        throw new Error('Failed to stream tools');
+    }
+    return resp;
 }
 
 /** Start installing a tool, returns the raw Response for SSE streaming. */

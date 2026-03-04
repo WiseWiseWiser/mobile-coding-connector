@@ -15,6 +15,7 @@ export function ExperimentalView() {
                 Try out new and experimental features. These may be unstable or change frequently.
             </p>
 
+            <h3 className="mcc-experimental-section-title">Coding Tools</h3>
             <div className="mcc-experimental-cards">
                 <div
                     className="mcc-experimental-card mcc-experimental-card-clickable"
@@ -72,6 +73,25 @@ export function ExperimentalView() {
                         <h3>Cursor UI (ACP)</h3>
                         <p>
                             Native Cursor agent UI via Agent Client Protocol. Direct communication with cursor-agent CLI.
+                        </p>
+                        <span className="mcc-experimental-status mcc-experimental-status-active">Click to Open</span>
+                    </div>
+                </div>
+            </div>
+
+            <h3 className="mcc-experimental-section-title">Agents</h3>
+            <div className="mcc-experimental-cards">
+                <div
+                    className="mcc-experimental-card mcc-experimental-card-clickable"
+                    onClick={() => navigate('../feature-maker')}
+                >
+                    <div className="mcc-experimental-card-icon">
+                        <BeakerIcon />
+                    </div>
+                    <div className="mcc-experimental-card-content">
+                        <h3>Feature Maker</h3>
+                        <p>
+                            AI-powered agent that helps design, plan and build new features from natural language descriptions.
                         </p>
                         <span className="mcc-experimental-status mcc-experimental-status-active">Click to Open</span>
                     </div>

@@ -43,6 +43,11 @@ func Generate(dir string, options GenerateOptions) (string, error) {
 	}
 
 	logger.Log(fmt.Sprintf("Staged files: %d, Diff length: %d chars", fileCount, len(stagedDiff)))
+
+	const maxLinesPerFile = 24
+	stagedDiff = truncateDiffPerFile(stagedDiff, maxLinesPerFile)
+
+	logger.Log(fmt.Sprintf("Truncated diff length: %d chars", len(stagedDiff)))
 	logger.Log("Passing diff to agent...")
 
 	commitPrompt := fmt.Sprintf(`Generate a brief git commit message (1 line title, max 50 characters, plus a short description if needed) for the following staged changes (git diff). Focus on what changed and why.
@@ -244,6 +249,34 @@ func shellJoinArgs(args []string) string {
 		}
 	}
 	return strings.Join(quoted, " ")
+}
+
+// truncateDiffPerFile splits a unified diff into per-file sections and
+// truncates each to at most maxLines lines. If a section exceeds the
+// limit, the excess is replaced with a summary line.
+func truncateDiffPerFile(diff string, maxLines int) string {
+	parts := strings.Split("\n"+diff, "\ndiff --git ")
+	var b strings.Builder
+	first := true
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		section := "diff --git " + part
+		if !first {
+			b.WriteByte('\n')
+		}
+		first = false
+
+		lines := strings.Split(strings.TrimRight(section, "\n"), "\n")
+		if len(lines) <= maxLines {
+			b.WriteString(strings.Join(lines, "\n"))
+		} else {
+			b.WriteString(strings.Join(lines[:maxLines], "\n"))
+			b.WriteString(fmt.Sprintf("\n...(%d more lines omitted)", len(lines)-maxLines))
+		}
+	}
+	return b.String()
 }
 
 func pipeToLogger(r io.Reader, logger Logger) {

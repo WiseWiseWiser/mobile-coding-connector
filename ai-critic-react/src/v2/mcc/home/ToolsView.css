@@ -253,6 +253,19 @@
     word-break: break-all;
 }
 
+/* Doc Link */
+.tools-tool-doc-link {
+    font-size: 13px;
+    color: #60a5fa;
+    text-decoration: none;
+    word-break: break-all;
+}
+
+.tools-tool-doc-link:hover {
+    color: #93bbfd;
+    text-decoration: underline;
+}
+
 /* Install Button */
 .tools-tool-actions {
     display: flex;

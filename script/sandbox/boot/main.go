@@ -18,14 +18,25 @@ inside the container are preserved between restarts.
 
 Options:
   --arch ARCH   Target architecture: auto, amd64, arm64 (default: auto)
+  --dev         Dev mode: skip frontend build, proxy to host Vite dev server for hot-reload
   --recreate-container        Destroy existing container and start fresh (prompts for confirmation)
   --force-recreate-container  Same as --recreate-container but skips confirmation
   -h, --help    Show this help message
 
 Steps:
-  1. npm install + npm run build (frontend)
+  1. npm install + npm run build (frontend) — skipped with --dev
   2. GOOS=linux GOARCH=<arch> go build (server with embedded frontend)
   3. Reuse or create podman container
+
+Examples:
+  # Run with default settings
+  go run ./script/sandbox/boot
+
+  # Force recreate container without confirmation
+  go run ./script/sandbox/boot --force-recreate-container
+
+  # Run in dev mode (skip frontend build, proxy to host Vite dev server)
+  go run ./script/sandbox/boot --dev
 `
 
 func main() {

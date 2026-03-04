@@ -656,6 +656,17 @@ export interface OpencodeAuthKeyEntry {
     provider: string;
     type: string;
     masked_key: string;
+    base_url?: string;
+}
+
+export interface WellKnownProvider {
+    name: string;
+    base_url: string;
+}
+
+export async function fetchWellKnownProviders(): Promise<WellKnownProvider[]> {
+    const resp = await fetch('/api/agents/opencode/providers');
+    return resp.json();
 }
 
 export async function fetchOpencodeAuthKeys(): Promise<OpencodeAuthKeyEntry[]> {
@@ -663,11 +674,11 @@ export async function fetchOpencodeAuthKeys(): Promise<OpencodeAuthKeyEntry[]> {
     return resp.json();
 }
 
-export async function setOpencodeAuthKey(provider: string, key: string): Promise<void> {
+export async function setOpencodeAuthKey(provider: string, key: string, baseUrl?: string): Promise<void> {
     const resp = await fetch('/api/agents/opencode/auth-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, key }),
+        body: JSON.stringify({ provider, key, base_url: baseUrl || '' }),
     });
     if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));

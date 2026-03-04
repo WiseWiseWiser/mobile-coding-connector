@@ -18,6 +18,7 @@ type SandboxOptions struct {
 	ArchFlag      string // "auto", "amd64", "arm64"
 	ScriptSubDir  string // relative path under repo root for config files (e.g. "script/sandbox/fresh-setup")
 	FreshSetup    bool   // true = always destroy and recreate container
+	DevMode       bool   // true = skip frontend build, proxy to host Vite dev server
 	ContainerPort int
 	ContainerName string // podman container name
 }
@@ -44,17 +45,21 @@ func RunSandbox(opts SandboxOptions) error {
 		)
 	}
 
-	fmt.Println("\n=== Step 1: Building frontend ===")
-	if _, err := os.Stat("ai-critic-react/node_modules"); err != nil {
-		fmt.Println("node_modules not found, running npm install...")
-		if err := cmd.Debug().Dir("ai-critic-react").Run("npm", "install"); err != nil {
-			return fmt.Errorf("npm install failed: %v", err)
+	if opts.DevMode {
+		fmt.Println("\n=== Dev mode: skipping frontend build (will proxy to Vite) ===")
+	} else {
+		fmt.Println("\n=== Step 1: Building frontend ===")
+		if _, err := os.Stat("ai-critic-react/node_modules"); err != nil {
+			fmt.Println("node_modules not found, running npm install...")
+			if err := cmd.Debug().Dir("ai-critic-react").Run("npm", "install"); err != nil {
+				return fmt.Errorf("npm install failed: %v", err)
+			}
 		}
+		if err := cmd.Debug().Dir("ai-critic-react").Run("npm", "run", "build"); err != nil {
+			return fmt.Errorf("frontend build failed: %v", err)
+		}
+		fmt.Println("Frontend build complete.")
 	}
-	if err := cmd.Debug().Dir("ai-critic-react").Run("npm", "run", "build"); err != nil {
-		return fmt.Errorf("frontend build failed: %v", err)
-	}
-	fmt.Println("Frontend build complete.")
 
 	binaryPath := fmt.Sprintf("/tmp/ai-critic-linux-%s", goarch)
 	fmt.Printf("\n=== Step 2: Cross-compiling Go server for linux/%s ===\n", goarch)
@@ -74,10 +79,29 @@ func RunSandbox(opts SandboxOptions) error {
 
 	name := opts.ContainerName
 	containerPort := opts.ContainerPort
-	if opts.FreshSetup {
-		return runFreshContainer(name, goarch, binaryPath, containerPort, sandboxFiles)
+	if opts.DevMode {
+		var viteCmd *exec.Cmd
+		if !CheckPort(ViteDevPort) {
+			fmt.Println("\n=== Starting Vite dev server ===")
+			var err error
+			viteCmd, err = startViteDevServer(resolveDefaultProjectDir())
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if viteCmd != nil && viteCmd.Process != nil {
+					viteCmd.Process.Kill()
+				}
+			}()
+		} else {
+			fmt.Printf("Vite dev server already running on port %d\n", ViteDevPort)
+		}
 	}
-	return runBootContainer(name, goarch, binaryPath, containerPort, sandboxFiles)
+
+	if opts.FreshSetup {
+		return runFreshContainer(name, goarch, binaryPath, containerPort, sandboxFiles, opts.DevMode)
+	}
+	return runBootContainer(name, goarch, binaryPath, containerPort, sandboxFiles, opts.DevMode)
 }
 
 // ResolveArch resolves the target architecture from an --arch flag value.
@@ -194,7 +218,7 @@ func containerCreateArgs(containerName, goarch string, containerPort int, files 
 	return args
 }
 
-func runFreshContainer(containerName, goarch, binaryPath string, containerPort int, files *sandboxFiles) error {
+func runFreshContainer(containerName, goarch, binaryPath string, containerPort int, files *sandboxFiles, devMode bool) error {
 	fmt.Println("Removing old container (if any)...")
 	_ = RunVerbose("podman", "rm", "-f", containerName)
 
@@ -219,8 +243,8 @@ func runFreshContainer(containerName, goarch, binaryPath string, containerPort i
 
 const bootConfigLabel = "ai-critic.boot-config-hash"
 
-func bootContainerConfig(goarch string, containerPort int, files *sandboxFiles) string {
-	return strings.Join([]string{
+func bootContainerConfig(goarch string, containerPort int, files *sandboxFiles, devMode bool) string {
+	parts := []string{
 		"platform=" + fmt.Sprintf("linux/%s", goarch),
 		"home=" + files.homeDir,
 		"data=" + files.dataDir,
@@ -229,16 +253,20 @@ func bootContainerConfig(goarch string, containerPort int, files *sandboxFiles) 
 		"downloads=" + files.downloadsDir,
 		"port=" + fmt.Sprintf("%d", containerPort),
 		"image=" + ContainerImage,
-	}, "\n")
+	}
+	if devMode {
+		parts = append(parts, "dev=true")
+	}
+	return strings.Join(parts, "\n")
 }
 
-func bootContainerCreateArgs(containerName, goarch string, containerPort int, files *sandboxFiles, cfgHash string) []string {
+func bootContainerCreateArgs(containerName, goarch string, containerPort int, files *sandboxFiles, devMode bool, cfgHash string) []string {
 	containerCredentialsFile := "/root/" + config.CredentialsFile
 	containerEncKeyFile := "/root/" + config.EncKeyFile
 	containerDomainsFile := "/root/" + config.DomainsFile
 	platform := fmt.Sprintf("linux/%s", goarch)
 
-	return []string{
+	args := []string{
 		"create",
 		"--name", containerName,
 		"--platform", platform,
@@ -249,6 +277,7 @@ func bootContainerCreateArgs(containerName, goarch string, containerPort int, fi
 		"-v", files.aptListsDir + ":/var/lib/apt/lists",
 		"-v", files.downloadsDir + ":/tmp/downloads",
 		"-p", fmt.Sprintf("%d:%d", containerPort, containerPort),
+		"--add-host=host.containers.internal:host-gateway",
 		"--label", bootConfigLabel + "=" + cfgHash,
 		ContainerImage,
 		"/usr/local/bin/ai-critic", "--port", fmt.Sprintf("%d", containerPort),
@@ -256,32 +285,52 @@ func bootContainerCreateArgs(containerName, goarch string, containerPort int, fi
 		"--enc-key-file", containerEncKeyFile,
 		"--domains-file", containerDomainsFile,
 	}
+
+	if devMode {
+		args = append(args,
+			"--dev",
+			"--frontend-port", fmt.Sprintf("%d", ViteDevPort),
+			"--frontend-host", "host.containers.internal",
+		)
+	}
+
+	return args
 }
 
-func runBootContainer(containerName, goarch, binaryPath string, containerPort int, files *sandboxFiles) error {
-	cfg := bootContainerConfig(goarch, containerPort, files)
-	wantHash := configHash(cfg)
+func runBootContainer(containerName, goarch, binaryPath string, containerPort int, files *sandboxFiles, devMode bool) error {
+	devHash := configHash(bootContainerConfig(goarch, containerPort, files, true))
+	nonDevHash := configHash(bootContainerConfig(goarch, containerPort, files, false))
+
+	wantHash := nonDevHash
+	if devMode {
+		wantHash = devHash
+	}
 
 	needsCreate := false
 	status, err := InspectContainerStatus(containerName)
 	if err != nil {
 		needsCreate = true
-	} else if gotHash := inspectContainerLabel(containerName, bootConfigLabel); gotHash != wantHash {
-		fmt.Printf("Container %q config changed (got %s, want %s), recreating...\n", containerName, gotHash, wantHash)
-		_ = RunVerbose("podman", "rm", "-f", containerName)
-		needsCreate = true
-	} else if status == "running" {
-		fmt.Printf("Stopping running container %q...\n", containerName)
-		_ = RunVerbose("podman", "stop", containerName)
 	} else {
-		fmt.Printf("Reusing existing container %q (status: %s)\n", containerName, status)
+		gotHash := inspectContainerLabel(containerName, bootConfigLabel)
+		if gotHash != devHash && gotHash != nonDevHash {
+			fmt.Printf("Container %q config changed (got %s), recreating...\n", containerName, gotHash)
+			_ = RunVerbose("podman", "rm", "-f", containerName)
+			needsCreate = true
+		} else {
+			fmt.Printf("Reusing existing container %q (status: %s)\n", containerName, status)
+		}
 	}
 
 	if needsCreate {
 		fmt.Printf("Creating container...\n")
-		if err := RunVerbose("podman", bootContainerCreateArgs(containerName, goarch, containerPort, files, wantHash)...); err != nil {
+		if err := RunVerbose("podman", bootContainerCreateArgs(containerName, goarch, containerPort, files, devMode, wantHash)...); err != nil {
 			return fmt.Errorf("failed to create container: %v", err)
 		}
+	}
+
+	if s, _ := InspectContainerStatus(containerName); s == "running" {
+		fmt.Println("Stopping container for binary update...")
+		_ = RunVerbose("podman", "stop", containerName)
 	}
 
 	fmt.Println("Copying binary into container...")
@@ -289,7 +338,12 @@ func runBootContainer(containerName, goarch, binaryPath string, containerPort in
 		return fmt.Errorf("failed to copy binary into container: %v", err)
 	}
 
-	fmt.Printf("\nStarting container...\nServer will be available at http://localhost:%d\n\n", containerPort)
+	fmt.Printf("\nStarting container...\nServer will be available at http://localhost:%d\n", containerPort)
+	if devMode {
+		fmt.Printf("Frontend: proxied from Vite on host (port %d)\n", ViteDevPort)
+	}
+	fmt.Println()
+
 	if err := RunVerbose("podman", "start", containerName); err != nil {
 		return fmt.Errorf("failed to start container: %v", err)
 	}

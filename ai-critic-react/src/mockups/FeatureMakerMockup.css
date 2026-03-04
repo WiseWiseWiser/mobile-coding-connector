@@ -8,6 +8,51 @@
     overflow-x: hidden;
 }
 
+.fm-project-dir-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 8px;
+    font-size: 13px;
+}
+.fm-project-dir-label {
+    color: #888;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.fm-project-dir-value {
+    color: #60a5fa;
+    font-family: monospace;
+    word-break: break-all;
+}
+
+.fm-fr-title-input,
+.fm-fr-desc-input {
+    width: 100%;
+    background: #2a2a3c;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 14px;
+    font-family: inherit;
+    box-sizing: border-box;
+    resize: vertical;
+}
+.fm-fr-title-input {
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 8px;
+}
+.fm-fr-title-input:focus,
+.fm-fr-desc-input:focus {
+    outline: none;
+    border-color: #4f46e5;
+}
+
 .fm-header {
     display: flex;
     justify-content: flex-start;

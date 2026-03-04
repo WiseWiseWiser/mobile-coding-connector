@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { fetchTools, fetchToolsQuick, installTool, upgradeTool } from '../../../api/tools';
+import { streamToolsCheck, installTool, upgradeTool } from '../../../api/tools';
 import type { ToolInfo, ToolsResponse } from '../../../api/tools';
 import { consumeSSEStream } from '../../../api/sse';
 import { LogViewer } from '../../LogViewer';
@@ -11,13 +11,15 @@ import './ToolsView.css';
 
 const CategoryLabels: Record<string, string> = {
     foundation: 'Foundation',
+    network: 'Network',
     language: 'Language',
+    virtualization: 'Virtualization',
     coding: 'Coding',
     testing: 'Testing',
     other: 'Others',
 };
 
-const CategoryOrder = ['foundation', 'language', 'coding', 'testing', 'other'] as const;
+const CategoryOrder = ['foundation', 'network', 'language', 'virtualization', 'coding', 'testing', 'other'] as const;
 
 function groupToolsByCategory(tools: ToolInfo[]): { category: string; label: string; tools: ToolInfo[] }[] {
     const grouped = new Map<string, ToolInfo[]>();
@@ -58,26 +60,55 @@ export function ToolsView() {
         });
     }, [highlightTool, data]);
 
-    const loadTools = async (showLoading = true) => {
+    const loadTools = async () => {
         setError(null);
-
-        if (showLoading) {
-            if (!data) {
-                setLoading(true);
-            }
-            try {
-                const quickData = await fetchToolsQuick();
-                setData(quickData);
-                setLoading(false);
-            } catch {
-                // Ignore quick-fetch errors and continue with full status fetch.
-            }
+        if (!data) {
+            setLoading(true);
         }
-
         setStatusLoading(true);
+
         try {
-            const fullData = await fetchTools();
-            setData(fullData);
+            const resp = await streamToolsCheck();
+            const reader = resp.body?.getReader();
+            if (!reader) {
+                throw new Error('Failed to read response stream');
+            }
+
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const event = JSON.parse(line.slice(6));
+                        if (event.type === 'init') {
+                            setData({ os: event.os, tools: event.tools });
+                            setLoading(false);
+                        } else if (event.type === 'tool') {
+                            const resolved: ToolInfo = event.tool;
+                            setData(prev => {
+                                if (!prev) return prev;
+                                return {
+                                    ...prev,
+                                    tools: prev.tools.map(t => t.name === resolved.name ? resolved : t),
+                                };
+                            });
+                        } else if (event.type === 'done') {
+                            setStatusLoading(false);
+                        }
+                    } catch {
+                        // skip malformed SSE data
+                    }
+                }
+            }
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             setError(message);
@@ -139,7 +170,7 @@ export function ToolsView() {
                             tools={section.tools}
                             os={data.os}
                             highlightTool={highlightTool}
-                            onInstalled={() => loadTools(false)}
+                            onInstalled={() => loadTools()}
                         />
                     ))}
 
@@ -357,6 +388,12 @@ function ToolCard({ tool, os, defaultExpanded, onInstalled }: ToolCardProps) {
                         <span className="tools-tool-label">Purpose:</span>
                         <span className="tools-tool-value">{tool.purpose}</span>
                     </div>
+                    {tool.doc_url && (
+                        <div className="tools-tool-row">
+                            <span className="tools-tool-label">Docs:</span>
+                            <a className="tools-tool-doc-link" href={tool.doc_url} target="_blank" rel="noopener noreferrer">{tool.doc_url}</a>
+                        </div>
+                    )}
                     {tool.installed && tool.path && (
                         <div className="tools-tool-row">
                             <span className="tools-tool-label">Path:</span>

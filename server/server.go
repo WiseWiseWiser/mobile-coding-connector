@@ -36,6 +36,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/exposedurls"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/fakellm"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/features"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/fileupload"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/keepalive"
@@ -519,6 +520,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Fake LLM API for mockups
 	fakellm.RegisterAPI(mux)
+
+	// Features API
+	features.RegisterAPI(mux)
 
 	// Server status API
 	RegisterServerStatusAPI(mux)

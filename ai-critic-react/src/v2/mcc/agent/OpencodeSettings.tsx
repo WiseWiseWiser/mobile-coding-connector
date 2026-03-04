@@ -4,6 +4,7 @@ import {
     fetchOpencodeConfig,
     fetchAgentEffectivePath,
     fetchOpencodeProviders,
+    fetchWellKnownProviders,
     fetchOpencodeSettings,
     fetchOpencodeWebStatus,
     fetchOpencodeAuthKeys,
@@ -16,7 +17,7 @@ import {
     unmapOpencodeDomain,
     mapOpencodeDomainStreaming,
 } from '../../../api/agents';
-import type { OpencodeAuthStatus, AgentEffectivePath, AgentSessionInfo, OpencodeSettings, OpencodeWebStatus, OpencodeAuthKeyEntry } from '../../../api/agents';
+import type { OpencodeAuthStatus, AgentEffectivePath, AgentSessionInfo, OpencodeSettings, OpencodeWebStatus, OpencodeAuthKeyEntry, WellKnownProvider } from '../../../api/agents';
 import { fetchProviders } from '../../../api/ports';
 import { AgentChatHeader } from './AgentChatHeader';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
@@ -53,6 +54,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     const [defaultModel, setDefaultModel] = useState('');
 
     const [authKeys, setAuthKeys] = useState<OpencodeAuthKeyEntry[]>([]);
+    const [wellKnownProvidersList, setWellKnownProvidersList] = useState<WellKnownProvider[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState('');
@@ -92,12 +94,13 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     const loadAllData = async () => {
         setLoading(true);
         try {
-            const [settings, webStat, auth, pathInfo, keys] = await Promise.all([
+            const [settings, webStat, auth, pathInfo, keys, wkProviders] = await Promise.all([
                 fetchOpencodeSettings(),
                 fetchOpencodeWebStatus(),
                 fetchOpencodeAuthStatus(),
                 fetchAgentEffectivePath(agentId),
                 fetchOpencodeAuthKeys().catch(() => [] as OpencodeAuthKeyEntry[]),
+                fetchWellKnownProviders().catch(() => [] as WellKnownProvider[]),
             ]);
 
             setSavedSettings(settings);
@@ -111,6 +114,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
             setAuthStatus(auth);
             setEffectivePath(pathInfo);
             setAuthKeys(keys);
+            setWellKnownProvidersList(wkProviders);
 
             let savedModelKey: { modelID: string; providerID: string } | null = null;
             if (settings.model) {
@@ -171,8 +175,8 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
         try { setAuthKeys(await fetchOpencodeAuthKeys()); } catch { /* ignore */ }
     };
 
-    const handleSaveKey = async (provider: string, key: string) => {
-        await setOpencodeAuthKey(provider, key);
+    const handleSaveKey = async (provider: string, key: string, baseUrl?: string) => {
+        await setOpencodeAuthKey(provider, key, baseUrl);
         setSuccess(`Key for ${provider} saved`);
         await refreshAuthKeys();
     };
@@ -323,7 +327,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                         </div>
                     </div>
 
-                    <ProviderKeysSection authKeys={authKeys} onSaveKey={handleSaveKey} onDeleteKey={handleDeleteKey} />
+                    <ProviderKeysSection authKeys={authKeys} wellKnownProviders={wellKnownProvidersList} onSaveKey={handleSaveKey} onDeleteKey={handleDeleteKey} />
 
                     <WebServerSection
                         webStatus={webStatus}

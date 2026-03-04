@@ -24,6 +24,8 @@ export { AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentS
 export { PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute } from './mcc';
 export { FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute } from './mcc/files';
 export { ExperimentalView } from './mcc/home/experimental/ExperimentalView';
+export { FeatureListView } from './mcc/home/experimental/FeatureListView';
+export { FeatureDetailView } from './mcc/home/experimental/FeatureDetailView';
 export { WebServiceUI } from './mcc/home/experimental/WebServiceUI';
 export { CodexWebUI } from './mcc/home/experimental/CodexWebUI';
 export { CursorWebUI } from './mcc/home/experimental/CursorWebUI';

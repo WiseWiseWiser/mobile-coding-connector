@@ -1,0 +1,212 @@
+.feature-list-container {
+    padding: 16px;
+    max-width: 800px;
+}
+
+.feature-list-project-badge {
+    font-size: 12px;
+    color: #60a5fa;
+    background: #1e3a5f;
+    padding: 3px 10px;
+    border-radius: 10px;
+    margin-left: 8px;
+    white-space: nowrap;
+}
+
+.feature-list-actions {
+    margin: 16px 0;
+}
+
+.feature-list-add-btn {
+    background: #4f46e5;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.feature-list-add-btn:hover {
+    background: #4338ca;
+}
+
+.feature-list-add-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: #1e1e2e;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.feature-list-input,
+.feature-list-textarea {
+    background: #2a2a3c;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+}
+.feature-list-input:focus,
+.feature-list-textarea:focus {
+    outline: none;
+    border-color: #4f46e5;
+}
+
+.feature-list-form-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.feature-list-save-btn {
+    background: #4f46e5;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+}
+.feature-list-save-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.feature-list-save-btn:not(:disabled):hover {
+    background: #4338ca;
+}
+
+.feature-list-cancel-btn {
+    background: transparent;
+    color: #aaa;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+}
+.feature-list-cancel-btn:hover {
+    color: #fff;
+    border-color: #666;
+}
+
+/* Empty state */
+.feature-list-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: #888;
+}
+.feature-list-empty-icon {
+    width: 48px;
+    height: 48px;
+    opacity: 0.4;
+    margin-bottom: 12px;
+}
+.feature-list-empty p {
+    margin: 4px 0;
+    font-size: 15px;
+}
+.feature-list-empty-hint {
+    font-size: 13px !important;
+    color: #666;
+}
+
+/* Feature cards */
+.feature-list-items {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.feature-list-card {
+    background: #1e1e2e;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.feature-list-card:hover {
+    border-color: #4f46e5;
+    background: #1e1e36;
+}
+
+.feature-list-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.feature-list-card-title {
+    font-size: 15px;
+    font-weight: 500;
+    color: #e0e0e0;
+    margin: 0;
+}
+
+.feature-list-card-status {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+.feature-list-status-draft {
+    background: #333;
+    color: #aaa;
+}
+.feature-list-status-in-progress {
+    background: #1e3a5f;
+    color: #60a5fa;
+}
+.feature-list-status-completed {
+    background: #14532d;
+    color: #4ade80;
+}
+
+.feature-list-card-desc {
+    font-size: 13px;
+    color: #999;
+    margin: 8px 0 0;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.feature-list-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+}
+
+.feature-list-card-date {
+    font-size: 12px;
+    color: #666;
+}
+
+.feature-list-card-delete {
+    background: transparent;
+    color: #888;
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+.feature-list-card-delete:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}

@@ -141,6 +141,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/effective-path", handleAgentEffectivePath)
 	mux.HandleFunc("/api/agents/opencode/auth", handleOpencodeAuth)
 	mux.HandleFunc("/api/agents/opencode/auth-keys", handleOpencodeAuthKeys)
+	mux.HandleFunc("/api/agents/opencode/providers", handleOpencodeProviders)
 	mux.HandleFunc("/api/agents/opencode/settings", handleOpencodeSettings)
 	mux.HandleFunc("/api/agents/opencode/web-status", handleOpencodeWebStatus)
 	mux.HandleFunc("/api/agents/opencode/server", handleOpencodeServer)
@@ -612,6 +613,15 @@ func handleOpencodeAuth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(status)
 }
 
+func handleOpencodeProviders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(opencode_exposed.GetWellKnownProviders())
+}
+
 // handleOpencodeAuthKeys handles CRUD for opencode provider API keys in auth.json
 func handleOpencodeAuthKeys(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -633,6 +643,7 @@ func handleOpencodeAuthKeys(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Provider string `json:"provider"`
 			Key      string `json:"key"`
+			BaseURL  string `json:"base_url"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -644,7 +655,7 @@ func handleOpencodeAuthKeys(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "provider is required"})
 			return
 		}
-		if err := opencode_exposed.SetAuthKey(body.Provider, body.Key); err != nil {
+		if err := opencode_exposed.SetAuthKey(body.Provider, body.Key, body.BaseURL); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return

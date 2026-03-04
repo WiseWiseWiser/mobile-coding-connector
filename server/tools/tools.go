@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
@@ -15,11 +16,13 @@ import (
 
 // Tool categories for UI grouping.
 const (
-	CategoryFoundation = "foundation"
-	CategoryLanguage   = "language"
-	CategoryCoding     = "coding"
-	CategoryTesting    = "testing"
-	CategoryOther      = "other"
+	CategoryFoundation     = "foundation"
+	CategoryNetwork        = "network"
+	CategoryLanguage       = "language"
+	CategoryVirtualization = "virtualization"
+	CategoryCoding         = "coding"
+	CategoryTesting        = "testing"
+	CategoryOther          = "other"
 )
 
 // ToolInfo describes a required tool and its status.
@@ -29,6 +32,7 @@ type ToolInfo struct {
 	Category       string `json:"category"`
 	Description    string `json:"description"`
 	Purpose        string `json:"purpose"`
+	DocURL         string `json:"doc_url,omitempty"`
 	Checking       bool   `json:"checking,omitempty"`
 	Installed      bool   `json:"installed"`
 	Path           string `json:"path,omitempty"`
@@ -62,6 +66,7 @@ type toolDef struct {
 	category       string
 	description    string
 	purpose        string
+	docURL         string
 	versionCmd     []string
 	installMacOS   []string
 	installLinux   []string
@@ -79,6 +84,7 @@ var requiredTools = []toolDef{
 		category:    CategoryFoundation,
 		description: "Distributed version control system",
 		purpose:     "Clone repositories, track changes, create checkpoints",
+		docURL:      "https://git-scm.com/doc",
 		versionCmd:  []string{"git", "--version"},
 		installMacOS: []string{
 			"brew install git",
@@ -94,6 +100,7 @@ var requiredTools = []toolDef{
 		category:    CategoryFoundation,
 		description: "Command-line tool for transferring data with URLs",
 		purpose:     "Download tools and files, diagnose network connectivity",
+		docURL:      "https://curl.se/docs/",
 		versionCmd:  []string{"curl", "--version"},
 		installMacOS: []string{
 			"brew install curl",
@@ -109,6 +116,7 @@ var requiredTools = []toolDef{
 		category:    CategoryFoundation,
 		description: "OpenSSH client for secure remote connections",
 		purpose:     "Test SSH keys, connect to git hosts via SSH",
+		docURL:      "https://www.openssh.com/manual.html",
 		versionCmd:  []string{"ssh", "-V"},
 		installMacOS: []string{
 			"brew install openssh",
@@ -124,6 +132,7 @@ var requiredTools = []toolDef{
 		category:    CategoryFoundation,
 		description: "Archive utility for creating and extracting tar files",
 		purpose:     "Extract downloaded tool archives (e.g. Go, Node.js)",
+		docURL:      "https://man7.org/linux/man-pages/man1/tar.1.html",
 		versionCmd:  []string{"tar", "--version"},
 		installMacOS: []string{
 			"brew install gnu-tar",
@@ -136,9 +145,10 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:         "cloudflared",
-		category:     CategoryOther,
+		category:     CategoryNetwork,
 		description:  "Cloudflare Tunnel client",
 		purpose:      "Create secure tunnels for port forwarding (Cloudflare provider)",
+		docURL:       "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/",
 		settingsPath: "../settings/cloudflare",
 		versionCmd:   []string{"cloudflared", "--version"},
 		installMacOS: []string{
@@ -169,10 +179,61 @@ var requiredTools = []toolDef{
 		installWindows: "Download from https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/",
 	},
 	{
+		name:        "zerotier-cli",
+		displayName: "ZeroTier",
+		category:    CategoryNetwork,
+		description: "Peer-to-peer virtual networking tool",
+		purpose:     "Create secure virtual networks for connecting devices anywhere",
+		docURL:      "https://docs.zerotier.com/",
+		versionCmd:  []string{"zerotier-cli", "-v"},
+		installMacOS: []string{
+			"brew install --cask zerotier-one",
+		},
+		installLinux: []string{
+			"curl -fsSL https://install.zerotier.com | bash",
+		},
+		installWindows: "Download from https://www.zerotier.com/download/",
+	},
+	{
+		name:        "ngrok",
+		category:    CategoryNetwork,
+		description: "Secure tunnels to localhost",
+		purpose:     "Expose local servers to the internet via secure tunnels",
+		docURL:      "https://ngrok.com/docs",
+		versionCmd:  []string{"ngrok", "version"},
+		installMacOS: []string{
+			"brew install ngrok/ngrok/ngrok",
+		},
+		installLinux: []string{
+			`curl -fsSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null`,
+			`echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | tee /etc/apt/sources.list.d/ngrok.list`,
+			`apt-get update`,
+			`apt-get install -y ngrok`,
+		},
+		installWindows: "Download from https://ngrok.com/download",
+	},
+	{
+		name:        "lt",
+		displayName: "localtunnel",
+		category:    CategoryNetwork,
+		description: "Expose localhost to the world via a public URL",
+		purpose:     "Quick public URL for local development servers",
+		docURL:      "https://theboroer.github.io/localtunnel-www/",
+		versionCmd:  []string{"lt", "--version"},
+		installMacOS: []string{
+			"npm install -g localtunnel",
+		},
+		installLinux: []string{
+			"npm install -g localtunnel",
+		},
+		installWindows: "npm install -g localtunnel",
+	},
+	{
 		name:        "opencode",
 		category:    CategoryCoding,
 		description: "AI-powered coding assistant CLI",
 		purpose:     "AI coding agent for code generation and editing",
+		docURL:      "https://opencode.ai",
 		versionCmd:  []string{"opencode", "version"},
 		installMacOS: []string{
 			"curl -fL --retry 3 --retry-delay 2 https://opencode.ai/install | bash",
@@ -187,6 +248,7 @@ var requiredTools = []toolDef{
 		category:    CategoryLanguage,
 		description: "Go programming language",
 		purpose:     "Build and run the backend server, install Go-based tools",
+		docURL:      "https://go.dev/doc/",
 		versionCmd:  []string{"go", "version"},
 		installMacOS: []string{
 			"brew install go",
@@ -207,6 +269,7 @@ var requiredTools = []toolDef{
 		category:    CategoryLanguage,
 		description: "Node.js JavaScript runtime v22+ (includes npm/npx)",
 		purpose:     "Run frontend dev server, build React app, run localtunnel via npx",
+		docURL:      "https://nodejs.org/docs/latest/api/",
 		versionCmd:  []string{"node", "--version"},
 		installMacOS: []string{
 			"brew install nvm",
@@ -225,6 +288,7 @@ var requiredTools = []toolDef{
 		category:    CategoryLanguage,
 		description: "Node.js package manager (comes with node)",
 		purpose:     "Install JavaScript packages, run scripts",
+		docURL:      "https://docs.npmjs.com/",
 		versionCmd:  []string{"npm", "--version"},
 		installMacOS: []string{
 			"Already included with node - install node instead",
@@ -239,6 +303,7 @@ var requiredTools = []toolDef{
 		category:    CategoryLanguage,
 		description: "Python 3 programming language",
 		purpose:     "Run Python scripts and tools",
+		docURL:      "https://docs.python.org/3/",
 		versionCmd:  []string{"python3", "--version"},
 		installMacOS: []string{
 			"brew install python3",
@@ -254,6 +319,7 @@ var requiredTools = []toolDef{
 		category:    CategoryFoundation,
 		description: "Command-line JSON processor",
 		purpose:     "Parse and transform JSON data in shell scripts",
+		docURL:      "https://jqlang.github.io/jq/manual/",
 		versionCmd:  []string{"jq", "--version"},
 		installMacOS: []string{
 			"brew install jq",
@@ -266,9 +332,10 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "docker",
-		category:    CategoryOther,
+		category:    CategoryVirtualization,
 		description: "Container runtime for building and running applications",
 		purpose:     "Build and run containerized applications",
+		docURL:      "https://docs.docker.com/",
 		versionCmd:  []string{"docker", "--version"},
 		installMacOS: []string{
 			`echo "Install Docker Desktop from https://www.docker.com/products/docker-desktop/"`,
@@ -280,9 +347,10 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "podman",
-		category:    CategoryOther,
+		category:    CategoryVirtualization,
 		description: "Daemonless container engine compatible with Docker",
 		purpose:     "Build and run containers without a daemon process",
+		docURL:      "https://podman.io/docs",
 		versionCmd:  []string{"podman", "--version"},
 		installMacOS: []string{
 			"brew install podman",
@@ -298,6 +366,7 @@ var requiredTools = []toolDef{
 		category:    CategoryFoundation,
 		description: "Command-line fuzzy finder",
 		purpose:     "Interactive fuzzy search for files, history, and more",
+		docURL:      "https://junegunn.github.io/fzf/",
 		versionCmd:  []string{"fzf", "--version"},
 		installMacOS: []string{
 			"git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf",
@@ -315,6 +384,7 @@ var requiredTools = []toolDef{
 		category:    CategoryCoding,
 		description: "Cursor Agent CLI for AI-powered coding",
 		purpose:     "Run cursor agent for code generation and editing from the terminal",
+		docURL:      "https://docs.cursor.com/cli",
 		versionCmd:  []string{"agent", "--version"},
 		installMacOS: []string{
 			"curl https://cursor.com/install -fsSL | bash",
@@ -336,6 +406,7 @@ var requiredTools = []toolDef{
 		category:    CategoryCoding,
 		description: "OpenAI Codex CLI for AI-powered coding",
 		purpose:     "Run OpenAI Codex agent for code generation and editing",
+		docURL:      "https://github.com/openai/codex",
 		versionCmd:  []string{"codex", "--version"},
 		installMacOS: []string{
 			"npm install -g @openai/codex",
@@ -357,6 +428,7 @@ var requiredTools = []toolDef{
 		category:    CategoryCoding,
 		description: "OpenClaw CLI for AI agent orchestration",
 		purpose:     "Run OpenClaw agent and gateway workflows from the terminal",
+		docURL:      "https://github.com/openclaw/openclaw",
 		versionCmd:  []string{"openclaw", "--version"},
 		installMacOS: []string{
 			"npm install -g openclaw@latest",
@@ -378,6 +450,7 @@ var requiredTools = []toolDef{
 		category:    CategoryCoding,
 		description: "GitHub Copilot CLI - AI-powered code assistant",
 		purpose:     "AI coding agent powered by GitHub Copilot for code generation and editing",
+		docURL:      "https://docs.github.com/en/copilot",
 		versionCmd:  []string{"github-copilot", "--version"},
 		installMacOS: []string{
 			"npm install -g @github/copilot-cli",
@@ -399,6 +472,7 @@ var requiredTools = []toolDef{
 		category:    CategoryCoding,
 		description: "Claude Code CLI by Anthropic",
 		purpose:     "Run Claude Code agent for code generation and editing",
+		docURL:      "https://docs.anthropic.com/en/docs/claude-code",
 		versionCmd:  []string{"claude", "--version"},
 		installMacOS: []string{
 			"npm install -g @anthropic-ai/claude-code",
@@ -420,6 +494,7 @@ var requiredTools = []toolDef{
 		category:    CategoryCoding,
 		description: "Cline CLI - Autonomous coding agent",
 		purpose:     "Run Cline autonomous coding agent for code generation and editing",
+		docURL:      "https://github.com/cline/cline",
 		versionCmd:  []string{"cline", "version"},
 		installMacOS: []string{
 			"npm install -g cline",
@@ -434,6 +509,7 @@ var requiredTools = []toolDef{
 		category:    CategoryCoding,
 		description: "Task tracking and planning CLI tool",
 		purpose:     "Track tasks and plan next steps",
+		docURL:      "https://github.com/xhd2015/whats_next",
 		versionCmd:  []string{"whats_next", "version"},
 		installMacOS: []string{
 			"go install github.com/xhd2015/whats_next@latest",
@@ -448,6 +524,7 @@ var requiredTools = []toolDef{
 		category:    CategoryCoding,
 		description: "Developer toolchain manager",
 		purpose:     "Manage development toolchains and environments",
+		docURL:      "https://github.com/xhd2015/kool",
 		versionCmd:  []string{"kool", "version"},
 		installMacOS: []string{
 			"go install github.com/xhd2015/kool@latest",
@@ -462,6 +539,7 @@ var requiredTools = []toolDef{
 		category:    CategoryCoding,
 		description: "Kilo Code AI-powered coding assistant CLI",
 		purpose:     "AI coding agent for code generation and editing",
+		docURL:      "https://kilocode.ai",
 		versionCmd:  []string{"kilocode", "--version"},
 		installMacOS: []string{
 			"npm install -g @kilocode/cli",
@@ -476,6 +554,7 @@ var requiredTools = []toolDef{
 		category:    CategoryFoundation,
 		description: "List open files and network connections",
 		purpose:     "Detect local listening ports for port forwarding",
+		docURL:      "https://man7.org/linux/man-pages/man8/lsof.8.html",
 		versionCmd:  []string{"lsof", "-v"},
 		installMacOS: []string{
 			"brew install lsof",
@@ -491,6 +570,7 @@ var requiredTools = []toolDef{
 		category:    CategoryLanguage,
 		description: "Fast JavaScript all-in-one toolkit",
 		purpose:     "Run JavaScript/TypeScript with fast package management",
+		docURL:      "https://bun.sh/docs",
 		versionCmd:  []string{"bun", "--version"},
 		installMacOS: []string{
 			"curl -fsSL https://bun.sh/install | bash",
@@ -505,6 +585,7 @@ var requiredTools = []toolDef{
 		category:    CategoryTesting,
 		description: "Open-source web browser for web scraping and automation",
 		purpose:     "Headless browser for web scraping, PDF generation, and automated testing",
+		docURL:      "https://www.chromium.org/developers/",
 		versionCmd:  []string{"chromium", "--version"},
 		installMacOS: []string{
 			"brew install chromium",
@@ -520,6 +601,7 @@ var requiredTools = []toolDef{
 		category:    CategoryTesting,
 		description: "Node.js library for headless Chrome/Chromium control",
 		purpose:     "Programmatic browser automation, web scraping, and screenshot generation",
+		docURL:      "https://pptr.dev/",
 		versionCmd:  []string{"npx", "puppeteer", "--version"},
 		installMacOS: []string{
 			"npm install -g puppeteer",
@@ -534,6 +616,7 @@ var requiredTools = []toolDef{
 		category:    CategoryTesting,
 		description: "Node.js library for browser automation and testing",
 		purpose:     "Cross-browser automation, web testing, and scraping with multiple browser engines",
+		docURL:      "https://playwright.dev/docs/intro",
 		versionCmd:  []string{"npx", "playwright", "--version"},
 		installMacOS: []string{
 			"npm install -g playwright",
@@ -548,6 +631,7 @@ var requiredTools = []toolDef{
 		category:    CategoryTesting,
 		description: "Lightweight headless browser CLI for AI agents",
 		purpose:     "Browser automation with deterministic element references for AI coding agents",
+		docURL:      "https://github.com/vercel-labs/agent-browser",
 		versionCmd:  []string{"agent-browser", "--version"},
 		installMacOS: []string{
 			"npm install -g agent-browser",
@@ -569,6 +653,7 @@ var requiredTools = []toolDef{
 		category:    CategoryTesting,
 		description: "Chrome extension & CLI/MCP for AI agent browser control",
 		purpose:     "Run Playwright snippets in a persistent Chrome session via CLI or MCP for authenticated flows and dashboard testing",
+		docURL:      "https://github.com/nichochar/playwriter",
 		versionCmd:  []string{"playwriter", "--version"},
 		installMacOS: []string{
 			"npm install -g playwriter",
@@ -590,6 +675,7 @@ var requiredTools = []toolDef{
 		category:    CategoryFoundation,
 		description: "DNS lookup utility",
 		purpose:     "Query DNS records for diagnosing domain and network issues",
+		docURL:      "https://man7.org/linux/man-pages/man1/dig.1.html",
 		versionCmd:  []string{"dig", "+version"},
 		installMacOS: []string{
 			"brew install bind",
@@ -626,6 +712,7 @@ func buildToolInfo(tool toolDef) ToolInfo {
 		Category:       tool.category,
 		Description:    tool.description,
 		Purpose:        tool.purpose,
+		DocURL:         tool.docURL,
 		InstallMacOS:   joinInstallSteps(tool.installMacOS),
 		InstallLinux:   joinInstallSteps(tool.installLinux),
 		InstallWindows: tool.installWindows,
@@ -702,55 +789,51 @@ func GetInstallHint(name string) string {
 	return ""
 }
 
+// checkSingleTool resolves install status, path, and version for a single tool.
+func checkSingleTool(tool toolDef) ToolInfo {
+	info := buildToolInfo(tool)
+
+	lookupName := tool.name
+	if len(tool.versionCmd) > 0 {
+		lookupName = tool.versionCmd[0]
+	}
+	path, err := tool_resolve.LookPath(lookupName)
+	if err != nil {
+		info.AutoInstallCmd = getAutoInstallScript(getInstallStepsForOS(tool))
+		return info
+	}
+
+	info.Installed = true
+	info.Path = path
+
+	if len(tool.versionCmd) > 0 {
+		cmd := exec.Command(tool.versionCmd[0], tool.versionCmd[1:]...)
+		cmd.Env = tool_resolve.AppendExtraPaths(os.Environ())
+		out, err := cmd.Output()
+		if err == nil {
+			version := strings.TrimSpace(string(out))
+			if idx := strings.Index(version, "\n"); idx > 0 {
+				version = version[:idx]
+			}
+			const maxVersionLen = 60
+			if len(version) > maxVersionLen {
+				version = version[:maxVersionLen] + "..."
+			}
+			info.Version = version
+		}
+	}
+	return info
+}
+
 // CheckTools checks all required tools and returns their status.
 func CheckTools() *ToolsResponse {
 	resp := &ToolsResponse{
 		OS:    runtime.GOOS,
 		Tools: make([]ToolInfo, 0, len(requiredTools)),
 	}
-
 	for _, tool := range requiredTools {
-		info := buildToolInfo(tool)
-
-		// Check if tool is installed — use the version command's binary name
-		// when available, since the display name may differ (e.g. "cursor-agent" → "cursor")
-		lookupName := tool.name
-		if len(tool.versionCmd) > 0 {
-			lookupName = tool.versionCmd[0]
-		}
-		path, err := tool_resolve.LookPath(lookupName)
-		if err == nil {
-			info.Installed = true
-			info.Path = path
-
-			// Get version
-			if len(tool.versionCmd) > 0 {
-				cmd := exec.Command(tool.versionCmd[0], tool.versionCmd[1:]...)
-				// Use extended PATH to ensure tools installed in non-standard locations
-				// (like npm global packages or node binaries) can be found
-				cmd.Env = tool_resolve.AppendExtraPaths(os.Environ())
-				out, err := cmd.Output()
-				if err == nil {
-					version := strings.TrimSpace(string(out))
-					// Take first line only
-					if idx := strings.Index(version, "\n"); idx > 0 {
-						version = version[:idx]
-					}
-					// Limit length to avoid overflow in UI
-					const maxVersionLen = 60
-					if len(version) > maxVersionLen {
-						version = version[:maxVersionLen] + "..."
-					}
-					info.Version = version
-				}
-			}
-		} else {
-			// Not installed — expose auto-install command when safe.
-			info.AutoInstallCmd = getAutoInstallScript(getInstallStepsForOS(tool))
-		}
-		resp.Tools = append(resp.Tools, info)
+		resp.Tools = append(resp.Tools, checkSingleTool(tool))
 	}
-
 	return resp
 }
 
@@ -848,6 +931,58 @@ func getUpgradeScriptForOS(tool toolDef) string {
 	return getAutoInstallScript(steps)
 }
 
+func handleToolsStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Send initial list with checking=true so the UI can render skeletons
+	initTools := make([]ToolInfo, 0, len(requiredTools))
+	for _, tool := range requiredTools {
+		info := buildToolInfo(tool)
+		info.Checking = true
+		initTools = append(initTools, info)
+	}
+	sw.Send(map[string]interface{}{
+		"type":  "init",
+		"os":    runtime.GOOS,
+		"tools": initTools,
+	})
+
+	// Check tools concurrently with a semaphore (max 10)
+	const maxConcurrency = 10
+	sem := make(chan struct{}, maxConcurrency)
+	var mu sync.Mutex
+
+	var wg sync.WaitGroup
+	for _, tool := range requiredTools {
+		wg.Add(1)
+		go func(t toolDef) {
+			defer wg.Done()
+			sem <- struct{}{}
+			info := checkSingleTool(t)
+			<-sem
+
+			mu.Lock()
+			sw.Send(map[string]interface{}{
+				"type": "tool",
+				"tool": info,
+			})
+			mu.Unlock()
+		}(tool)
+	}
+	wg.Wait()
+
+	sw.SendDone(nil)
+}
+
 func handleTools(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -923,6 +1058,7 @@ func handleInstallTool(w http.ResponseWriter, r *http.Request) {
 // RegisterAPI registers the tools API endpoint.
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/tools", handleTools)
+	mux.HandleFunc("/api/tools/stream", handleToolsStream)
 	mux.HandleFunc("/api/tools/install", handleInstallTool)
 	mux.HandleFunc("/api/tools/upgrade", handleUpgradeTool)
 	RegisterPathInfoAPI(mux)
