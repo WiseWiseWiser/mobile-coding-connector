@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { checkServerFile, uploadFile } from '../../../api/fileupload';
 import type { ServerFileInfo } from '../../../api/fileupload';
-import { ServerFileBrowser } from './ServerFileBrowser';
+import { FileBrowser } from '../../../components/chooser/FileBrowser';
 import { TransferProgress } from './TransferProgress';
 import type { TransferProgressData } from './TransferProgress';
 import './UploadFileView.css';
@@ -169,9 +169,8 @@ export function UploadFileView() {
                 {/* Server File Browser (toggle) */}
                 {showBrowser && (
                     <div className="upload-section">
-                        <ServerFileBrowser
+                        <FileBrowser
                             selectMode="dir"
-                            hidePathInput
                             onDirectoryChange={handleBrowserDirChange}
                         />
                     </div>

@@ -25,6 +25,7 @@ import (
 	"github.com/xhd2015/kool/pkgs/web"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/actions"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
+	customagentapi "github.com/xhd2015/lifelog-private/ai-critic/server/api"
 	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/web/codexweb"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/web/cursorweb"
@@ -484,6 +485,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Agents API
 	agents.RegisterAPI(mux)
+
+	// Custom Agents API
+	customagentapi.RegisterCustomAgentsAPI(mux)
 
 	// Checkpoint API
 	checkpoint.RegisterAPI(mux)

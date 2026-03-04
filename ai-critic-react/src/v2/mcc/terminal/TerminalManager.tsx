@@ -4,7 +4,7 @@ import '@xterm/xterm/css/xterm.css';
 import { PureTerminalView, type PureTerminalViewHandle } from '../../../components/pure-terminal/PureTerminalView';
 import type { TerminalTheme } from '../../../hooks/usePureTerminal';
 import { useTerminalTabs } from '../../../hooks/useTerminalTabs';
-import { useV2Context } from '../../V2Context';
+import { useProjectDir } from '../../../hooks/project/useProjectDir';
 import './TerminalManager.css';
 
 // Mobile-friendly dark theme
@@ -276,7 +276,7 @@ export interface TerminalManagerHandle {
 }
 
 export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManagerProps>(function TerminalManager({ isVisible, loadSessions, defaultCwd }, ref) {
-    const { currentProject } = useV2Context();
+    const { projectDir: resolvedProjectDir } = useProjectDir();
     const [zenMode, setZenMode] = useState(false);
 
     // Use the unified terminal tabs hook
@@ -293,7 +293,7 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
         ensureLoaded,
     } = useTerminalTabs({
         loadSessions,
-        defaultCwd: defaultCwd || currentProject?.dir,
+        defaultCwd: defaultCwd || resolvedProjectDir,
     });
 
     // Trigger loading when component becomes visible

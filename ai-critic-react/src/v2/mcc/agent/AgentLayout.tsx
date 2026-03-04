@@ -9,6 +9,7 @@ import {
 } from '../../../api/agents';
 import type { AgentDef, AgentSessionInfo, ExternalOpencodeSession } from '../../../api/agents';
 import { useV2Context } from '../../V2Context';
+import { useProjectDir } from '../../../hooks/project/useProjectDir';
 import { AgentEmptyIcon } from '../../../pure-view/icons/AgentEmptyIcon';
 import { loadCursorAPIKey } from './cursorStorage';
 import './AgentView.css';
@@ -51,7 +52,8 @@ export function AgentLayout() {
         externalSessionsPage,
         refreshExternalSessions,
     } = useV2Context();
-    const projectDir = currentProject?.dir ?? null;
+    const { projectDir: resolvedDir } = useProjectDir();
+    const projectDir = resolvedDir || null;
     const projectName = currentProject?.name ?? null;
     const navigateToView = useTabNavigate(NavTabs.Agent);
 

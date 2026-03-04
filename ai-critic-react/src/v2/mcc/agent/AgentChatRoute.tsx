@@ -4,7 +4,7 @@ import type { AgentOutletContext } from './AgentLayout';
 import { AgentChat } from './AgentChat';
 import { AgentPicker } from './AgentPicker';
 import { fetchOpencodeServer } from '../../../api/agents';
-import { fetchCustomAgentSessions, type CustomAgentSession } from '../../../api/customAgents';
+import { fetchAgentSessions, type CustomAgentSession } from '../../../api/customAgents';
 import { CustomAgentSessionView } from './CustomAgentSessionView';
 
 export function AgentChatRoute() {
@@ -41,25 +41,20 @@ export function AgentChatRoute() {
         }
     }, [isExternalSession, externalServerPort]);
 
-    // Fetch custom agent sessions when needed
     useEffect(() => {
-        if (isCustomAgent && customSessions.length === 0) {
-            setLoadingCustom(true);
-            fetchCustomAgentSessions()
-                .then(sessions => {
-                    setCustomSessions(sessions);
-                    setLoadingCustom(false);
-                })
-                .catch(() => setLoadingCustom(false));
-        }
-    }, [isCustomAgent, customSessions.length]);
+        if (!isCustomAgent || !agentId) return;
+        setLoadingCustom(true);
+        fetchAgentSessions(agentId)
+            .then(sessions => {
+                setCustomSessions(sessions);
+                setLoadingCustom(false);
+            })
+            .catch(() => setLoadingCustom(false));
+    }, [isCustomAgent, agentId]);
 
-    // Find matching custom session for this agent
-    const customSession = customSessions.find(s => 
-        s.agent_id === agentId || 
-        s.id.includes(agentId) ||
-        agentId.includes(s.agent_id)
-    );
+    const customSession = sessionId
+        ? customSessions.find(s => s.id === sessionId)
+        : customSessions.find(s => s.agent_id === agentId);
 
     // If no session for this agent, fall back to agent picker
     // But for opencode with external sessions, we show the chat if server is ready

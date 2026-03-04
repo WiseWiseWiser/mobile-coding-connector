@@ -91,6 +91,28 @@ export function projectTabPath(fullProjectName: string | undefined, tab: string,
 }
 
 /**
+ * Build a navigation path for a tab (and optional sub-view) within a project.
+ *
+ * When `fullProjectName` is provided (may include worktree suffix like "proj~2"),
+ * the Home tab without a view maps to  /project/{name}/home  instead of the
+ * project root, matching the app's tab layout convention.
+ *
+ * When no project is active, Home maps to "/" and other tabs to "/{tab}".
+ */
+export function buildProjectNavPath(
+    fullProjectName: string | undefined,
+    tab: string,
+    view?: string,
+): string {
+    if (fullProjectName) {
+        if (tab === 'home' && !view) return projectTabPath(fullProjectName, 'home');
+        return projectTabPath(fullProjectName, tab, view);
+    }
+    if (tab === 'home' && !view) return '/';
+    return projectTabPath(undefined, tab, view);
+}
+
+/**
  * Tools page path:  /project/{name}/home/tools  or  /home/tools
  *
  * Optionally appends  ?tool={toolName}  to highlight a specific tool.

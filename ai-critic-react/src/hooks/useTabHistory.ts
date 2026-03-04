@@ -1,6 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useV2Context } from '../v2/V2Context';
 import { useCurrent } from './useCurrent';
+import { useWorktreeRoute } from './project/useWorktreeRoute';
 import type { NavTab } from '../v2/mcc/types';
 import { projectTabPath } from '../route/route';
 
@@ -25,17 +26,16 @@ interface UseTabHistoryOptions {
 export function useTabHistory(tab: NavTab, options?: UseTabHistoryOptions) {
     const navigate = useNavigate();
     const location = useLocation();
-    const { currentProject, tabHistories, pushTabHistory, popTabHistory } = useV2Context();
+    const { tabHistories, pushTabHistory, popTabHistory } = useV2Context();
+    const { fullProjectName } = useWorktreeRoute();
 
-    // Use refs to access latest values without adding dependencies
-    const currentProjectRef = useCurrent(currentProject);
     const locationRef = useCurrent(location);
     const tabHistoriesRef = useCurrent(tabHistories);
     const optionsRef = useCurrent(options);
+    const fullProjectNameRef = useCurrent(fullProjectName);
 
     const getTabBase = () => {
-        const proj = currentProjectRef.current;
-        return projectTabPath(proj?.name, tab);
+        return projectTabPath(fullProjectNameRef.current || undefined, tab);
     };
 
     // Get the default back path (either from options or tab base)

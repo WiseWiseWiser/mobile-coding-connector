@@ -16,6 +16,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/env"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
 
@@ -1233,14 +1234,6 @@ type sseLogger struct{ w *sse.Writer }
 func (l *sseLogger) Log(msg string)   { l.w.SendLog(msg) }
 func (l *sseLogger) Error(msg string) { l.w.SendError(msg) }
 
-// Worktree represents a git worktree
-type Worktree struct {
-	Path   string `json:"path"`
-	Branch string `json:"branch"`
-	IsMain bool   `json:"isMain"`
-	IsBare bool   `json:"isBare"`
-}
-
 // handleListWorktrees lists all worktrees for a repository
 func handleListWorktrees(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -1256,70 +1249,13 @@ func handleListWorktrees(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	worktrees, err := getWorktrees(req.Dir)
+	worktrees, err := projects.GetWorktreesForProject(req.Dir)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
 	writeJSON(w, http.StatusOK, worktrees)
-}
-
-// getWorktrees returns all worktrees for a git repository
-func getWorktrees(dir string) ([]Worktree, error) {
-	cmd := exec.Command("git", "worktree", "list", "--porcelain")
-	if dir != "" {
-		cmd.Dir = dir
-	}
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list worktrees: %w", err)
-	}
-
-	return parseWorktrees(string(output)), nil
-}
-
-// parseWorktrees parses the porcelain output from git worktree list
-func parseWorktrees(output string) []Worktree {
-	var worktrees []Worktree
-	var current Worktree
-
-	for _, line := range strings.Split(output, "\n") {
-		if line == "" {
-			// Empty line indicates end of a worktree entry
-			if current.Path != "" {
-				worktrees = append(worktrees, current)
-				current = Worktree{}
-			}
-			continue
-		}
-
-		if strings.HasPrefix(line, "worktree ") {
-			current.Path = strings.TrimPrefix(line, "worktree ")
-		} else if strings.HasPrefix(line, "HEAD ") {
-			// HEAD line, could extract commit if needed
-		} else if strings.HasPrefix(line, "branch ") {
-			branchRef := strings.TrimPrefix(line, "branch ")
-			// Extract branch name from refs/heads/branch-name
-			current.Branch = strings.TrimPrefix(branchRef, "refs/heads/")
-		} else if line == "bare" {
-			current.IsBare = true
-		} else if line == "detached" {
-			// Detached HEAD state
-		}
-	}
-
-	// Don't forget the last worktree
-	if current.Path != "" {
-		worktrees = append(worktrees, current)
-	}
-
-	// Mark the first worktree (main) as IsMain
-	if len(worktrees) > 0 {
-		worktrees[0].IsMain = true
-	}
-
-	return worktrees
 }
 
 // handleCreateWorktree creates a new worktree
@@ -1330,9 +1266,10 @@ func handleCreateWorktree(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Branch string `json:"branch"`
-		Path   string `json:"path"`
-		Dir    string `json:"dir"`
+		Branch    string `json:"branch"`
+		NewBranch string `json:"newBranch"`
+		Path      string `json:"path"`
+		Dir       string `json:"dir"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
@@ -1344,7 +1281,27 @@ func handleCreateWorktree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := exec.Command("git", "worktree", "add", req.Path, req.Branch)
+	args := []string{"worktree", "add"}
+	if req.NewBranch != "" {
+		// Resolve the from-branch to a commit SHA to avoid
+		// "already checked out" errors when the source branch
+		// is currently checked out in another worktree.
+		revParseCmd := exec.Command("git", "rev-parse", req.Branch)
+		if req.Dir != "" {
+			revParseCmd.Dir = req.Dir
+		}
+		commitSHA, revErr := revParseCmd.Output()
+		if revErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("Failed to resolve branch %q: %v", req.Branch, revErr),
+			})
+			return
+		}
+		args = append(args, "-b", req.NewBranch, req.Path, strings.TrimSpace(string(commitSHA)))
+	} else {
+		args = append(args, req.Path, req.Branch)
+	}
+	cmd := exec.Command("git", args...)
 	if req.Dir != "" {
 		cmd.Dir = req.Dir
 	}

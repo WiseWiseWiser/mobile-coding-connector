@@ -1,8 +1,6 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePortForwards } from '../hooks/usePortForwards';
-import type { UsePortForwardsReturn } from '../hooks/usePortForwards';
 import { useLocalPorts } from '../hooks/useLocalPorts';
-import type { UseLocalPortsReturn } from '../hooks/useLocalPorts';
 import { fetchProjects as apiFetchProjects } from '../api/projects';
 import type { ProjectInfo } from '../api/projects';
 import { fetchDiagnostics as apiFetchDiagnostics } from '../api/ports';
@@ -11,47 +9,9 @@ import { fetchAgents, fetchExternalSessions } from '../api/agents';
 import type { AgentDef, AgentSessionInfo, ExternalOpencodeSession } from '../api/agents';
 import type { NavTab } from './mcc/types';
 import type { ServerConfig } from '../api/config';
-
-interface V2ContextValue {
-    projectsList: ProjectInfo[];
-    rootProjects: ProjectInfo[];
-    getSubProjectsCount: (projectId: string) => number;
-    projectsLoading: boolean;
-    fetchProjects: () => void;
-    currentProject: ProjectInfo | null;
-    setCurrentProject: (project: ProjectInfo | null) => void;
-    portForwards: UsePortForwardsReturn;
-    localPorts: UseLocalPortsReturn;
-    diagnostics: DiagnosticsData | null;
-    diagnosticsLoading: boolean;
-    refreshDiagnostics: () => void;
-    agents: AgentDef[];
-    agentsLoading: boolean;
-    refreshAgents: () => void;
-    agentSessions: Record<string, AgentSessionInfo>;
-    setAgentSession: (agentId: string, session: AgentSessionInfo | null) => void;
-    agentLaunchError: string;
-    setAgentLaunchError: (error: string) => void;
-    externalSessions: ExternalOpencodeSession[];
-    externalSessionsLoading: boolean;
-    externalSessionsTotal: number;
-    externalSessionsPage: number;
-    refreshExternalSessions: (page?: number) => void;
-    tabHistories: Record<NavTab, string[]>;
-    pushTabHistory: (tab: NavTab, path: string) => void;
-    popTabHistory: (tab: NavTab) => string | undefined;
-    clearTabHistory: (tab: NavTab) => void;
-    serverConfig: ServerConfig | null;
-    serverConfigLoading: boolean;
-}
-
-const V2Ctx = createContext<V2ContextValue | null>(null);
-
-export function useV2Context(): V2ContextValue {
-    const ctx = useContext(V2Ctx);
-    if (!ctx) throw new Error('useV2Context must be used within V2Provider');
-    return ctx;
-}
+import { V2Ctx } from '../hooks/project/useV2Context';
+export { useV2Context } from '../hooks/project/useV2Context';
+export type { V2ContextValue } from '../hooks/project/useV2Context';
 
 export function V2Provider({ children }: { children: React.ReactNode }) {
     const [projectsList, setProjectsList] = useState<ProjectInfo[]>([]);

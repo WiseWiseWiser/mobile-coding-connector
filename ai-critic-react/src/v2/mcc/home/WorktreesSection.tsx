@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import type { ProjectInfo, WorktreeConfig } from '../../../api/projects';
-import { updateProject } from '../../../api/projects';
+import type { ProjectInfo } from '../../../api/projects';
 import { 
     listWorktrees, 
     createWorktree, 
@@ -11,7 +10,7 @@ import {
     type Worktree,
     type GitBranch 
 } from '../../../api/review';
-import { ServerFileBrowser, SelectModes } from './ServerFileBrowser';
+import { FileBrowser, SelectModes } from '../../../components/chooser/FileBrowser';
 import { CustomSelect } from './CustomSelect';
 import { PlusIcon } from '../../../pure-view/icons/PlusIcon';
 import { TrashIcon } from '../../../pure-view/icons/TrashIcon';
@@ -24,20 +23,8 @@ interface WorktreesSectionProps {
     project: ProjectInfo;
 }
 
-function getWorktreeId(worktree: Worktree, project: ProjectInfo): number {
-    // Main worktree always has ID 0
-    if (worktree.isMain) return 0;
-    
-    // Look up ID from project worktree config
-    const worktreeConfig = project.worktrees || {};
-    for (const [id, config] of Object.entries(worktreeConfig)) {
-        if (config.path === worktree.path) {
-            return parseInt(id, 10);
-        }
-    }
-    
-    // Fallback: return 0 if no ID found (shouldn't happen after initial load)
-    return 0;
+function getWorktreeId(worktree: Worktree): number {
+    return worktree.worktreeId;
 }
 
 export function WorktreesSection({ project }: WorktreesSectionProps) {
@@ -65,6 +52,7 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
     // Add worktree form state
     const [showAddForm, setShowAddForm] = useState(false);
     const [selectedBranch, setSelectedBranch] = useState('');
+    const [newBranch, setNewBranch] = useState('');
     const [worktreePath, setWorktreePath] = useState('');
     const [showFileBrowser, setShowFileBrowser] = useState(false);
     const [creating, setCreating] = useState(false);
@@ -75,52 +63,6 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
     const [showMoveFileBrowser, setShowMoveFileBrowser] = useState(false);
     const [moving, setMoving] = useState(false);
 
-    // Auto-assign IDs to worktrees that don't have config entries
-    const autoAssignWorktreeIds = useCallback(async (wtList: Worktree[]) => {
-        const worktreeConfig: WorktreeConfig = project.worktrees || {};
-        let needsUpdate = false;
-        const newConfig = { ...worktreeConfig };
-        
-        // Find all existing IDs
-        const existingIds = new Set([0]); // 0 is reserved for main worktree
-        for (const id of Object.keys(worktreeConfig)) {
-            existingIds.add(parseInt(id, 10));
-        }
-        
-        // Find worktrees without IDs
-        for (const wt of wtList) {
-            if (wt.isMain) continue; // Main worktree doesn't need an ID
-            
-            // Check if this worktree already has an ID
-            let hasId = false;
-            for (const [, config] of Object.entries(worktreeConfig)) {
-                if (config.path === wt.path) {
-                    hasId = true;
-                    break;
-                }
-            }
-            
-            if (!hasId) {
-                // Assign new ID
-                let newId = 1;
-                while (existingIds.has(newId)) {
-                    newId++;
-                }
-                existingIds.add(newId);
-                newConfig[newId] = { path: wt.path, branch: wt.branch };
-                needsUpdate = true;
-            }
-        }
-        
-        if (needsUpdate) {
-            try {
-                await updateProject(project.id, { worktrees: newConfig });
-            } catch (err) {
-                console.error('Failed to auto-assign worktree IDs:', err);
-            }
-        }
-    }, [project.id, project.worktrees]);
-
     const loadWorktrees = useCallback(async () => {
         if (!project.dir || !project.dir_exists) return;
         setLoading(true);
@@ -130,9 +72,6 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
                 listWorktrees(project.dir),
                 getGitBranches(project.dir),
             ]);
-            
-            // Auto-assign IDs to worktrees without config
-            await autoAssignWorktreeIds(wtList);
             
             setWorktrees(wtList);
             setBranches(branchList);
@@ -146,7 +85,7 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
         } finally {
             setLoading(false);
         }
-    }, [project.dir, project.dir_exists, selectedBranch, autoAssignWorktreeIds]);
+    }, [project.dir, project.dir_exists, selectedBranch]);
 
     useEffect(() => {
         loadWorktrees();
@@ -160,9 +99,10 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
         setCreating(true);
         setError('');
         try {
-            await createWorktree(selectedBranch, worktreePath, project.dir);
+            await createWorktree(selectedBranch, worktreePath, project.dir, newBranch || undefined);
             setShowAddForm(false);
             setWorktreePath('');
+            setNewBranch('');
             loadWorktrees();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create worktree');
@@ -228,7 +168,7 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
                 </button>
             </div>
 
-            {error && (
+            {error && !showAddForm && (
                 <div style={{ marginBottom: 12, padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, color: '#fca5a5', fontSize: '13px' }}>
                     {error}
                 </div>
@@ -239,7 +179,7 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
             ) : worktrees.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
                     {worktrees.map(wt => {
-                        const worktreeId = getWorktreeId(wt, project);
+                        const worktreeId = getWorktreeId(wt);
                         const isSelected = worktreeId === currentWorktreeId;
                         return (
                         <div key={wt.path} style={{
@@ -274,13 +214,13 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                 <button
                                     onClick={() => {
-                                        const wtId = getWorktreeId(wt, project);
+                                        const wtId = getWorktreeId(wt);
                                         const fullName = buildWorktreeProjectName(project.name, wtId);
                                         const currentPath = location.pathname;
                                         const projectPrefixMatch = currentPath.match(/\/project\/[^/]+/);
                                         const routePath = projectPrefixMatch
-                                            ? (currentPath.substring(projectPrefixMatch[0].length) || '/home')
-                                            : '/home';
+                                            ? (currentPath.substring(projectPrefixMatch[0].length) || '')
+                                            : '';
                                         navigate(`${projectPath(fullName)}${routePath}`);
                                     }}
                                     style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, fontSize: '11px', cursor: 'pointer' }}
@@ -331,13 +271,26 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
                     
                     <div style={{ marginBottom: 12 }}>
                         <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
-                            Branch *
+                            From Branch *
                         </label>
                         <CustomSelect
                             value={selectedBranch}
                             onChange={setSelectedBranch}
                             placeholder="-- Select a branch --"
                             options={branchOptions}
+                        />
+                    </div>
+
+                    <div style={{ marginBottom: 12 }}>
+                        <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+                            New Branch (Optional)
+                        </label>
+                        <input
+                            type="text"
+                            value={newBranch}
+                            onChange={e => setNewBranch(e.target.value)}
+                            placeholder="e.g. feature/my-branch"
+                            style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, color: '#e2e8f0', fontSize: '13px', boxSizing: 'border-box' }}
                         />
                     </div>
                     
@@ -372,7 +325,7 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
                             maxHeight: '300px',
                             overflow: 'auto',
                         }}>
-                            <ServerFileBrowser
+                            <FileBrowser
                                 selectMode={SelectModes.Dir}
                                 onSelect={(path) => {
                                     if (path) {
@@ -388,6 +341,12 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
                         </div>
                     )}
                     
+                    {error && (
+                        <div style={{ marginBottom: 12, padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, color: '#fca5a5', fontSize: '13px' }}>
+                            {error}
+                        </div>
+                    )}
+
                     <div style={{ display: 'flex', gap: 8 }}>
                         <button
                             onClick={handleCreateWorktree}
@@ -402,6 +361,7 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
                                 setShowFileBrowser(false);
                                 setWorktreePath('');
                                 setSelectedBranch('');
+                                setNewBranch('');
                                 setError('');
                             }}
                             style={{ padding: '8px 12px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, fontSize: '13px', cursor: 'pointer' }}
@@ -479,7 +439,7 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
                                 maxHeight: '250px',
                                 overflow: 'auto',
                             }}>
-                                <ServerFileBrowser
+                                <FileBrowser
                                     selectMode={SelectModes.Dir}
                                     onSelect={(path) => {
                                         if (path) {

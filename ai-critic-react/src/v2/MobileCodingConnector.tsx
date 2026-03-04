@@ -3,6 +3,7 @@ import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useCurrent } from '../hooks/useCurrent';
 import type { ProjectInfo } from '../api/projects';
 import { useV2Context } from './V2Context';
+import { useProjectDir } from '../hooks/project/useProjectDir';
 import { NavTabs } from './mcc/types';
 import type { NavTab } from './mcc/types';
 import { MenuIcon } from '../pure-view/icons/MenuIcon';
@@ -22,11 +23,11 @@ import { ProjectDropdown } from './mcc/ProjectDropdown';
 import { TerminalManager } from './mcc/terminal/TerminalManager';
 import type { TerminalManagerHandle } from './mcc/terminal/TerminalManager';
 import { fetchTerminalSessions } from '../api/terminal';
-import { WorktreeProvider, useWorktreeContext } from './context/WorktreeContext';
-import { useWorktreeRoute } from './hooks/useWorktreeRoute';
-import { useWorktreeManager } from './hooks/useWorktreeManager';
+import { WorktreeProvider, useWorktreeContext } from '../hooks/project/WorktreeContext';
+import { useWorktreeRoute } from '../hooks/project/useWorktreeRoute';
+import { listWorktrees } from '../api/review';
 import { WorktreeSelector } from './components/WorktreeSelector';
-import { projectPath, projectTabPath, buildWorktreeProjectName } from '../route/route';
+import { projectPath, buildWorktreeProjectName, buildProjectNavPath } from '../route/route';
 import './MobileCodingConnector.css';
 
 // Inner component that uses worktree context
@@ -59,21 +60,17 @@ function MobileCodingConnectorInner() {
         currentProject, setCurrentProject,
         serverConfig,
     } = useV2Context();
+    const { projectDir: resolvedProjectDir } = useProjectDir();
 
-    // Worktree context
     const {
         currentWorktree,
         worktrees,
+        setWorktrees,
         setCurrentWorktree,
         getWorktreeById,
     } = useWorktreeContext();
 
-    // Worktree manager
-    const {
-        loadWorktrees,
-        loading: worktreesLoading,
-    } = useWorktreeManager();
-
+    const [worktreesLoading, setWorktreesLoading] = useState(false);
     const terminalManagerRef = useRef<TerminalManagerHandle>(null);
 
     // Restore project from URL on mount
@@ -88,23 +85,24 @@ function MobileCodingConnectorInner() {
 
     // Load worktrees when project changes
     useEffect(() => {
-        if (currentProject) {
-            loadWorktrees(currentProject).then(() => {
-                // Set current worktree based on URL worktreeId
-                if (worktreeId !== undefined) {
-                    const targetWorktree = worktrees.find(w => w.id === worktreeId);
-                    if (targetWorktree) {
-                        setCurrentWorktree(targetWorktree);
-                    }
-                } else {
-                    // Default to root worktree (id=0)
-                    const rootWorktree = worktrees.find(w => w.id === 0);
-                    if (rootWorktree) {
-                        setCurrentWorktree(rootWorktree);
-                    }
-                }
-            });
-        }
+        if (!currentProject) return;
+        setWorktreesLoading(true);
+        listWorktrees(currentProject.dir).then((gitWorktrees) => {
+            const mapped = gitWorktrees.map(wt => ({
+                id: wt.worktreeId,
+                path: wt.path,
+                branch: wt.branch,
+                isMain: wt.isMain,
+            }));
+            setWorktrees(mapped);
+
+            const target = worktreeId !== undefined
+                ? mapped.find(w => w.id === worktreeId)
+                : mapped.find(w => w.id === 0);
+            if (target) {
+                setCurrentWorktree(target);
+            }
+        }).finally(() => setWorktreesLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentProject?.id]);
 
@@ -141,25 +139,14 @@ function MobileCodingConnectorInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location.state, activeTab]);
 
-    // Helper: build a path for navigation
     const currentProjectRef = useCurrent(currentProject);
     const currentWorktreeRef = useCurrent(currentWorktree);
     const buildPath = (tab: NavTab, view?: string): string => {
         const proj = currentProjectRef.current;
         const wt = currentWorktreeRef.current;
-        const routeProject = fullProjectName;
-        if (proj || routeProject) {
-            let fullName: string;
-            if (proj) {
-                fullName = buildWorktreeProjectName(proj.name, wt?.id ?? 0);
-            } else {
-                fullName = routeProject as string;
-            }
-            if (tab === NavTabs.Home && !view) return projectTabPath(fullName, 'home');
-            return projectTabPath(fullName, tab, view);
-        }
-        if (tab === NavTabs.Home && !view) return '/';
-        return projectTabPath(undefined, tab, view);
+        const fullName = fullProjectName
+            || (proj ? buildWorktreeProjectName(proj.name, wt?.id ?? 0) : undefined);
+        return buildProjectNavPath(fullName, tab, view);
     };
 
     // Preserve route history per tab
@@ -187,13 +174,8 @@ function MobileCodingConnectorInner() {
         const savedRoute = tabViewHistoryRef.current[activeTab];
         const savedView = savedRoute?.view || '';
         const savedSearch = savedRoute?.search || '';
-        if (activeTab === NavTabs.Home && !savedView) {
-            navigate(projectTabPath(project.name, 'home'));
-        } else if (savedView) {
-            navigate(`${projectTabPath(project.name, activeTab, savedView)}${savedSearch}`);
-        } else {
-            navigate(projectTabPath(project.name, activeTab));
-        }
+        const path = buildProjectNavPath(project.name, activeTab, savedView || undefined);
+        navigate(`${path}${savedSearch}`);
     };
 
     const handleTabChange = (tab: NavTab) => {
@@ -220,7 +202,7 @@ function MobileCodingConnectorInner() {
     const outletContext = {
         onSelectProject: handleSelectProject,
         projectName: currentProject?.name || null,
-        projectDir: currentWorktree?.path || currentProject?.dir || null,
+        projectDir: resolvedProjectDir || null,
         worktreeId: currentWorktree?.id || null,
         worktreeBranch: currentWorktree?.branch || null,
         isWorktree: !!currentWorktree && !currentWorktree.isMain,
@@ -238,6 +220,7 @@ function MobileCodingConnectorInner() {
                         projects={projectsList}
                         currentProject={currentProject}
                         onProjectSelect={handleSelectProject}
+                        worktreeBranch={currentWorktree && !currentWorktree.isMain ? currentWorktree.branch : null}
                     />
                     {worktrees.length > 1 && (
                         <WorktreeSelector
@@ -248,7 +231,10 @@ function MobileCodingConnectorInner() {
                         />
                     )}
                 </div>
-                <button className="mcc-profile-btn" onClick={() => currentProject && navigate(projectPath(currentProject.name))}>
+                <button className="mcc-profile-btn" onClick={() => {
+                    const name = fullProjectName || currentProject?.name;
+                    if (name) navigate(projectPath(name));
+                }}>
                     <ProjectDetailIcon />
                 </button>
             </div>
@@ -308,7 +294,7 @@ function MobileCodingConnectorInner() {
                             ref={terminalManagerRef} 
                             isVisible={activeTab === NavTabs.Terminal}
                             loadSessions={fetchTerminalSessions}
-                            defaultCwd={currentWorktree?.path || currentProject?.dir}
+                            defaultCwd={resolvedProjectDir}
                         />
                     </div>
                     {/* Other tab content */}

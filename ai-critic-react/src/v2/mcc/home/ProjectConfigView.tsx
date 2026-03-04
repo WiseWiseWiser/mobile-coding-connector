@@ -21,16 +21,16 @@ import { ProjectTodos } from './ProjectTodos';
 import { WorktreesSection } from './WorktreesSection';
 import { ProjectReadmeEditor } from './ProjectReadmeEditor';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
-import { projectPath } from '../../../route/route';
+import { parseWorktreeProjectName, projectPath } from '../../../route/route';
 import './ProjectConfigView.css';
 
 export function ProjectConfigView() {
-    const { projectName } = useParams<{ projectName: string }>();
+    const { projectName: rawProjectName } = useParams<{ projectName: string }>();
     const navigate = useNavigate();
     const { projectsList, fetchProjects } = useV2Context();
-    // When going back from project config, always go to /home (project list)
-    const { goBack } = useTabHistory(NavTabs.Home, { defaultBackPath: '/home' });
+    const { goBack } = useTabHistory(NavTabs.Home);
 
+    const { projectName } = parseWorktreeProjectName(rawProjectName || '');
     const project = projectsList.find(p => p.name === projectName);
     const sshValidation = useSSHKeyValidation(project);
     const [sshKeys, setSshKeys] = useState<SSHKey[]>([]);

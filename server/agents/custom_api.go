@@ -1,356 +1,45 @@
 package agents
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
-	"slices"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/custom"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
-func RegisterCustomAgentsAPI(mux *http.ServeMux) {
-	mux.HandleFunc("/api/custom-agents", handleCustomAgents)
-	mux.HandleFunc("/api/custom-agents/", handleCustomAgent)
-	mux.HandleFunc("/api/custom-agents/sessions", handleCustomAgentSessions)
+type LaunchCustomAgentResult struct {
+	SessionID string
+	Port      int
+	URL       string
 }
 
-type CreateCustomAgentRequest struct {
-	ID           string            `json:"id"`
-	Name         string            `json:"name"`
-	Description  string            `json:"description"`
-	Mode         string            `json:"mode"`
-	Model        string            `json:"model,omitempty"`
-	Tools        map[string]bool   `json:"tools"`
-	Permissions  map[string]string `json:"permissions,omitempty"`
-	Template     string            `json:"template,omitempty"`
-	SystemPrompt string            `json:"systemPrompt,omitempty"`
-}
-
-type UpdateCustomAgentRequest struct {
-	Name         string            `json:"name"`
-	Description  string            `json:"description"`
-	Mode         string            `json:"mode"`
-	Model        string            `json:"model,omitempty"`
-	Tools        map[string]bool   `json:"tools"`
-	Permissions  map[string]string `json:"permissions,omitempty"`
-	SystemPrompt string            `json:"systemPrompt,omitempty"`
-}
-
-type LaunchCustomAgentRequest struct {
-	ProjectDir string `json:"projectDir"`
-}
-
-func handleCustomAgents(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		handleListCustomAgents(w, r)
-	case http.MethodPost:
-		handleCreateCustomAgent(w, r)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-func handleCustomAgent(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Path
-	if !strings.HasPrefix(path, "/api/custom-agents/") {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
-
-	path = strings.TrimPrefix(path, "/api/custom-agents/")
-	path, err := url.PathUnescape(path)
-	if err != nil {
-		http.Error(w, "Invalid agent ID", http.StatusBadRequest)
-		return
-	}
-
-	var agentID string
-	var isLaunch bool
-	if strings.HasSuffix(path, "/launch") {
-		agentID = strings.TrimSuffix(path, "/launch")
-		isLaunch = true
-	} else {
-		agentID = path
-	}
-
-	if agentID == "" {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		if isLaunch {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		handleGetCustomAgent(w, r, agentID)
-	case http.MethodPut:
-		if isLaunch {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		handleUpdateCustomAgent(w, r, agentID)
-	case http.MethodDelete:
-		if isLaunch {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		handleDeleteCustomAgent(w, r, agentID)
-	case http.MethodPost:
-		if !isLaunch {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		handleLaunchCustomAgent(w, r, agentID)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-func handleListCustomAgents(w http.ResponseWriter, r *http.Request) {
-	agents, err := custom.ListAgents()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agents)
-}
-
-func handleGetCustomAgent(w http.ResponseWriter, r *http.Request, agentID string) {
+func LaunchCustomAgent(agentID string, projectDir string) (*LaunchCustomAgentResult, error) {
 	agent, err := custom.LoadAgent(agentID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 	if agent == nil {
-		http.Error(w, "Agent not found", http.StatusNotFound)
-		return
+		return nil, fmt.Errorf("agent not found: %s", agentID)
 	}
 
-	systemPrompt, _ := custom.GetSystemPrompt(agentID)
-	type Response struct {
-		custom.CustomAgent
-		SystemPrompt string `json:"systemPrompt,omitempty"`
-	}
-
-	resp := Response{
-		CustomAgent:  *agent,
-		SystemPrompt: systemPrompt,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-func handleCreateCustomAgent(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	var req CreateCustomAgentRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	agentID := req.ID
-	if agentID == "" && req.Name != "" {
-		agentID = toKebabCase(req.Name)
-	}
-	if agentID == "" {
-		agentID = fmt.Sprintf("agent-%d", os.Getpid())
-	}
-
-	existing, _ := custom.LoadAgent(agentID)
-	if existing != nil {
-		http.Error(w, "Agent already exists", http.StatusConflict)
-		return
-	}
-
-	cfg := &custom.AgentConfig{
-		Name:        req.Name,
-		Description: req.Description,
-		Mode:        req.Mode,
-		Model:       req.Model,
-		Tools:       req.Tools,
-		Permissions: req.Permissions,
-	}
-
-	if cfg.Mode == "" {
-		cfg.Mode = "primary"
-	}
-
-	if req.Template != "" {
-		template := custom.GetTemplate(req.Template)
-		if template != nil {
-			if cfg.Name == "" {
-				cfg.Name = template.Name
-			}
-			if cfg.Description == "" {
-				cfg.Description = template.Description
-			}
-			if cfg.Mode == "" {
-				cfg.Mode = template.Mode
-			}
-			if len(cfg.Tools) == 0 {
-				cfg.Tools = template.Tools
-			}
-			if len(cfg.Permissions) == 0 {
-				cfg.Permissions = template.Permissions
-			}
-		}
-	}
-
-	if err := custom.SaveAgent(agentID, cfg); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if req.Template != "" {
-		template := custom.GetTemplate(req.Template)
-		if template != nil && template.SystemPrompt != "" {
-			custom.SaveSystemPrompt(agentID, template.SystemPrompt)
-		}
-	} else if req.SystemPrompt != "" {
-		custom.SaveSystemPrompt(agentID, req.SystemPrompt)
-	}
-
-	agent, _ := custom.LoadAgent(agentID)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agent)
-}
-
-func handleUpdateCustomAgent(w http.ResponseWriter, r *http.Request, agentID string) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	var req UpdateCustomAgentRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	existing, err := custom.LoadAgent(agentID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if existing == nil {
-		http.Error(w, "Agent not found", http.StatusNotFound)
-		return
-	}
-
-	cfg := &custom.AgentConfig{
-		Name:        req.Name,
-		Description: req.Description,
-		Mode:        req.Mode,
-		Model:       req.Model,
-		Tools:       req.Tools,
-		Permissions: req.Permissions,
-	}
-
-	if cfg.Mode == "" {
-		cfg.Mode = "primary"
-	}
-
-	if err := custom.SaveAgent(agentID, cfg); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if req.SystemPrompt != "" {
-		custom.SaveSystemPrompt(agentID, req.SystemPrompt)
-	}
-
-	agent, _ := custom.LoadAgent(agentID)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agent)
-}
-
-func handleDeleteCustomAgent(w http.ResponseWriter, r *http.Request, agentID string) {
-	existing, err := custom.LoadAgent(agentID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if existing == nil {
-		http.Error(w, "Agent not found", http.StatusNotFound)
-		return
-	}
-
-	if err := custom.DeleteAgent(agentID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-type LaunchCustomAgentResponse struct {
-	SessionID string `json:"sessionId"`
-	Port      int    `json:"port"`
-	URL       string `json:"url"`
-}
-
-func handleLaunchCustomAgent(w http.ResponseWriter, r *http.Request, agentID string) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	var req LaunchCustomAgentRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	agent, err := custom.LoadAgent(agentID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if agent == nil {
-		http.Error(w, "Agent not found", http.StatusNotFound)
-		return
-	}
-
-	projectDir := req.ProjectDir
 	if info, err := os.Stat(projectDir); err != nil || !info.IsDir() {
-		http.Error(w, "Invalid project directory: "+projectDir, http.StatusBadRequest)
-		return
+		return nil, fmt.Errorf("invalid project directory: %s", projectDir)
 	}
 
-	err = custom.GenerateOpencodeConfig(agentID)
-	if err != nil {
-		http.Error(w, "Failed to generate config: "+err.Error(), http.StatusInternalServerError)
-		return
+	if err := custom.GenerateOpencodeConfig(agentID); err != nil {
+		return nil, fmt.Errorf("failed to generate config: %w", err)
 	}
 
 	configDir := custom.GetOpencodeConfigDir(agentID)
 
 	port, err := findFreePort()
 	if err != nil {
-		http.Error(w, "Failed to find free port", http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("failed to find free port: %w", err)
 	}
 
 	cmd, err := tool_exec.New("opencode", []string{"serve", "--port", fmt.Sprintf("%d", port)}, &tool_exec.Options{
@@ -360,8 +49,7 @@ func handleLaunchCustomAgent(w http.ResponseWriter, r *http.Request, agentID str
 		},
 	})
 	if err != nil {
-		http.Error(w, "Failed to create command: "+err.Error(), http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("failed to create command: %w", err)
 	}
 
 	cmd.Cmd.Env = append(cmd.Cmd.Env, "TERM=xterm-256color")
@@ -370,35 +58,70 @@ func handleLaunchCustomAgent(w http.ResponseWriter, r *http.Request, agentID str
 	cmd.Cmd.Stderr = os.Stderr
 
 	if err := cmd.Cmd.Start(); err != nil {
-		http.Error(w, "Failed to start agent: "+err.Error(), http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("failed to start agent: %w", err)
 	}
 
-	sessionID := fmt.Sprintf("custom-agent-%s-%d", agentID, os.Getpid())
+	now := time.Now()
+	sessionID := fmt.Sprintf("%s-%d", agentID, now.UnixMilli())
 
 	sessionMgr.mu.Lock()
 	sessionMgr.counter++
 	sessionMgr.mu.Unlock()
 
-	sessionsMu.Lock()
-	if customAgentSessions == nil {
-		customAgentSessions = make(map[string]*customAgentSession)
-	}
-	customAgentSessions[sessionID] = &customAgentSession{
+	session := &customAgentSession{
 		id:         sessionID,
 		agentID:    agentID,
 		projectDir: projectDir,
 		port:       port,
+		createdAt:  now,
 		cmd:        cmd.Cmd,
 	}
+
+	sessionsMu.Lock()
+	if customAgentSessions == nil {
+		customAgentSessions = make(map[string]*customAgentSession)
+	}
+	customAgentSessions[sessionID] = session
 	sessionsMu.Unlock()
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(LaunchCustomAgentResponse{
+	sessionData := &custom.SessionData{
+		ID:         sessionID,
+		AgentID:    agentID,
+		AgentName:  agent.Name,
+		ProjectDir: projectDir,
+		Port:       port,
+		CreatedAt:  now.Format(time.RFC3339),
+		Status:     "running",
+	}
+	custom.SaveSession(sessionData)
+
+	go monitorCustomAgentProcess(session)
+
+	return &LaunchCustomAgentResult{
 		SessionID: sessionID,
 		Port:      port,
 		URL:       fmt.Sprintf("http://127.0.0.1:%d", port),
-	})
+	}, nil
+}
+
+func monitorCustomAgentProcess(session *customAgentSession) {
+	if session.cmd == nil {
+		return
+	}
+	err := session.cmd.Wait()
+
+	status := "stopped"
+	errMsg := ""
+	if err != nil {
+		status = "error"
+		errMsg = err.Error()
+	}
+
+	sessionsMu.Lock()
+	delete(customAgentSessions, session.id)
+	sessionsMu.Unlock()
+
+	custom.UpdateSessionStatus(session.agentID, session.id, status, errMsg)
 }
 
 type customAgentSession struct {
@@ -406,6 +129,7 @@ type customAgentSession struct {
 	agentID    string
 	projectDir string
 	port       int
+	createdAt  time.Time
 	cmd        *exec.Cmd
 }
 
@@ -416,9 +140,12 @@ var (
 
 func StopCustomAgentSession(sessionID string) error {
 	sessionsMu.Lock()
-	defer sessionsMu.Unlock()
-
 	session, ok := customAgentSessions[sessionID]
+	if ok {
+		delete(customAgentSessions, sessionID)
+	}
+	sessionsMu.Unlock()
+
 	if !ok {
 		return fmt.Errorf("session not found")
 	}
@@ -427,7 +154,7 @@ func StopCustomAgentSession(sessionID string) error {
 		session.cmd.Process.Kill()
 	}
 
-	delete(customAgentSessions, sessionID)
+	custom.UpdateSessionStatus(session.agentID, sessionID, "stopped", "")
 	return nil
 }
 
@@ -443,48 +170,22 @@ func GetCustomAgentSessions() []AgentSessionInfo {
 			AgentName:  "Custom: " + s.agentID,
 			ProjectDir: s.projectDir,
 			Port:       s.port,
-			CreatedAt:  "",
+			CreatedAt:  s.createdAt.Format(time.RFC3339),
 			Status:     "running",
 		})
 	}
 
-	slices.SortFunc(result, func(a, b AgentSessionInfo) int {
-		if a.AgentID < b.AgentID {
-			return -1
-		}
-		if a.AgentID > b.AgentID {
-			return 1
-		}
-		return 0
-	})
-
 	return result
 }
 
-func handleCustomAgentSessions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// GetRunningCustomSessionIDs returns the set of currently running custom agent session IDs.
+func GetRunningCustomSessionIDs() map[string]bool {
+	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
 
-	sessions := GetCustomAgentSessions()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(sessions)
-}
-
-func toKebabCase(s string) string {
-	var result []rune
-	for i, r := range s {
-		if r >= 'A' && r <= 'Z' {
-			if i > 0 {
-				result = append(result, '-')
-			}
-			result = append(result, r+32)
-		} else if r == ' ' || r == '_' {
-			result = append(result, '-')
-		} else {
-			result = append(result, r)
-		}
+	ids := make(map[string]bool, len(customAgentSessions))
+	for id := range customAgentSessions {
+		ids[id] = true
 	}
-	return string(result)
+	return ids
 }

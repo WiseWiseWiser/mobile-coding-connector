@@ -160,8 +160,6 @@ func RegisterAPI(mux *http.ServeMux) {
 	// Cursor ACP API
 	cursor_acp.RegisterAPI(mux)
 
-	// Custom agents API
-	RegisterCustomAgentsAPI(mux)
 }
 
 // Shutdown stops the agents module (stops health checks, but leaves opencode running)

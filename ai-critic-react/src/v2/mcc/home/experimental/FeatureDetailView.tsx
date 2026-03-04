@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { BeakerIcon } from '../../../../pure-view/icons/BeakerIcon';
 import { FeatureMakerContent } from '../../../../components/feature-maker';
-import { useWorktreeRoute } from '../../../hooks/useWorktreeRoute';
+import { useWorktreeRoute } from '../../../../hooks/project/useWorktreeRoute';
 import { fetchFeatures, updateFeature, type Feature } from '../../../../api/features';
 
 export function FeatureDetailView() {

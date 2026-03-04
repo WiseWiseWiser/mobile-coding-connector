@@ -218,6 +218,15 @@ export async function fetchCustomAgentSessions(): Promise<CustomAgentSession[]> 
   return resp.json();
 }
 
+export async function fetchAgentSessions(agentId: string): Promise<CustomAgentSession[]> {
+  const resp = await fetch(`/api/custom-agents/${encodeURIComponent(agentId)}/sessions`);
+  if (!resp.ok) {
+    const error = await resp.text();
+    throw new Error(error || 'Failed to fetch agent sessions');
+  }
+  return resp.json();
+}
+
 export async function deleteCustomAgentSession(sessionId: string): Promise<void> {
   const resp = await fetch(`/api/custom-agents/sessions/${encodeURIComponent(sessionId)}`, {
     method: 'DELETE',

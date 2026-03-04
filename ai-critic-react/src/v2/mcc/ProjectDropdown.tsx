@@ -5,9 +5,10 @@ export interface ProjectDropdownProps {
     projects: ProjectInfo[];
     currentProject: ProjectInfo | null;
     onProjectSelect: (project: ProjectInfo) => void;
+    worktreeBranch?: string | null;
 }
 
-export function ProjectDropdown({ projects, currentProject, onProjectSelect }: ProjectDropdownProps) {
+export function ProjectDropdown({ projects, currentProject, onProjectSelect, worktreeBranch }: ProjectDropdownProps) {
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -36,6 +37,9 @@ export function ProjectDropdown({ projects, currentProject, onProjectSelect }: P
             >
                 <span className="mcc-project-name">
                     {currentProject ? currentProject.name : 'No Project'}
+                    {worktreeBranch && (
+                        <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: 6 }}>({worktreeBranch})</span>
+                    )}
                 </span>
                 <span className="mcc-project-chevron">▾</span>
             </div>

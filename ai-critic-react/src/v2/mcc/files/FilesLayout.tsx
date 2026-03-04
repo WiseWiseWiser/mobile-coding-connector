@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { useTabNavigate } from '../../../hooks/useTabNavigate';
 import { NavTabs } from '../types';
 import { useV2Context } from '../../V2Context';
+import { useProjectDir } from '../../../hooks/project/useProjectDir';
 import './FilesView.css';
 
 export interface FilesOutletContext {
@@ -13,6 +14,7 @@ export interface FilesOutletContext {
 
 export function FilesLayout() {
     const { currentProject } = useV2Context();
+    const { projectDir: resolvedDir } = useProjectDir();
     const navigateToView = useTabNavigate(NavTabs.Files);
 
     if (!currentProject) {
@@ -28,7 +30,7 @@ export function FilesLayout() {
 
     const ctx: FilesOutletContext = {
         projectName: currentProject.name,
-        projectDir: currentProject.dir,
+        projectDir: resolvedDir,
         sshKeyId: currentProject.ssh_key_id,
         navigateToView,
     };

@@ -26,6 +26,12 @@ type Todo struct {
 	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
+// WorktreeIDMap maps worktree path to its persistent ID.
+type WorktreeIDMap struct {
+	PathToID map[string]int `json:"pathToId,omitempty"`
+	NextID   int            `json:"nextId,omitempty"`
+}
+
 type Project struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -37,6 +43,8 @@ type Project struct {
 	ParentID  string `json:"parent_id,omitempty"`
 	Todos     []Todo `json:"todos,omitempty"`
 	Readme    string `json:"readme,omitempty"`
+
+	Worktrees *WorktreeIDMap `json:"worktrees,omitempty"`
 }
 
 // GitStatusInfo holds git status information for a project
@@ -607,8 +615,10 @@ func handleTodos(w http.ResponseWriter, r *http.Request) {
 
 // WorktreeInfo holds information about a git worktree
 type WorktreeInfo struct {
-	Path      string `json:"path"`
-	Branch    string `json:"branch"`
+	Path       string `json:"path"`
+	Branch     string `json:"branch"`
+	IsMain     bool   `json:"isMain"`
+	IsBare     bool   `json:"isBare"`
 	WorktreeID int    `json:"worktreeId"`
 }
 
@@ -662,6 +672,7 @@ func ResolveProjectDir(projectName, worktreeID string) (string, error) {
 }
 
 // GetWorktreesForProject returns all worktrees for a given git repository
+// with persistent IDs that remain stable across restarts.
 func GetWorktreesForProject(repoDir string) ([]WorktreeInfo, error) {
 	cmd := exec.Command("git", "worktree", "list", "--porcelain")
 	cmd.Dir = repoDir
@@ -670,11 +681,13 @@ func GetWorktreesForProject(repoDir string) ([]WorktreeInfo, error) {
 		return nil, fmt.Errorf("failed to list worktrees: %w", err)
 	}
 
-	return ParseWorktreesOutput(string(output)), nil
+	worktrees := parseWorktreesOutput(string(output))
+	AssignWorktreeIDs(repoDir, worktrees)
+	return worktrees, nil
 }
 
-// ParseWorktreesOutput parses the output of `git worktree list --porcelain`
-func ParseWorktreesOutput(output string) []WorktreeInfo {
+// parseWorktreesOutput parses the output of `git worktree list --porcelain`
+func parseWorktreesOutput(output string) []WorktreeInfo {
 	var worktrees []WorktreeInfo
 	var current *WorktreeInfo
 
@@ -690,21 +703,106 @@ func ParseWorktreesOutput(output string) []WorktreeInfo {
 			}
 		} else if strings.HasPrefix(line, "branch ") && current != nil {
 			branch := strings.TrimPrefix(line, "branch ")
-			// Extract just the branch name (remove refs/heads/ prefix)
 			branch = strings.TrimPrefix(branch, "refs/heads/")
 			current.Branch = branch
+		} else if line == "bare" && current != nil {
+			current.IsBare = true
 		}
 	}
 
-	// Don't forget the last one
 	if current != nil {
 		worktrees = append(worktrees, *current)
 	}
 
-	// Assign worktree IDs (main is always 0, others start from 1)
-	for i := range worktrees {
-		worktrees[i].WorktreeID = i
+	if len(worktrees) > 0 {
+		worktrees[0].IsMain = true
 	}
 
 	return worktrees
+}
+
+// AssignWorktreeIDs assigns persistent IDs to worktrees by storing
+// the mapping in the project's config. Main worktree (first entry)
+// always gets ID 0. Other worktrees get stable IDs.
+func AssignWorktreeIDs(repoDir string, worktrees []WorktreeInfo) {
+	if len(worktrees) == 0 {
+		return
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	projects, err := loadAll()
+	if err != nil {
+		for i := range worktrees {
+			worktrees[i].WorktreeID = i
+		}
+		return
+	}
+
+	// Find the project by directory
+	projectIdx := -1
+	for i, p := range projects {
+		if p.Dir == repoDir {
+			projectIdx = i
+			break
+		}
+	}
+	if projectIdx < 0 {
+		for i := range worktrees {
+			worktrees[i].WorktreeID = i
+		}
+		return
+	}
+
+	project := &projects[projectIdx]
+	if project.Worktrees == nil {
+		project.Worktrees = &WorktreeIDMap{
+			PathToID: map[string]int{},
+			NextID:   1,
+		}
+	}
+	mapping := project.Worktrees
+	if mapping.PathToID == nil {
+		mapping.PathToID = map[string]int{}
+	}
+	if mapping.NextID < 1 {
+		mapping.NextID = 1
+	}
+
+	changed := false
+	activePaths := make(map[string]bool, len(worktrees))
+
+	for i := range worktrees {
+		wt := &worktrees[i]
+		activePaths[wt.Path] = true
+
+		if i == 0 {
+			wt.WorktreeID = 0
+			continue
+		}
+
+		id, exists := mapping.PathToID[wt.Path]
+		if exists {
+			wt.WorktreeID = id
+			continue
+		}
+
+		wt.WorktreeID = mapping.NextID
+		mapping.PathToID[wt.Path] = mapping.NextID
+		mapping.NextID++
+		changed = true
+	}
+
+	// Clean up stale entries for removed worktrees
+	for path := range mapping.PathToID {
+		if !activePaths[path] {
+			delete(mapping.PathToID, path)
+			changed = true
+		}
+	}
+
+	if changed {
+		_ = saveAll(projects)
+	}
 }

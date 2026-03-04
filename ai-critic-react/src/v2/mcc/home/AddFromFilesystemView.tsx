@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { addProject, updateProject } from '../../../api/projects';
 import { useV2Context } from '../../V2Context';
-import { ServerFileBrowser } from './ServerFileBrowser';
+import { FileBrowser } from '../../../components/chooser/FileBrowser';
 import './AddFromFilesystemView.css';
 
 export function AddFromFilesystemView() {
@@ -102,7 +102,7 @@ export function AddFromFilesystemView() {
                 {/* Server File Browser */}
                 <div className="add-fs-section add-fs-browser-section">
                     <label className="add-fs-label">Browse Server Filesystem</label>
-                    <ServerFileBrowser
+                    <FileBrowser
                         selectMode="dir"
                         onDirectoryChange={handleDirectoryChange}
                     />

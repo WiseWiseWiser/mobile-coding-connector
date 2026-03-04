@@ -177,6 +177,7 @@ export interface Worktree {
     branch: string;
     isMain: boolean;
     isBare: boolean;
+    worktreeId: number;
 }
 
 // List branches sorted by recent commit date
@@ -211,12 +212,16 @@ export async function listWorktrees(dir?: string): Promise<Worktree[]> {
 export async function createWorktree(
     branch: string,
     path: string,
-    dir?: string
+    dir?: string,
+    newBranch?: string,
 ): Promise<{ status: string; message?: string }> {
+    const body: Record<string, string> = { branch, path };
+    if (dir) body.dir = dir;
+    if (newBranch) body.newBranch = newBranch;
     const response = await fetch('/api/review/worktrees/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch, path, dir }),
+        body: JSON.stringify(body),
     });
     if (!response.ok) {
         const error = await response.json();

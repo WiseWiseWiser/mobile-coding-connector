@@ -29,6 +29,9 @@ export { ExperimentalView } from './experimental/ExperimentalView';
 
 interface HomeOutletContext {
     onSelectProject: (project: ProjectInfo) => void;
+    projectDir?: string | null;
+    worktreeBranch?: string | null;
+    isWorktree?: boolean;
 }
 
 interface WorkspaceListViewProps {
@@ -41,6 +44,8 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
     
     const outletContext = useOutletContext<HomeOutletContext | null>();
     const onSelectProject = propOnSelectProject ?? outletContext?.onSelectProject ?? (() => {});
+    const worktreeBranch = outletContext?.isWorktree ? outletContext.worktreeBranch : null;
+    const worktreeDir = outletContext?.isWorktree ? outletContext.projectDir : null;
 
     const [cloningProjectId, setCloningProjectId] = useState<string | null>(null);
     const [cloneState, cloneControls] = useStreamingAction((result) => {
@@ -108,6 +113,8 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
                             onClone={() => handleClone(project)}
                             cloning={cloningProjectId === project.id}
                             anyCloning={cloneState.running}
+                            worktreeBranch={project.name === currentProject?.name ? worktreeBranch : null}
+                            worktreeDir={project.name === currentProject?.name ? worktreeDir : null}
                         />
                     ))}
                     {(cloneState.showLogs || cloneState.result) && (
@@ -165,6 +172,8 @@ interface ProjectCardProps {
     project: ProjectInfo;
     isActive: boolean;
     subProjectsCount: number;
+    worktreeBranch?: string | null;
+    worktreeDir?: string | null;
     onSelect: () => void;
     onOpen: () => void;
     onRemove: () => void;
@@ -173,12 +182,13 @@ interface ProjectCardProps {
     anyCloning: boolean;
 }
 
-function ProjectCard({ project, isActive, subProjectsCount, onSelect, onOpen, onRemove, onClone, cloning, anyCloning }: ProjectCardProps) {
+function ProjectCard({ project, isActive, subProjectsCount, onSelect, onOpen, onRemove, onClone, cloning, anyCloning, worktreeBranch, worktreeDir }: ProjectCardProps) {
     const createdDate = new Date(project.created_at).toLocaleDateString();
     const dirMissing = !project.dir_exists;
     const sshValidation = validateProjectSSHKey(project);
     const gitStatus = project.git_status;
     const hasUncommitted = gitStatus && !gitStatus.is_clean && gitStatus.uncommitted > 0;
+    const displayDir = (isActive && worktreeDir) ? worktreeDir : project.dir;
 
     return (
         <div className={`mcc-workspace-card mcc-workspace-card-clickable${isActive ? ' mcc-workspace-card-active' : ''}`} onClick={onSelect}>
@@ -186,11 +196,12 @@ function ProjectCard({ project, isActive, subProjectsCount, onSelect, onOpen, on
                 <span className="mcc-workspace-name">{project.name}</span>
                 {subProjectsCount > 0 && <span className="mcc-workspace-subprojects-badge">{subProjectsCount} sub-project{subProjectsCount !== 1 ? 's' : ''}</span>}
                 {isActive && <span className="mcc-workspace-active-badge">Working on</span>}
+                {isActive && worktreeBranch && <span className="mcc-workspace-active-badge" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#c4b5fd', border: '1px solid rgba(139, 92, 246, 0.3)' }}>Worktree: {worktreeBranch}</span>}
                 {dirMissing && <span className="mcc-workspace-missing-badge">Not cloned</span>}
                 {hasUncommitted && <span className="mcc-workspace-uncommitted-badge">{gitStatus.uncommitted} files uncommitted</span>}
             </div>
             <div className="mcc-workspace-card-meta">
-                <span>{project.dir}</span>
+                <span>{displayDir}</span>
             </div>
             <div className="mcc-workspace-card-meta" style={{ marginTop: 4 }}>
                 <span>{project.repo_url}</span>

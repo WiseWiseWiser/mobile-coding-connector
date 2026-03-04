@@ -4,13 +4,13 @@ import type { AgentOutletContext } from './AgentLayout';
 import { SessionList } from './SessionList';
 import { AgentPicker } from './AgentPicker';
 import { ExternalSessionList } from './ExternalSessionList';
-import { fetchCustomAgentSessions, launchCustomAgent, type CustomAgentSession } from '../../../api/customAgents';
-import { useV2Context } from '../../V2Context';
+import { fetchAgentSessions, launchCustomAgent, type CustomAgentSession } from '../../../api/customAgents';
+import { useProjectDir } from '../../../hooks/project/useProjectDir';
 import { ActionButton } from '../../../pure-view/buttons/ActionButton';
 
 export function SessionListRoute() {
     const ctx = useOutletContext<AgentOutletContext>();
-    const { currentProject } = useV2Context();
+    const { projectDir } = useProjectDir();
     const params = useParams<{ agentId?: string }>();
     const agentId = params.agentId || '';
 
@@ -22,18 +22,15 @@ export function SessionListRoute() {
     const [launching, setLaunching] = useState(false);
 
     useEffect(() => {
-        if (!isCustomAgent) return;
+        if (!isCustomAgent || !agentId) return;
         setLoadingCustom(true);
-        fetchCustomAgentSessions()
-            .then(sessions => {
-                setCustomSessions(sessions.filter(s => s.agent_id === agentId));
-            })
+        fetchAgentSessions(agentId)
+            .then(setCustomSessions)
             .catch(() => setCustomSessions([]))
             .finally(() => setLoadingCustom(false));
     }, [isCustomAgent, agentId]);
 
     const handleNewSession = async () => {
-        const projectDir = currentProject?.dir;
         if (!projectDir) {
             alert('Please select a project first');
             return;
@@ -94,6 +91,11 @@ export function SessionListRoute() {
                     <ActionButton onClick={handleNewSession} disabled={launching}>
                         {launching ? 'Starting...' : 'New Session'}
                     </ActionButton>
+                    {projectDir && (
+                        <div style={{ marginTop: 8, fontSize: 12, color: '#888', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                            {projectDir}
+                        </div>
+                    )}
                 </div>
             </div>
         );

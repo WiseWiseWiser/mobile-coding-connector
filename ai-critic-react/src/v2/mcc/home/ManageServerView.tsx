@@ -22,7 +22,7 @@ import './ManageServerView.css';
 
 export function ManageServerView() {
     const navigate = useNavigate();
-    const { goBack } = useTabHistory(NavTabs.Home, { defaultBackPath: '/home' });
+    const { goBack } = useTabHistory(NavTabs.Home);
 
     const [daemonRunning, setDaemonRunning] = useState<boolean | null>(null);
     const [startCommand, setStartCommand] = useState<string | null>(null);
