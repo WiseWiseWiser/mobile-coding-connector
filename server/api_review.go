@@ -10,9 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/ai"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/commit_msg"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/ai"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/env"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
@@ -1098,7 +1099,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 			Model:    model,
 		}
 	} else {
-		apiKey := os.Getenv("OPENAI_API_KEY")
+		apiKey := os.Getenv(env.EnvOpenAIAPIKey)
 		if apiKey == "" {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "API key not configured"})
 			return
@@ -1106,9 +1107,9 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		cfg = ai.Config{
 			Provider: ai.ProviderOpenAI,
 			APIKey:   apiKey,
-			Model:    os.Getenv("OPENAI_MODEL"),
+			Model:    os.Getenv(env.EnvOpenAIModel),
 		}
-		if baseURL := os.Getenv("OPENAI_BASE_URL"); baseURL != "" {
+		if baseURL := os.Getenv(env.EnvOpenAIBaseURL); baseURL != "" {
 			cfg.BaseURL = baseURL
 		}
 	}
@@ -1214,7 +1215,7 @@ func handleGenerateCommitMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := commit_msg.Generate(dir, &sseLogger{sw})
+	msg, err := commit_msg.Generate(dir, commit_msg.GenerateOptions{Logger: &sseLogger{sw}})
 	if err != nil {
 		sw.SendError(err.Error())
 		sw.SendDone(nil)

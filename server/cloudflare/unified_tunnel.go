@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 	"gopkg.in/yaml.v3"
 )
 
@@ -567,6 +568,7 @@ func (utm *UnifiedTunnelManager) startProcessLocked() error {
 	utm.cmd = cmd
 	utm.running = true
 	fmt.Printf("[unified-tunnel] startProcessLocked: process started with PID %d\n", cmd.Process.Pid)
+	quicktest.LogHeavyOperationWithCallerStack("[unified-tunnel] startProcessLocked: PID=%d", cmd.Process.Pid)
 
 	// Start goroutine to wait for process
 	go func() {

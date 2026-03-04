@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
 
@@ -223,6 +224,9 @@ func createTunnel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing 'name' parameter", http.StatusBadRequest)
 		return
 	}
+
+	fmt.Printf("[cloudflare] createTunnel: creating tunnel %q\n", name)
+	quicktest.LogHeavyOperationWithCallerStack("[cloudflare] createTunnel: %s", name)
 
 	out, err := exec.Command("cloudflared", "tunnel", "create", name).CombinedOutput()
 	if err != nil {

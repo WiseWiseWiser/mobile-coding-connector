@@ -9,7 +9,6 @@ import (
 	"time"
 
 	common "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/common_opencode"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/logs"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 )
 
@@ -70,10 +69,6 @@ func GetOrStartOpencodeServer() (*OpencodeServer, error) {
 		if info != nil && info.PID > 0 && info.Port > 0 {
 			if IsProcessAlive(info.PID) && IsPortReachable(info.Port) {
 				fmt.Printf("[opencode] Reusing existing internal server: PID=%d, Port=%d\n", info.PID, info.Port)
-				if quicktest.Enabled() {
-					fmt.Printf("[opencode] Reusing existing internal server caller:\n")
-					logs.PrintCallerStack()
-				}
 				result = &OpencodeServer{
 					Port: info.Port,
 				}
@@ -134,6 +129,7 @@ func findAvailablePort() (int, error) {
 }
 
 func startOpencodeWebServer(server *OpencodeServer) error {
+	quicktest.LogHeavyOperationWithCallerStack("[opencode] Starting: opencode serve --port %d\n", server.Port)
 	cmd, err := common.StartWebProcess(server.Port, nil, server.StopChan)
 	if err != nil {
 		return err

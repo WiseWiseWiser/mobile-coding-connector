@@ -201,8 +201,28 @@ func Update(id string, updates ProjectUpdate) (*Project, error) {
 
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/projects", handleProjects)
+	mux.HandleFunc("/api/projects/resolve-dir", handleResolveDir)
 	mux.HandleFunc("/api/projects/todos", handleTodos)
 	mux.HandleFunc("/api/projects/readme", handleReadme)
+}
+
+func handleResolveDir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	projectName := r.URL.Query().Get("project")
+	worktreeID := r.URL.Query().Get("worktree")
+	if projectName == "" {
+		respondErr(w, http.StatusBadRequest, "project is required")
+		return
+	}
+	dir, err := ResolveProjectDir(projectName, worktreeID)
+	if err != nil {
+		respondErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"dir": dir})
 }
 
 func handleReadme(w http.ResponseWriter, r *http.Request) {

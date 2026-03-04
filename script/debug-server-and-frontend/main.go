@@ -94,32 +94,74 @@ func run(args []string) error {
 		cancel()
 	}()
 
-	opts.ProjectDir = projectRoot
+	port := opts.GetPort()
+	preferSandbox := os.Getenv(envpkg.EnvDebugPreferSandbox) == "true"
 
-	err = lib.QuickTestPrepare(&opts)
-	if err != nil {
-		return err
-	}
-
-	result, err := lib.QuickTestStart(ctx, &opts)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Waiting for server to be ready on port %d...\n", opts.GetPort())
-	if err := waitForPort(ctx, opts.GetPort(), 60*time.Second); err != nil {
-		if result != nil && result.ServerCmd != nil && result.ServerCmd.Process != nil {
-			result.ServerCmd.Process.Kill()
+	var cleanupFn func()
+	if preferSandbox {
+		fmt.Println("Sandbox mode enabled (DEBUG_QUICK_TEST_PREFER_SANDBOX=true)")
+		sandboxOpts := lib.SandboxQuickTestOptions{
+			ArchFlag:      "auto",
+			ContainerPort: port,
+			ContainerName: lib.ContainerName,
+			ScriptSubDir:  "script/sandbox/boot",
 		}
-		if result != nil && result.ViteCmd != nil && result.ViteCmd.Process != nil {
-			result.ViteCmd.Process.Kill()
+		if err := lib.SandboxQuickTestPrepare(sandboxOpts); err != nil {
+			return fmt.Errorf("failed to prepare sandbox quick-test: %v", err)
 		}
+		result, startErr := lib.SandboxQuickTestStart(ctx, sandboxOpts)
+		if startErr != nil {
+			return fmt.Errorf("failed to start sandbox quick-test: %v", startErr)
+		}
+		cleanupFn = func() {
+			if result.ServerCmd != nil && result.ServerCmd.Process != nil {
+				fmt.Println("Stopping sandbox server...")
+				result.ServerCmd.Process.Signal(syscall.SIGTERM)
+				result.ServerCmd.Wait()
+			}
+			if result.ViteCmd != nil && result.ViteCmd.Process != nil {
+				fmt.Println("Stopping Vite dev server...")
+				result.ViteCmd.Process.Signal(syscall.SIGTERM)
+				result.ViteCmd.Process.Wait()
+			}
+		}
+	} else {
+		opts.ProjectDir = projectRoot
+		err = lib.QuickTestPrepare(&opts)
+		if err != nil {
+			return err
+		}
+		result, startErr := lib.QuickTestStart(ctx, &opts)
+		if startErr != nil {
+			return startErr
+		}
+		cleanupFn = func() {
+			if result != nil && result.ServerCmd != nil && result.ServerCmd.Process != nil {
+				fmt.Println("Stopping quick-test server...")
+				result.ServerCmd.Process.Signal(syscall.SIGTERM)
+				result.ServerCmd.Wait()
+			}
+			if result != nil && result.ViteCmd != nil && result.ViteCmd.Process != nil {
+				fmt.Println("Stopping Vite dev server...")
+				result.ViteCmd.Process.Signal(syscall.SIGTERM)
+				result.ViteCmd.Process.Wait()
+			}
+		}
+	}
+	defer cleanupFn()
+
+	waitTimeout := 60 * time.Second
+	if preferSandbox {
+		waitTimeout = 180 * time.Second
+	}
+	fmt.Printf("Waiting for server to be ready on port %d...\n", port)
+	if err := waitForPort(ctx, port, waitTimeout); err != nil {
 		return fmt.Errorf("server failed to start: %v", err)
 	}
 	fmt.Println("Server is ready!")
 
 	fmt.Println("Starting browser debugger...")
-	debugCmd := exec.CommandContext(ctx, "go", "run", "./script/debug-port", fmt.Sprintf("--port=%d", opts.GetPort()))
+	debugCmd := exec.CommandContext(ctx, "go", "run", "./script/debug-port", fmt.Sprintf("--port=%d", port))
 	debugCmd.Args = append(debugCmd.Args, fmt.Sprintf("--headless=%v", headless))
 	debugCmd.Args = append(debugCmd.Args, scriptArg)
 	debugCmd.Dir = projectRoot
@@ -128,19 +170,6 @@ func run(args []string) error {
 	debugCmd.Stderr = os.Stderr
 
 	debugErr := debugCmd.Run()
-
-	if result != nil && result.ServerCmd != nil && result.ServerCmd.Process != nil {
-		fmt.Println("Stopping quick-test server...")
-		result.ServerCmd.Process.Signal(syscall.SIGTERM)
-		result.ServerCmd.Wait()
-	}
-
-	if result != nil && result.ViteCmd != nil && result.ViteCmd.Process != nil {
-		fmt.Println("Stopping Vite dev server...")
-		result.ViteCmd.Process.Signal(syscall.SIGTERM)
-		result.ViteCmd.Process.Wait()
-	}
-
 	if debugErr != nil {
 		if !headless {
 			return fmt.Errorf(

@@ -1,9 +1,10 @@
 package env
 
 import (
+	"bufio"
+	"fmt"
 	"os"
-
-	"github.com/joho/godotenv"
+	"strings"
 )
 
 const (
@@ -13,7 +14,7 @@ const (
 
 // EnableMockupInMenu returns true if the ENABLE_MOCKUP_IN_MENU env var is set to "true"
 func EnableMockupInMenu() bool {
-	return os.Getenv("ENABLE_MOCKUP_IN_MENU") == "true"
+	return os.Getenv(EnvEnableMockupInMenu) == "true"
 }
 
 // Load reads environment variables from .env then .env.local.

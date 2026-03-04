@@ -59,6 +59,7 @@ var distFS embed.FS
 var templateHTML string
 var quickTestQuitChan chan struct{}
 var frontendPort int
+var frontendHost string
 var projectDir string
 
 func SetProjectDir(dir string) {
@@ -82,6 +83,10 @@ func SetQuickTestKeep(enabled bool) {
 
 func SetFrontendPort(port int) {
 	frontendPort = port
+}
+
+func SetFrontendHost(host string) {
+	frontendHost = host
 }
 
 func IsQuickTestMode() bool {
@@ -346,7 +351,11 @@ func ProxyDev(mux *http.ServeMux) error {
 	if port == 0 {
 		port = 5173 // default
 	}
-	targetURL, err := url.Parse(fmt.Sprintf("http://localhost:%d", port))
+	host := frontendHost
+	if host == "" {
+		host = "localhost"
+	}
+	targetURL, err := url.Parse(fmt.Sprintf("http://%s:%d", host, port))
 	if err != nil {
 		return fmt.Errorf("invalid proxy target: %v", err)
 	}

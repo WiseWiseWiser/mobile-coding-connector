@@ -24,6 +24,8 @@ dist
 .ai-critic/
 .settings/
 
+/script/sandbox/boot/home
+
 /server/static
 
 /maintest

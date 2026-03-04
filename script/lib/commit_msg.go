@@ -22,8 +22,10 @@ Options:
 // RunGenCommitMsg is the shared entry point for the gen-commit-msg CLI.
 func RunGenCommitMsg(args []string) error {
 	var dir string
+	var model string
 	_, err := flags.
 		String("--dir", &dir).
+		String("--model", &model).
 		Help("-h,--help", genCommitMsgHelp).
 		Parse(args)
 	if err != nil {
@@ -34,7 +36,10 @@ func RunGenCommitMsg(args []string) error {
 		dir, _ = os.Getwd()
 	}
 
-	msg, err := commit_msg.Generate(dir, &stderrLogger{})
+	msg, err := commit_msg.Generate(dir, commit_msg.GenerateOptions{
+		Model: model,
+		Logger: &stderrLogger{},
+	})
 	if err != nil {
 		return err
 	}

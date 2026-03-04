@@ -34,6 +34,17 @@ export interface ProjectInfo {
     readme?: string;
 }
 
+export async function resolveProjectDir(projectName: string, worktreeId?: string): Promise<string> {
+    const params = new URLSearchParams({ project: projectName });
+    if (worktreeId) params.set('worktree', worktreeId);
+    const resp = await fetch(`/api/projects/resolve-dir?${params}`);
+    const data = await resp.json();
+    if (!resp.ok) {
+        throw new Error(data.error || 'Failed to resolve project dir');
+    }
+    return data.dir;
+}
+
 export async function fetchProjects(options?: { all?: boolean; parentId?: string }): Promise<ProjectInfo[]> {
     const params = new URLSearchParams();
     if (options?.all) {

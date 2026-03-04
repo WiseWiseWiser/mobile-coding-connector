@@ -31,7 +31,7 @@ export { OpencodeWebUI } from './mcc/home/experimental/OpencodeWebUI';
 export { OpencodeWebSettingsView } from './mcc/home/experimental/OpencodeWebSettingsView';
 export { ACPUI } from './mcc/home/experimental/acp/ACPUI';
 export { ACPSessionList } from './mcc/home/experimental/acp/ACPSessionList';
-export { ACPChat } from './mcc/home/experimental/acp/ACPChat';
+export { ACPChat } from './mcc/home/experimental/acp/chat/ACPChat';
 export { CursorACPUI } from './mcc/home/experimental/acp/CursorACPUI';
 export { CursorACPChat } from './mcc/home/experimental/acp/CursorACPChat';
 export { CursorACPSettings } from './mcc/home/experimental/acp/CursorACPSettings';

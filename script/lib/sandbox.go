@@ -100,6 +100,7 @@ type sandboxFiles struct {
 	aptListsDir    string
 	downloadsDir   string
 	dataDir        string // host-side .ai-critic directory, mounted as /root/.ai-critic
+	homeDir        string // host-side home directory, mounted as /root to persist across restarts
 }
 
 func setupSandboxFiles(scriptSubDir string) (*sandboxFiles, error) {
@@ -124,6 +125,12 @@ func setupSandboxFiles(scriptSubDir string) (*sandboxFiles, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	files.homeDir = filepath.Join(baseDir, "home")
+	if err := os.MkdirAll(files.homeDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create home dir %s: %v", files.homeDir, err)
+	}
+	fmt.Printf("Home directory: %s\n", files.homeDir)
 
 	files.dataDir = filepath.Join(baseDir, config.DataDir)
 	if err := os.MkdirAll(files.dataDir, 0755); err != nil {
@@ -161,6 +168,7 @@ func containerCreateArgs(containerName, goarch string, containerPort int, files 
 		"--name", containerName,
 		"--platform", platform,
 		"-w", "/root",
+		"-v", files.homeDir + ":/root",
 		"-v", files.aptArchivesDir + ":/var/cache/apt/archives",
 		"-v", files.aptListsDir + ":/var/lib/apt/lists",
 		"-v", files.downloadsDir + ":/tmp/downloads",

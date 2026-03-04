@@ -16,9 +16,16 @@ type Logger interface {
 	Error(msg string)
 }
 
+type GenerateOptions struct {
+	Model string
+	Logger Logger
+}
+
 // Generate produces a commit message for the staged changes in dir.
 // It streams progress to the provided Logger and returns the final message.
-func Generate(dir string, logger Logger) (string, error) {
+func Generate(dir string, options GenerateOptions) (string, error) {
+	logger := options.Logger
+	optionModel := options.Model
 	logger.Log("$ git diff --cached")
 	stagedDiffOutput, err := gitrunner.DiffCached().Dir(dir).Output()
 	if err != nil {
@@ -48,15 +55,21 @@ Title: <short title>
 Description: <optional short description>`, stagedDiff)
 
 	logger.Log("$ opencode models")
-	freeModels, selectedModel, err := findFreeModel()
+	freeModels, preferredModel, err := findFreeModel()
 	if err != nil {
 		logger.Log(fmt.Sprintf("Warning: Could not get free models: %v", err))
 	} else {
 		logger.Log(fmt.Sprintf("Free models: %s", strings.Join(freeModels, ", ")))
-		if selectedModel != "" {
-			logger.Log(fmt.Sprintf("Using model: %s", selectedModel))
+		if preferredModel != "" && optionModel == "" {
+			logger.Log(fmt.Sprintf("Free model suggestion: %s", preferredModel))
 		}
 	}
+
+	actualModel := preferredModel
+	if optionModel != "" {
+		actualModel = optionModel
+	}
+	logger.Log(fmt.Sprintf("Using model: %s", actualModel))
 
 	promptFile, err := os.CreateTemp("", "commit-prompt-*.txt")
 	if err != nil {
@@ -75,8 +88,8 @@ Description: <optional short description>`, stagedDiff)
 	// 2. Avoids external_directory permission errors — opencode auto-rejects
 	//    reads from paths it doesn't recognize when the content is inlined.
 	args := []string{"run", inlineMsg, "--file", promptFile.Name()}
-	if selectedModel != "" {
-		args = append(args, "--model", selectedModel)
+	if actualModel != "" {
+		args = append(args, "--model", actualModel)
 	}
 	args = append(args, "--format", "json")
 

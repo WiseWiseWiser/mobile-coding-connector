@@ -295,12 +295,19 @@ var requiredTools = []toolDef{
 		purpose:     "Run cursor agent for code generation and editing from the terminal",
 		versionCmd:  []string{"agent", "--version"},
 		installMacOS: []string{
-			"curl https://cursor.com/install -fsS | bash",
+			"curl https://cursor.com/install -fsSL | bash",
 		},
 		installLinux: []string{
-			"curl https://cursor.com/install -fsS | bash",
+			"curl https://cursor.com/install -fsSL | bash",
 		},
 		installWindows: "Download from https://cursor.com/en/cli",
+		upgradeMacOS: []string{
+			"curl https://cursor.com/install -fsSL | bash",
+		},
+		upgradeLinux: []string{
+			"curl https://cursor.com/install -fsSL | bash",
+		},
+		upgradeWindows: "Download latest from https://cursor.com/en/cli",
 	},
 	{
 		name:        "codex",

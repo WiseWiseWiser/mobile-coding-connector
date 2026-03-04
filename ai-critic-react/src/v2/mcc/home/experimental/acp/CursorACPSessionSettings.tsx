@@ -1,15 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { BeakerIcon } from '../../../../../pure-view/icons/BeakerIcon';
+import { fetchCursorACPSessionSettings, saveCursorACPSessionSettings } from '../../../../../api/cursor-acp';
 import './ACPUI.css';
-
-const API_PREFIX = '/api/agent/acp/cursor';
-
-interface SessionSettings {
-    sessionId: string;
-    trustWorkspace: boolean;
-    yoloMode: boolean;
-}
 
 export function CursorACPSessionSettings() {
     const navigate = useNavigate();
@@ -18,26 +11,16 @@ export function CursorACPSessionSettings() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [settings, setSettings] = useState<SessionSettings>({
-        sessionId: sessionId || '',
-        trustWorkspace: false,
-        yoloMode: false,
-    });
+    const [trustWorkspace, setTrustWorkspace] = useState(false);
+    const [yoloMode, setYoloMode] = useState(false);
 
     const loadSettings = useCallback(async () => {
         if (!sessionId) return;
         setLoading(true);
         try {
-            const resp = await fetch(`${API_PREFIX}/session/settings?sessionId=${encodeURIComponent(sessionId)}`);
-            if (!resp.ok) {
-                throw new Error(`Failed to load settings: ${resp.status}`);
-            }
-            const data = await resp.json();
-            setSettings({
-                sessionId: sessionId,
-                trustWorkspace: data.trustWorkspace || false,
-                yoloMode: data.yoloMode || false,
-            });
+            const data = await fetchCursorACPSessionSettings(sessionId);
+            setTrustWorkspace(data.trustWorkspace || false);
+            setYoloMode(data.yoloMode || false);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to load settings');
         } finally {
@@ -55,33 +38,17 @@ export function CursorACPSessionSettings() {
         setError('');
         setSuccess('');
         try {
-            const resp = await fetch(`${API_PREFIX}/session/settings`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sessionId,
-                    trustWorkspace: settings.trustWorkspace,
-                    yoloMode: settings.yoloMode,
-                }),
+            await saveCursorACPSessionSettings({
+                sessionId,
+                trustWorkspace,
+                yoloMode,
             });
-            if (!resp.ok) {
-                const data = await resp.json().catch(() => ({}));
-                throw new Error(data.error || `Failed to save: ${resp.status}`);
-            }
             setSuccess('Settings saved successfully');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to save settings');
         } finally {
             setSaving(false);
         }
-    };
-
-    const handleTrustChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setSettings(prev => ({ ...prev, trustWorkspace: e.target.checked }));
-    };
-
-    const handleYoloChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setSettings(prev => ({ ...prev, yoloMode: e.target.checked }));
     };
 
     return (
@@ -115,8 +82,8 @@ export function CursorACPSessionSettings() {
                             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                                 <input
                                     type="checkbox"
-                                    checked={settings.trustWorkspace}
-                                    onChange={handleTrustChange}
+                                    checked={trustWorkspace}
+                                    onChange={e => setTrustWorkspace(e.target.checked)}
                                     disabled={saving}
                                     style={{ width: 18, height: 18, cursor: 'pointer' }}
                                 />
@@ -142,8 +109,8 @@ export function CursorACPSessionSettings() {
                             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                                 <input
                                     type="checkbox"
-                                    checked={settings.yoloMode}
-                                    onChange={handleYoloChange}
+                                    checked={yoloMode}
+                                    onChange={e => setYoloMode(e.target.checked)}
                                     disabled={saving}
                                     style={{ width: 18, height: 18, cursor: 'pointer' }}
                                 />
