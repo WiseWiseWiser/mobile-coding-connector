@@ -226,7 +226,7 @@ func quickTestContainerConfig(goarch string, containerPort int, files *sandboxFi
 	}, "\n")
 }
 
-func quickTestConfigHash(cfg string) string {
+func configHash(cfg string) string {
 	h := sha256.Sum256([]byte(cfg))
 	return fmt.Sprintf("%x", h[:8])
 }
@@ -243,7 +243,7 @@ func inspectContainerLabel(containerName, label string) string {
 
 func ensureQuickTestContainer(containerName, goarch string, containerPort int, files *sandboxFiles) error {
 	cfg := quickTestContainerConfig(goarch, containerPort, files)
-	wantHash := quickTestConfigHash(cfg)
+	wantHash := configHash(cfg)
 
 	status, err := InspectContainerStatus(containerName)
 	if err != nil {

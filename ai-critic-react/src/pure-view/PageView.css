@@ -1,0 +1,8 @@
+.pure-page-view {
+    display: flex;
+    flex-direction: column;
+    max-width: 100%;
+    min-width: 0;
+    padding-bottom: 24px;
+    overflow-x: hidden;
+}

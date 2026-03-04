@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { fetchTerminalConfig, saveTerminalConfig } from '../../../../api/terminalConfig';
 import { FlexInput } from '../../../../pure-view/FlexInput';
+import { Loading } from '../../../../pure-view/Loading';
+import { Section } from '../../../../pure-view/Section';
 import './TerminalSection.css';
 
 export function TerminalSection() {
@@ -73,11 +75,10 @@ export function TerminalSection() {
     };
 
     return (
-        <div className="diagnose-section">
-            <h3 className="diagnose-section-title">Terminal</h3>
+        <Section title="Terminal">
 
             {loading ? (
-                <div className="diagnose-loading">Loading...</div>
+                <Loading>Loading...</Loading>
             ) : (
                 <div className="terminal-section-content">
                     {/* Shell Configuration */}
@@ -206,6 +207,6 @@ export function TerminalSection() {
                     </div>
                 </div>
             )}
-        </div>
+        </Section>
     );
 }

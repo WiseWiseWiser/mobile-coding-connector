@@ -3,6 +3,7 @@
 export interface ToolInfo {
     name: string;
     display_name?: string;
+    category: string;
     description: string;
     purpose: string;
     checking?: boolean;

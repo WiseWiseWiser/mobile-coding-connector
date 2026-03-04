@@ -1,0 +1,14 @@
+.pure-section {
+    margin-top: 24px;
+    padding: 0 16px;
+    min-width: 0;
+}
+
+.pure-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 12px;
+}

@@ -719,7 +719,9 @@ func resolveDir(dir string) string {
 
 // getGitStatus runs git status --porcelain=v1 -b and parses the output
 func getGitStatus(dir string) (*GitStatusResult, error) {
-	// Check if directory is a git repository
+	if err := gitrunner.EnsureAvailable(); err != nil {
+		return nil, err
+	}
 	if err := gitrunner.RevParse("--git-dir").Dir(dir).RunSilent(); err != nil {
 		return nil, fmt.Errorf("not a git repository: %s", dir)
 	}
@@ -909,7 +911,9 @@ func getGitBranches(dir string) ([]GitBranch, error) {
 
 // getGitDiff runs git diff commands and returns the results
 func getGitDiff(dir string) (*GitDiffResult, error) {
-	// Check if directory is a git repository
+	if err := gitrunner.EnsureAvailable(); err != nil {
+		return nil, err
+	}
 	if err := gitrunner.RevParse("--git-dir").Dir(dir).RunSilent(); err != nil {
 		return nil, fmt.Errorf("not a git repository: %s", dir)
 	}

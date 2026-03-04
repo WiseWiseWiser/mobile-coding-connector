@@ -10,7 +10,8 @@ import { ServerSettingsSection } from './settings/ServerSettingsSection';
 import { AIModelsSection } from './settings/AIModelsSection';
 import { ProxySettingsSection } from './settings/ProxySettingsSection';
 import { ExportButton, ImportButton } from '../../../pure-view/buttons';
-import './DiagnoseView.css'; // Shared styles: .diagnose-view, .diagnose-section, .diagnose-section-title, .diagnose-loading, .diagnose-error
+import { PageView } from '../../../pure-view/PageView';
+import { Section } from '../../../pure-view/Section';
 import './settings/GitSettings.css';
 import './settings/CloudflareSettingsView.css';
 import './settings/TerminalSection.css';
@@ -24,7 +25,7 @@ export function SettingsView() {
     const navigate = useNavigate();
 
     return (
-        <div className="diagnose-view">
+        <PageView>
             <div className="mcc-section-header">
                 <button className="mcc-back-btn" onClick={() => navigate('..')}>&larr;</button>
                 <h2>Settings</h2>
@@ -34,10 +35,9 @@ export function SettingsView() {
 
             <ExposedUrlsSection />
 
-            <div className="diagnose-section">
-                <h3 className="diagnose-section-title">Git</h3>
+            <Section title="Git">
                 <GitSettingsContent />
-            </div>
+            </Section>
 
             <SecuritySection />
 
@@ -47,20 +47,18 @@ export function SettingsView() {
 
             <AIModelsSection />
 
-            <div className="diagnose-section">
-                <h3 className="diagnose-section-title">Cloudflare</h3>
+            <Section title="Cloudflare">
                 <CloudflareSettingsContent />
-            </div>
+            </Section>
 
-            <div className="diagnose-section">
-                <h3 className="diagnose-section-title">Server</h3>
+            <Section title="Server">
                 <ServerSettingsSection />
-            </div>
+            </Section>
 
             <div className="settings-export-import">
                 <ImportButton onClick={() => navigate('import')} />
                 <ExportButton onClick={() => navigate('export')} />
             </div>
-        </div>
+        </PageView>
     );
 }

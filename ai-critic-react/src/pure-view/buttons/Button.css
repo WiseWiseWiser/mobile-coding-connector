@@ -1,0 +1,112 @@
+.pure-btn {
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    border: none;
+}
+
+.pure-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Primary - blue action button */
+.pure-btn--primary {
+    padding: 10px 16px;
+    background: #3b82f6;
+    color: white;
+}
+
+.pure-btn--primary:hover:not(:disabled) {
+    background: #2563eb;
+}
+
+/* Secondary - gray utility button */
+.pure-btn--secondary {
+    padding: 8px 14px;
+    background: #475569;
+    border: 1px solid #64748b;
+    color: #e2e8f0;
+    font-weight: 500;
+    align-self: flex-start;
+}
+
+.pure-btn--secondary:hover:not(:disabled) {
+    background: #64748b;
+}
+
+/* Cancel - ghost outline button */
+.pure-btn--cancel {
+    padding: 10px 16px;
+    background: transparent;
+    border: 1px solid #475569;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+.pure-btn--cancel:hover:not(:disabled) {
+    background: rgba(100, 116, 139, 0.15);
+    color: #e2e8f0;
+}
+
+/* Danger - red destructive button */
+.pure-btn--danger {
+    padding: 4px 10px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    font-size: 12px;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+.pure-btn--danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.25);
+}
+
+/* Link - small inline link-style button */
+.pure-btn--link {
+    padding: 2px 8px;
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 4px;
+    color: #60a5fa;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.pure-btn--link:hover:not(:disabled) {
+    background: rgba(59, 130, 246, 0.35);
+}
+
+/* Start - green action button */
+.pure-btn--start {
+    padding: 4px 12px;
+    background: #22c55e;
+    color: white;
+    border-radius: 6px;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.pure-btn--start:hover:not(:disabled) {
+    background: #16a34a;
+}
+
+/* Stop - red outline action button */
+.pure-btn--stop {
+    padding: 4px 12px;
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    border-radius: 6px;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.pure-btn--stop:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.35);
+}

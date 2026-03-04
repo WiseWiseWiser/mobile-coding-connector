@@ -18,6 +18,7 @@ import { TrashIcon } from '../../../pure-view/icons/TrashIcon';
 import { RefreshIcon } from '../../../pure-view/icons/RefreshIcon';
 import { FolderMoveIcon } from '../../../pure-view/icons/FolderMoveIcon';
 import { CheckCircleIcon } from '../../../pure-view/icons/CheckCircleIcon';
+import { buildWorktreeProjectName, projectPath } from '../../../route/route';
 
 interface WorktreesSectionProps {
     project: ProjectInfo;
@@ -273,20 +274,14 @@ export function WorktreesSection({ project }: WorktreesSectionProps) {
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                 <button
                                     onClick={() => {
-                                        const worktreeId = getWorktreeId(wt, project);
-                                        const projectName = project.name;
-                                        const fullProjectName = worktreeId === 0 
-                                            ? projectName 
-                                            : `${projectName}~${worktreeId}`;
-                                        // Extract the current route path after the project name
-                                        // e.g., from /project/opencode~1/chat -> /chat
+                                        const wtId = getWorktreeId(wt, project);
+                                        const fullName = buildWorktreeProjectName(project.name, wtId);
                                         const currentPath = location.pathname;
                                         const projectPrefixMatch = currentPath.match(/\/project\/[^/]+/);
-                                        let routePath = '/home';
-                                        if (projectPrefixMatch) {
-                                            routePath = currentPath.substring(projectPrefixMatch[0].length) || '/home';
-                                        }
-                                        navigate(`/project/${fullProjectName}${routePath}`);
+                                        const routePath = projectPrefixMatch
+                                            ? (currentPath.substring(projectPrefixMatch[0].length) || '/home')
+                                            : '/home';
+                                        navigate(`${projectPath(fullName)}${routePath}`);
                                     }}
                                     style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, fontSize: '11px', cursor: 'pointer' }}
                                 >

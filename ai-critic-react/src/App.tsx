@@ -4,7 +4,7 @@ import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, DiagnoseView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, CodexWebUI, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings, CursorACPSessionSettings } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, ToolsView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, CodexWebUI, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings, CursorACPSessionSettings } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './logs';
 import './App.css';
@@ -159,7 +159,7 @@ function App() {
                     <Route element={<MobileCodingConnector />}>
                         <Route path="home">
                             <Route index element={<WorkspaceListView />} />
-                            <Route path="tools" element={<DiagnoseView />} />
+                            <Route path="tools" element={<ToolsView />} />
                             <Route path="settings" element={<SettingsView />} />
                             <Route path="settings/export" element={<ExportPage />} />
                             <Route path="settings/import" element={<ImportPage />} />
@@ -213,7 +213,7 @@ function App() {
                         <Route index element={<ProjectConfigView />} />
                         <Route path="home">
                             <Route index element={<WorkspaceListView />} />
-                            <Route path="tools" element={<DiagnoseView />} />
+                            <Route path="tools" element={<ToolsView />} />
                             <Route path="settings" element={<SettingsView />} />
                             <Route path="settings/export" element={<ExportPage />} />
                             <Route path="settings/import" element={<ImportPage />} />

@@ -1,0 +1,18 @@
+.pure-form-select {
+    width: 100%;
+    padding: 10px 12px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #f1f5f9;
+    font-size: 13px;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+    cursor: pointer;
+    appearance: auto;
+}
+
+.pure-form-select:focus {
+    outline: none;
+    border-color: #60a5fa;
+}

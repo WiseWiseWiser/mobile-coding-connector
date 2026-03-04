@@ -11,6 +11,7 @@ import type { SSHKey } from './gitStorage';
 import { FlexInput } from '../../../../pure-view/FlexInput';
 import { useV2Context } from '../../../V2Context';
 import { updateProject } from '../../../../api/projects';
+import './CloneRepoView.css';
 import './GitSettings.css';
 
 export function CloneRepoView() {

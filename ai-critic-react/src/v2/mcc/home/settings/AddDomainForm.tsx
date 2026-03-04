@@ -2,6 +2,12 @@ import { useState } from 'react';
 import { DomainProviders, fetchRandomDomain } from '../../../../api/domains';
 import type { DomainEntry } from '../../../../api/domains';
 import { FlexInput } from '../../../../pure-view/FlexInput';
+import { FormField } from '../../../../pure-view/form';
+import { FormSelect } from '../../../../pure-view/form';
+import { Button } from '../../../../pure-view/buttons';
+import { ButtonGroup } from '../../../../pure-view/ButtonGroup';
+import '../../../../pure-view/form/FormInput.css';
+import './AddDomainForm.css';
 
 export interface AddDomainFormProps {
     onAdd: (entry: DomainEntry) => void;
@@ -19,18 +25,16 @@ export function AddDomainForm({ onAdd, onCancel, onError }: AddDomainFormProps) 
     };
 
     return (
-        <div className="diagnose-webaccess-add">
-            <div className="diagnose-webaccess-add-row">
-                <label className="diagnose-webaccess-add-label">Domain</label>
+        <div className="add-domain-form">
+            <FormField label="Domain">
                 <FlexInput
-                    inputClassName="diagnose-webaccess-input"
+                    inputClassName="pure-form-input"
                     placeholder="e.g. myapp.example.com"
                     value={domain}
                     onChange={setDomain}
                 />
-                <button
-                    type="button"
-                    className="diagnose-webaccess-generate-btn"
+                <Button
+                    variant="secondary"
                     onClick={async () => {
                         try {
                             const d = await fetchRandomDomain(domain || undefined);
@@ -41,27 +45,22 @@ export function AddDomainForm({ onAdd, onCancel, onError }: AddDomainFormProps) 
                     }}
                 >
                     Generate Random Subdomain
-                </button>
-            </div>
-            <div className="diagnose-webaccess-add-row">
-                <label className="diagnose-webaccess-add-label">Provider</label>
-                <select
-                    className="diagnose-webaccess-select"
-                    value={provider}
-                    onChange={e => setProvider(e.target.value)}
-                >
+                </Button>
+            </FormField>
+            <FormField label="Provider">
+                <FormSelect value={provider} onChange={setProvider}>
                     <option value={DomainProviders.Cloudflare}>Cloudflare</option>
                     <option value={DomainProviders.Ngrok}>ngrok (not supported)</option>
-                </select>
-            </div>
-            <div className="diagnose-webaccess-add-actions">
-                <button className="diagnose-webaccess-add-btn" onClick={handleAdd} disabled={!domain.trim()}>
+                </FormSelect>
+            </FormField>
+            <ButtonGroup>
+                <Button onClick={handleAdd} disabled={!domain.trim()}>
                     Add Domain
-                </button>
-                <button className="diagnose-webaccess-cancel-btn" onClick={onCancel}>
+                </Button>
+                <Button variant="cancel" onClick={onCancel}>
                     Cancel
-                </button>
-            </div>
+                </Button>
+            </ButtonGroup>
         </div>
     );
 }

@@ -9,6 +9,7 @@ import {
     type BrowserExportData,
 } from '../../../../api/settingsExport';
 import { loadSSHKeys, loadGitHubToken, loadGitUserConfig } from './gitStorage';
+import { PageView } from '../../../../pure-view/PageView';
 import './ImportPage.css';
 
 type ImportStep = 'choose' | 'preview' | 'done';
@@ -239,7 +240,7 @@ export function ImportPage() {
     const totalCount = files.length;
 
     return (
-        <div className="diagnose-view">
+        <PageView>
             <div className="mcc-section-header">
                 <button className="mcc-back-btn" onClick={() => navigate('..')}>&larr;</button>
                 <h2>Import Settings</h2>
@@ -404,6 +405,6 @@ export function ImportPage() {
                     </div>
                 </div>
             )}
-        </div>
+        </PageView>
     );
 }

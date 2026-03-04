@@ -8,6 +8,7 @@ import { fetchCloudflareStatus } from '../../../../api/cloudflare';
 import { fetchTerminalConfig } from '../../../../api/terminalConfig';
 import { fetchOpencodeAuthStatus, type OpencodeAuthStatus } from '../../../../api/agents';
 import { loadSSHKeys, loadGitHubToken, loadGitUserConfig } from './gitStorage';
+import { PageView } from '../../../../pure-view/PageView';
 import './ExportPage.css';
 
 interface ExportItem {
@@ -311,7 +312,7 @@ export function ExportPage() {
     };
 
     return (
-        <div className="diagnose-view">
+        <PageView>
             <div className="mcc-section-header">
                 <button className="mcc-back-btn" onClick={() => navigate('..')}>&larr;</button>
                 <h2>Export Settings</h2>
@@ -351,6 +352,6 @@ export function ExportPage() {
                     </button>
                 </div>
             </div>
-        </div>
+        </PageView>
     );
 }

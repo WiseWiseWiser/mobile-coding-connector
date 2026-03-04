@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import type { DomainWithStatus, CloudflareStatus } from '../../../../api/domains';
 import { DomainProviders } from '../../../../api/domains';
+import { Button } from '../../../../pure-view/buttons';
+import './DomainStatusView.css';
 
 interface DomainStatusViewProps {
     entry: DomainWithStatus;
@@ -16,23 +18,20 @@ export function DomainStatusView({ entry, cfStatus, starting, onStart, onStop }:
     if (entry.provider === DomainProviders.Cloudflare && cfStatus) {
         if (!cfStatus.installed) {
             return (
-                <div className="diagnose-webaccess-status diagnose-webaccess-status--warning">
-                    <span className="diagnose-webaccess-status-icon">⚠️</span>
+                <div className="domain-status domain-status--warning">
+                    <span className="domain-status-icon">⚠️</span>
                     <span>cloudflared not installed. Go to System Diagnostics to install.</span>
                 </div>
             );
         }
         if (!cfStatus.authenticated) {
             return (
-                <div className="diagnose-webaccess-status diagnose-webaccess-status--warning">
-                    <span className="diagnose-webaccess-status-icon">⚠️</span>
+                <div className="domain-status domain-status--warning">
+                    <span className="domain-status-icon">⚠️</span>
                     <span>cloudflared not authenticated.</span>
-                    <button
-                        className="diagnose-webaccess-link-btn"
-                        onClick={() => navigate('cloudflare')}
-                    >
+                    <Button variant="link" onClick={() => navigate('cloudflare')}>
                         Go to Cloudflare Settings
-                    </button>
+                    </Button>
                 </div>
             );
         }
@@ -40,8 +39,8 @@ export function DomainStatusView({ entry, cfStatus, starting, onStart, onStop }:
 
     if (entry.provider === DomainProviders.Ngrok) {
         return (
-            <div className="diagnose-webaccess-status diagnose-webaccess-status--warning">
-                <span className="diagnose-webaccess-status-icon">⚠️</span>
+            <div className="domain-status domain-status--warning">
+                <span className="domain-status-icon">⚠️</span>
                 <span>ngrok is not supported yet</span>
             </div>
         );
@@ -50,59 +49,48 @@ export function DomainStatusView({ entry, cfStatus, starting, onStart, onStop }:
     switch (entry.status) {
         case 'active':
             return (
-                <div className="diagnose-webaccess-status diagnose-webaccess-status--active">
-                    <span className="diagnose-webaccess-status-icon">✅</span>
+                <div className="domain-status domain-status--active">
+                    <span className="domain-status-icon">✅</span>
                     <a
                         href={entry.tunnel_url || `https://${entry.domain}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="diagnose-webaccess-tunnel-url"
+                        className="domain-status-url"
                     >
                         {entry.tunnel_url || `https://${entry.domain}`}
                     </a>
-                    <button
-                        className="diagnose-webaccess-stop-btn"
-                        onClick={() => onStop(entry.domain)}
-                    >
+                    <Button variant="stop" onClick={() => onStop(entry.domain)}>
                         Stop
-                    </button>
+                    </Button>
                 </div>
             );
         case 'connecting':
             return (
-                <div className="diagnose-webaccess-status diagnose-webaccess-status--connecting">
-                    <span className="diagnose-webaccess-status-icon diagnose-webaccess-spinner" />
+                <div className="domain-status domain-status--connecting">
+                    <span className="domain-status-icon domain-status-spinner" />
                     <span>Connecting...</span>
                 </div>
             );
         case 'error':
             return (
-                <div className="diagnose-webaccess-status diagnose-webaccess-status--error">
-                    <span className="diagnose-webaccess-status-icon">❌</span>
+                <div className="domain-status domain-status--error">
+                    <span className="domain-status-icon">❌</span>
                     <span>{entry.error || 'Tunnel error'}</span>
-                    <button
-                        className="diagnose-webaccess-start-btn"
-                        onClick={() => onStart(entry.domain)}
-                        disabled={starting}
-                    >
+                    <Button variant="start" onClick={() => onStart(entry.domain)} disabled={starting}>
                         {starting ? 'Starting...' : 'Retry'}
-                    </button>
+                    </Button>
                 </div>
             );
         default: // stopped
             return (
-                <div className="diagnose-webaccess-status diagnose-webaccess-status--stopped">
-                    <span className="diagnose-webaccess-status-icon">
-                        {starting ? <span className="diagnose-webaccess-spinner" /> : '⏸'}
+                <div className="domain-status domain-status--stopped">
+                    <span className="domain-status-icon">
+                        {starting ? <span className="domain-status-spinner" /> : '⏸'}
                     </span>
                     <span>{starting ? 'Starting...' : 'Stopped'}</span>
-                    <button
-                        className="diagnose-webaccess-start-btn"
-                        onClick={() => onStart(entry.domain)}
-                        disabled={starting}
-                    >
+                    <Button variant="start" onClick={() => onStart(entry.domain)} disabled={starting}>
                         {starting ? 'Starting...' : 'Start'}
-                    </button>
+                    </Button>
                 </div>
             );
     }

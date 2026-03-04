@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCurrent } from './useCurrent';
 import { useV2Context } from '../v2/V2Context';
 import type { NavTab } from '../v2/mcc/types';
+import { projectTabPath } from '../route/route';
 
 /**
  * Returns a navigate function scoped to a specific tab.
@@ -19,10 +20,6 @@ export function useTabNavigate(tab: NavTab) {
 
     return (view?: string) => {
         const proj = currentProjectRef.current;
-        const tabBase = proj
-            ? `/project/${encodeURIComponent(proj.name)}/${tab}`
-            : `/${tab}`;
-
-        navigate(view ? `${tabBase}/${view}` : tabBase, { replace: true });
+        navigate(projectTabPath(proj?.name, tab, view), { replace: true });
     };
 }

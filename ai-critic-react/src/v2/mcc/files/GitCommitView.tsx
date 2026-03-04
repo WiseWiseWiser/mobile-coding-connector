@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { toolsPath } from '../../../route/route';
 import { getGitStatus, getDiff, stageFile, unstageFile, gitCommit, gitCheckout, gitRemove, listUntrackedDir, generateCommitMessage } from '../../../api/review';
 import type { GitStatusFile } from '../../../api/review';
 import type { DiffFile } from '../../../components/code-review/types';
@@ -15,6 +17,7 @@ import './FilesView.css';
 import './GitCommitView.css';
 
 export interface GitCommitViewProps {
+    projectName?: string;
     projectDir: string;
     sshKeyId?: string;
     onBack: () => void;
@@ -99,7 +102,7 @@ function renderFileTags(f: GitStatusFile): React.ReactNode {
     return <span className="mcc-file-tags">{tags}</span>;
 }
 
-export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewProps) {
+export function GitCommitView({ projectName, projectDir, sshKeyId, onBack }: GitCommitViewProps) {
     const [stagedFiles, setStagedFiles] = useState<GitStatusFile[]>([]);
     const [unstagedFiles, setUnstagedFiles] = useState<GitStatusFile[]>([]);
     const [branch, setBranch] = useState('');
@@ -368,7 +371,14 @@ export function GitCommitView({ projectDir, sshKeyId, onBack }: GitCommitViewPro
             </div>
 
             {/* Error message at top */}
-            {error && <div className="mcc-checkpoint-error">{error}</div>}
+            {error && (
+                <div className="mcc-checkpoint-error">
+                    {error}
+                    {error.includes('not installed') && (
+                        <> — <Link to={toolsPath(projectName, 'git')}>Configure in Tools</Link></>
+                    )}
+                </div>
+            )}
 
             {/* Staged Files */}
             <div className="mcc-checkpoint-section-header">

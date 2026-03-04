@@ -1,0 +1,8 @@
+/* View Mode Content - read-only domain list */
+
+.view-mode-empty {
+    font-size: 13px;
+    color: #64748b;
+    text-align: center;
+    padding: 8px 0;
+}

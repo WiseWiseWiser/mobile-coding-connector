@@ -1,7 +1,6 @@
 package lib
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -101,7 +100,6 @@ type sandboxFiles struct {
 	downloadsDir   string
 	dataDir        string // host-side .ai-critic directory, mounted as /root/.ai-critic
 	homeDir        string // host-side home directory, mounted as /root to persist across restarts
-	rootDir        string // boot only: host dir used as the container's root filesystem via --rootfs
 }
 
 func setupSandboxFiles(scriptSubDir string) (*sandboxFiles, error) {
@@ -127,14 +125,6 @@ func setupSandboxFiles(scriptSubDir string) (*sandboxFiles, error) {
 		return nil, err
 	}
 
-	files.rootDir = filepath.Join(baseDir, "root")
-	if err := os.MkdirAll(files.rootDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create root dir %s: %v", files.rootDir, err)
-	}
-	fmt.Printf("Root directory: %s\n", files.rootDir)
-
-	// Home and data dirs live inside the rootfs for boot mode,
-	// but also at the top level for fresh-setup mode. Both are set up.
 	files.homeDir = filepath.Join(baseDir, "home")
 	if err := os.MkdirAll(files.homeDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create home dir %s: %v", files.homeDir, err)
@@ -227,72 +217,40 @@ func runFreshContainer(containerName, goarch, binaryPath string, containerPort i
 	return followContainerLogs(containerName)
 }
 
-// ensureBootRootfs initializes the rootfs directory from the container image
-// if it hasn't been set up yet (checks for /bin existence).
-func ensureBootRootfs(rootDir, goarch string) error {
-	if _, err := os.Stat(filepath.Join(rootDir, "bin")); err == nil {
-		return nil
-	}
+const bootConfigLabel = "ai-critic.boot-config-hash"
 
-	fmt.Printf("Initializing rootfs from %s...\n", ContainerImage)
-	platform := fmt.Sprintf("linux/%s", goarch)
-
-	tmpName := "ai-critic-rootfs-init"
-	_ = exec.Command("podman", "rm", "-f", tmpName).Run()
-
-	if err := RunVerbose("podman", "create", "--platform", platform, "--name", tmpName, ContainerImage, "true"); err != nil {
-		return fmt.Errorf("failed to create temp container for rootfs export: %v", err)
-	}
-	defer func() {
-		_ = exec.Command("podman", "rm", "-f", tmpName).Run()
-	}()
-
-	exportCmd := exec.Command("podman", "export", tmpName)
-	tarCmd := exec.Command("tar", "-C", rootDir, "-xf", "-")
-	pipe, err := exportCmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create pipe: %v", err)
-	}
-	tarCmd.Stdin = pipe
-	tarCmd.Stdout = os.Stdout
-	tarCmd.Stderr = os.Stderr
-
-	if err := exportCmd.Start(); err != nil {
-		return fmt.Errorf("failed to start export: %v", err)
-	}
-	if err := tarCmd.Start(); err != nil {
-		exportCmd.Process.Kill()
-		return fmt.Errorf("failed to start tar: %v", err)
-	}
-	if err := exportCmd.Wait(); err != nil {
-		tarCmd.Process.Kill()
-		return fmt.Errorf("export failed: %v", err)
-	}
-	if err := tarCmd.Wait(); err != nil {
-		return fmt.Errorf("tar extract failed: %v", err)
-	}
-
-	fmt.Println("Rootfs initialized.")
-	return nil
+func bootContainerConfig(goarch string, containerPort int, files *sandboxFiles) string {
+	return strings.Join([]string{
+		"platform=" + fmt.Sprintf("linux/%s", goarch),
+		"home=" + files.homeDir,
+		"data=" + files.dataDir,
+		"apt-archives=" + files.aptArchivesDir,
+		"apt-lists=" + files.aptListsDir,
+		"downloads=" + files.downloadsDir,
+		"port=" + fmt.Sprintf("%d", containerPort),
+		"image=" + ContainerImage,
+	}, "\n")
 }
 
-const bootModeLabel = "ai-critic.boot-mode"
-const bootModeRootfs = "rootfs"
-
-func bootContainerCreateArgs(containerName, goarch string, containerPort int, files *sandboxFiles) []string {
+func bootContainerCreateArgs(containerName, goarch string, containerPort int, files *sandboxFiles, cfgHash string) []string {
 	containerCredentialsFile := "/root/" + config.CredentialsFile
 	containerEncKeyFile := "/root/" + config.EncKeyFile
 	containerDomainsFile := "/root/" + config.DomainsFile
+	platform := fmt.Sprintf("linux/%s", goarch)
 
 	return []string{
 		"create",
 		"--name", containerName,
+		"--platform", platform,
 		"-w", "/root",
 		"-v", files.homeDir + ":/root",
 		"-v", files.dataDir + ":/root/" + config.DataDir,
+		"-v", files.aptArchivesDir + ":/var/cache/apt/archives",
+		"-v", files.aptListsDir + ":/var/lib/apt/lists",
+		"-v", files.downloadsDir + ":/tmp/downloads",
 		"-p", fmt.Sprintf("%d:%d", containerPort, containerPort),
-		"--label", bootModeLabel + "=" + bootModeRootfs,
-		"--rootfs", files.rootDir,
+		"--label", bootConfigLabel + "=" + cfgHash,
+		ContainerImage,
 		"/usr/local/bin/ai-critic", "--port", fmt.Sprintf("%d", containerPort),
 		"--credentials-file", containerCredentialsFile,
 		"--enc-key-file", containerEncKeyFile,
@@ -301,21 +259,15 @@ func bootContainerCreateArgs(containerName, goarch string, containerPort int, fi
 }
 
 func runBootContainer(containerName, goarch, binaryPath string, containerPort int, files *sandboxFiles) error {
-	rootDir := files.rootDir
-	if err := ensureBootRootfs(rootDir, goarch); err != nil {
-		return err
-	}
+	cfg := bootContainerConfig(goarch, containerPort, files)
+	wantHash := configHash(cfg)
 
 	needsCreate := false
 	status, err := InspectContainerStatus(containerName)
 	if err != nil {
 		needsCreate = true
-	} else if inspectContainerLabel(containerName, bootModeLabel) != bootModeRootfs {
-		fmt.Printf("Container %q was not created with rootfs mode. Recreating...\n", containerName)
-		_ = RunVerbose("podman", "rm", "-f", containerName)
-		needsCreate = true
-	} else if !inspectContainerHasPort(containerName, containerPort) {
-		fmt.Printf("Container %q port mapping mismatch (want %d). Recreating...\n", containerName, containerPort)
+	} else if gotHash := inspectContainerLabel(containerName, bootConfigLabel); gotHash != wantHash {
+		fmt.Printf("Container %q config changed (got %s, want %s), recreating...\n", containerName, gotHash, wantHash)
 		_ = RunVerbose("podman", "rm", "-f", containerName)
 		needsCreate = true
 	} else if status == "running" {
@@ -326,20 +278,15 @@ func runBootContainer(containerName, goarch, binaryPath string, containerPort in
 	}
 
 	if needsCreate {
-		fmt.Printf("Creating container (rootfs: %s)...\n", rootDir)
-		if err := RunVerbose("podman", bootContainerCreateArgs(containerName, goarch, containerPort, files)...); err != nil {
+		fmt.Printf("Creating container...\n")
+		if err := RunVerbose("podman", bootContainerCreateArgs(containerName, goarch, containerPort, files, wantHash)...); err != nil {
 			return fmt.Errorf("failed to create container: %v", err)
 		}
 	}
 
-	// Copy binary directly into the rootfs directory
-	destBin := filepath.Join(rootDir, "usr", "local", "bin", "ai-critic")
-	if err := os.MkdirAll(filepath.Dir(destBin), 0755); err != nil {
-		return fmt.Errorf("failed to create bin dir in rootfs: %v", err)
-	}
-	fmt.Println("Copying binary into rootfs...")
-	if err := copyFile(binaryPath, destBin); err != nil {
-		return fmt.Errorf("failed to copy binary into rootfs: %v", err)
+	fmt.Println("Copying binary into container...")
+	if err := RunVerbose("podman", "cp", binaryPath, containerName+":/usr/local/bin/ai-critic"); err != nil {
+		return fmt.Errorf("failed to copy binary into container: %v", err)
 	}
 
 	fmt.Printf("\nStarting container...\nServer will be available at http://localhost:%d\n\n", containerPort)
@@ -350,32 +297,10 @@ func runBootContainer(containerName, goarch, binaryPath string, containerPort in
 	return followContainerLogs(containerName)
 }
 
-func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dst, data, 0755)
-}
-
-// inspectContainerHasPort checks whether the container's port bindings
-// include the desired port. Returns false if the container doesn't exist
-// or the port is not mapped.
-func inspectContainerHasPort(containerName string, containerPort int) bool {
-	var buf bytes.Buffer
-	c := exec.Command("podman", "inspect", "--format", "{{json .HostConfig.PortBindings}}", containerName)
-	c.Stdout = &buf
-	c.Stderr = &buf
-	if err := c.Run(); err != nil {
-		return false
-	}
-	return strings.Contains(buf.String(), fmt.Sprintf("%d/tcp", containerPort))
-}
-
 // InspectContainerStatus returns the podman status of the named container,
 // or an error if the container does not exist.
 func InspectContainerStatus(containerName string) (string, error) {
-	var buf bytes.Buffer
+	var buf strings.Builder
 	c := exec.Command("podman", "inspect", "--format", "{{.State.Status}}", containerName)
 	c.Stdout = &buf
 	c.Stderr = &buf

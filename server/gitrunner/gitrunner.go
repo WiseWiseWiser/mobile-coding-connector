@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
 // SSHKeyConfig holds SSH key configuration for git operations
@@ -126,6 +128,15 @@ func (c *Command) RunSilent() error {
 // Exec returns the exec.Cmd for custom execution (e.g., streaming)
 func (c *Command) Exec() *exec.Cmd {
 	return c.Build()
+}
+
+// EnsureAvailable checks if the git binary can be found. Returns nil if
+// available, or a descriptive error prompting the user to install git.
+func EnsureAvailable() error {
+	if !tool_resolve.IsAvailable("git") {
+		return fmt.Errorf("git is not installed. Please install git first (e.g. apt-get update && apt-get install -y git)")
+	}
+	return nil
 }
 
 // Helper functions for common git operations

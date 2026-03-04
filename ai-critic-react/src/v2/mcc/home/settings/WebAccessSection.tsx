@@ -6,6 +6,9 @@ import type { LogLine } from '../../../LogViewer';
 import { DomainRowView } from './DomainRowView';
 import { DomainRowEdit } from './DomainRowEdit';
 import { AddDomainForm } from './AddDomainForm';
+import { Loading } from '../../../../pure-view/Loading';
+import { Section } from '../../../../pure-view/Section';
+import { InlineError } from '../../../../pure-view/InlineError';
 import './WebAccessSection.css';
 
 export function WebAccessSection() {
@@ -144,21 +147,20 @@ export function WebAccessSection() {
     const displayTunnelName = tunnelName || '(auto)';
 
     return (
-        <div className="diagnose-section">
-            <h3 className="diagnose-section-title">Web Access</h3>
+        <Section title="Web Access">
 
             {loading ? (
-                <div className="diagnose-loading">Loading domains...</div>
+                <Loading>Loading domains...</Loading>
             ) : (
-                <div className="diagnose-webaccess-card">
+                <div className="webaccess-card">
                     {domainsList.length === 0 && !showAddForm && (
-                        <div className="diagnose-webaccess-empty">
+                        <div className="webaccess-empty">
                             No domains configured. Add one to enable public access.
                         </div>
                     )}
 
                     {domainsList.length > 0 && (
-                        <div className="diagnose-webaccess-list">
+                        <div className="webaccess-list">
                             {domainsList.map((entry, i) =>
                                 editingIndex === i ? (
                                     <DomainRowEdit
@@ -191,7 +193,7 @@ export function WebAccessSection() {
                         </div>
                     )}
 
-                    {error && <div className="diagnose-security-error">{error}</div>}
+                    {error && <InlineError>{error}</InlineError>}
 
                     {showAddForm ? (
                         <AddDomainForm
@@ -200,12 +202,12 @@ export function WebAccessSection() {
                             onError={setError}
                         />
                     ) : (
-                        <button className="diagnose-webaccess-add-toggle" onClick={() => setShowAddForm(true)}>
+                        <button className="webaccess-add-toggle" onClick={() => setShowAddForm(true)}>
                             + Add Domain
                         </button>
                     )}
                 </div>
             )}
-        </div>
+        </Section>
     );
 }

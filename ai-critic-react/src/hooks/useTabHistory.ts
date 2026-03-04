@@ -2,6 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useV2Context } from '../v2/V2Context';
 import { useCurrent } from './useCurrent';
 import type { NavTab } from '../v2/mcc/types';
+import { projectTabPath } from '../route/route';
 
 interface UseTabHistoryOptions {
     /**
@@ -32,12 +33,9 @@ export function useTabHistory(tab: NavTab, options?: UseTabHistoryOptions) {
     const tabHistoriesRef = useCurrent(tabHistories);
     const optionsRef = useCurrent(options);
 
-    // Build the base path for this tab
     const getTabBase = () => {
         const proj = currentProjectRef.current;
-        return proj
-            ? `/project/${encodeURIComponent(proj.name)}/${tab}`
-            : `/${tab}`;
+        return projectTabPath(proj?.name, tab);
     };
 
     // Get the default back path (either from options or tab base)

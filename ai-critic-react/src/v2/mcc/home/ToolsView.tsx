@@ -1,19 +1,62 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchTools, fetchToolsQuick, installTool, upgradeTool } from '../../../api/tools';
 import type { ToolInfo, ToolsResponse } from '../../../api/tools';
 import { consumeSSEStream } from '../../../api/sse';
 import { LogViewer } from '../../LogViewer';
 import type { LogLine } from '../../LogViewer';
 import { EffectivePathSection } from '../../../components/EffectivePathSection';
-import './DiagnoseView.css';
+import { Loading } from '../../../pure-view/Loading';
+import './ToolsView.css';
 
-export function DiagnoseView() {
+const CategoryLabels: Record<string, string> = {
+    foundation: 'Foundation',
+    language: 'Language',
+    coding: 'Coding',
+    testing: 'Testing',
+    other: 'Others',
+};
+
+const CategoryOrder = ['foundation', 'language', 'coding', 'testing', 'other'] as const;
+
+function groupToolsByCategory(tools: ToolInfo[]): { category: string; label: string; tools: ToolInfo[] }[] {
+    const grouped = new Map<string, ToolInfo[]>();
+    for (const tool of tools) {
+        const cat = tool.category || 'other';
+        const list = grouped.get(cat);
+        if (list) {
+            list.push(tool);
+        } else {
+            grouped.set(cat, [tool]);
+        }
+    }
+    return CategoryOrder
+        .filter(cat => grouped.has(cat))
+        .map(cat => ({
+            category: cat,
+            label: CategoryLabels[cat] ?? cat,
+            tools: grouped.get(cat)!,
+        }));
+}
+
+export function ToolsView() {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const highlightTool = searchParams.get('tool') || '';
     const [data, setData] = useState<ToolsResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [statusLoading, setStatusLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const scrolledRef = useRef(false);
+
+    useEffect(() => {
+        if (!highlightTool || !data || scrolledRef.current) return;
+        scrolledRef.current = true;
+        requestAnimationFrame(() => {
+            const el = document.getElementById(`tool-${highlightTool}`);
+            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    }, [highlightTool, data]);
 
     const loadTools = async (showLoading = true) => {
         setError(null);
@@ -53,54 +96,97 @@ export function DiagnoseView() {
     const checkingCount = data?.tools.filter(t => t.checking).length ?? 0;
     const checkedCount = totalCount - checkingCount;
 
+    const sections = useMemo(() => {
+        if (!data) return [];
+        return groupToolsByCategory(data.tools);
+    }, [data]);
+
     return (
-        <div className="diagnose-view">
+        <div className="tools-view">
             <div className="mcc-section-header">
                 <button className="mcc-back-btn" onClick={() => navigate('..')}>&larr;</button>
                 <h2>Server Tools</h2>
             </div>
 
             {loading && !data ? (
-                <div className="diagnose-loading">Checking installed tools...</div>
+                <Loading>Checking installed tools...</Loading>
             ) : data ? (
                 <>
-                    {error && <div className="diagnose-error">Error: {error}</div>}
-                    <div className="diagnose-summary">
-                        <div className="diagnose-summary-icon">
+                    {error && <div className="tools-error">Error: {error}</div>}
+                    <div className="tools-summary">
+                        <div className="tools-summary-icon">
                             {statusLoading || checkingCount > 0 ? '⏳' : installedCount === totalCount ? '✅' : installedCount > 0 ? '⚠️' : '❌'}
                         </div>
-                        <div className="diagnose-summary-text">
-                            <span className="diagnose-summary-count">
+                        <div className="tools-summary-text">
+                            <span className="tools-summary-count">
                                 {checkingCount > 0 ? `${checkedCount}/${totalCount}` : `${installedCount}/${totalCount}`}
                             </span>
-                            <span className="diagnose-summary-label">
+                            <span className="tools-summary-label">
                                 {checkingCount > 0
                                     ? `tools checked (${checkingCount} pending)`
                                     : 'tools installed'}
                             </span>
                         </div>
-                        <div className="diagnose-os-badge">
+                        <div className="tools-os-badge">
                             {data.os === 'darwin' ? 'macOS' : data.os === 'linux' ? 'Linux' : data.os === 'windows' ? 'Windows' : data.os}
                         </div>
                     </div>
 
-                    <div className="diagnose-tools-list">
-                        {data.tools.map(tool => (
-                            <ToolCard key={tool.name} tool={tool} os={data.os} onInstalled={() => loadTools(false)} />
-                        ))}
-                    </div>
+                    {sections.map(section => (
+                        <ToolsSection
+                            key={section.category}
+                            label={section.label}
+                            tools={section.tools}
+                            os={data.os}
+                            highlightTool={highlightTool}
+                            onInstalled={() => loadTools(false)}
+                        />
+                    ))}
 
-                    <div className="diagnose-path-section">
+                    <div className="tools-path-section">
                         <EffectivePathSection />
                     </div>
 
-                    <button className="diagnose-refresh-btn" onClick={() => loadTools()}>
+                    <button className="tools-refresh-btn" onClick={() => loadTools()}>
                         {statusLoading ? 'Refreshing...' : 'Refresh'}
                     </button>
                 </>
             ) : error ? (
-                <div className="diagnose-error">Error: {error}</div>
+                <div className="tools-error">Error: {error}</div>
             ) : null}
+        </div>
+    );
+}
+
+interface ToolsSectionProps {
+    label: string;
+    tools: ToolInfo[];
+    os: string;
+    highlightTool: string;
+    onInstalled: () => void;
+}
+
+function ToolsSection({ label, tools, os, highlightTool, onInstalled }: ToolsSectionProps) {
+    const hasHighlight = tools.some(t => t.name === highlightTool);
+    const [expanded, setExpanded] = useState(true);
+
+    const installedCount = tools.filter(t => t.installed).length;
+    const total = tools.length;
+
+    return (
+        <div className="tools-section-group">
+            <div className="tools-section-header" onClick={() => setExpanded(!expanded)}>
+                <span className={`tools-section-chevron ${expanded ? 'expanded' : ''}`}>›</span>
+                <h3 className="tools-section-title">{label}</h3>
+                <span className="tools-section-count">{installedCount}/{total}</span>
+            </div>
+            {expanded && (
+                <div className="tools-tools-list">
+                    {tools.map(tool => (
+                        <ToolCard key={tool.name} tool={tool} os={os} defaultExpanded={hasHighlight && tool.name === highlightTool} onInstalled={onInstalled} />
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
@@ -108,12 +194,13 @@ export function DiagnoseView() {
 interface ToolCardProps {
     tool: ToolInfo;
     os: string;
+    defaultExpanded?: boolean;
     onInstalled: () => void;
 }
 
-function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
+function ToolCard({ tool, os, defaultExpanded, onInstalled }: ToolCardProps) {
     const navigate = useNavigate();
-    const [expanded, setExpanded] = useState(false);
+    const [expanded, setExpanded] = useState(defaultExpanded ?? false);
     const [installing, setInstalling] = useState(false);
     const [installLogs, setInstallLogs] = useState<LogLine[]>([]);
     const [installDone, setInstallDone] = useState(false);
@@ -214,28 +301,28 @@ function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
     const showLogs = installLogs.length > 0;
 
     return (
-        <div className={`diagnose-tool-card ${tool.installed ? 'installed' : 'not-installed'}`}>
-            <div className="diagnose-tool-header" onClick={() => setExpanded(!expanded)}>
-                <span className="diagnose-tool-status">
+        <div id={`tool-${tool.name}`} className={`tools-tool-card ${tool.installed ? 'installed' : 'not-installed'}`}>
+            <div className="tools-tool-header" onClick={() => setExpanded(!expanded)}>
+                <span className="tools-tool-status">
                     {tool.checking
-                        ? <span className="diagnose-tool-spinner" />
+                        ? <span className="tools-tool-spinner" />
                         : tool.installed
                             ? '✅'
                             : installing
-                                ? <span className="diagnose-tool-spinner" />
+                                ? <span className="tools-tool-spinner" />
                                 : '❌'}
                 </span>
-                <span className="diagnose-tool-name">{tool.name}</span>
+                <span className="tools-tool-name">{tool.name}</span>
                 {tool.display_name && (
-                    <span className="diagnose-tool-display-name">{tool.display_name}</span>
+                    <span className="tools-tool-display-name">{tool.display_name}</span>
                 )}
                 {tool.installed && tool.version && (
-                    <span className="diagnose-tool-version">{tool.version}</span>
+                    <span className="tools-tool-version">{tool.version}</span>
                 )}
-                <div className="diagnose-tool-actions">
+                <div className="tools-tool-actions">
                     {!tool.checking && !tool.installed && tool.auto_install_cmd && (
                         <button
-                            className="diagnose-tool-install-btn"
+                            className="tools-tool-install-btn"
                             onClick={handleInstall}
                             disabled={installing}
                         >
@@ -244,47 +331,47 @@ function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
                     )}
                     {tool.installed && tool.settings_path && (
                         <button
-                            className="diagnose-tool-settings-btn"
+                            className="tools-tool-settings-btn"
                             onClick={(e) => { e.stopPropagation(); navigate(tool.settings_path!); }}
                         >
                             Settings
                         </button>
                     )}
-                    <span className={`diagnose-tool-chevron ${expanded ? 'expanded' : ''}`}>›</span>
+                    <span className={`tools-tool-chevron ${expanded ? 'expanded' : ''}`}>›</span>
                 </div>
             </div>
 
             {expanded && (
-                <div className="diagnose-tool-details">
+                <div className="tools-tool-details">
                     {tool.checking && (
-                        <div className="diagnose-tool-row">
-                            <span className="diagnose-tool-label">Status:</span>
-                            <span className="diagnose-tool-value">Checking...</span>
+                        <div className="tools-tool-row">
+                            <span className="tools-tool-label">Status:</span>
+                            <span className="tools-tool-value">Checking...</span>
                         </div>
                     )}
-                    <div className="diagnose-tool-row">
-                        <span className="diagnose-tool-label">Description:</span>
-                        <span className="diagnose-tool-value">{tool.description}</span>
+                    <div className="tools-tool-row">
+                        <span className="tools-tool-label">Description:</span>
+                        <span className="tools-tool-value">{tool.description}</span>
                     </div>
-                    <div className="diagnose-tool-row">
-                        <span className="diagnose-tool-label">Purpose:</span>
-                        <span className="diagnose-tool-value">{tool.purpose}</span>
+                    <div className="tools-tool-row">
+                        <span className="tools-tool-label">Purpose:</span>
+                        <span className="tools-tool-value">{tool.purpose}</span>
                     </div>
                     {tool.installed && tool.path && (
-                        <div className="diagnose-tool-row">
-                            <span className="diagnose-tool-label">Path:</span>
-                            <code className="diagnose-tool-path">{tool.path}</code>
+                        <div className="tools-tool-row">
+                            <span className="tools-tool-label">Path:</span>
+                            <code className="tools-tool-path">{tool.path}</code>
                         </div>
                     )}
                     {!tool.checking && !tool.installed && !showLogs && (
-                        <div className="diagnose-tool-install">
-                            <span className="diagnose-tool-install-label">Install ({os === 'darwin' ? 'macOS' : os === 'linux' ? 'Linux' : 'Windows'}):</span>
-                            <code className="diagnose-tool-install-cmd">{getInstallCommand()}</code>
+                        <div className="tools-tool-install">
+                            <span className="tools-tool-install-label">Install ({os === 'darwin' ? 'macOS' : os === 'linux' ? 'Linux' : 'Windows'}):</span>
+                            <code className="tools-tool-install-cmd">{getInstallCommand()}</code>
                         </div>
                     )}
                     {showLogs && (
-                        <div className="diagnose-tool-install-logs">
-                            <span className="diagnose-tool-install-logs-label">
+                        <div className="tools-tool-install-logs">
+                            <span className="tools-tool-install-logs-label">
                                 {installing ? 'Installing...' : installDone ? 'Installed successfully' : installError ? 'Installation failed' : ''}
                             </span>
                             <LogViewer
@@ -296,26 +383,26 @@ function ToolCard({ tool, os, onInstalled }: ToolCardProps) {
                         </div>
                     )}
                     {tool.installed && (
-                        <div className="diagnose-tool-install-all">
-                            <div className="diagnose-tool-install-title">Installation commands:</div>
-                            <div className="diagnose-tool-install-item">
-                                <span className="diagnose-tool-install-os">macOS:</span>
+                        <div className="tools-tool-install-all">
+                            <div className="tools-tool-install-title">Installation commands:</div>
+                            <div className="tools-tool-install-item">
+                                <span className="tools-tool-install-os">macOS:</span>
                                 <code>{tool.install_macos}</code>
                             </div>
-                            <div className="diagnose-tool-install-item">
-                                <span className="diagnose-tool-install-os">Linux:</span>
+                            <div className="tools-tool-install-item">
+                                <span className="tools-tool-install-os">Linux:</span>
                                 <code>{tool.install_linux}</code>
                             </div>
-                            <div className="diagnose-tool-install-item">
-                                <span className="diagnose-tool-install-os">Windows:</span>
+                            <div className="tools-tool-install-item">
+                                <span className="tools-tool-install-os">Windows:</span>
                                 <code>{tool.install_windows}</code>
                             </div>
                         </div>
                     )}
                     {tool.installed && (
-                        <div className="diagnose-tool-row">
+                        <div className="tools-tool-row">
                             <button
-                                className="diagnose-tool-upgrade-btn"
+                                className="tools-tool-upgrade-btn"
                                 onClick={handleUpgrade}
                                 disabled={upgrading || !hasUpgradeCommand()}
                                 title={hasUpgradeCommand() ? 'Upgrade to latest version' : 'Upgrade not available for this tool'}

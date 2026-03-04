@@ -1,0 +1,12 @@
+.pure-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.pure-form-field-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #94a3b8;
+    letter-spacing: 0.3px;
+}

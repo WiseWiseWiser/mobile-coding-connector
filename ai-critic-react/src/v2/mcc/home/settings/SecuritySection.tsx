@@ -3,6 +3,10 @@ import { fetchEncryptKeyStatus, generateEncryptKeys } from '../../../../api/encr
 import type { EncryptKeyStatus } from '../../../../api/encrypt';
 import { fetchCredentials, addCredentialToken, generateCredential, type MaskedCredential } from '../../../../api/auth';
 import { FlexInput } from '../../../../pure-view/FlexInput';
+import { Loading } from '../../../../pure-view/Loading';
+import { Section } from '../../../../pure-view/Section';
+import { ErrorMessage } from '../../../../pure-view/ErrorMessage';
+import { InlineError } from '../../../../pure-view/InlineError';
 import './SecuritySection.css';
 
 export function SecuritySection() {
@@ -71,24 +75,22 @@ export function SecuritySection() {
     };
 
     return (
-        <div className="diagnose-section">
-            <h3 className="diagnose-section-title">Security</h3>
-
+        <Section title="Security">
             {loading ? (
-                <div className="diagnose-loading">Checking security status...</div>
+                <Loading>Checking security status...</Loading>
             ) : error ? (
-                <div className="diagnose-error">{error}</div>
+                <ErrorMessage>{error}</ErrorMessage>
             ) : (
                 <>
                     {/* Credentials */}
-                    <div className="diagnose-security-card">
-                        <div className="diagnose-security-header">
-                            <span className="diagnose-security-status">
+                    <div className="security-card">
+                        <div className="security-header">
+                            <span className="security-status">
                                 {credentials.length > 0 ? '\u2705' : '\u274C'}
                             </span>
-                            <div className="diagnose-security-info">
-                                <span className="diagnose-security-label">Server Credentials</span>
-                                <span className="diagnose-security-desc">
+                            <div className="security-info">
+                                <span className="security-label">Server Credentials</span>
+                                <span className="security-desc">
                                     {credentials.length > 0
                                         ? `${credentials.length} token(s) configured for server authentication.`
                                         : 'No credentials configured. Server authentication may not work.'}
@@ -96,32 +98,32 @@ export function SecuritySection() {
                             </div>
                         </div>
                         {credentials.length > 0 && (
-                            <div className="diagnose-security-credentials">
+                            <div className="security-credentials">
                                 {credentials.map((c, i) => (
-                                    <div key={i} className="diagnose-security-credential-row">
-                                        <code className="diagnose-security-credential-value">{c.masked}</code>
+                                    <div key={i} className="security-credential-row">
+                                        <code className="security-credential-value">{c.masked}</code>
                                     </div>
                                 ))}
                             </div>
                         )}
-                        <div className="diagnose-security-add-token">
+                        <div className="security-add-token">
                             <FlexInput
-                                inputClassName="diagnose-security-token-input"
+                                inputClassName="security-token-input"
                                 placeholder="Enter token or generate one..."
                                 value={newToken}
                                 onChange={setNewToken}
                                 disabled={addingToken}
                             />
-                            <div className="diagnose-security-token-actions">
+                            <div className="security-token-actions">
                                 <button
-                                    className="diagnose-security-btn"
+                                    className="security-btn"
                                     onClick={handleAddToken}
                                     disabled={addingToken || !newToken.trim()}
                                 >
                                     {addingToken ? 'Adding...' : 'Add Token'}
                                 </button>
                                 <button
-                                    className="diagnose-security-btn diagnose-security-btn--secondary"
+                                    className="security-btn security-btn--secondary"
                                     onClick={handleGenerateRandom}
                                     disabled={addingToken}
                                 >
@@ -129,21 +131,21 @@ export function SecuritySection() {
                                 </button>
                             </div>
                             {tokenError && (
-                                <div className="diagnose-security-error">{tokenError}</div>
+                                <InlineError>{tokenError}</InlineError>
                             )}
                         </div>
                     </div>
 
                     {/* Encryption Keys */}
                     {keyStatus && (
-                        <div className="diagnose-security-card">
-                            <div className="diagnose-security-header">
-                                <span className="diagnose-security-status">
+                        <div className="security-card">
+                            <div className="security-header">
+                                <span className="security-status">
                                     {keyStatus.valid ? '\u2705' : keyStatus.exists ? '\u26A0\uFE0F' : '\u274C'}
                                 </span>
-                                <div className="diagnose-security-info">
-                                    <span className="diagnose-security-label">Encryption Key Pair</span>
-                                    <span className="diagnose-security-desc">
+                                <div className="security-info">
+                                    <span className="security-label">Encryption Key Pair</span>
+                                    <span className="security-desc">
                                         {keyStatus.valid
                                             ? 'RSA key pair is valid and available for encrypting sensitive data in transit.'
                                             : keyStatus.exists
@@ -154,22 +156,22 @@ export function SecuritySection() {
                             </div>
 
                             {keyStatus.error && (
-                                <div className="diagnose-security-error">{keyStatus.error}</div>
+                                <InlineError>{keyStatus.error}</InlineError>
                             )}
 
-                            <div className="diagnose-security-paths">
-                                <div className="diagnose-security-path-row">
-                                    <span className="diagnose-security-path-label">Private key:</span>
-                                    <code className="diagnose-security-path-value">{keyStatus.private_key_path}</code>
+                            <div className="security-paths">
+                                <div className="security-path-row">
+                                    <span className="security-path-label">Private key:</span>
+                                    <code className="security-path-value">{keyStatus.private_key_path}</code>
                                 </div>
-                                <div className="diagnose-security-path-row">
-                                    <span className="diagnose-security-path-label">Public key:</span>
-                                    <code className="diagnose-security-path-value">{keyStatus.public_key_path}</code>
+                                <div className="security-path-row">
+                                    <span className="security-path-label">Public key:</span>
+                                    <code className="security-path-value">{keyStatus.public_key_path}</code>
                                 </div>
                             </div>
 
                             <button
-                                className="diagnose-security-btn"
+                                className="security-btn"
                                 onClick={handleGenerate}
                                 disabled={generating}
                             >
@@ -185,6 +187,6 @@ export function SecuritySection() {
                     )}
                 </>
             )}
-        </div>
+        </Section>
     );
 }

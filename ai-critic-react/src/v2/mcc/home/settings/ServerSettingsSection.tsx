@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getServerConfig, setServerConfig, type ServerConfig } from '../../../../api/serverSettings';
 import { FlexInput } from '../../../../pure-view/FlexInput';
+import { Loading } from '../../../../pure-view/Loading';
 import './ServerSettingsSection.css';
 
 export function ServerSettingsSection() {
@@ -55,7 +56,7 @@ export function ServerSettingsSection() {
     };
 
     if (loading) {
-        return <div className="diagnose-loading">Loading server settings...</div>;
+        return <Loading>Loading server settings...</Loading>;
     }
 
     return (

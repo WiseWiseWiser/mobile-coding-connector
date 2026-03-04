@@ -4,7 +4,7 @@ export { SetupPage } from './SetupPage';
 export { V2Provider } from './V2Context';
 export { HomeView, WorkspaceListView } from './mcc/home/HomeView';
 export { ProjectConfigView } from './mcc/home/ProjectConfigView';
-export { DiagnoseView } from './mcc/home/DiagnoseView';
+export { ToolsView } from './mcc/home/ToolsView';
 export { SettingsView } from './mcc/home/SettingsView';
 export { LogsView } from './mcc/home/settings/LogsView';
 export { SSHServersView } from './mcc/home/SSHServersView';

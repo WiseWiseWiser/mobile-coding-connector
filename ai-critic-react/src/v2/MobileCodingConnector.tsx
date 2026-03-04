@@ -26,6 +26,7 @@ import { WorktreeProvider, useWorktreeContext } from './context/WorktreeContext'
 import { useWorktreeRoute } from './hooks/useWorktreeRoute';
 import { useWorktreeManager } from './hooks/useWorktreeManager';
 import { WorktreeSelector } from './components/WorktreeSelector';
+import { projectPath, projectTabPath, buildWorktreeProjectName } from '../route/route';
 import './MobileCodingConnector.css';
 
 // Inner component that uses worktree context
@@ -43,7 +44,7 @@ function MobileCodingConnectorInner() {
 
     // Derive active tab and view from URL pathname
     const pathPrefix = fullProjectName
-        ? `/project/${encodeURIComponent(fullProjectName)}/`
+        ? `${projectPath(fullProjectName)}/`
         : '/';
     const pathRest = location.pathname.startsWith(pathPrefix)
         ? location.pathname.slice(pathPrefix.length)
@@ -148,25 +149,17 @@ function MobileCodingConnectorInner() {
         const wt = currentWorktreeRef.current;
         const routeProject = fullProjectName;
         if (proj || routeProject) {
-            let projBase: string;
+            let fullName: string;
             if (proj) {
-                // Build project name with worktree suffix if not root
-                projBase = `/project/${encodeURIComponent(proj.name)}`;
-                if (wt && wt.id !== 0) {
-                    projBase += `~${wt.id}`;
-                }
+                fullName = buildWorktreeProjectName(proj.name, wt?.id ?? 0);
             } else {
-                // Preserve project/worktree from URL while project context is hydrating
-                projBase = `/project/${encodeURIComponent(routeProject as string)}`;
+                fullName = routeProject as string;
             }
-            if (tab === NavTabs.Home && !view) return `${projBase}/home`;
-            if (view) return `${projBase}/${tab}/${view}`;
-            return `${projBase}/${tab}`;
+            if (tab === NavTabs.Home && !view) return projectTabPath(fullName, 'home');
+            return projectTabPath(fullName, tab, view);
         }
-        // No project selected
         if (tab === NavTabs.Home && !view) return '/';
-        if (view) return `/${tab}/${view}`;
-        return `/${tab}`;
+        return projectTabPath(undefined, tab, view);
     };
 
     // Preserve route history per tab
@@ -191,17 +184,15 @@ function MobileCodingConnectorInner() {
 
     const handleSelectProject = (project: ProjectInfo) => {
         setCurrentProject(project);
-        // Stay on the current tab when switching projects
         const savedRoute = tabViewHistoryRef.current[activeTab];
         const savedView = savedRoute?.view || '';
         const savedSearch = savedRoute?.search || '';
-        const projBase = `/project/${encodeURIComponent(project.name)}`;
         if (activeTab === NavTabs.Home && !savedView) {
-            navigate(`${projBase}/home`);
+            navigate(projectTabPath(project.name, 'home'));
         } else if (savedView) {
-            navigate(`${projBase}/${activeTab}/${savedView}${savedSearch}`);
+            navigate(`${projectTabPath(project.name, activeTab, savedView)}${savedSearch}`);
         } else {
-            navigate(`${projBase}/${activeTab}`);
+            navigate(projectTabPath(project.name, activeTab));
         }
     };
 
@@ -257,7 +248,7 @@ function MobileCodingConnectorInner() {
                         />
                     )}
                 </div>
-                <button className="mcc-profile-btn" onClick={() => currentProject && navigate(`/project/${encodeURIComponent(currentProject.name)}`)}>
+                <button className="mcc-profile-btn" onClick={() => currentProject && navigate(projectPath(currentProject.name))}>
                     <ProjectDetailIcon />
                 </button>
             </div>

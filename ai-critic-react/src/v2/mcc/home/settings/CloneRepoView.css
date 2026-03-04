@@ -1,0 +1,223 @@
+/* ==================== Clone Repo ==================== */
+
+.mcc-clone-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.mcc-clone-ssh-section {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mcc-clone-parent-section {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mcc-clone-parent-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #94a3b8;
+}
+
+.mcc-clone-parent-select {
+    padding: 10px 12px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 14px;
+}
+
+.mcc-clone-parent-select:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.mcc-clone-parent-hint {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.mcc-clone-ssh-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #e2e8f0;
+    cursor: pointer;
+}
+
+.mcc-clone-ssh-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #3b82f6;
+}
+
+.mcc-clone-ssh-select {
+    width: 100%;
+    padding: 8px 12px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #f1f5f9;
+    font-size: 13px;
+}
+
+.mcc-clone-ssh-select:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.mcc-clone-manual {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 14px;
+}
+
+.mcc-clone-manual-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mcc-clone-manual-row input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.mcc-clone-btn {
+    padding: 12px 16px;
+    font-size: 14px;
+    white-space: nowrap;
+    width: 100%;
+}
+
+@media (min-width: 768px) {
+    .mcc-clone-manual-row {
+        flex-direction: row;
+        align-items: flex-end;
+    }
+
+    .mcc-clone-manual-row input {
+        flex: 1;
+        width: auto;
+    }
+
+    .mcc-clone-btn {
+        width: auto;
+        flex-shrink: 0;
+    }
+}
+
+.mcc-clone-result {
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    word-break: break-all;
+}
+
+.mcc-clone-success {
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #22c55e;
+}
+
+.mcc-clone-error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+}
+
+.mcc-clone-search {
+    position: relative;
+}
+
+.mcc-clone-search input {
+    width: 100%;
+    padding: 10px 14px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 10px;
+    color: #f1f5f9;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.mcc-clone-search input:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
+.mcc-clone-search input::placeholder {
+    color: #64748b;
+}
+
+.mcc-clone-repo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.mcc-clone-repo-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.mcc-clone-repo-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.mcc-clone-repo-name {
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: #f1f5f9;
+    margin-bottom: 4px;
+    word-break: break-all;
+}
+
+.mcc-clone-repo-desc {
+    font-size: 12px;
+    color: #94a3b8;
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-clone-repo-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: #64748b;
+}
+
+.mcc-clone-repo-lang {
+    padding: 1px 6px;
+    background: #334155;
+    border-radius: 4px;
+}

@@ -558,7 +558,7 @@ body:has(.mcc) {
     background: rgba(167, 139, 250, 0.1);
 }
 
-.mcc-diagnose-btn {
+.mcc-action-btn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -575,7 +575,7 @@ body:has(.mcc) {
     transition: all 0.2s;
 }
 
-.mcc-diagnose-btn:hover {
+.mcc-action-btn:hover {
     border-color: #22c55e;
     background: rgba(34, 197, 94, 0.1);
 }

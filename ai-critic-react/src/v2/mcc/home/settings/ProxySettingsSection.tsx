@@ -6,6 +6,8 @@ import { LogViewer } from '../../../LogViewer';
 import type { LogLine } from '../../../LogViewer';
 import { TestButton } from '../../../../pure-view/buttons';
 import { parseProxyUrl } from '../../../../lib/url';
+import { Loading } from '../../../../pure-view/Loading';
+import { Section } from '../../../../pure-view/Section';
 import './ProxySettingsSection.css';
 
 export function ProxySettingsSection() {
@@ -216,16 +218,14 @@ export function ProxySettingsSection() {
 
     if (loading) {
         return (
-            <div className="diagnose-section">
-                <h3 className="diagnose-section-title">Proxy Servers</h3>
-                <div className="diagnose-loading">Loading...</div>
-            </div>
+            <Section title="Proxy Servers">
+                <Loading>Loading...</Loading>
+            </Section>
         );
     }
 
     return (
-        <div className="diagnose-section">
-            <h3 className="diagnose-section-title">Proxy Servers</h3>
+        <Section title="Proxy Servers">
             
             <div className="proxy-section-content">
                 {/* Global Enable Toggle */}
@@ -463,6 +463,6 @@ export function ProxySettingsSection() {
                     </button>
                 </div>
             </div>
-        </div>
+        </Section>
     );
 }

@@ -21,6 +21,7 @@ import { ProjectTodos } from './ProjectTodos';
 import { WorktreesSection } from './WorktreesSection';
 import { ProjectReadmeEditor } from './ProjectReadmeEditor';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
+import { projectPath } from '../../../route/route';
 import './ProjectConfigView.css';
 
 export function ProjectConfigView() {
@@ -408,7 +409,7 @@ export function ProjectConfigView() {
                                         <span style={{ fontSize: '14px', fontWeight: 500, color: '#e2e8f0' }}>{sp.name}</span>
                                         <div style={{ display: 'flex', gap: 8 }}>
                                             <button
-                                                onClick={() => navigate(`/project/${encodeURIComponent(sp.name)}`)}
+                                                onClick={() => navigate(projectPath(sp.name))}
                                                 style={{ padding: '4px 10px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, fontSize: '12px', cursor: 'pointer' }}
                                             >
                                                 Open

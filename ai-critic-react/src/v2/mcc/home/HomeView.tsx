@@ -16,9 +16,10 @@ import { TerminalIcon } from '../../../pure-view/icons/TerminalIcon';
 import { loadSSHKeys } from './settings/gitStorage';
 import { encryptWithServerKey } from './crypto';
 import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
+import { projectPath } from '../../../route/route';
 
 // Re-export sub-views for route registration
-export { DiagnoseView } from './DiagnoseView';
+export { ToolsView } from './ToolsView';
 export { SettingsView } from './SettingsView';
 export { GitSettings } from './settings/GitSettings';
 export { CloneRepoView } from './settings/CloneRepoView';
@@ -101,7 +102,7 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
                             subProjectsCount={getSubProjectsCount(project.id)}
                             onSelect={() => onSelectProject(project)}
                             onOpen={() => {
-                                navigate(`/project/${encodeURIComponent(project.name)}`);
+                                navigate(projectPath(project.name));
                             }}
                             onRemove={() => handleRemoveProject(project.id)}
                             onClone={() => handleClone(project)}
@@ -132,15 +133,15 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
                 <GitIcon />
                 <span>Git Settings</span>
             </button>
-            <button className="mcc-diagnose-btn" onClick={() => navigate('tools')}>
+            <button className="mcc-action-btn" onClick={() => navigate('tools')}>
                 <DiagnoseIcon />
                 <span>Server Tools</span>
             </button>
-            <button className="mcc-diagnose-btn" onClick={() => navigate('manage-server')}>
+            <button className="mcc-action-btn" onClick={() => navigate('manage-server')}>
                 <SettingsIcon />
                 <span>Manage Server</span>
             </button>
-            <button className="mcc-diagnose-btn" onClick={() => navigate('ssh-servers')}>
+            <button className="mcc-action-btn" onClick={() => navigate('ssh-servers')}>
                 <TerminalIcon />
                 <span>Manage SSH</span>
             </button>

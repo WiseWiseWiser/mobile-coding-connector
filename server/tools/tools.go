@@ -13,10 +13,20 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
+// Tool categories for UI grouping.
+const (
+	CategoryFoundation = "foundation"
+	CategoryLanguage   = "language"
+	CategoryCoding     = "coding"
+	CategoryTesting    = "testing"
+	CategoryOther      = "other"
+)
+
 // ToolInfo describes a required tool and its status.
 type ToolInfo struct {
 	Name           string `json:"name"`
 	DisplayName    string `json:"display_name,omitempty"`
+	Category       string `json:"category"`
 	Description    string `json:"description"`
 	Purpose        string `json:"purpose"`
 	Checking       bool   `json:"checking,omitempty"`
@@ -28,7 +38,6 @@ type ToolInfo struct {
 	InstallWindows string `json:"install_windows"`
 	AutoInstallCmd string `json:"auto_install_cmd,omitempty"`
 	SettingsPath   string `json:"settings_path,omitempty"`
-	// Upgrade commands - if set, tool supports upgrading via these commands
 	UpgradeMacOS   string `json:"upgrade_macos,omitempty"`
 	UpgradeLinux   string `json:"upgrade_linux,omitempty"`
 	UpgradeWindows string `json:"upgrade_windows,omitempty"`
@@ -47,28 +56,27 @@ type ToolsResponse struct {
 	Tools []ToolInfo `json:"tools"`
 }
 
-// toolDef defines a required tool and how to install it.
-// installMacOS and installLinux are multi-line bash scripts.
-// installWindows is a plain text instruction (no auto-install).
 type toolDef struct {
 	name           string
-	displayName    string // shown in UI instead of name when set
+	displayName    string
+	category       string
 	description    string
 	purpose        string
 	versionCmd     []string
 	installMacOS   []string
 	installLinux   []string
 	installWindows string
-	settingsPath   string   // relative path for tool-specific settings page
-	upgradeMacOS   []string // commands to upgrade the tool on macOS
-	upgradeLinux   []string // commands to upgrade the tool on Linux
-	upgradeWindows string   // command to upgrade the tool on Windows
+	settingsPath   string
+	upgradeMacOS   []string
+	upgradeLinux   []string
+	upgradeWindows string
 }
 
 // requiredTools defines all tools needed by the backend.
 var requiredTools = []toolDef{
 	{
 		name:        "git",
+		category:    CategoryFoundation,
 		description: "Distributed version control system",
 		purpose:     "Clone repositories, track changes, create checkpoints",
 		versionCmd:  []string{"git", "--version"},
@@ -83,6 +91,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "curl",
+		category:    CategoryFoundation,
 		description: "Command-line tool for transferring data with URLs",
 		purpose:     "Download tools and files, diagnose network connectivity",
 		versionCmd:  []string{"curl", "--version"},
@@ -97,6 +106,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "ssh",
+		category:    CategoryFoundation,
 		description: "OpenSSH client for secure remote connections",
 		purpose:     "Test SSH keys, connect to git hosts via SSH",
 		versionCmd:  []string{"ssh", "-V"},
@@ -111,6 +121,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "tar",
+		category:    CategoryFoundation,
 		description: "Archive utility for creating and extracting tar files",
 		purpose:     "Extract downloaded tool archives (e.g. Go, Node.js)",
 		versionCmd:  []string{"tar", "--version"},
@@ -125,6 +136,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:         "cloudflared",
+		category:     CategoryOther,
 		description:  "Cloudflare Tunnel client",
 		purpose:      "Create secure tunnels for port forwarding (Cloudflare provider)",
 		settingsPath: "../settings/cloudflare",
@@ -158,6 +170,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "opencode",
+		category:    CategoryCoding,
 		description: "AI-powered coding assistant CLI",
 		purpose:     "AI coding agent for code generation and editing",
 		versionCmd:  []string{"opencode", "version"},
@@ -171,6 +184,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "go",
+		category:    CategoryLanguage,
 		description: "Go programming language",
 		purpose:     "Build and run the backend server, install Go-based tools",
 		versionCmd:  []string{"go", "version"},
@@ -190,6 +204,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "node",
+		category:    CategoryLanguage,
 		description: "Node.js JavaScript runtime v22+ (includes npm/npx)",
 		purpose:     "Run frontend dev server, build React app, run localtunnel via npx",
 		versionCmd:  []string{"node", "--version"},
@@ -207,6 +222,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "npm",
+		category:    CategoryLanguage,
 		description: "Node.js package manager (comes with node)",
 		purpose:     "Install JavaScript packages, run scripts",
 		versionCmd:  []string{"npm", "--version"},
@@ -220,6 +236,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "python3",
+		category:    CategoryLanguage,
 		description: "Python 3 programming language",
 		purpose:     "Run Python scripts and tools",
 		versionCmd:  []string{"python3", "--version"},
@@ -234,6 +251,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "jq",
+		category:    CategoryFoundation,
 		description: "Command-line JSON processor",
 		purpose:     "Parse and transform JSON data in shell scripts",
 		versionCmd:  []string{"jq", "--version"},
@@ -248,6 +266,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "docker",
+		category:    CategoryOther,
 		description: "Container runtime for building and running applications",
 		purpose:     "Build and run containerized applications",
 		versionCmd:  []string{"docker", "--version"},
@@ -261,6 +280,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "podman",
+		category:    CategoryOther,
 		description: "Daemonless container engine compatible with Docker",
 		purpose:     "Build and run containers without a daemon process",
 		versionCmd:  []string{"podman", "--version"},
@@ -275,6 +295,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "fzf",
+		category:    CategoryFoundation,
 		description: "Command-line fuzzy finder",
 		purpose:     "Interactive fuzzy search for files, history, and more",
 		versionCmd:  []string{"fzf", "--version"},
@@ -291,6 +312,7 @@ var requiredTools = []toolDef{
 	{
 		name:        "agent",
 		displayName: "cursor agent",
+		category:    CategoryCoding,
 		description: "Cursor Agent CLI for AI-powered coding",
 		purpose:     "Run cursor agent for code generation and editing from the terminal",
 		versionCmd:  []string{"agent", "--version"},
@@ -311,6 +333,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "codex",
+		category:    CategoryCoding,
 		description: "OpenAI Codex CLI for AI-powered coding",
 		purpose:     "Run OpenAI Codex agent for code generation and editing",
 		versionCmd:  []string{"codex", "--version"},
@@ -331,6 +354,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "openclaw",
+		category:    CategoryCoding,
 		description: "OpenClaw CLI for AI agent orchestration",
 		purpose:     "Run OpenClaw agent and gateway workflows from the terminal",
 		versionCmd:  []string{"openclaw", "--version"},
@@ -351,6 +375,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "github-copilot",
+		category:    CategoryCoding,
 		description: "GitHub Copilot CLI - AI-powered code assistant",
 		purpose:     "AI coding agent powered by GitHub Copilot for code generation and editing",
 		versionCmd:  []string{"github-copilot", "--version"},
@@ -371,6 +396,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "claude",
+		category:    CategoryCoding,
 		description: "Claude Code CLI by Anthropic",
 		purpose:     "Run Claude Code agent for code generation and editing",
 		versionCmd:  []string{"claude", "--version"},
@@ -391,6 +417,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "cline",
+		category:    CategoryCoding,
 		description: "Cline CLI - Autonomous coding agent",
 		purpose:     "Run Cline autonomous coding agent for code generation and editing",
 		versionCmd:  []string{"cline", "version"},
@@ -404,6 +431,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "whats_next",
+		category:    CategoryCoding,
 		description: "Task tracking and planning CLI tool",
 		purpose:     "Track tasks and plan next steps",
 		versionCmd:  []string{"whats_next", "version"},
@@ -417,6 +445,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "kool",
+		category:    CategoryCoding,
 		description: "Developer toolchain manager",
 		purpose:     "Manage development toolchains and environments",
 		versionCmd:  []string{"kool", "version"},
@@ -430,6 +459,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "kilocode",
+		category:    CategoryCoding,
 		description: "Kilo Code AI-powered coding assistant CLI",
 		purpose:     "AI coding agent for code generation and editing",
 		versionCmd:  []string{"kilocode", "--version"},
@@ -443,6 +473,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "lsof",
+		category:    CategoryFoundation,
 		description: "List open files and network connections",
 		purpose:     "Detect local listening ports for port forwarding",
 		versionCmd:  []string{"lsof", "-v"},
@@ -457,6 +488,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "bun",
+		category:    CategoryLanguage,
 		description: "Fast JavaScript all-in-one toolkit",
 		purpose:     "Run JavaScript/TypeScript with fast package management",
 		versionCmd:  []string{"bun", "--version"},
@@ -470,6 +502,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "chromium",
+		category:    CategoryTesting,
 		description: "Open-source web browser for web scraping and automation",
 		purpose:     "Headless browser for web scraping, PDF generation, and automated testing",
 		versionCmd:  []string{"chromium", "--version"},
@@ -484,6 +517,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "puppeteer",
+		category:    CategoryTesting,
 		description: "Node.js library for headless Chrome/Chromium control",
 		purpose:     "Programmatic browser automation, web scraping, and screenshot generation",
 		versionCmd:  []string{"npx", "puppeteer", "--version"},
@@ -497,6 +531,7 @@ var requiredTools = []toolDef{
 	},
 	{
 		name:        "playwright",
+		category:    CategoryTesting,
 		description: "Node.js library for browser automation and testing",
 		purpose:     "Cross-browser automation, web testing, and scraping with multiple browser engines",
 		versionCmd:  []string{"npx", "playwright", "--version"},
@@ -509,7 +544,50 @@ var requiredTools = []toolDef{
 		installWindows: "npm install -g playwright",
 	},
 	{
+		name:        "agent-browser",
+		category:    CategoryTesting,
+		description: "Lightweight headless browser CLI for AI agents",
+		purpose:     "Browser automation with deterministic element references for AI coding agents",
+		versionCmd:  []string{"agent-browser", "--version"},
+		installMacOS: []string{
+			"npm install -g agent-browser",
+		},
+		installLinux: []string{
+			"npm install -g agent-browser",
+		},
+		installWindows: "npm install -g agent-browser",
+		upgradeMacOS: []string{
+			"npm update -g agent-browser",
+		},
+		upgradeLinux: []string{
+			"npm update -g agent-browser",
+		},
+		upgradeWindows: "npm update -g agent-browser",
+	},
+	{
+		name:        "playwriter",
+		category:    CategoryTesting,
+		description: "Chrome extension & CLI/MCP for AI agent browser control",
+		purpose:     "Run Playwright snippets in a persistent Chrome session via CLI or MCP for authenticated flows and dashboard testing",
+		versionCmd:  []string{"playwriter", "--version"},
+		installMacOS: []string{
+			"npm install -g playwriter",
+		},
+		installLinux: []string{
+			"npm install -g playwriter",
+		},
+		installWindows: "npm install -g playwriter",
+		upgradeMacOS: []string{
+			"npm update -g playwriter",
+		},
+		upgradeLinux: []string{
+			"npm update -g playwriter",
+		},
+		upgradeWindows: "npm update -g playwriter",
+	},
+	{
 		name:        "dig",
+		category:    CategoryFoundation,
 		description: "DNS lookup utility",
 		purpose:     "Query DNS records for diagnosing domain and network issues",
 		versionCmd:  []string{"dig", "+version"},
@@ -545,6 +623,7 @@ func buildToolInfo(tool toolDef) ToolInfo {
 	return ToolInfo{
 		Name:           tool.name,
 		DisplayName:    tool.displayName,
+		Category:       tool.category,
 		Description:    tool.description,
 		Purpose:        tool.purpose,
 		InstallMacOS:   joinInstallSteps(tool.installMacOS),

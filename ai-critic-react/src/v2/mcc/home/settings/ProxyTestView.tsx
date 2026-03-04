@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { fetchProxyConfig, type ProxyServer } from '../../../../api/proxyConfig';
 import { FlexInput } from '../../../../pure-view/FlexInput';
 import { BackIcon } from '../../../../pure-view/icons/BackIcon';
+import { Loading } from '../../../../pure-view/Loading';
 import './ProxyTestView.css';
 
 export function ProxyTestView() {
@@ -98,7 +99,7 @@ export function ProxyTestView() {
                     </button>
                     <h2>Proxy Test</h2>
                 </div>
-                <div className="diagnose-loading">Loading...</div>
+                <Loading>Loading...</Loading>
             </div>
         );
     }

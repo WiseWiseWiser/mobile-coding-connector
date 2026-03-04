@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { fetchAIConfig, saveAIConfig, type AIProvider, type AIModel } from '../../../../api/ai';
 import { EditIcon } from '../../../../pure-view/icons/EditIcon';
 import { FlexInput } from '../../../../pure-view/FlexInput';
+import { Loading } from '../../../../pure-view/Loading';
+import { Section } from '../../../../pure-view/Section';
 import './AIModelsSection.css';
 
 export function AIModelsSection() {
@@ -229,11 +231,9 @@ export function AIModelsSection() {
     };
 
     return (
-        <div className="diagnose-section">
-            <h3 className="diagnose-section-title">AI Models</h3>
-
+        <Section title="AI Models">
             {loading ? (
-                <div className="diagnose-loading">Loading...</div>
+                <Loading>Loading...</Loading>
             ) : (
                 <div className="ai-models-section-content">
                     {!usingNewFile && (
@@ -507,6 +507,6 @@ export function AIModelsSection() {
                     {success && <div className="ai-models-success">{success}</div>}
                 </div>
             )}
-        </div>
+        </Section>
     );
 }

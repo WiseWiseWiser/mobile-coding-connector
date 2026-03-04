@@ -1,0 +1,53 @@
+/* Edit Mode Content - editable domain list */
+
+.edit-mode-add-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.edit-mode-row {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.edit-mode-row-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.edit-mode-hint {
+    font-size: 11px;
+    color: #64748b;
+    line-height: 1.4;
+}
+
+.edit-mode-footer {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+.edit-mode-add-toggle {
+    width: 100%;
+    padding: 10px 16px;
+    background: transparent;
+    border: 1px dashed #475569;
+    border-radius: 8px;
+    color: #60a5fa;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.edit-mode-add-toggle:hover {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: #60a5fa;
+}

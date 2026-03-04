@@ -11,6 +11,8 @@ import {
 } from '../../../../api/exposedUrls';
 import type { ExposedURLWithStatus, CloudflareStatus } from '../../../../api/exposedUrls';
 import { FlexInput } from '../../../../pure-view/FlexInput';
+import { Loading } from '../../../../pure-view/Loading';
+import { Section } from '../../../../pure-view/Section';
 import './ExposedUrlsSection.css';
 
 export function ExposedUrlsSection() {
@@ -166,11 +168,10 @@ export function ExposedUrlsSection() {
     };
 
     return (
-        <div className="diagnose-section">
-            <h3 className="diagnose-section-title">Exposed URLs</h3>
+        <Section title="Exposed URLs">
 
             {loading ? (
-                <div className="diagnose-loading">Loading exposed URLs...</div>
+                <Loading>Loading exposed URLs...</Loading>
             ) : (
                 <div className="exposed-urls-card">
                     {/* Cloudflare Status */}
@@ -348,6 +349,6 @@ export function ExposedUrlsSection() {
                     )}
                 </div>
             )}
-        </div>
+        </Section>
     );
 }

@@ -21,8 +21,10 @@ import { fetchProviders } from '../../../api/ports';
 import { AgentChatHeader } from './AgentChatHeader';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import { useReconnectingStreamingAction } from '../../../hooks/useReconnectingStreamingAction';
-import { LogViewer } from '../../LogViewer';
 import { ModelSelector, type ModelOption } from '../components/ModelSelector';
+import { ProviderKeysSection } from './opencode/settings/ProviderKeysSection';
+import { WebServerSection } from './opencode/settings/WebServerSection';
+import { DomainConfigSection } from './opencode/settings/DomainConfigSection';
 
 export interface OpencodeSettingsProps {
     agentId: string;
@@ -37,87 +39,59 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
     const [webStatus, setWebStatus] = useState<OpencodeWebStatus | null>(null);
     const [effectivePath, setEffectivePath] = useState<AgentEffectivePath | null>(null);
 
-    // Settings state
     const [savedSettings, setSavedSettings] = useState<OpencodeSettings>({});
-    const [defaultDomain, setDefaultDomain] = useState<string>('');
-    const [binaryPath, setBinaryPath] = useState<string>('');
-    const [password, setPassword] = useState<string>('');
-    const [webServerPort, setWebServerPort] = useState<number>(4096);
-    const [webServerEnabled, setWebServerEnabled] = useState<boolean>(false);
-    const [authProxyEnabled, setAuthProxyEnabled] = useState<boolean>(false);
+    const [defaultDomain, setDefaultDomain] = useState('');
+    const [binaryPath, setBinaryPath] = useState('');
+    const [password, setPassword] = useState('');
+    const [webServerPort, setWebServerPort] = useState(4096);
+    const [webServerEnabled, setWebServerEnabled] = useState(false);
+    const [authProxyEnabled, setAuthProxyEnabled] = useState(false);
 
-    // Session model selection state
     const [savedModel, setSavedModel] = useState<{ modelID: string; providerID: string } | null>(null);
     const [selectedModel, setSelectedModel] = useState<{ modelID: string; providerID: string } | null>(null);
     const [models, setModels] = useState<ModelOption[]>([]);
-    const [defaultModel, setDefaultModel] = useState<string>('');
+    const [defaultModel, setDefaultModel] = useState('');
 
     const [authKeys, setAuthKeys] = useState<OpencodeAuthKeyEntry[]>([]);
-    const [editingKeyProvider, setEditingKeyProvider] = useState<string | null>(null);
-    const [editingKeyValue, setEditingKeyValue] = useState('');
-    const [newProvider, setNewProvider] = useState('');
-    const [newKey, setNewKey] = useState('');
-    const [savingKey, setSavingKey] = useState(false);
-
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState('');
     const [error, setError] = useState('');
 
-    // Web server streaming control
     const [webServerActionState, webServerActionControls] = useStreamingAction((result) => {
-        // Refresh web status when streaming completes
-        if (!result.ok) {
-            setError(result.message);
-        } else {
-            setSuccess(result.message);
-        }
-        setTimeout(() => {
-            refreshWebStatus();
-        }, 1000);
+        if (!result.ok) setError(result.message);
+        else setSuccess(result.message);
+        setTimeout(refreshWebStatus, 1000);
     });
 
-    // Domain mapping state with streaming support
     const [domainMapped, setDomainMapped] = useState(false);
-    const [mappedUrl, setMappedUrl] = useState<string>('');
+    const [mappedUrl, setMappedUrl] = useState('');
     const [availableProviders, setAvailableProviders] = useState<Array<{ id: string; name: string; available: boolean }>>([]);
 
-    // Domain mapping streaming action with reconnection support
     const [domainMappingState, domainMappingControls] = useReconnectingStreamingAction((result) => {
         if (result.ok) {
             setDomainMapped(true);
-            if (result.publicUrl) {
-                setMappedUrl(result.publicUrl);
-            }
+            if (result.publicUrl) setMappedUrl(result.publicUrl);
             setSuccess(result.message);
         } else {
             setError(result.message);
         }
-        // Refresh web status to get updated port_mapped status
-        setTimeout(() => {
-            refreshWebStatus();
-        }, 1000);
-    }, {
-        maxReconnects: 20,
-        reconnectDelayMs: 2000,
-    });
+        setTimeout(refreshWebStatus, 1000);
+    }, { maxReconnects: 20, reconnectDelayMs: 2000 });
 
     const hasChanges = selectedModel?.modelID !== savedModel?.modelID || selectedModel?.providerID !== savedModel?.providerID;
     const hasSettingsChanges = webServerEnabled !== (savedSettings.web_server?.enabled ?? false)
-        || defaultDomain !== (savedSettings.default_domain || '') 
+        || defaultDomain !== (savedSettings.default_domain || '')
         || binaryPath !== (savedSettings.binary_path || '')
         || webServerPort !== (savedSettings.web_server?.port || 4096)
         || password !== (savedSettings.web_server?.password || '')
         || authProxyEnabled !== (savedSettings.web_server?.auth_proxy_enabled ?? false);
 
-    useEffect(() => {
-        loadAllData();
-    }, [session?.id]);
+    useEffect(() => { loadAllData(); }, [session?.id]);
 
     const loadAllData = async () => {
         setLoading(true);
         try {
-            // Load settings and web status (always needed)
             const [settings, webStat, auth, pathInfo, keys] = await Promise.all([
                 fetchOpencodeSettings(),
                 fetchOpencodeWebStatus(),
@@ -125,7 +99,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                 fetchAgentEffectivePath(agentId),
                 fetchOpencodeAuthKeys().catch(() => [] as OpencodeAuthKeyEntry[]),
             ]);
-            
+
             setSavedSettings(settings);
             setDefaultDomain(settings.default_domain || '');
             setBinaryPath(settings.binary_path || '');
@@ -138,67 +112,47 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
             setEffectivePath(pathInfo);
             setAuthKeys(keys);
 
-            // Initialize model selection from saved settings
             let savedModelKey: { modelID: string; providerID: string } | null = null;
             if (settings.model) {
-                // Parse model format: "providerID/modelID" or just modelID
                 const parts = settings.model.split('/');
-                if (parts.length >= 2) {
-                    savedModelKey = { providerID: parts[0], modelID: parts[1] };
-                } else {
-                    savedModelKey = { providerID: '', modelID: settings.model };
-                }
+                savedModelKey = parts.length >= 2
+                    ? { providerID: parts[0], modelID: parts[1] }
+                    : { providerID: '', modelID: settings.model };
             }
             setSavedModel(savedModelKey);
             setSelectedModel(savedModelKey);
 
-            // Load available providers for domain mapping
             try {
                 const providers = await fetchProviders();
                 setAvailableProviders(providers.filter(p => p.available && (p.id === 'cloudflare_owned' || p.id === 'cloudflare_tunnel')));
-            } catch (e) {
-                // Ignore provider fetch errors
-            }
+            } catch { /* ignore */ }
 
-            // Load session-specific data if session exists
             if (session) {
                 const [config, providers] = await Promise.all([
                     fetchOpencodeConfig(session.id),
                     fetchOpencodeProviders(session.id),
                 ]);
-
-                // Use server config if no saved model
-                const currentModelFromServer: { modelID: string; providerID: string } | null = config.model?.modelID
+                const currentModelFromServer = config.model?.modelID
                     ? { modelID: config.model.modelID, providerID: config.model.providerID || '' }
                     : null;
                 const modelToUse = savedModelKey || currentModelFromServer;
-
                 setSavedModel(modelToUse);
                 setSelectedModel(modelToUse);
 
-                // Build ModelOption array from all providers
                 const allModels: ModelOption[] = [];
                 let defModel = '';
                 for (const provider of providers.providers) {
                     for (const [id, model] of Object.entries(provider.models)) {
                         allModels.push({
-                            id,
-                            name: model.name || id,
+                            id, name: model.name || id,
                             providerId: provider.id,
                             providerName: provider.name || provider.id,
                             is_default: providers.default?.[provider.id] === id,
                         });
                     }
-                    if (providers.default?.[provider.id]) {
-                        defModel = providers.default[provider.id];
-                    }
+                    if (providers.default?.[provider.id]) defModel = providers.default[provider.id];
                 }
-                // Sort models by provider name, then by model name
-                allModels.sort((a, b) => {
-                    const providerCompare = a.providerName.localeCompare(b.providerName);
-                    if (providerCompare !== 0) return providerCompare;
-                    return a.name.localeCompare(b.name);
-                });
+                allModels.sort((a, b) => a.providerName.localeCompare(b.providerName) || a.name.localeCompare(b.name));
                 setModels(allModels);
                 setDefaultModel(defModel);
             }
@@ -209,83 +163,48 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
         }
     };
 
+    const refreshWebStatus = async () => {
+        try { setWebStatus(await fetchOpencodeWebStatus()); } catch { /* ignore */ }
+    };
+
     const refreshAuthKeys = async () => {
-        try {
-            const keys = await fetchOpencodeAuthKeys();
-            setAuthKeys(keys);
-        } catch { /* ignore */ }
+        try { setAuthKeys(await fetchOpencodeAuthKeys()); } catch { /* ignore */ }
     };
 
     const handleSaveKey = async (provider: string, key: string) => {
-        setSavingKey(true);
-        setError('');
-        try {
-            await setOpencodeAuthKey(provider, key);
-            setSuccess(`Key for ${provider} saved`);
-            setEditingKeyProvider(null);
-            setEditingKeyValue('');
-            setNewProvider('');
-            setNewKey('');
-            await refreshAuthKeys();
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to save key');
-        } finally {
-            setSavingKey(false);
-        }
+        await setOpencodeAuthKey(provider, key);
+        setSuccess(`Key for ${provider} saved`);
+        await refreshAuthKeys();
     };
 
     const handleDeleteKey = async (provider: string) => {
-        setSavingKey(true);
-        setError('');
-        try {
-            await deleteOpencodeAuthKey(provider);
-            setSuccess(`Key for ${provider} deleted`);
-            await refreshAuthKeys();
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to delete key');
-        } finally {
-            setSavingKey(false);
-        }
+        await deleteOpencodeAuthKey(provider);
+        setSuccess(`Key for ${provider} deleted`);
+        await refreshAuthKeys();
     };
 
     const handleSaveSessionModel = async () => {
         if (!session || !selectedModel) return;
-        setSaving(true);
-        setError('');
-        setSuccess('');
+        setSaving(true); setError(''); setSuccess('');
         try {
             await updateAgentConfig(session.id, { model: { modelID: selectedModel.modelID } });
             setSavedModel(selectedModel);
-            // Also update savedSettings to reflect the new preferred model
-            setSavedSettings({
-                ...savedSettings,
-                model: `${selectedModel.providerID}/${selectedModel.modelID}`,
-            });
+            setSavedSettings({ ...savedSettings, model: `${selectedModel.providerID}/${selectedModel.modelID}` });
             setSuccess('Model updated successfully');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to update model');
-        } finally {
-            setSaving(false);
-        }
+        } finally { setSaving(false); }
     };
 
     const handleSaveSettings = async () => {
-        setSaving(true);
-        setError('');
-        setSuccess('');
+        setSaving(true); setError(''); setSuccess('');
         try {
             const currentConfig = savedSettings.web_server || { enabled: false, port: 4096 };
             const nextSettings = {
                 ...savedSettings,
                 default_domain: defaultDomain,
                 binary_path: binaryPath,
-                web_server: {
-                    ...currentConfig,
-                    enabled: webServerEnabled,
-                    port: webServerPort,
-                    password: password,
-                    auth_proxy_enabled: authProxyEnabled,
-                },
+                web_server: { ...currentConfig, enabled: webServerEnabled, port: webServerPort, password, auth_proxy_enabled: authProxyEnabled },
             };
             await updateOpencodeSettings(nextSettings);
             setSavedSettings(nextSettings);
@@ -294,9 +213,7 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
             setSuccess('Settings saved successfully');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to save settings');
-        } finally {
-            setSaving(false);
-        }
+        } finally { setSaving(false); }
     };
 
     const handleCancel = () => {
@@ -306,45 +223,26 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
         setPassword(savedSettings.web_server?.password || '');
         setWebServerEnabled(savedSettings.web_server?.enabled ?? false);
         setAuthProxyEnabled(savedSettings.web_server?.auth_proxy_enabled ?? false);
-        setError('');
-        setSuccess('');
-    };
-
-    const refreshWebStatus = async () => {
-        try {
-            const status = await fetchOpencodeWebStatus();
-            setWebStatus(status);
-        } catch (err) {
-            console.error('Failed to refresh web status:', err);
-        }
+        setError(''); setSuccess('');
     };
 
     const handleWebServerControl = async (action: 'start' | 'stop') => {
-        setError('');
-        setSuccess('');
+        setError(''); setSuccess('');
         const streamFn = action === 'start' ? startOpencodeWebServerStreaming : stopOpencodeWebServerStreaming;
         await webServerActionControls.run(() => streamFn());
     };
 
     const handleMapDomain = async () => {
-        setError('');
-        setSuccess('');
-        // Use streaming with automatic reconnection
+        setError(''); setSuccess('');
         await domainMappingControls.run((sessionId, logIndex) => mapOpencodeDomainStreaming(undefined, sessionId, logIndex));
     };
 
     const handleUnmapDomain = async () => {
-        setError('');
-        setSuccess('');
+        setError(''); setSuccess('');
         try {
             const resp = await unmapOpencodeDomain();
-            if (resp.success) {
-                setDomainMapped(false);
-                setMappedUrl('');
-                setSuccess(resp.message);
-            } else {
-                setError(resp.message);
-            }
+            if (resp.success) { setDomainMapped(false); setMappedUrl(''); setSuccess(resp.message); }
+            else setError(resp.message);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to unmap domain');
         }
@@ -368,72 +266,40 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                 <div className="mcc-agent-loading">Loading settings...</div>
             ) : (
                 <div className="mcc-agent-settings-form">
-                    {/* Binary Path Settings (stored in opencode settings) */}
+                    {/* Binary Path */}
                     <div className="mcc-agent-settings-field" style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #334155' }}>
-                        <label className="mcc-agent-settings-label">
-                            OpenCode Binary Path
-                        </label>
+                        <label className="mcc-agent-settings-label">OpenCode Binary Path</label>
                         <div className="mcc-agent-settings-hint" style={{ marginBottom: 8, fontSize: '13px', color: '#94a3b8' }}>
                             Custom path to the OpenCode binary. Leave empty to use PATH resolution.
                         </div>
-                        <input
-                            type="text"
-                            value={binaryPath}
-                            onChange={(e) => setBinaryPath(e.target.value)}
-                            placeholder={`e.g. /usr/local/bin/${agentId}`}
-                            disabled={saving}
-                            style={{
-                                width: '100%',
-                                padding: '10px 12px',
-                                background: '#1e293b',
+                        <input type="text" value={binaryPath} onChange={(e) => setBinaryPath(e.target.value)}
+                            placeholder={`e.g. /usr/local/bin/${agentId}`} disabled={saving}
+                            style={{ width: '100%', padding: '10px 12px', background: '#1e293b',
                                 border: binaryPath !== (savedSettings.binary_path || '') ? '1px solid #3b82f6' : '1px solid #334155',
-                                borderRadius: 8,
-                                color: '#e2e8f0',
-                                fontSize: '14px',
-                            }}
-                        />
-                        <div style={{
-                            marginTop: 10,
-                            padding: '10px 12px',
+                                borderRadius: 8, color: '#e2e8f0', fontSize: '14px' }} />
+                        <div style={{ marginTop: 10, padding: '10px 12px',
                             background: effectivePath?.found ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
                             border: `1px solid ${effectivePath?.found ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-                            borderRadius: 8,
-                            fontFamily: 'monospace',
-                            fontSize: '13px',
-                            color: effectivePath?.found ? '#86efac' : '#fca5a5',
-                            wordBreak: 'break-all',
-                        }}>
+                            borderRadius: 8, fontFamily: 'monospace', fontSize: '13px',
+                            color: effectivePath?.found ? '#86efac' : '#fca5a5', wordBreak: 'break-all' }}>
                             {effectivePath?.found ? (
                                 <>
                                     <div>Effective Path: {effectivePath.effective_path}</div>
-                                    {effectivePath.version && (
-                                        <div style={{ marginTop: 4, color: '#94a3b8' }}>
-                                            Version: {effectivePath.version}
-                                        </div>
-                                    )}
+                                    {effectivePath.version && <div style={{ marginTop: 4, color: '#94a3b8' }}>Version: {effectivePath.version}</div>}
                                 </>
-                            ) : (
-                                `Effective Path: Not found${effectivePath?.error ? ` (${effectivePath.error})` : ''}`
-                            )}
+                            ) : `Effective Path: Not found${effectivePath?.error ? ` (${effectivePath.error})` : ''}`}
                         </div>
                     </div>
 
-                    {/* Login Status (always shown) */}
+                    {/* Login Status */}
                     <div className="mcc-agent-settings-field" style={{ marginBottom: 20 }}>
-                        <label className="mcc-agent-settings-label">
-                            Login Status
-                        </label>
-                        <div style={{
-                            padding: '12px 14px',
+                        <label className="mcc-agent-settings-label">Login Status</label>
+                        <div style={{ padding: '12px 14px',
                             background: authStatus?.authenticated ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
                             border: `1px solid ${authStatus?.authenticated ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-                            borderRadius: 8,
-                        }}>
-                            <div style={{
-                                color: authStatus?.authenticated ? '#86efac' : '#fca5a5',
-                                fontWeight: 600,
-                                marginBottom: authStatus?.providers?.length ? 8 : 0,
-                            }}>
+                            borderRadius: 8 }}>
+                            <div style={{ color: authStatus?.authenticated ? '#86efac' : '#fca5a5', fontWeight: 600,
+                                marginBottom: authStatus?.providers?.length ? 8 : 0 }}>
                                 {authStatus?.authenticated ? '✓ Authenticated' : '✗ Not authenticated'}
                             </div>
                             {authStatus?.providers && authStatus.providers.length > 0 && (
@@ -457,563 +323,53 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                         </div>
                     </div>
 
-                    {/* Provider API Keys */}
-                    <div className="mcc-agent-settings-field" style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #334155' }}>
-                        <label className="mcc-agent-settings-label">
-                            Provider API Keys
-                        </label>
-                        <div className="mcc-agent-settings-hint" style={{ marginBottom: 12, fontSize: '13px', color: '#94a3b8' }}>
-                            Configure API keys for LLM providers (stored in ~/.local/share/opencode/auth.json).
-                        </div>
+                    <ProviderKeysSection authKeys={authKeys} onSaveKey={handleSaveKey} onDeleteKey={handleDeleteKey} />
 
-                        {authKeys.map(entry => (
-                            <div key={entry.provider} style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 8,
-                                marginBottom: 8,
-                                padding: '8px 12px',
-                                background: '#1e293b',
-                                border: '1px solid #334155',
-                                borderRadius: 8,
-                            }}>
-                                {editingKeyProvider === entry.provider ? (
-                                    <>
-                                        <strong style={{ color: '#e2e8f0', minWidth: 100 }}>{entry.provider}</strong>
-                                        <input
-                                            type="password"
-                                            value={editingKeyValue}
-                                            onChange={e => setEditingKeyValue(e.target.value)}
-                                            placeholder="Enter new key..."
-                                            disabled={savingKey}
-                                            style={{
-                                                flex: 1,
-                                                padding: '6px 8px',
-                                                background: '#0f172a',
-                                                border: '1px solid #475569',
-                                                borderRadius: 4,
-                                                color: '#e2e8f0',
-                                                fontSize: '13px',
-                                            }}
-                                        />
-                                        <button
-                                            onClick={() => handleSaveKey(entry.provider, editingKeyValue)}
-                                            disabled={savingKey || !editingKeyValue.trim()}
-                                            style={{ padding: '4px 10px', fontSize: '12px', background: '#22c55e', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}
-                                        >
-                                            Save
-                                        </button>
-                                        <button
-                                            onClick={() => { setEditingKeyProvider(null); setEditingKeyValue(''); }}
-                                            disabled={savingKey}
-                                            style={{ padding: '4px 10px', fontSize: '12px', background: 'transparent', border: '1px solid #475569', borderRadius: 4, color: '#94a3b8', cursor: 'pointer' }}
-                                        >
-                                            Cancel
-                                        </button>
-                                    </>
-                                ) : (
-                                    <>
-                                        <strong style={{ color: '#e2e8f0', minWidth: 100 }}>{entry.provider}</strong>
-                                        <span style={{ flex: 1, fontFamily: 'monospace', fontSize: '12px', color: '#94a3b8' }}>
-                                            {entry.masked_key || '(empty)'}
-                                        </span>
-                                        <button
-                                            onClick={() => { setEditingKeyProvider(entry.provider); setEditingKeyValue(''); }}
-                                            style={{ padding: '4px 10px', fontSize: '12px', background: 'transparent', border: '1px solid #475569', borderRadius: 4, color: '#60a5fa', cursor: 'pointer' }}
-                                        >
-                                            Edit
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteKey(entry.provider)}
-                                            disabled={savingKey}
-                                            style={{ padding: '4px 10px', fontSize: '12px', background: 'transparent', border: '1px solid #475569', borderRadius: 4, color: '#f87171', cursor: 'pointer' }}
-                                        >
-                                            Delete
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        ))}
+                    <WebServerSection
+                        webStatus={webStatus}
+                        webServerEnabled={webServerEnabled}
+                        webServerPort={webServerPort}
+                        password={password}
+                        authProxyEnabled={authProxyEnabled}
+                        saving={saving}
+                        savedWebServer={savedSettings.web_server}
+                        actionState={webServerActionState}
+                        onRefresh={refreshWebStatus}
+                        onControl={handleWebServerControl}
+                        onEnabledChange={setWebServerEnabled}
+                        onPortChange={setWebServerPort}
+                        onPasswordChange={setPassword}
+                        onAuthProxyChange={setAuthProxyEnabled}
+                    />
 
-                        {/* Add new provider */}
-                        <div style={{
-                            display: 'flex',
-                            gap: 8,
-                            marginTop: authKeys.length > 0 ? 12 : 0,
-                        }}>
-                            <input
-                                type="text"
-                                value={newProvider}
-                                onChange={e => setNewProvider(e.target.value)}
-                                placeholder="Provider name (e.g. openrouter)"
-                                disabled={savingKey}
-                                style={{
-                                    width: 180,
-                                    padding: '8px 10px',
-                                    background: '#1e293b',
-                                    border: '1px solid #334155',
-                                    borderRadius: 6,
-                                    color: '#e2e8f0',
-                                    fontSize: '13px',
-                                }}
-                            />
-                            <input
-                                type="password"
-                                value={newKey}
-                                onChange={e => setNewKey(e.target.value)}
-                                placeholder="API key"
-                                disabled={savingKey}
-                                style={{
-                                    flex: 1,
-                                    padding: '8px 10px',
-                                    background: '#1e293b',
-                                    border: '1px solid #334155',
-                                    borderRadius: 6,
-                                    color: '#e2e8f0',
-                                    fontSize: '13px',
-                                }}
-                            />
-                            <button
-                                onClick={() => handleSaveKey(newProvider.trim(), newKey)}
-                                disabled={savingKey || !newProvider.trim() || !newKey.trim()}
-                                style={{
-                                    padding: '8px 16px',
-                                    fontSize: '13px',
-                                    background: newProvider.trim() && newKey.trim() ? '#3b82f6' : '#475569',
-                                    border: 'none',
-                                    borderRadius: 6,
-                                    color: '#fff',
-                                    fontWeight: 500,
-                                    cursor: (savingKey || !newProvider.trim() || !newKey.trim()) ? 'not-allowed' : 'pointer',
-                                    opacity: (savingKey || !newProvider.trim() || !newKey.trim()) ? 0.6 : 1,
-                                }}
-                            >
-                                Add
-                            </button>
-                        </div>
-                    </div>
+                    <DomainConfigSection
+                        defaultDomain={defaultDomain}
+                        savedDefaultDomain={savedSettings.default_domain || ''}
+                        saving={saving}
+                        hasSettingsChanges={hasSettingsChanges}
+                        webStatus={webStatus}
+                        availableProviders={availableProviders}
+                        domainMapped={domainMapped}
+                        mappedUrl={mappedUrl}
+                        domainMappingState={domainMappingState}
+                        onDomainChange={setDefaultDomain}
+                        onMapDomain={handleMapDomain}
+                        onUnmapDomain={handleUnmapDomain}
+                        onSaveSettings={handleSaveSettings}
+                        onCancel={handleCancel}
+                    />
 
-                    {/* Web Server Status (always shown) */}
-                    <div className="mcc-agent-settings-field" style={{ marginBottom: 20 }}>
-                        <label className="mcc-agent-settings-label">
-                            Web Server Status
-                            <button 
-                                onClick={refreshWebStatus}
-                                style={{
-                                    marginLeft: 8,
-                                    padding: '2px 8px',
-                                    fontSize: '12px',
-                                    background: 'transparent',
-                                    border: '1px solid #475569',
-                                    borderRadius: 4,
-                                    color: '#94a3b8',
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                Refresh
-                            </button>
-                        </label>
-                        <div style={{
-                            padding: '12px 14px',
-                            background: webStatus?.running ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                            border: `1px solid ${webStatus?.running ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-                            borderRadius: 8,
-                        }}>
-                            <div style={{
-                                color: webStatus?.running ? '#86efac' : '#fca5a5',
-                                fontWeight: 600,
-                                marginBottom: 8,
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                            }}>
-                                <span>{webStatus?.running ? '✓ Running' : '✗ Not running'}</span>
-                                {/* Start/Stop Control Buttons */}
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    {!webStatus?.running ? (
-                                        <button
-                                            onClick={() => handleWebServerControl('start')}
-                                            disabled={webServerActionState.running}
-                                            style={{
-                                                padding: '4px 12px',
-                                                fontSize: '12px',
-                                                background: '#22c55e',
-                                                border: 'none',
-                                                borderRadius: 4,
-                                                color: '#fff',
-                                                fontWeight: 500,
-                                                cursor: webServerActionState.running ? 'not-allowed' : 'pointer',
-                                                opacity: webServerActionState.running ? 0.6 : 1,
-                                            }}
-                                        >
-                                            {webServerActionState.running ? 'Starting...' : 'Start'}
-                                        </button>
-                                    ) : (
-                                        <button
-                                            onClick={() => handleWebServerControl('stop')}
-                                            disabled={webServerActionState.running}
-                                            style={{
-                                                padding: '4px 12px',
-                                                fontSize: '12px',
-                                                background: '#ef4444',
-                                                border: 'none',
-                                                borderRadius: 4,
-                                                color: '#fff',
-                                                fontWeight: 500,
-                                                cursor: webServerActionState.running ? 'not-allowed' : 'pointer',
-                                                opacity: webServerActionState.running ? 0.6 : 1,
-                                            }}
-                                        >
-                                            {webServerActionState.running ? 'Stopping...' : 'Stop'}
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                            {/* Enable/Disable Toggle */}
-                            <div style={{ marginBottom: 12, marginTop: 8 }}>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={webServerEnabled}
-                                        onChange={(e) => setWebServerEnabled(e.target.checked)}
-                                        style={{ width: 18, height: 18 }}
-                                    />
-                                    <span style={{ fontWeight: 500 }}>Enable Web Server</span>
-                                </label>
-                                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: 4, marginLeft: 26 }}>
-                                    When enabled, the server will auto-start on boot if configured
-                                </div>
-                            </div>
-                            <div style={{ fontSize: '13px', color: '#94a3b8' }}>
-                                <div>Port: <strong style={{ color: '#e2e8f0' }}>{webStatus?.port || 'N/A'}</strong></div>
-                                {webStatus?.domain && (
-                                    <div style={{ marginTop: 4 }}>
-                                        Domain: <strong style={{ color: '#e2e8f0' }}>{webStatus.domain}</strong>
-                                    </div>
-                                )}
-                                {webStatus?.domain && (
-                                    <div style={{ marginTop: 4 }}>
-                                        Port Mapped: 
-                                        <strong style={{ color: webStatus.port_mapped ? '#86efac' : '#fca5a5', marginLeft: 4 }}>
-                                            {webStatus.port_mapped ? '✓ Yes' : '✗ No'}
-                                        </strong>
-                                    </div>
-                                )}
-                            </div>
-                            
-                            {/* Streaming Logs */}
-                            {webServerActionState.showLogs && (
-                                <div style={{ marginTop: 12 }}>
-                                    <LogViewer 
-                                        lines={webServerActionState.logs} 
-                                        maxHeight={200}
-                                    />
-                                    {webServerActionState.result && (
-                                        <div style={{ 
-                                            marginTop: 8,
-                                            padding: '8px 12px',
-                                            borderRadius: 4,
-                                            fontSize: '13px',
-                                            background: webServerActionState.result.ok ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                            border: `1px solid ${webServerActionState.result.ok ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-                                            color: webServerActionState.result.ok ? '#86efac' : '#fca5a5',
-                                        }}>
-                                            {webServerActionState.result.ok ? '✓ ' : '✗ '}{webServerActionState.result.message}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Web Server Port Input */}
-                            <div style={{ marginTop: 16 }}>
-                                <label className="mcc-agent-settings-label">
-                                    Web Server Port
-                                </label>
-                                <div className="mcc-agent-settings-hint" style={{ marginBottom: 8, fontSize: '13px', color: '#94a3b8' }}>
-                                    Port for the OpenCode web server (default: 4096). Changing this will apply on next server restart.
-                                </div>
-                                <input
-                                    type="number"
-                                    value={webServerPort}
-                                    onChange={(e) => setWebServerPort(parseInt(e.target.value, 10) || 4096)}
-                                    min={1024}
-                                    max={65535}
-                                    disabled={saving}
-                                    style={{
-                                        width: '100%',
-                                        padding: '10px 12px',
-                                        background: '#1e293b',
-                                        border: webServerPort !== (savedSettings.web_server?.port || 4096) ? '1px solid #3b82f6' : '1px solid #334155',
-                                        borderRadius: 8,
-                                        color: '#e2e8f0',
-                                        fontSize: '14px',
-                                    }}
-                                />
-                            </div>
-
-                            {/* Server Password Input */}
-                            <div style={{ marginTop: 16 }}>
-                                <label className="mcc-agent-settings-label">
-                                    Server Password (Optional)
-                                </label>
-                                <div className="mcc-agent-settings-hint" style={{ marginBottom: 8, fontSize: '13px', color: '#94a3b8' }}>
-                                    Password to protect the OpenCode web server with HTTP basic auth
-                                </div>
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    placeholder="Enter password..."
-                                    disabled={saving}
-                                    style={{
-                                        width: '100%',
-                                        padding: '10px 12px',
-                                        background: '#1e293b',
-                                        border: password !== (savedSettings.web_server?.password || '') ? '1px solid #3b82f6' : '1px solid #334155',
-                                        borderRadius: 8,
-                                        color: '#e2e8f0',
-                                        fontSize: '14px',
-                                    }}
-                                />
-                                {savedSettings.web_server?.password && savedSettings.web_server.password !== password && (
-                                    <div style={{ marginTop: 8, fontSize: '13px', color: '#94a3b8' }}>
-                                        Password is saved (hidden for security)
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Auth Proxy Toggle */}
-                            <div style={{ marginTop: 16 }}>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={authProxyEnabled}
-                                        onChange={(e) => setAuthProxyEnabled(e.target.checked)}
-                                        disabled={saving}
-                                        style={{ width: 18, height: 18, cursor: saving ? 'not-allowed' : 'pointer' }}
-                                    />
-                                    <div>
-                                        <div className="mcc-agent-settings-label" style={{ marginBottom: 4 }}>
-                                            Enable Auth Proxy
-                                        </div>
-                                        <div className="mcc-agent-settings-hint" style={{ fontSize: '13px', color: '#94a3b8' }}>
-                                            Replace browser basic auth popup with a login page. Requires basic-auth-proxy binary in PATH.
-                                        </div>
-                                    </div>
-                                </label>
-                                {webStatus && (
-                                    <div style={{ marginTop: 8, marginLeft: 30, fontSize: '13px', color: webStatus.auth_proxy_found ? '#86efac' : '#f87171' }}>
-                                        Binary: {webStatus.auth_proxy_found ? webStatus.auth_proxy_path : 'Not Found'} | 
-                                        Running: {webStatus.auth_proxy_running ? 'Yes' : 'No'}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Configuration Settings (always shown) */}
-                    <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #334155' }}>
-                        <h3 style={{ margin: '0 0 16px 0', color: '#e2e8f0', fontSize: '16px' }}>Configuration</h3>
-
-                        {/* Default Domain Input */}
-                        <div className="mcc-agent-settings-field" style={{ marginBottom: 16 }}>
-                            <label className="mcc-agent-settings-label">
-                                Default Domain For Web
-                            </label>
-                            <div className="mcc-agent-settings-hint" style={{ marginBottom: 8, fontSize: '13px', color: '#94a3b8' }}>
-                                Domain to map the OpenCode web server port (e.g., "your-domain.com")
-                            </div>
-                            <input
-                                type="text"
-                                value={defaultDomain}
-                                onChange={(e) => setDefaultDomain(e.target.value)}
-                                placeholder="Enter domain..."
-                                disabled={saving}
-                                style={{
-                                    width: '100%',
-                                    padding: '10px 12px',
-                                    background: '#1e293b',
-                                    border: defaultDomain !== (savedSettings.default_domain || '') ? '1px solid #3b82f6' : '1px solid #334155',
-                                    borderRadius: 8,
-                                    color: '#e2e8f0',
-                                    fontSize: '14px',
-                                }}
-                            />
-                            {savedSettings.default_domain && savedSettings.default_domain !== defaultDomain && (
-                                <div style={{ marginTop: 8, fontSize: '13px', color: '#94a3b8' }}>
-                                    Saved: <strong style={{ color: '#e2e8f0' }}>{savedSettings.default_domain}</strong>
-                                </div>
-                            )}
-
-                            {/* Domain Mapping Section - Only show when domain is configured and matches owned domains */}
-                            {savedSettings.default_domain && availableProviders.length > 0 && (
-                                <div style={{ marginTop: 16, padding: '12px', background: 'rgba(59, 130, 246, 0.05)', borderRadius: 8, border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                                    <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: 8 }}>
-                                        <strong style={{ color: '#60a5fa' }}>Domain Mapping Available</strong>
-                                        <div style={{ marginTop: 4 }}>
-                                            Your domain <strong style={{ color: '#e2e8f0' }}>{savedSettings.default_domain}</strong> can be mapped via Cloudflare.
-                                        </div>
-                                    </div>
-
-                                    {domainMapped || webStatus?.port_mapped ? (
-                                        <div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                                                <span style={{ color: '#86efac', fontSize: '13px' }}>✓ Domain mapped</span>
-                                                {mappedUrl && (
-                                                    <a
-                                                        href={mappedUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        style={{
-                                                            fontSize: '13px',
-                                                            color: '#60a5fa',
-                                                            textDecoration: 'underline',
-                                                        }}
-                                                    >
-                                                        {mappedUrl}
-                                                    </a>
-                                                )}
-                                            </div>
-                                            <button
-                                                onClick={handleUnmapDomain}
-                                                disabled={domainMappingState.running}
-                                                style={{
-                                                    padding: '6px 12px',
-                                                    fontSize: '12px',
-                                                    background: 'transparent',
-                                                    border: '1px solid #ef4444',
-                                                    borderRadius: 4,
-                                                    color: '#ef4444',
-                                                    cursor: domainMappingState.running ? 'not-allowed' : 'pointer',
-                                                    opacity: domainMappingState.running ? 0.6 : 1,
-                                                }}
-                                            >
-                                                {domainMappingState.running ? 'Removing...' : 'Remove Mapping'}
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div>
-                                            <button
-                                                onClick={handleMapDomain}
-                                                disabled={domainMappingState.running || !webStatus?.running}
-                                                style={{
-                                                    padding: '6px 12px',
-                                                    fontSize: '12px',
-                                                    background: webStatus?.running ? '#3b82f6' : '#475569',
-                                                    border: 'none',
-                                                    borderRadius: 4,
-                                                    color: '#fff',
-                                                    cursor: (domainMappingState.running || !webStatus?.running) ? 'not-allowed' : 'pointer',
-                                                    opacity: (domainMappingState.running || !webStatus?.running) ? 0.6 : 1,
-                                                }}
-                                            >
-                                                {domainMappingState.running
-                                                    ? (domainMappingState.reconnecting
-                                                        ? `Reconnecting... (${domainMappingState.reconnectionCount})`
-                                                        : 'Mapping...')
-                                                    : webStatus?.running
-                                                        ? 'Map Domain via Cloudflare'
-                                                        : 'Start Web Server to Map Domain'}
-                                            </button>
-
-                                            {/* Streaming Logs for Domain Mapping */}
-                                            {domainMappingState.showLogs && domainMappingState.logs.length > 0 && (
-                                                <div style={{ marginTop: 12 }}>
-                                                    <LogViewer
-                                                        lines={domainMappingState.logs}
-                                                        maxHeight={200}
-                                                    />
-                                                    {domainMappingState.result && (
-                                                        <div style={{
-                                                            marginTop: 8,
-                                                            padding: '8px 12px',
-                                                            borderRadius: 4,
-                                                            fontSize: '13px',
-                                                            background: domainMappingState.result.ok ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                                            border: `1px solid ${domainMappingState.result.ok ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-                                                            color: domainMappingState.result.ok ? '#86efac' : '#fca5a5',
-                                                        }}>
-                                                            {domainMappingState.result.ok ? '✓ ' : '✗ '}{domainMappingState.result.message}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Save/Cancel Buttons for Settings */}
-                        {hasSettingsChanges && (
-                            <div style={{ 
-                                marginTop: 16, 
-                                display: 'flex', 
-                                gap: 12,
-                                padding: '12px',
-                                background: 'rgba(59, 130, 246, 0.1)',
-                                borderRadius: 8,
-                                border: '1px solid rgba(59, 130, 246, 0.3)',
-                            }}>
-                                <button
-                                    onClick={handleSaveSettings}
-                                    disabled={saving}
-                                    style={{
-                                        flex: 1,
-                                        padding: '10px 16px',
-                                        background: '#3b82f6',
-                                        opacity: saving ? 0.7 : 1,
-                                        border: 'none',
-                                        borderRadius: 6,
-                                        color: '#fff',
-                                        fontSize: '14px',
-                                        fontWeight: 500,
-                                        cursor: saving ? 'not-allowed' : 'pointer',
-                                    }}
-                                >
-                                    {saving ? 'Saving...' : 'Save Settings'}
-                                </button>
-                                <button
-                                    onClick={handleCancel}
-                                    disabled={saving}
-                                    style={{
-                                        flex: 1,
-                                        padding: '10px 16px',
-                                        background: 'transparent',
-                                        border: '1px solid #475569',
-                                        borderRadius: 6,
-                                        color: '#94a3b8',
-                                        fontSize: '14px',
-                                        fontWeight: 500,
-                                        cursor: saving ? 'not-allowed' : 'pointer',
-                                    }}
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Preferred Model Selection (always shown) */}
+                    {/* Preferred Model */}
                     <div className="mcc-agent-settings-field">
-                        <label className="mcc-agent-settings-label">
-                            Preferred Model
-                        </label>
+                        <label className="mcc-agent-settings-label">Preferred Model</label>
                         <div className="mcc-agent-settings-hint" style={{ marginBottom: 8 }}>
                             Select the AI model to use for this session.
                         </div>
-                        <div style={{
-                            border: hasChanges ? '1px solid #3b82f6' : '1px solid #334155',
-                            borderRadius: 8,
-                            padding: '2px',
-                        }}>
-                            <ModelSelector
-                                models={models}
-                                currentModel={selectedModel || undefined}
+                        <div style={{ border: hasChanges ? '1px solid #3b82f6' : '1px solid #334155', borderRadius: 8, padding: '2px' }}>
+                            <ModelSelector models={models} currentModel={selectedModel || undefined}
                                 onSelect={(model) => setSelectedModel(model)}
                                 placeholder={models.length === 0 ? "Start a session to see available models" : "Select a model..."}
-                                disabled={saving || models.length === 0}
-                            />
+                                disabled={saving || models.length === 0} />
                         </div>
                         {savedModel && models.length > 0 && (
                             <div style={{ marginTop: 8, fontSize: '13px', color: '#94a3b8' }}>
@@ -1025,78 +381,33 @@ export function OpencodeSettings({ agentId, session, projectName, onBack, onRefr
                         )}
                     </div>
 
-                    {/* Save/Cancel Buttons for Preferred Model */}
                     {hasChanges && session && (
-                        <div style={{ 
-                            marginTop: 16, 
-                            display: 'flex', 
-                            gap: 12,
-                            padding: '12px',
-                            background: 'rgba(59, 130, 246, 0.1)',
-                            borderRadius: 8,
-                            border: '1px solid rgba(59, 130, 246, 0.3)',
-                        }}>
-                            <button
-                                onClick={handleSaveSessionModel}
-                                disabled={saving}
-                                style={{
-                                    flex: 1,
-                                    padding: '10px 16px',
-                                    background: '#3b82f6',
-                                    opacity: saving ? 0.7 : 1,
-                                    border: 'none',
-                                    borderRadius: 6,
-                                    color: '#fff',
-                                    fontSize: '14px',
-                                    fontWeight: 500,
-                                    cursor: saving ? 'not-allowed' : 'pointer',
-                                }}
-                            >
+                        <div style={{ marginTop: 16, display: 'flex', gap: 12, padding: '12px',
+                            background: 'rgba(59, 130, 246, 0.1)', borderRadius: 8, border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                            <button onClick={handleSaveSessionModel} disabled={saving}
+                                style={{ flex: 1, padding: '10px 16px', background: '#3b82f6', opacity: saving ? 0.7 : 1,
+                                    border: 'none', borderRadius: 6, color: '#fff', fontSize: '14px', fontWeight: 500,
+                                    cursor: saving ? 'not-allowed' : 'pointer' }}>
                                 {saving ? 'Saving...' : 'Save'}
                             </button>
-                            <button
-                                onClick={handleCancel}
-                                disabled={saving}
-                                style={{
-                                    flex: 1,
-                                    padding: '10px 16px',
-                                    background: 'transparent',
-                                    border: '1px solid #475569',
-                                    borderRadius: 6,
-                                    color: '#94a3b8',
-                                    fontSize: '14px',
-                                    fontWeight: 500,
-                                    cursor: saving ? 'not-allowed' : 'pointer',
-                                }}
-                            >
+                            <button onClick={handleCancel} disabled={saving}
+                                style={{ flex: 1, padding: '10px 16px', background: 'transparent', border: '1px solid #475569',
+                                    borderRadius: 6, color: '#94a3b8', fontSize: '14px', fontWeight: 500,
+                                    cursor: saving ? 'not-allowed' : 'pointer' }}>
                                 Cancel
                             </button>
                         </div>
                     )}
 
                     {error && (
-                        <div className="mcc-agent-settings-message mcc-agent-settings-error" style={{
-                            marginTop: 12,
-                            padding: '10px 14px',
-                            background: 'rgba(239, 68, 68, 0.1)',
-                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                            borderRadius: 8,
-                            color: '#fca5a5',
-                            fontSize: '13px',
-                        }}>
+                        <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, color: '#fca5a5', fontSize: '13px' }}>
                             {error}
                         </div>
                     )}
                     {success && (
-                        <div className="mcc-agent-settings-message mcc-agent-settings-success" style={{
-                            marginTop: 12,
-                            padding: '10px 14px',
-                            background: 'rgba(34, 197, 94, 0.1)',
-                            border: '1px solid rgba(34, 197, 94, 0.3)',
-                            borderRadius: 8,
-                            color: '#86efac',
-                            fontSize: '13px',
-                        }}>
+                        <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(34, 197, 94, 0.1)',
+                            border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: 8, color: '#86efac', fontSize: '13px' }}>
                             {success}
                         </div>
                     )}

@@ -1,0 +1,10 @@
+.pure-inline-error {
+    padding: 8px 12px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 6px;
+    color: #f87171;
+    font-size: 12px;
+    line-height: 1.4;
+    word-break: break-word;
+}
