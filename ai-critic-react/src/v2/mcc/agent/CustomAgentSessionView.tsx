@@ -14,7 +14,10 @@ export function CustomAgentSessionView({ session, projectName, onBack }: CustomA
   const [logs, setLogs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [messageInput, setMessageInput] = useState('');
+  const [sending, setSending] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Connect to SSE for real-time logs
   useEffect(() => {
@@ -64,6 +67,44 @@ export function CustomAgentSessionView({ session, projectName, onBack }: CustomA
     }
   };
 
+  const handleSendMessage = async () => {
+    if (!messageInput.trim() || sending) return;
+
+    setSending(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/custom-agents/sessions/${encodeURIComponent(session.id)}/message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: messageInput.trim() }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to send message: ${response.status}`);
+      }
+
+      // Clear input after successful send
+      setMessageInput('');
+      // Focus back on input
+      inputRef.current?.focus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send message');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
   const getStatusClass = (status: string) => {
     switch (status) {
       case 'running': return 'mcc-agent-status-running';
@@ -110,6 +151,29 @@ export function CustomAgentSessionView({ session, projectName, onBack }: CustomA
         <h3>Session Logs</h3>
         <LogViewer logs={logs} loading={session.status === 'starting' && logs.length === 0} />
       </div>
+
+      {/* Message Input Area */}
+      {session.status === 'running' && (
+        <div className="mcc-agent-input-area">
+          <textarea
+            ref={inputRef}
+            className="mcc-agent-input"
+            placeholder="Type a message to the agent... (Enter to send, Shift+Enter for new line)"
+            value={messageInput}
+            onChange={(e) => setMessageInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={sending}
+            rows={1}
+          />
+          <button
+            className="mcc-agent-send-btn"
+            onClick={handleSendMessage}
+            disabled={!messageInput.trim() || sending}
+          >
+            {sending ? 'Sending...' : 'Send'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
