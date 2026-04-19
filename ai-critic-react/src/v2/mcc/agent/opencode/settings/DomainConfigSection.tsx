@@ -19,6 +19,12 @@ export interface DomainConfigSectionProps {
     onCancel: () => void;
 }
 
+function isLocalDomain(domain: string): boolean {
+    if (!domain) return false;
+    const host = domain.includes(':') ? domain.split(':')[0] : domain;
+    return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '[::]';
+}
+
 export function DomainConfigSection({
     defaultDomain,
     savedDefaultDomain,
@@ -35,6 +41,9 @@ export function DomainConfigSection({
     onSaveSettings,
     onCancel,
 }: DomainConfigSectionProps) {
+    const domainIsLocal = isLocalDomain(defaultDomain);
+    const savedDomainIsLocal = isLocalDomain(savedDefaultDomain);
+
     return (
         <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #334155' }}>
             <h3 style={{ margin: '0 0 16px 0', color: '#e2e8f0', fontSize: '16px' }}>Configuration</h3>
@@ -54,19 +63,24 @@ export function DomainConfigSection({
                         width: '100%',
                         padding: '10px 12px',
                         background: '#1e293b',
-                        border: defaultDomain !== savedDefaultDomain ? '1px solid #3b82f6' : '1px solid #334155',
+                        border: domainIsLocal ? '1px solid #ef4444' : defaultDomain !== savedDefaultDomain ? '1px solid #3b82f6' : '1px solid #334155',
                         borderRadius: 8,
                         color: '#e2e8f0',
                         fontSize: '14px',
                     }}
                 />
+                {domainIsLocal && (
+                    <div style={{ marginTop: 6, fontSize: '13px', color: '#ef4444' }}>
+                        Local addresses (localhost, 127.0.0.1) cannot be used as tunnel domains. Please enter a valid external domain (e.g., "your-domain.com").
+                    </div>
+                )}
                 {savedDefaultDomain && savedDefaultDomain !== defaultDomain && (
                     <div style={{ marginTop: 8, fontSize: '13px', color: '#94a3b8' }}>
                         Saved: <strong style={{ color: '#e2e8f0' }}>{savedDefaultDomain}</strong>
                     </div>
                 )}
 
-                {savedDefaultDomain && availableProviders.length > 0 && (
+                {savedDefaultDomain && !savedDomainIsLocal && availableProviders.length > 0 && (
                     <div style={{ marginTop: 16, padding: '12px', background: 'rgba(59, 130, 246, 0.05)', borderRadius: 8, border: '1px solid rgba(59, 130, 246, 0.2)' }}>
                         <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: 8 }}>
                             <strong style={{ color: '#60a5fa' }}>Domain Mapping Available</strong>

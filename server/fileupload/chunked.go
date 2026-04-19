@@ -277,9 +277,15 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 	// Cleanup temp directory
 	os.RemoveAll(session.TempDir)
 
+	// Return absolute path so clients see the real final location.
+	absPath, absErr := filepath.Abs(session.DestPath)
+	if absErr != nil {
+		absPath = session.DestPath
+	}
+
 	writeJSON(w, map[string]any{
 		"status": "ok",
-		"path":   session.DestPath,
+		"path":   absPath,
 		"size":   totalWritten,
 	})
 }

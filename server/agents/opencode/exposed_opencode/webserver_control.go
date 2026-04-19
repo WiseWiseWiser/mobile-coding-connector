@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/basic_auth_proxy"
 )
 
@@ -214,8 +215,8 @@ func AutoStartWebServer() {
 	fmt.Printf("[opencode] AutoStartWebServer: loaded settings - DefaultDomain=%q, WebServer.Enabled=%v, WebServer.Port=%d\n",
 		settings.DefaultDomain, settings.WebServer.Enabled, settings.WebServer.Port)
 
-	if settings.DefaultDomain == "" {
-		fmt.Printf("[opencode] AutoStartWebServer: no default domain configured, skipping\n")
+	if settings.DefaultDomain == "" || isLocalDomain(settings.DefaultDomain) {
+		fmt.Printf("[opencode] AutoStartWebServer: no valid external domain configured (got %q), skipping\n", settings.DefaultDomain)
 		return
 	}
 
@@ -246,19 +247,19 @@ func AutoStartWebServer() {
 		}
 	}
 
-	tg := cloudflare.GetTunnelGroupManager().GetExtensionGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 	logFn := func(msg string) {
 		fmt.Printf("[opencode] AutoStartWebServer: %s\n", msg)
 	}
 
-	tunnelRef, _, _, err := cloudflare.EnsureGroupTunnelConfigured(cloudflare.GroupExtension, "", logFn)
+	tunnelRef, _, _, err := cloudflare.EnsureGroupTunnelConfigured(unified_tunnel.GroupExtension, "", logFn)
 	if err != nil {
 		fmt.Printf("[opencode] AutoStartWebServer: failed to ensure extension tunnel configured: %v\n", err)
 		return
 	}
 
 	fmt.Printf("[opencode] AutoStartWebServer: ensuring DNS route for %s...\n", settings.DefaultDomain)
-	if err := cloudflare.CreateDNSRoute(tunnelRef, settings.DefaultDomain); err != nil {
+	if err := unified_tunnel.CreateDNSRoute(tunnelRef, settings.DefaultDomain); err != nil {
 		fmt.Printf("[opencode] AutoStartWebServer: warning: DNS route error: %v\n", err)
 	} else {
 		fmt.Printf("[opencode] AutoStartWebServer: DNS route created or already exists\n")
@@ -287,7 +288,7 @@ func AutoStartWebServer() {
 	if !hasMapping {
 		serviceURL := fmt.Sprintf("http://localhost:%d", port)
 		mappingID := fmt.Sprintf("port-%d", port)
-		mapping := &cloudflare.IngressMapping{
+		mapping := &unified_tunnel.IngressMapping{
 			ID:       mappingID,
 			Hostname: settings.DefaultDomain,
 			Service:  serviceURL,
@@ -314,6 +315,14 @@ func AutoStartWebServer() {
 			fmt.Printf("[opencode] AutoStartWebServer: StartWebServer returned nil response\n")
 		}
 	}()
+}
+
+func isLocalDomain(domain string) bool {
+	host := domain
+	if idx := strings.Index(domain, ":"); idx != -1 {
+		host = domain[:idx]
+	}
+	return host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0" || host == "[::]"
 }
 
 func extractPortFromService(service string) int {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
 )
 
 // DomainTunnelStatus describes the runtime status of a domain tunnel.
@@ -29,24 +30,30 @@ func ParseBaseDomain(domain string) string {
 
 // GetDomainTunnelStatus returns the current status of a domain tunnel.
 // With the tunnel group, this checks if the domain is registered as a mapping in the core group.
+// This method is non-blocking: if the tunnel manager lock is contended (e.g. during
+// tunnel startup), it returns "connecting" instead of waiting indefinitely.
 func GetDomainTunnelStatus(domain string) DomainTunnelStatus {
-	tg := GetTunnelGroupManager().GetCoreGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetCoreGroup()
 	if tg == nil {
 		return DomainTunnelStatus{Status: "stopped"}
 	}
 
-	// Check if this domain is in the core tunnel group mappings
-	mappings := tg.ListMappings()
+	mappings, ok := tg.TryListMappings()
+	if !ok {
+		return DomainTunnelStatus{Status: "connecting"}
+	}
+
 	for _, m := range mappings {
 		if m.Hostname == domain {
-			if tg.IsRunning() {
+			running, ok := tg.TryIsRunning()
+			if !ok || !running {
 				return DomainTunnelStatus{
-					Status:    "active",
+					Status:    "connecting",
 					TunnelURL: fmt.Sprintf("https://%s", domain),
 				}
 			}
 			return DomainTunnelStatus{
-				Status:    "connecting",
+				Status:    "active",
 				TunnelURL: fmt.Sprintf("https://%s", domain),
 			}
 		}
@@ -70,7 +77,7 @@ func EnsureUnifiedTunnelConfigured(tunnelName string, logFn LogFunc) (tunnelRef 
 		logFn = func(string) {}
 	}
 
-	utm := GetUnifiedTunnelManager()
+	utm := unified_tunnel.GetUnifiedTunnelManager()
 
 	// Check if unified tunnel manager is already configured
 	existingConfig := utm.GetConfig()
@@ -143,14 +150,14 @@ func EnsureUnifiedTunnelConfigured(tunnelName string, logFn LogFunc) (tunnelRef 
 	}
 
 	logFn("No existing tunnel configured, creating new tunnel '" + tunnelName + "'...")
-	tunnelRef, err = FindOrCreateTunnel(tunnelName)
+	tunnelRef, err = unified_tunnel.FindOrCreateTunnel(tunnelName)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to find/create tunnel: %v", err)
 	}
 	logFn("Created/found tunnel: " + tunnelRef)
 
 	// Get tunnel credentials
-	tunnelID, credFile, err = EnsureTunnelExists(tunnelRef)
+	tunnelID, credFile, err = unified_tunnel.EnsureTunnelExists(tunnelRef)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to get tunnel credentials: %v", err)
 	}
@@ -177,12 +184,12 @@ func EnsureGroupTunnelConfigured(group string, tunnelName string, logFn LogFunc)
 		logFn = func(string) {}
 	}
 
-	tg := GetTunnelGroupManager().GetGroup(group)
+	tg := unified_tunnel.GetTunnelGroupManager().GetGroup(group)
 	if tg == nil {
 		return "", "", "", fmt.Errorf("unknown tunnel group: %s", group)
 	}
 
-	utm := tg.tunnelMgr
+	utm := tg.TunnelMgr()
 
 	existingConfig := utm.GetConfig()
 	if existingConfig != nil {
@@ -194,18 +201,18 @@ func EnsureGroupTunnelConfigured(group string, tunnelName string, logFn LogFunc)
 	}
 
 	if tunnelName == "" {
-		tunnelName = GenerateTunnelName(group)
+		tunnelName = unified_tunnel.GenerateTunnelName(group)
 		logFn(fmt.Sprintf("Generated tunnel name for group %s: %s", group, tunnelName))
 	}
 
 	logFn(fmt.Sprintf("No existing tunnel configured for group %s, creating new tunnel '%s'...", group, tunnelName))
-	tunnelRef, err = FindOrCreateTunnel(tunnelName)
+	tunnelRef, err = unified_tunnel.FindOrCreateTunnel(tunnelName)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to find/create tunnel: %v", err)
 	}
 	logFn("Created/found tunnel: " + tunnelRef)
 
-	tunnelID, credFile, err = EnsureTunnelExists(tunnelRef)
+	tunnelID, credFile, err = unified_tunnel.EnsureTunnelExists(tunnelRef)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to get tunnel credentials: %v", err)
 	}
@@ -242,23 +249,23 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 	}
 
 	// Ensure core tunnel group has a tunnel configured (reuses existing or creates new)
-	tunnelRef, _, _, err := EnsureGroupTunnelConfigured(GroupCore, tunnelName, logFn)
+	tunnelRef, _, _, err := EnsureGroupTunnelConfigured(unified_tunnel.GroupCore, tunnelName, logFn)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create DNS route
 	logFn("Creating DNS route for " + domain + "...")
-	if err := CreateDNSRoute(tunnelRef, domain); err != nil {
+	if err := unified_tunnel.CreateDNSRoute(tunnelRef, domain); err != nil {
 		return nil, err
 	}
 	logFn("DNS route created")
 
 	// Add ingress rule to core tunnel group
-	tg := GetTunnelGroupManager().GetCoreGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetCoreGroup()
 	localURL := fmt.Sprintf("http://localhost:%d", port)
 	mappingID := fmt.Sprintf("domain-%s", domain)
-	mapping := &IngressMapping{
+	mapping := &unified_tunnel.IngressMapping{
 		ID:       mappingID,
 		Hostname: domain,
 		Service:  localURL,
@@ -282,7 +289,7 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 func StopDomainTunnel(domain string, tunnelName string) error {
 	_ = tunnelName // not used with tunnel group, but kept for API compatibility
 
-	tg := GetTunnelGroupManager().GetCoreGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetCoreGroup()
 
 	// Remove the mapping from core tunnel group
 	mappingID := fmt.Sprintf("domain-%s", domain)

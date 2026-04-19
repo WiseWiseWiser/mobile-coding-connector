@@ -8,6 +8,7 @@ import (
 	"time"
 
 	cfutils "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains/pick"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward"
@@ -97,7 +98,7 @@ var _ portforward.Provider = (*TunnelProvider)(nil)
 
 func NewTunnelProvider(cfg config.CloudflareTunnelConfig) *TunnelProvider {
 	// Configure the extension tunnel group
-	tg := cfutils.GetTunnelGroupManager().GetExtensionGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 	tg.SetConfig(cfg)
 
 	return &TunnelProvider{cfg: cfg}
@@ -155,13 +156,13 @@ func (p *TunnelProvider) Start(port int, hostname string) (*portforward.TunnelHa
 
 	// Create DNS route
 	fmt.Fprintf(logs, "[setup] Creating DNS route: %s -> tunnel %s\n", hostname, tunnelRef)
-	if err := cfutils.CreateDNSRoute(tunnelRef, hostname); err != nil {
+	if err := unified_tunnel.CreateDNSRoute(tunnelRef, hostname); err != nil {
 		fmt.Fprintf(logs, "[setup] Warning: DNS route error: %v\n", err)
 	}
 
 	// Add mapping to unified tunnel manager
 	mappingID := fmt.Sprintf("port-%d", port)
-	mapping := &cfutils.IngressMapping{
+	mapping := &unified_tunnel.IngressMapping{
 		ID:       mappingID,
 		Hostname: hostname,
 		Service:  localURL,
@@ -169,7 +170,7 @@ func (p *TunnelProvider) Start(port int, hostname string) (*portforward.TunnelHa
 	}
 
 	fmt.Fprintf(logs, "[setup] Adding ingress rule: %s -> %s\n", hostname, localURL)
-	tg := cfutils.GetTunnelGroupManager().GetExtensionGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 	if err := tg.AddMapping(mapping); err != nil {
 		return nil, fmt.Errorf("failed to add mapping to extension tunnel: %v", err)
 	}
@@ -248,12 +249,12 @@ func (p *OwnedProvider) Start(port int, hostname string) (*portforward.TunnelHan
 	}
 
 	// Ensure extension tunnel group has a tunnel configured (reuses existing if already set up)
-	tg := cfutils.GetTunnelGroupManager().GetExtensionGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 	logWrapper := func(msg string) {
 		fmt.Fprintf(logs, "[setup] %s\n", msg)
 	}
 
-	tunnelRef, _, _, err := cfutils.EnsureGroupTunnelConfigured(cfutils.GroupExtension, "", logWrapper)
+	tunnelRef, _, _, err := cfutils.EnsureGroupTunnelConfigured(unified_tunnel.GroupExtension, "", logWrapper)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure extension tunnel configured: %v", err)
 	}
@@ -261,14 +262,14 @@ func (p *OwnedProvider) Start(port int, hostname string) (*portforward.TunnelHan
 
 	// Create DNS route using the extension tunnel
 	fmt.Fprintf(logs, "[setup] Creating DNS route: %s -> tunnel %s\n", hostname, tunnelRef)
-	if err := cfutils.CreateDNSRoute(tunnelRef, hostname); err != nil {
+	if err := unified_tunnel.CreateDNSRoute(tunnelRef, hostname); err != nil {
 		fmt.Fprintf(logs, "[setup] Warning: DNS route error: %v\n", err)
 	}
 
 	// Add mapping to extension tunnel group
 	localURL := fmt.Sprintf("http://localhost:%d", port)
 	mappingID := fmt.Sprintf("owned-port-%d", port)
-	mapping := &cfutils.IngressMapping{
+	mapping := &unified_tunnel.IngressMapping{
 		ID:       mappingID,
 		Hostname: hostname,
 		Service:  localURL,
