@@ -1,4 +1,4 @@
-package cloudflare
+package unified_tunnel
 
 import (
 	"encoding/json"
@@ -11,6 +11,14 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+// TunnelInfo represents a Cloudflare tunnel.
+type TunnelInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	CreatedAt   string `json:"created_at,omitempty"`
+	Connections []any  `json:"connections,omitempty"`
+}
 
 // CloudflaredConfig represents a cloudflared config.yml structure.
 type CloudflaredConfig struct {

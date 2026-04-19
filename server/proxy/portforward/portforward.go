@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/jsonfile"
@@ -281,7 +282,7 @@ func (m *Manager) List() []PortForward {
 func (m *Manager) getExtensionGroupMappings() []PortForward {
 	var result []PortForward
 
-	tgm := cloudflare.GetTunnelGroupManager()
+	tgm := unified_tunnel.GetTunnelGroupManager()
 	if tgm == nil {
 		return result
 	}
@@ -342,13 +343,13 @@ func (m *Manager) getExtensionGroupMappings() []PortForward {
 func (m *Manager) getExtraMappings() []PortForward {
 	var result []PortForward
 
-	tgm := cloudflare.GetTunnelGroupManager()
+	tgm := unified_tunnel.GetTunnelGroupManager()
 	if tgm == nil {
 		return result
 	}
 
 	// Load extra mappings from both core and extension groups
-	groups := []*cloudflare.TunnelGroup{tgm.GetCoreGroup(), tgm.GetExtensionGroup()}
+	groups := []*unified_tunnel.TunnelGroup{tgm.GetCoreGroup(), tgm.GetExtensionGroup()}
 
 	for _, group := range groups {
 		if group == nil {
@@ -675,6 +676,9 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ports/local/events", handleLocalPortEvents)
 	mux.HandleFunc("/api/ports/protected", handleProtectedPorts)
 	mux.HandleFunc("/api/ports/mapping-names", handlePortMappingNames)
+	mux.HandleFunc("/api/ports/tunnel-groups", handleTunnelGroups)
+	mux.HandleFunc("/api/ports/restart-dns", handleRestartDNS)
+	mux.HandleFunc("/api/ports/ensure-tunnel", handleEnsureTunnel)
 }
 
 func handleLocalPorts(w http.ResponseWriter, r *http.Request) {
@@ -1276,6 +1280,161 @@ func handleDiagnostics(w http.ResponseWriter, _ *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// --- Tunnel Groups API ---
+
+type tunnelGroupInfo struct {
+	Name     string               `json:"name"`
+	Running  bool                 `json:"running"`
+	Mappings []tunnelMappingInfo  `json:"mappings"`
+	Config   *tunnelGroupConfigInfo `json:"config,omitempty"`
+}
+
+type tunnelMappingInfo struct {
+	ID       string `json:"id"`
+	Hostname string `json:"hostname"`
+	Service  string `json:"service"`
+	Source   string `json:"source"`
+}
+
+type tunnelGroupConfigInfo struct {
+	TunnelName string `json:"tunnel_name"`
+	TunnelID   string `json:"tunnel_id"`
+}
+
+func handleTunnelGroups(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	tgm := unified_tunnel.GetTunnelGroupManager()
+	groups := []tunnelGroupInfo{}
+
+	for _, name := range []string{unified_tunnel.GroupCore, unified_tunnel.GroupExtension} {
+		tg := tgm.GetGroup(name)
+		if tg == nil {
+			continue
+		}
+
+		info := tunnelGroupInfo{
+			Name:     name,
+			Running:  tg.IsRunning(),
+			Mappings: []tunnelMappingInfo{},
+		}
+
+		if cfg := tg.GetConfig(); cfg != nil {
+			info.Config = &tunnelGroupConfigInfo{
+				TunnelName: cfg.TunnelName,
+				TunnelID:   cfg.TunnelID,
+			}
+		}
+
+		for _, m := range tg.ListMappings() {
+			info.Mappings = append(info.Mappings, tunnelMappingInfo{
+				ID:       m.ID,
+				Hostname: m.Hostname,
+				Service:  m.Service,
+				Source:   m.Source,
+			})
+		}
+
+		groups = append(groups, info)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(groups)
+}
+
+func handleRestartDNS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Group    string `json:"group"`
+		Hostname string `json:"hostname"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Hostname == "" {
+		http.Error(w, "hostname is required", http.StatusBadRequest)
+		return
+	}
+
+	groupName := req.Group
+	if groupName == "" {
+		groupName = unified_tunnel.GroupCore
+	}
+
+	tg := unified_tunnel.GetTunnelGroupManager().GetGroup(groupName)
+	if tg == nil {
+		http.Error(w, fmt.Sprintf("unknown tunnel group: %s", groupName), http.StatusBadRequest)
+		return
+	}
+
+	cfg := tg.GetConfig()
+	if cfg == nil {
+		http.Error(w, "tunnel group not configured", http.StatusBadRequest)
+		return
+	}
+
+	tunnelRef := cfg.TunnelName
+	if tunnelRef == "" {
+		tunnelRef = cfg.TunnelID
+	}
+
+	if err := unified_tunnel.CreateDNSRoute(tunnelRef, req.Hostname); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":   "ok",
+		"message":  fmt.Sprintf("DNS route created for %s", req.Hostname),
+		"hostname": req.Hostname,
+	})
+}
+
+func handleEnsureTunnel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		TunnelName string `json:"tunnel_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.TunnelName == "" {
+		http.Error(w, "tunnel_name is required", http.StatusBadRequest)
+		return
+	}
+
+	tunnelID, credFile, err := unified_tunnel.EnsureTunnelExists(req.TunnelName)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":           "ok",
+		"tunnel_id":        tunnelID,
+		"credentials_file": credFile,
+	})
 }
 
 // handlePortMappingNames handles GET/POST/DELETE requests for port mapping names

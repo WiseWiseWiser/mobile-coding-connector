@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Remote Agent Config</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 640px;
+            margin: 40px auto;
+            padding: 0 20px;
+            line-height: 1.5;
+        }
+        h1 {
+            margin-bottom: 8px;
+        }
+        .hint {
+            color: #666;
+            margin-top: 0;
+            margin-bottom: 24px;
+        }
+        .field {
+            margin-bottom: 16px;
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        input[type=text], input[type=password] {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+        .row {
+            display: flex;
+            gap: 8px;
+        }
+        .row button {
+            flex: 0 0 auto;
+        }
+        .row input {
+            flex: 1;
+        }
+        button {
+            padding: 8px 16px;
+            border: 1px solid #888;
+            background: #f4f4f4;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button.primary {
+            background: #2563eb;
+            color: #fff;
+            border-color: #2563eb;
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 16px;
+            padding: 10px 12px;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.ok {
+            background: #e6f4ea;
+            color: #137333;
+            display: block;
+        }
+        .status.err {
+            background: #fce8e6;
+            color: #a50e0e;
+            display: block;
+        }
+        .actions {
+            margin-top: 24px;
+            display: flex;
+            gap: 12px;
+        }
+        code {
+            background: rgba(0,0,0,0.06);
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Remote Agent Config</h1>
+    <p class="hint">
+        Saved to <code>~/.ai-critic/remote-agent-config.json</code>.
+        Used by <code>remote-agent upload</code> and other subcommands when
+        <code>--server</code> / <code>--token</code> are not passed.
+    </p>
+
+    <div class="field">
+        <label for="server">Server URL</label>
+        <input id="server" type="text" placeholder="https://host.example.com" autocomplete="off">
+    </div>
+
+    <div class="field">
+        <label for="token">Auth Token</label>
+        <div class="row">
+            <input id="token" type="password" placeholder="bearer token" autocomplete="off">
+            <button type="button" id="toggle-token">Show</button>
+        </div>
+    </div>
+
+    <div class="actions">
+        <button type="button" id="test" >Test Connection</button>
+        <button type="button" id="save" class="primary">Save</button>
+        <button type="button" id="save-close" class="primary">Save &amp; Close</button>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <script>
+        const serverInput = document.getElementById('server');
+        const tokenInput = document.getElementById('token');
+        const statusEl = document.getElementById('status');
+
+        function setStatus(msg, ok) {
+            statusEl.textContent = msg;
+            statusEl.className = 'status ' + (ok ? 'ok' : 'err');
+        }
+
+        async function loadConfig() {
+            try {
+                const r = await fetch('/api/config');
+                if (!r.ok) return;
+                const data = await r.json();
+                serverInput.value = data.server || '';
+                tokenInput.value = data.token || '';
+            } catch (_) {}
+        }
+
+        async function save() {
+            const body = { server: serverInput.value.trim(), token: tokenInput.value };
+            const r = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error || 'save failed');
+            return data;
+        }
+
+        async function test() {
+            const body = { server: serverInput.value.trim(), token: tokenInput.value };
+            const r = await fetch('/api/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error || 'test failed');
+            return data;
+        }
+
+        document.getElementById('save').addEventListener('click', async () => {
+            try {
+                await save();
+                setStatus('Saved.', true);
+            } catch (e) {
+                setStatus('Error: ' + e.message, false);
+            }
+        });
+
+        document.getElementById('save-close').addEventListener('click', async () => {
+            try {
+                await save();
+                setStatus('Saved. You can close this tab.', true);
+                await fetch('/api/shutdown', { method: 'POST' }).catch(() => {});
+            } catch (e) {
+                setStatus('Error: ' + e.message, false);
+            }
+        });
+
+        document.getElementById('test').addEventListener('click', async () => {
+            try {
+                await test();
+                setStatus('Connection OK: server and token are valid.', true);
+            } catch (e) {
+                setStatus('Test failed: ' + e.message, false);
+            }
+        });
+
+        document.getElementById('toggle-token').addEventListener('click', () => {
+            const btn = document.getElementById('toggle-token');
+            if (tokenInput.type === 'password') {
+                tokenInput.type = 'text';
+                btn.textContent = 'Hide';
+            } else {
+                tokenInput.type = 'password';
+                btn.textContent = 'Show';
+            }
+        });
+
+        loadConfig();
+    </script>
+</body>
+</html>

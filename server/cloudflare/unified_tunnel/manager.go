@@ -1,4 +1,4 @@
-package cloudflare
+package unified_tunnel
 
 // Unified Tunnel Manager
 //
@@ -200,6 +200,20 @@ func (utm *UnifiedTunnelManager) ListMappings() []*IngressMapping {
 	utm.mu.RLock()
 	defer utm.mu.RUnlock()
 
+	return utm.listMappingsLocked()
+}
+
+// TryListMappings attempts to list mappings without blocking.
+// Returns (mappings, true) on success, or (nil, false) if the lock is contended.
+func (utm *UnifiedTunnelManager) TryListMappings() ([]*IngressMapping, bool) {
+	if !utm.mu.TryRLock() {
+		return nil, false
+	}
+	defer utm.mu.RUnlock()
+	return utm.listMappingsLocked(), true
+}
+
+func (utm *UnifiedTunnelManager) listMappingsLocked() []*IngressMapping {
 	result := make([]*IngressMapping, 0, len(utm.mappings))
 	for _, m := range utm.mappings {
 		result = append(result, m)
@@ -681,6 +695,16 @@ func (utm *UnifiedTunnelManager) IsRunning() bool {
 	utm.mu.RLock()
 	defer utm.mu.RUnlock()
 	return utm.running
+}
+
+// TryIsRunning attempts to check running status without blocking.
+// Returns (running, true) on success, or (false, false) if the lock is contended.
+func (utm *UnifiedTunnelManager) TryIsRunning() (bool, bool) {
+	if !utm.mu.TryRLock() {
+		return false, false
+	}
+	defer utm.mu.RUnlock()
+	return utm.running, true
 }
 
 // GetTunnelStatus returns the current status of the unified tunnel

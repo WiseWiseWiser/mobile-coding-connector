@@ -193,3 +193,58 @@ export async function removeProtectedPort(port: number): Promise<void> {
         throw new Error(text);
     }
 }
+
+// Tunnel Groups API
+
+export interface TunnelMappingInfo {
+    id: string;
+    hostname: string;
+    service: string;
+    source: string;
+}
+
+export interface TunnelGroupConfigInfo {
+    tunnel_name: string;
+    tunnel_id: string;
+}
+
+export interface TunnelGroupInfo {
+    name: string;
+    running: boolean;
+    mappings: TunnelMappingInfo[];
+    config?: TunnelGroupConfigInfo;
+}
+
+export async function fetchTunnelGroups(): Promise<TunnelGroupInfo[]> {
+    const resp = await fetch('/api/ports/tunnel-groups');
+    if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    }
+    return await resp.json();
+}
+
+export async function ensureTunnel(tunnelName: string): Promise<{ status: string; tunnel_id: string; credentials_file: string }> {
+    const resp = await fetch('/api/ports/ensure-tunnel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tunnel_name: tunnelName }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+        throw new Error(data.error || `HTTP ${resp.status}`);
+    }
+    return data;
+}
+
+export async function restartDNS(hostname: string, group?: string): Promise<{ status: string; message: string }> {
+    const resp = await fetch('/api/ports/restart-dns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostname, group }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+        throw new Error(data.error || `HTTP ${resp.status}`);
+    }
+    return data;
+}

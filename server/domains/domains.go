@@ -11,6 +11,7 @@ import (
 	"time"
 
 	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains/pick"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
@@ -541,7 +542,7 @@ func startDomainHealthCheck(domain string, port int, tunnelName string) {
 			case <-ticker.C:
 				// Check if health checks are paused for this mapping (e.g., after recent restart)
 				mappingID := fmt.Sprintf("domain-%s", domain)
-				tg := cloudflareSettings.GetTunnelGroupManager().GetCoreGroup()
+				tg := unified_tunnel.GetTunnelGroupManager().GetCoreGroup()
 				isPaused := tg.IsHealthCheckPaused(mappingID)
 
 				// Log when coming out of pause
@@ -699,11 +700,11 @@ func InitDomainTunnels() {
 	}
 
 	// Ensure core tunnel group is configured
-	tg := cloudflareSettings.GetTunnelGroupManager().GetCoreGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetCoreGroup()
 	logFn := func(msg string) {
 		fmt.Printf("[domains] %s\n", msg)
 	}
-	tunnelRef, _, _, err := cloudflareSettings.EnsureGroupTunnelConfigured(cloudflareSettings.GroupCore, "", logFn)
+	tunnelRef, _, _, err := cloudflareSettings.EnsureGroupTunnelConfigured(unified_tunnel.GroupCore, "", logFn)
 	if err != nil {
 		fmt.Printf("[domains] Failed to configure core tunnel: %v\n", err)
 		return
@@ -723,7 +724,7 @@ func InitDomainTunnels() {
 		}
 
 		mappingID := fmt.Sprintf("domain-%s", d.Domain)
-		mapping := &cloudflareSettings.IngressMapping{
+		mapping := &unified_tunnel.IngressMapping{
 			ID:       mappingID,
 			Hostname: d.Domain,
 			Service:  localURL,

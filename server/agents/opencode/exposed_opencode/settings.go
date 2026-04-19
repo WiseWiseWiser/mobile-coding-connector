@@ -2,6 +2,7 @@ package exposed_opencode
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"sync"
 
@@ -136,6 +137,10 @@ func copySettings(s *Settings) *Settings {
 func SaveSettings(s *Settings) error {
 	settingsMu.Lock()
 	defer settingsMu.Unlock()
+
+	if s.DefaultDomain != "" && isLocalDomain(s.DefaultDomain) {
+		return fmt.Errorf("local addresses (localhost, 127.0.0.1) cannot be used as tunnel domains; please use a valid external domain")
+	}
 
 	// Ensure directory exists
 	if err := os.MkdirAll(config.DataDir, 0755); err != nil {

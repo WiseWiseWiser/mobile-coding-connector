@@ -1,4 +1,4 @@
-package cloudflare
+package unified_tunnel
 
 import (
 	"context"
@@ -32,6 +32,12 @@ func NewTunnelGroup(name string, tunnelMgr *UnifiedTunnelManager) *TunnelGroup {
 	}
 }
 
+// TunnelMgr returns the underlying unified tunnel manager.
+// Used by domain_tunnel.go which is in a different package.
+func (tg *TunnelGroup) TunnelMgr() *UnifiedTunnelManager {
+	return tg.tunnelMgr
+}
+
 func (tg *TunnelGroup) Name() string {
 	return tg.name
 }
@@ -50,12 +56,24 @@ func (tg *TunnelGroup) ListMappings() []*IngressMapping {
 	return tg.tunnelMgr.ListMappings()
 }
 
+// TryListMappings attempts to list mappings without blocking.
+// Returns (mappings, true) on success, or (nil, false) if the lock is contended.
+func (tg *TunnelGroup) TryListMappings() ([]*IngressMapping, bool) {
+	return tg.tunnelMgr.TryListMappings()
+}
+
 func (tg *TunnelGroup) GetMapping(mappingID string) (*IngressMapping, bool) {
 	return tg.tunnelMgr.GetMapping(mappingID)
 }
 
 func (tg *TunnelGroup) IsRunning() bool {
 	return tg.tunnelMgr.IsRunning()
+}
+
+// TryIsRunning attempts to check running status without blocking.
+// Returns (running, true) on success, or (false, false) if the lock is contended.
+func (tg *TunnelGroup) TryIsRunning() (bool, bool) {
+	return tg.tunnelMgr.TryIsRunning()
 }
 
 func (tg *TunnelGroup) GetStatus() map[string]interface{} {

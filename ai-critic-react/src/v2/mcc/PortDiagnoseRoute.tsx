@@ -1,6 +1,6 @@
 import { useOutletContext, useParams } from 'react-router-dom';
 import type { PortsOutletContext } from './PortsLayout';
-import { PortDiagnoseView } from './PortForwardingView';
+import { PortDiagnoseView } from './PortDiagnoseView';
 
 export function PortDiagnoseRoute() {
     const ctx = useOutletContext<PortsOutletContext>();

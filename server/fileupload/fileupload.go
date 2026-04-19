@@ -26,11 +26,36 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/files/upload", handleUpload)
 	mux.HandleFunc("/api/files/download", handleDownload)
 	mux.HandleFunc("/api/files/browse", handleBrowse)
+	mux.HandleFunc("/api/files/home", handleHome)
 
 	// Chunked upload endpoints
 	mux.HandleFunc("/api/files/upload/init", handleUploadInit)
 	mux.HandleFunc("/api/files/upload/chunk", handleUploadChunk)
 	mux.HandleFunc("/api/files/upload/complete", handleUploadComplete)
+}
+
+// handleHome returns the server's user home directory and current working
+// directory. Clients can use these to resolve relative paths when the user
+// has not supplied an absolute destination.
+func handleHome(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get home dir: %v", err))
+		return
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get cwd: %v", err))
+		return
+	}
+	writeJSON(w, map[string]string{
+		"home": home,
+		"cwd":  cwd,
+	})
 }
 
 func handleCheck(w http.ResponseWriter, r *http.Request) {

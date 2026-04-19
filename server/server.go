@@ -32,6 +32,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/checkpoint"
 	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
 	serverconfig "github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
@@ -102,7 +103,7 @@ func GetQuickTestQuitChan() <-chan struct{} {
 func RunBackgroundTasks() {
 	fmt.Printf("[auto-task] Running background tasks\n")
 	opencode_exposed.StartHealthCheck()
-	cloudflareSettings.StartGlobalHealthChecks()
+	unified_tunnel.StartGlobalHealthChecks()
 }
 
 func RunStartupTasks() {
@@ -289,7 +290,7 @@ func Serve(port int, dev bool) error {
 
 			// Stop unified tunnel health checks
 			fmt.Println("Stopping unified tunnel health checks...")
-			cloudflareSettings.StopGlobalHealthChecks()
+			unified_tunnel.StopGlobalHealthChecks()
 
 			// Stop agents health checks (but leave opencode running)
 			fmt.Println("Stopping agents module...")

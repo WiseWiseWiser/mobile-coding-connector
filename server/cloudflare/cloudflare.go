@@ -11,17 +11,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
-
-// TunnelInfo represents a Cloudflare tunnel.
-type TunnelInfo struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	CreatedAt   string `json:"created_at,omitempty"`
-	Connections []any  `json:"connections,omitempty"`
-}
 
 // CertFileInfo describes a cloudflared credential file.
 type CertFileInfo struct {
@@ -207,7 +200,7 @@ func listTunnels(w http.ResponseWriter) {
 	}
 
 	// Parse and re-encode to ensure valid JSON
-	var tunnels []TunnelInfo
+	var tunnels []unified_tunnel.TunnelInfo
 	if err := json.Unmarshal(out, &tunnels); err != nil {
 		// If parse fails, return raw output
 		w.Header().Set("Content-Type", "application/json")

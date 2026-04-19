@@ -8,6 +8,7 @@ import (
 	"time"
 
 	cf "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/jsonfile"
 )
 
@@ -157,9 +158,9 @@ func (m *Manager) Add(externalDomain, internalURL string) (*ExposedURLWithStatus
 	}
 
 	// Add to extension tunnel group automatically
-	tg := cf.GetTunnelGroupManager().GetExtensionGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 	mappingID := fmt.Sprintf("exposed-%s", id)
-	mapping := &cf.IngressMapping{
+	mapping := &unified_tunnel.IngressMapping{
 		ID:       mappingID,
 		Hostname: externalDomain,
 		Service:  internalURL,
@@ -205,7 +206,7 @@ func (m *Manager) Update(id, externalDomain, internalURL string) (*ExposedURLWit
 
 	// Update tunnel mapping if not disabled
 	if !url.Disabled {
-		tg := cf.GetTunnelGroupManager().GetExtensionGroup()
+		tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 		mappingID := fmt.Sprintf("exposed-%s", id)
 
 		// Remove old mapping
@@ -216,7 +217,7 @@ func (m *Manager) Update(id, externalDomain, internalURL string) (*ExposedURLWit
 		}
 
 		// Add new mapping
-		mapping := &cf.IngressMapping{
+		mapping := &unified_tunnel.IngressMapping{
 			ID:       mappingID,
 			Hostname: externalDomain,
 			Service:  internalURL,
@@ -260,16 +261,16 @@ func (m *Manager) Toggle(id string, disabled bool) (*ExposedURLWithStatus, error
 
 	// If disabling, remove from extension tunnel group
 	if disabled {
-		tg := cf.GetTunnelGroupManager().GetExtensionGroup()
+		tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 		mappingID := fmt.Sprintf("exposed-%s", id)
 		if err := tg.RemoveMapping(mappingID); err != nil {
 			fmt.Printf("[exposed-urls] warning: failed to remove mapping on disable: %v\n", err)
 		}
 	} else if !disabled && url.Status == "active" {
 		// If enabling and was active, re-add to extension tunnel group
-		tg := cf.GetTunnelGroupManager().GetExtensionGroup()
+		tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 		mappingID := fmt.Sprintf("exposed-%s", id)
-		mapping := &cf.IngressMapping{
+		mapping := &unified_tunnel.IngressMapping{
 			ID:       mappingID,
 			Hostname: url.ExternalDomain,
 			Service:  url.InternalURL,
@@ -300,7 +301,7 @@ func (m *Manager) Remove(id string) error {
 	}
 
 	// Remove from tunnel mapping
-	tg := cf.GetTunnelGroupManager().GetExtensionGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 	mappingID := fmt.Sprintf("exposed-%s", id)
 	if err := tg.RemoveMapping(mappingID); err != nil {
 		fmt.Printf("[exposed-urls] Warning: failed to remove mapping: %v\n", err)
@@ -354,11 +355,11 @@ func (m *Manager) StartTunnel(id string) error {
 	m.mu.Unlock()
 
 	// Ensure extension tunnel group is configured before adding mapping
-	tg := cf.GetTunnelGroupManager().GetExtensionGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 	logFn := func(msg string) {
 		fmt.Printf("[exposed-urls] %s\n", msg)
 	}
-	_, _, _, err := cf.EnsureGroupTunnelConfigured(cf.GroupExtension, "", logFn)
+	_, _, _, err := cf.EnsureGroupTunnelConfigured(unified_tunnel.GroupExtension, "", logFn)
 	if err != nil {
 		m.mu.Lock()
 		if rt, ok := m.running[tunnelID]; ok {
@@ -374,7 +375,7 @@ func (m *Manager) StartTunnel(id string) error {
 
 	// Add mapping to extension tunnel group
 	mappingID := fmt.Sprintf("exposed-%s", tunnelID)
-	mapping := &cf.IngressMapping{
+	mapping := &unified_tunnel.IngressMapping{
 		ID:       mappingID,
 		Hostname: externalDomain,
 		Service:  internalURL,
@@ -422,7 +423,7 @@ func (m *Manager) StopTunnel(id string) error {
 	}
 
 	// Remove mapping from extension tunnel group
-	tg := cf.GetTunnelGroupManager().GetExtensionGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 	mappingID := fmt.Sprintf("exposed-%s", id)
 	if err := tg.RemoveMapping(mappingID); err != nil {
 		fmt.Printf("[exposed-urls] warning: failed to remove mapping: %v\n", err)
@@ -463,11 +464,11 @@ func InitExposedURLTunnels() {
 	}
 
 	// Ensure extension tunnel group is configured
-	tg := cf.GetTunnelGroupManager().GetExtensionGroup()
+	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 	logFn := func(msg string) {
 		fmt.Printf("[exposed-urls] %s\n", msg)
 	}
-	tunnelRef, _, _, err := cf.EnsureGroupTunnelConfigured(cf.GroupExtension, "", logFn)
+	tunnelRef, _, _, err := cf.EnsureGroupTunnelConfigured(unified_tunnel.GroupExtension, "", logFn)
 	if err != nil {
 		fmt.Printf("[exposed-urls] Failed to configure extension tunnel: %v\n", err)
 		return
@@ -477,7 +478,7 @@ func InitExposedURLTunnels() {
 	// Add each exposed URL as a mapping
 	for _, url := range urls {
 		mappingID := fmt.Sprintf("exposed-%s", url.ID)
-		mapping := &cf.IngressMapping{
+		mapping := &unified_tunnel.IngressMapping{
 			ID:       mappingID,
 			Hostname: url.ExternalDomain,
 			Service:  url.InternalURL,
