@@ -39,12 +39,20 @@ Commands:
             With --kill-parent, SIGTERM the parents so init adopts and
             reaps them.
 
+  exec <BINARY> [ARGS...]
+      Run a subprocess on the server. Stdout and stderr are streamed back
+      as they are produced; the client's exit code mirrors the remote exit
+      code. Every argument after 'exec' is forwarded verbatim to the
+      remote binary.
+
 Examples:
   remote-agent config
   remote-agent --server https://host.example.com --token abc upload ./foo.txt /tmp/foo.txt
   remote-agent upload ./foo.txt /tmp/          # uses saved config
   remote-agent local reap                       # list zombies
   remote-agent local reap --filter ai-critic --signal
+  remote-agent exec ls -la /tmp
+  remote-agent exec sh -c 'echo hi; sleep 1'
 `
 
 func main() {
@@ -62,6 +70,7 @@ func run(args []string) error {
 		String("--server", &server).
 		String("--token", &token).
 		Help("-h,--help", help).
+		StopOnFirstArg().
 		Parse(args)
 	if err != nil {
 		return err
@@ -86,6 +95,10 @@ func run(args []string) error {
 		return runUpload(cli, rest)
 	case "local":
 		return runLocal(rest)
+	case "exec":
+		return runExec(func() (*client.Client, error) {
+			return resolveClient(server, token)
+		}, rest)
 	default:
 		return fmt.Errorf("unknown command: %s", cmd)
 	}
