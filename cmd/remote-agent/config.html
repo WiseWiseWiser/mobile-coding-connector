@@ -9,7 +9,7 @@
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 640px;
+            max-width: 760px;
             margin: 40px auto;
             padding: 0 20px;
             line-height: 1.5;
@@ -22,16 +22,62 @@
             margin-top: 0;
             margin-bottom: 24px;
         }
-        .field {
+        .section {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 16px;
             margin-bottom: 16px;
         }
-        label {
-            display: block;
+        .section h2 {
+            margin: 0 0 12px;
+            font-size: 16px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            table-layout: fixed;
+        }
+        th, td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #eee;
+            text-align: left;
+            vertical-align: middle;
+            overflow: hidden;
+        }
+        th {
             font-weight: 600;
-            margin-bottom: 4px;
+            background: rgba(0,0,0,0.03);
+        }
+        th.col-radio, td.col-radio {
+            width: 32px;
+            padding-right: 4px;
+        }
+        th.col-token, td.col-token {
+            width: 30%;
+        }
+        th.col-actions, td.col-actions {
+            width: 200px;
+        }
+        td.col-actions {
+            text-align: right;
+            white-space: nowrap;
+        }
+        td.col-server {
+            word-break: break-all;
+        }
+        td.col-token code {
+            display: block;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .empty {
+            color: #888;
+            font-style: italic;
+            padding: 12px 10px;
         }
         input[type=text], input[type=password] {
-            width: 100%;
             padding: 8px 10px;
             border: 1px solid #ccc;
             border-radius: 4px;
@@ -39,28 +85,42 @@
             box-sizing: border-box;
             font-family: inherit;
         }
+        input.full {
+            width: 100%;
+        }
+        .field {
+            margin-bottom: 12px;
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
         .row {
             display: flex;
             gap: 8px;
+            align-items: center;
         }
-        .row button {
-            flex: 0 0 auto;
-        }
-        .row input {
+        .row input[type=text], .row input[type=password] {
             flex: 1;
         }
         button {
-            padding: 8px 16px;
+            padding: 6px 12px;
             border: 1px solid #888;
             background: #f4f4f4;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
         }
         button.primary {
             background: #2563eb;
             color: #fff;
             border-color: #2563eb;
+        }
+        button.danger {
+            background: #fff;
+            color: #a50e0e;
+            border-color: #a50e0e;
         }
         button:disabled {
             opacity: 0.6;
@@ -82,10 +142,16 @@
             color: #a50e0e;
             display: block;
         }
-        .actions {
-            margin-top: 24px;
-            display: flex;
-            gap: 12px;
+        .default-tag {
+            display: inline-block;
+            background: #e0e7ff;
+            color: #3730a3;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 3px;
+            padding: 2px 6px;
+            margin-left: 6px;
+            vertical-align: middle;
         }
         code {
             background: rgba(0,0,0,0.06);
@@ -98,39 +164,251 @@
     <h1>Remote Agent Config</h1>
     <p class="hint">
         Saved to <code>~/.ai-critic/remote-agent-config.json</code>.
-        Used by <code>remote-agent upload</code> and other subcommands when
-        <code>--server</code> / <code>--token</code> are not passed.
+        Used by <code>remote-agent upload</code> (and friends) when
+        <code>--server</code> is not passed &mdash; the domain marked
+        <span class="default-tag">DEFAULT</span> applies.
     </p>
 
-    <div class="field">
-        <label for="server">Server URL</label>
-        <input id="server" type="text" placeholder="https://host.example.com" autocomplete="off">
-    </div>
-
-    <div class="field">
-        <label for="token">Auth Token</label>
-        <div class="row">
-            <input id="token" type="password" placeholder="bearer token" autocomplete="off">
-            <button type="button" id="toggle-token">Show</button>
+    <div class="section">
+        <h2>Configured Domains</h2>
+        <table id="domains-table">
+            <thead>
+                <tr>
+                    <th class="col-radio"></th>
+                    <th class="col-server">Server</th>
+                    <th class="col-token">Token</th>
+                    <th class="col-actions">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="domains-tbody"></tbody>
+        </table>
+        <div id="domains-empty" class="empty" style="display:none">
+            No domains configured yet. Add one below.
         </div>
     </div>
 
-    <div class="actions">
-        <button type="button" id="test" >Test Connection</button>
-        <button type="button" id="save" class="primary">Save</button>
-        <button type="button" id="save-close" class="primary">Save &amp; Close</button>
+    <div class="section">
+        <h2>Add / Update Domain</h2>
+        <div class="field">
+            <label for="new-server">Server URL</label>
+            <input id="new-server" type="text" class="full" placeholder="https://host.example.com" autocomplete="off">
+        </div>
+        <div class="field">
+            <label for="new-token">Auth Token</label>
+            <div class="row">
+                <input id="new-token" type="password" placeholder="bearer token" autocomplete="off">
+                <button type="button" id="toggle-token">Show</button>
+            </div>
+        </div>
+        <div class="row">
+            <button type="button" id="add-domain" class="primary">Save Domain</button>
+            <button type="button" id="test-domain">Test Connection</button>
+        </div>
+    </div>
+
+    <div class="row">
+        <button type="button" id="close" class="primary">Done &amp; Close</button>
     </div>
 
     <div id="status" class="status"></div>
 
     <script>
-        const serverInput = document.getElementById('server');
-        const tokenInput = document.getElementById('token');
+        const tbody = document.getElementById('domains-tbody');
+        const emptyEl = document.getElementById('domains-empty');
         const statusEl = document.getElementById('status');
+        const newServer = document.getElementById('new-server');
+        const newToken = document.getElementById('new-token');
+
+        let state = { default: '', domains: [] };
+        let editingIdx = -1;
 
         function setStatus(msg, ok) {
             statusEl.textContent = msg;
             statusEl.className = 'status ' + (ok ? 'ok' : 'err');
+        }
+
+        function clearStatus() {
+            statusEl.textContent = '';
+            statusEl.className = 'status';
+        }
+
+        function maskToken(t) {
+            if (!t) return '(none)';
+            if (t.length <= 4) return '*'.repeat(t.length);
+            return t.slice(0, 2) + '*'.repeat(t.length - 4) + t.slice(-2);
+        }
+
+        function render() {
+            tbody.innerHTML = '';
+            if (state.domains.length === 0) {
+                emptyEl.style.display = 'block';
+                return;
+            }
+            emptyEl.style.display = 'none';
+
+            state.domains.forEach((d, idx) => {
+                const tr = document.createElement('tr');
+                if (editingIdx === idx) {
+                    renderEditRow(tr, idx, d);
+                } else {
+                    renderViewRow(tr, idx, d);
+                }
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderViewRow(tr, idx, d) {
+            const tdRadio = document.createElement('td');
+            tdRadio.className = 'col-radio';
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'default-domain';
+            radio.checked = state.default === d.server;
+            radio.title = 'Mark as default';
+            radio.addEventListener('change', () => setDefault(d.server));
+            tdRadio.appendChild(radio);
+
+            const tdServer = document.createElement('td');
+            tdServer.className = 'col-server';
+            tdServer.textContent = d.server;
+            if (state.default === d.server) {
+                const tag = document.createElement('span');
+                tag.className = 'default-tag';
+                tag.textContent = 'DEFAULT';
+                tdServer.appendChild(tag);
+            }
+
+            const tdToken = document.createElement('td');
+            tdToken.className = 'col-token';
+            tdToken.title = maskToken(d.token);
+            const tokenCode = document.createElement('code');
+            tokenCode.textContent = maskToken(d.token);
+            tdToken.appendChild(tokenCode);
+
+            const tdActions = document.createElement('td');
+            tdActions.className = 'col-actions';
+
+            const editBtn = document.createElement('button');
+            editBtn.textContent = 'Edit';
+            editBtn.addEventListener('click', () => {
+                editingIdx = idx;
+                clearStatus();
+                render();
+            });
+
+            const testBtn = document.createElement('button');
+            testBtn.textContent = 'Test';
+            testBtn.addEventListener('click', () => testDomain(d));
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'danger';
+            delBtn.textContent = 'Delete';
+            delBtn.addEventListener('click', () => deleteDomain(d.server));
+
+            tdActions.appendChild(editBtn);
+            tdActions.appendChild(document.createTextNode(' '));
+            tdActions.appendChild(testBtn);
+            tdActions.appendChild(document.createTextNode(' '));
+            tdActions.appendChild(delBtn);
+
+            tr.appendChild(tdRadio);
+            tr.appendChild(tdServer);
+            tr.appendChild(tdToken);
+            tr.appendChild(tdActions);
+        }
+
+        function renderEditRow(tr, idx, d) {
+            const wasDefault = state.default === d.server;
+
+            // Leave the radio column empty while editing; the default
+            // selection is controlled by the inline checkbox below.
+            const tdRadio = document.createElement('td');
+            tdRadio.className = 'col-radio';
+            tr.appendChild(tdRadio);
+
+            const tdServer = document.createElement('td');
+            tdServer.className = 'col-server';
+            const serverInput = document.createElement('input');
+            serverInput.type = 'text';
+            serverInput.className = 'full';
+            serverInput.value = d.server;
+            tdServer.appendChild(serverInput);
+
+            const defaultLabel = document.createElement('label');
+            defaultLabel.style.display = 'block';
+            defaultLabel.style.marginTop = '6px';
+            defaultLabel.style.fontWeight = '400';
+            defaultLabel.style.fontSize = '12px';
+            defaultLabel.style.color = '#555';
+            const defaultCheckbox = document.createElement('input');
+            defaultCheckbox.type = 'checkbox';
+            defaultCheckbox.checked = wasDefault;
+            defaultCheckbox.style.marginRight = '6px';
+            defaultLabel.appendChild(defaultCheckbox);
+            defaultLabel.appendChild(document.createTextNode('Use as default domain'));
+            tdServer.appendChild(defaultLabel);
+            tr.appendChild(tdServer);
+
+            const tdToken = document.createElement('td');
+            tdToken.className = 'col-token';
+            const tokenInput = document.createElement('input');
+            tokenInput.type = 'text';
+            tokenInput.className = 'full';
+            tokenInput.value = d.token || '';
+            tokenInput.placeholder = 'bearer token';
+            tdToken.appendChild(tokenInput);
+            tr.appendChild(tdToken);
+
+            const tdActions = document.createElement('td');
+            tdActions.className = 'col-actions';
+
+            const saveBtn = document.createElement('button');
+            saveBtn.className = 'primary';
+            saveBtn.textContent = 'Save';
+            saveBtn.addEventListener('click', async () => {
+                const newServer = serverInput.value.trim().replace(/\/+$/, '');
+                if (!newServer) {
+                    setStatus('Server URL is required', false);
+                    return;
+                }
+
+                const dup = state.domains.findIndex((x, i) => i !== idx && x.server === newServer);
+                if (dup >= 0) {
+                    setStatus('Another entry already uses ' + newServer, false);
+                    return;
+                }
+
+                state.domains[idx] = { server: newServer, token: tokenInput.value };
+
+                if (defaultCheckbox.checked) {
+                    state.default = newServer;
+                } else if (wasDefault) {
+                    // Was default, user unchecked it: clear default.
+                    state.default = '';
+                }
+
+                try {
+                    await saveState();
+                    editingIdx = -1;
+                    setStatus('Saved ' + newServer, true);
+                    render();
+                } catch (e) {
+                    setStatus('Error: ' + e.message, false);
+                }
+            });
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.addEventListener('click', () => {
+                editingIdx = -1;
+                clearStatus();
+                render();
+            });
+
+            tdActions.appendChild(saveBtn);
+            tdActions.appendChild(document.createTextNode(' '));
+            tdActions.appendChild(cancelBtn);
+            tr.appendChild(tdActions);
         }
 
         async function loadConfig() {
@@ -138,70 +416,108 @@
                 const r = await fetch('/api/config');
                 if (!r.ok) return;
                 const data = await r.json();
-                serverInput.value = data.server || '';
-                tokenInput.value = data.token || '';
+                state = {
+                    default: data.default || '',
+                    domains: Array.isArray(data.domains) ? data.domains : [],
+                };
+                render();
             } catch (_) {}
         }
 
-        async function save() {
-            const body = { server: serverInput.value.trim(), token: tokenInput.value };
+        async function saveState() {
             const r = await fetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
+                body: JSON.stringify(state),
             });
             const data = await r.json().catch(() => ({}));
             if (!r.ok) throw new Error(data.error || 'save failed');
-            return data;
         }
 
-        async function test() {
-            const body = { server: serverInput.value.trim(), token: tokenInput.value };
-            const r = await fetch('/api/test', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
+        async function setDefault(server) {
+            state.default = server;
+            try {
+                await saveState();
+                setStatus('Default set to ' + server, true);
+                render();
+            } catch (e) {
+                setStatus('Error: ' + e.message, false);
+            }
+        }
+
+        async function deleteDomain(server) {
+            if (!confirm('Delete ' + server + '?')) return;
+            state.domains = state.domains.filter(d => d.server !== server);
+            if (state.default === server) state.default = '';
+            try {
+                await saveState();
+                setStatus('Deleted ' + server, true);
+                render();
+            } catch (e) {
+                setStatus('Error: ' + e.message, false);
+            }
+        }
+
+        async function addOrUpdate() {
+            const server = newServer.value.trim().replace(/\/+$/, '');
+            const token = newToken.value;
+            if (!server) {
+                setStatus('Server URL is required', false);
+                return;
+            }
+            const existing = state.domains.findIndex(d => d.server === server);
+            if (existing >= 0) {
+                state.domains[existing] = { server, token };
+            } else {
+                state.domains.push({ server, token });
+            }
+            if (!state.default) state.default = server;
+            try {
+                await saveState();
+                setStatus('Saved ' + server, true);
+                newToken.value = '';
+                newServer.value = '';
+                render();
+            } catch (e) {
+                setStatus('Error: ' + e.message, false);
+            }
+        }
+
+        async function testDomain(d) {
+            try {
+                const r = await fetch('/api/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ server: d.server, token: d.token }),
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(data.error || 'test failed');
+                setStatus('OK: ' + d.server + ' is reachable and authenticated.', true);
+            } catch (e) {
+                setStatus('Test failed (' + d.server + '): ' + e.message, false);
+            }
+        }
+
+        async function testEntered() {
+            await testDomain({
+                server: newServer.value.trim().replace(/\/+$/, ''),
+                token: newToken.value,
             });
-            const data = await r.json().catch(() => ({}));
-            if (!r.ok) throw new Error(data.error || 'test failed');
-            return data;
         }
 
-        document.getElementById('save').addEventListener('click', async () => {
-            try {
-                await save();
-                setStatus('Saved.', true);
-            } catch (e) {
-                setStatus('Error: ' + e.message, false);
-            }
+        document.getElementById('add-domain').addEventListener('click', addOrUpdate);
+        document.getElementById('test-domain').addEventListener('click', testEntered);
+        document.getElementById('close').addEventListener('click', async () => {
+            await fetch('/api/shutdown', { method: 'POST' }).catch(() => {});
+            setStatus('You can close this tab.', true);
         });
-
-        document.getElementById('save-close').addEventListener('click', async () => {
-            try {
-                await save();
-                setStatus('Saved. You can close this tab.', true);
-                await fetch('/api/shutdown', { method: 'POST' }).catch(() => {});
-            } catch (e) {
-                setStatus('Error: ' + e.message, false);
-            }
-        });
-
-        document.getElementById('test').addEventListener('click', async () => {
-            try {
-                await test();
-                setStatus('Connection OK: server and token are valid.', true);
-            } catch (e) {
-                setStatus('Test failed: ' + e.message, false);
-            }
-        });
-
         document.getElementById('toggle-token').addEventListener('click', () => {
             const btn = document.getElementById('toggle-token');
-            if (tokenInput.type === 'password') {
-                tokenInput.type = 'text';
+            if (newToken.type === 'password') {
+                newToken.type = 'text';
                 btn.textContent = 'Hide';
             } else {
-                tokenInput.type = 'password';
+                newToken.type = 'password';
                 btn.textContent = 'Show';
             }
         });

@@ -93,8 +93,7 @@ func handleConfigAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		req.Server = strings.TrimRight(strings.TrimSpace(req.Server), "/")
-		req.Token = strings.TrimSpace(req.Token)
+		normalizeIncomingConfig(&req)
 		if err := saveConfig(&req); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -105,13 +104,39 @@ func handleConfigAPI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// normalizeIncomingConfig trims whitespace/trailing slashes and clears the
+// default selection when it references a server no longer in Domains.
+func normalizeIncomingConfig(cfg *agentConfig) {
+	cfg.Default = strings.TrimRight(strings.TrimSpace(cfg.Default), "/")
+	cleaned := make([]domainConfig, 0, len(cfg.Domains))
+	seen := map[string]bool{}
+	for _, d := range cfg.Domains {
+		server := strings.TrimRight(strings.TrimSpace(d.Server), "/")
+		if server == "" || seen[server] {
+			continue
+		}
+		seen[server] = true
+		cleaned = append(cleaned, domainConfig{
+			Server: server,
+			Token:  strings.TrimSpace(d.Token),
+		})
+	}
+	cfg.Domains = cleaned
+	if !seen[cfg.Default] {
+		cfg.Default = ""
+	}
+}
+
 func handleConfigTest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var req agentConfig
+	var req struct {
+		Server string `json:"server"`
+		Token  string `json:"token"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return

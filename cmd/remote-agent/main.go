@@ -15,14 +15,16 @@ behavior of the web frontend.
 
 Global options:
   --server URL       Base URL of the server (e.g. https://host.example.com).
-                     Falls back to the value saved by 'config' if unset.
-  --token TOKEN      Bearer token for authentication.
-                     Falls back to the value saved by 'config' if unset.
+                     Falls back to the default domain saved by 'config'.
+  --token TOKEN      Bearer token for authentication. Falls back to the
+                     token of the matching/default saved domain.
   -h, --help         Show this help message
 
 Commands:
   config
-      Open a local web page to configure server URL and auth token.
+      Open a local web page to manage saved server domains and pick a
+      default one. When 'upload' is invoked without --server, the
+      default domain's server and token are used.
 
   upload <LOCAL_FILE> [REMOTE_PATH]
       Upload a local file to the server using chunked upload.
@@ -77,19 +79,24 @@ func run(args []string) error {
 	}
 }
 
-// resolveClient builds a client.Client using CLI flags, falling back to saved config.
+// resolveClient builds a client.Client using CLI flags, falling back to the
+// default domain saved via 'remote-agent config'.
 func resolveClient(server string, token string) (*client.Client, error) {
 	cfg, _ := loadConfig()
 
-	if server == "" && cfg != nil {
-		server = cfg.Server
-	}
-	if token == "" && cfg != nil {
-		token = cfg.Token
+	// When --server is not supplied, use the saved default domain's
+	// server + token. --token alone can still override the saved token.
+	if server == "" {
+		def := cfg.DefaultDomain()
+		if def == nil {
+			return nil, fmt.Errorf("no server specified and no default domain configured. " +
+				"Pass --server, or run 'remote-agent config' to add a domain and mark it as default.")
+		}
+		server = def.Server
+		if token == "" {
+			token = def.Token
+		}
 	}
 
-	if server == "" {
-		return nil, fmt.Errorf("--server is required (run 'remote-agent config' to save one)")
-	}
 	return client.New(server, token), nil
 }
