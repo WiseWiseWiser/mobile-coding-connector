@@ -53,8 +53,9 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]string{
-		"home": home,
-		"cwd":  cwd,
+		"home":     home,
+		"home_dir": home, // alias for older clients that read home_dir
+		"cwd":      cwd,
 	})
 }
 

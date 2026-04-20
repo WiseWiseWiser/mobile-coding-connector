@@ -31,10 +31,20 @@ Commands:
       If REMOTE_PATH is omitted, the file's basename is used.
       If REMOTE_PATH ends with '/', the basename is appended.
 
+  local <subcommand> [args...]
+      Local-machine utilities. Subcommands:
+        reap [--signal] [--kill-parent] [--filter NAME]
+            List defunct (zombie) processes on the local machine. With
+            --signal, send SIGCHLD to their parents to nudge reaping.
+            With --kill-parent, SIGTERM the parents so init adopts and
+            reaps them.
+
 Examples:
   remote-agent config
   remote-agent --server https://host.example.com --token abc upload ./foo.txt /tmp/foo.txt
   remote-agent upload ./foo.txt /tmp/          # uses saved config
+  remote-agent local reap                       # list zombies
+  remote-agent local reap --filter ai-critic --signal
 `
 
 func main() {
@@ -74,6 +84,8 @@ func run(args []string) error {
 			return err
 		}
 		return runUpload(cli, rest)
+	case "local":
+		return runLocal(rest)
 	default:
 		return fmt.Errorf("unknown command: %s", cmd)
 	}

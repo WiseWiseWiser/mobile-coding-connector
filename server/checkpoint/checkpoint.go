@@ -549,7 +549,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/checkpoints/diff/file", handleSingleFileDiff)
 	mux.HandleFunc("/api/files", handleListFiles)
 	mux.HandleFunc("/api/files/content", handleReadFile)
-	mux.HandleFunc("/api/files/home", handleHomeDir)
+	// /api/files/home is owned by server/fileupload (returns {home, home_dir, cwd}).
 	mux.HandleFunc("/api/server/files", handleListServerFiles)
 	mux.HandleFunc("/api/server/files/content", handleServerFileContent)
 }

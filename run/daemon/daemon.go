@@ -129,6 +129,10 @@ func (d *Daemon) Run(forever bool, logPath string) error {
 	// Start HTTP management server
 	d.httpServer.Start()
 
+	// Start background zombie reaper so defunct children don't
+	// accumulate under the keep-alive PID.
+	StartZombieReaper()
+
 	// Run the main loop
 	return d.runLoop()
 }

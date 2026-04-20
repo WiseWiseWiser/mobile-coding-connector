@@ -160,22 +160,6 @@ func handleReadFile(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"content": content, "path": filePath})
 }
 
-// handleHomeDir handles GET /api/files/home
-func handleHomeDir(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		respondErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	respondJSON(w, http.StatusOK, map[string]string{"home_dir": home})
-}
-
 // ListServerFiles lists entries in a server directory, allowing navigation to root.
 // basePath is the starting directory (e.g., home), relativePath navigates from there.
 // Shows hidden files and allows going up to root.
