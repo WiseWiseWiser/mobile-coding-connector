@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,6 +17,9 @@ import (
 )
 
 const keepAliveHelp = `Usage: ai-critic keep-alive [options]
+       ai-critic keep-alive status [options]
+       ai-critic keep-alive logs [options]
+       ai-critic keep-alive exec-replace <new-binary> [options]
 
 Keep the ai-critic server running with automatic restart and health checking.
 
@@ -26,11 +31,17 @@ Options:
   --script            Output shell script instead of running Go code
   -h, --help          Show this help message
 
-Request Commands:
+Commands:
+  ai-critic keep-alive status             Get daemon status
+  ai-critic keep-alive logs               Follow keep-alive daemon logs (tail -fn100)
+  ai-critic keep-alive exec-replace FILE  Replace keep-alive daemon binary via exec
   ai-critic keep-alive request info       Get daemon status
+  ai-critic keep-alive request status     Get daemon status
   ai-critic keep-alive request restart    Request server restart
   ai-critic keep-alive request fix-tunnel Fix stale Cloudflare tunnel
 `
+
+const defaultKeepAliveLogPath = "ai-critic-server-keep-alive.log"
 
 func runKeepAlive(args []string) error {
 	var scriptFlag bool
@@ -58,23 +69,45 @@ func runKeepAlive(args []string) error {
 		return outputKeepAliveScript(port, args)
 	}
 
-	// Set default log path
-	logPath := "ai-critic-server-keep-alive.log"
-	if logFlag == "no" {
-		// User explicitly disabled logging
-		logPath = ""
-	} else if logFlag != "" {
-		// User specified a custom log path
-		logPath = logFlag
+	logPath := resolveKeepAliveLogPath(logFlag)
+
+	if len(args) > 0 {
+		switch args[0] {
+		case "status":
+			if len(args) > 1 {
+				return fmt.Errorf("keep-alive status does not accept extra args: %s", strings.Join(args[1:], " "))
+			}
+			return sendKeepAliveInfo()
+		case "logs":
+			if len(args) > 1 {
+				return fmt.Errorf("keep-alive logs does not accept extra args: %s", strings.Join(args[1:], " "))
+			}
+			return followKeepAliveLogs(logPath)
+		case "exec-replace":
+			if len(args) != 2 {
+				return fmt.Errorf("usage: ai-critic keep-alive exec-replace <new-binary>")
+			}
+			return sendKeepAliveExecReplace(args[1])
+		}
 	}
 
 	return daemon.RunKeepAlive(port, foreverFlag, logPath, args)
 }
 
+func resolveKeepAliveLogPath(logFlag string) string {
+	if logFlag == "no" {
+		return ""
+	}
+	if logFlag != "" {
+		return logFlag
+	}
+	return defaultKeepAliveLogPath
+}
+
 // runKeepAliveRequest sends request commands to a running keep-alive daemon.
 func runKeepAliveRequest(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("action required: info, restart, fix-tunnel")
+		return fmt.Errorf("action required: info, status, restart, fix-tunnel")
 	}
 
 	action := args[0]
@@ -82,12 +115,14 @@ func runKeepAliveRequest(args []string) error {
 	switch action {
 	case "info":
 		return sendKeepAliveInfo()
+	case "status":
+		return sendKeepAliveInfo()
 	case "restart":
 		return sendKeepAliveRestart()
 	case "fix-tunnel":
 		return sendKeepAliveFixTunnel()
 	default:
-		return fmt.Errorf("unknown action: %s (use 'info', 'restart', or 'fix-tunnel')", action)
+		return fmt.Errorf("unknown action: %s (use 'info', 'status', 'restart', or 'fix-tunnel')", action)
 	}
 }
 
@@ -139,6 +174,66 @@ func sendKeepAliveInfo() error {
 		fmt.Printf("Next Binary:    %s\n", status.NextBinary)
 	}
 
+	return nil
+}
+
+func followKeepAliveLogs(logPath string) error {
+	if logPath == "" {
+		return fmt.Errorf("keep-alive log file is disabled (--log no), nothing to follow")
+	}
+
+	cmd := exec.Command("tail", "-fn100", logPath)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("tail keep-alive logs %q: %v", logPath, err)
+	}
+	return nil
+}
+
+func sendKeepAliveExecReplace(newBinary string) error {
+	absPath, err := filepath.Abs(newBinary)
+	if err != nil {
+		return fmt.Errorf("resolve binary path: %v", err)
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return fmt.Errorf("stat binary %q: %v", absPath, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("binary path %q is a directory", absPath)
+	}
+
+	url := fmt.Sprintf("http://localhost:%d/api/keep-alive/exec-replace", config.KeepAlivePort)
+	reqBody := strings.NewReader(fmt.Sprintf(`{"binary_path":%q}`, absPath))
+
+	resp, err := http.Post(url, "application/json", reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to connect to keep-alive daemon: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("keep-alive daemon returned error: %s", resp.Status)
+	}
+
+	var result struct {
+		Status     string `json:"status"`
+		BinaryPath string `json:"binary_path"`
+		Message    string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode response: %v", err)
+	}
+
+	if result.Message != "" {
+		fmt.Println(result.Message)
+		return nil
+	}
+	fmt.Printf("Exec-replace requested: %s\n", result.BinaryPath)
 	return nil
 }
 

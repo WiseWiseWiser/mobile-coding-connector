@@ -125,6 +125,24 @@ nohup ./ai-critic-server keep-alive &
 
 This ensures the keep-alive daemon persists across terminal sessions and can automatically restart the server if it crashes.
 
+Check daemon status:
+
+```sh
+./ai-critic-server keep-alive status
+```
+
+Follow the keep-alive daemon log file:
+
+```sh
+./ai-critic-server keep-alive logs
+```
+
+Replace the keep-alive daemon binary in-place while keeping the same PID and arguments:
+
+```sh
+./ai-critic-server keep-alive exec-replace /path/to/new/ai-critic-server
+```
+
 ## Get Started with Docker
 
 Quick demo with one command (Docker or Podman):

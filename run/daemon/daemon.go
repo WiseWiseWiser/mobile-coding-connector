@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const keepAliveSkipServerPortCheckEnv = "AI_CRITIC_KEEPALIVE_SKIP_SERVER_PORT_CHECK"
+
 // Daemon represents the keep-alive daemon
 type Daemon struct {
 	state          *State
@@ -107,9 +109,24 @@ func (d *Daemon) Run(forever bool, logPath string) error {
 	}
 	defer CloseLogger()
 
+	cwd, _ := os.Getwd()
+	Logger("Keep-alive daemon starting (PID=%d, serverPort=%d, forever=%v, logPath=%q, cwd=%s, serverArgs=%v)",
+		os.Getpid(), d.port, forever, logPath, cwd, d.serverArgs)
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			LogPanic("keep-alive daemon", recovered)
+			panic(recovered)
+		}
+		Logger("Keep-alive daemon exiting (PID=%d)", os.Getpid())
+	}()
+
 	// Check if port is already in use - another keep-alive is likely running
 	// Skip this check if --forever flag is set
-	if !forever && IsPortInUse(d.port) {
+	skipServerPortCheck := consumeKeepAliveSkipServerPortCheckEnv()
+	if skipServerPortCheck {
+		Logger("Skipping server port-in-use precheck because %s=1", keepAliveSkipServerPortCheckEnv)
+	}
+	if !forever && !skipServerPortCheck && IsPortInUse(d.port) {
 		pid := FindPortPID(d.port)
 		if pid != "" {
 			return fmt.Errorf("port %d is already in use by PID %s - another keep-alive instance may be running", d.port, pid)
@@ -137,9 +154,22 @@ func (d *Daemon) Run(forever bool, logPath string) error {
 	return d.runLoop()
 }
 
+func consumeKeepAliveSkipServerPortCheckEnv() bool {
+	value := os.Getenv(keepAliveSkipServerPortCheckEnv)
+	if value == "" {
+		return false
+	}
+	_ = os.Unsetenv(keepAliveSkipServerPortCheckEnv)
+	return value == "1"
+}
+
 // runLoop is the main daemon loop that manages the server process
 func (d *Daemon) runLoop() error {
+	iteration := 0
 	for {
+		iteration++
+		Logger("Keep-alive run loop iteration %d starting", iteration)
+
 		// Before starting, check if there's a newer versioned binary
 		currentBin := d.state.GetBinPath()
 
@@ -181,6 +211,7 @@ func (d *Daemon) runLoop() error {
 
 				// Run health check to monitor the existing server
 				exitReason := d.healthChecker.Run(d.port, cmd, currentBin, FindNewerBinary)
+				Logger("Health checker returned exit reason %q for reconnected server PID=%d", exitReason, cmd.Process.Pid)
 
 				d.state.SetServerPID(0)
 				setCurrentCommand(nil)
@@ -232,6 +263,7 @@ func (d *Daemon) runLoop() error {
 
 		// Health check loop (also checks for binary upgrades and restart signals)
 		exitReason := d.healthChecker.Run(d.port, cmd, currentBin, FindNewerBinary)
+		Logger("Health checker returned exit reason %q for managed server PID=%d", exitReason, pid)
 
 		d.state.SetServerPID(0)
 		setCurrentCommand(nil)

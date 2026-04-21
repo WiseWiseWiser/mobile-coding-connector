@@ -142,11 +142,13 @@ func (pm *ProcessManager) KillProcessGroup(cmd *exec.Cmd) {
 
 // WaitForDone waits for the done signal with a timeout
 func WaitForDone(done <-chan struct{}, timeout time.Duration) {
+	start := time.Now()
+	Logger("[wait] Waiting up to %v for process completion...", timeout)
 	select {
 	case <-done:
-		// Process exited
+		Logger("[wait] Process completion observed after %v", time.Since(start))
 	case <-time.After(timeout):
-		// Timeout reached
+		Logger("[wait] Timed out after %v waiting for process completion", timeout)
 	}
 }
 

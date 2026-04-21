@@ -25,6 +25,9 @@ const quickTestPort = 3580
 var help = fmt.Sprintf(`
 Usage: ai-critic [options]
        ai-critic keep-alive [options]            Auto-restart server with health checking
+       ai-critic keep-alive status [options]     Show keep-alive daemon status
+       ai-critic keep-alive logs [options]       Follow keep-alive daemon logs
+       ai-critic keep-alive exec-replace FILE    Replace keep-alive daemon binary via exec
        ai-critic keep-alive request <action>     Request action from keep-alive daemon (info, restart)
        ai-critic rebuild --repo-dir DIR [opts]   Rebuild from source and restart
        ai-critic check-port --port PORT          Check if a port is accessible
@@ -53,9 +56,13 @@ Keep-Alive Options:
   --script                Output shell script instead of running Go code
   --forever               Skip port-in-use check and start keep-alive anyway
 
-Request Actions:
-  info                    Get current status from keep-alive daemon
-  restart                 Request keep-alive daemon to restart the server
+Keep-Alive Commands:
+  status                  Get current status from keep-alive daemon
+  logs                    Follow keep-alive daemon logs
+  exec-replace FILE       Replace keep-alive daemon binary via exec
+  request info            Get current status from keep-alive daemon
+  request status          Get current status from keep-alive daemon
+  request restart         Request keep-alive daemon to restart the server
 `, config.DefaultServerPort, config.CredentialsFile, config.EncKeyFile, config.DomainsFile)
 
 func Run(args []string) error {

@@ -23,7 +23,12 @@ const ZombieReapInterval = 30 * time.Second
 //
 // Call once from the daemon's Run() after the HTTP server is started.
 func StartZombieReaper() {
-	go zombieReapLoop()
+	go func() {
+		defer func() {
+			LogPanic("zombie reaper loop", recover())
+		}()
+		zombieReapLoop()
+	}()
 }
 
 func zombieReapLoop() {
@@ -31,6 +36,10 @@ func zombieReapLoop() {
 	defer ticker.Stop()
 
 	for range ticker.C {
+		if GlobalState.IsDaemonShutdownRequested() {
+			Logger("[reaper] daemon shutdown requested, stopping zombie reaper loop")
+			return
+		}
 		reaped := reapZombiesOnce()
 		if reaped > 0 {
 			Logger("[reaper] reaped %d defunct child process(es)", reaped)

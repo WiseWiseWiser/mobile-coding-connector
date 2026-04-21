@@ -1,17 +1,12 @@
 package daemon
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
-	"strings"
 	"time"
-
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
 // ExitReasonType represents why the health check loop exited
@@ -38,11 +33,32 @@ func NewHealthChecker(state *State) *HealthChecker {
 }
 
 // Run starts the health check loop and returns when the server should be restarted
-func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, findNewerBinary func(string) string) ExitReasonType {
+func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, findNewerBinary func(string) string) (exitReason ExitReasonType) {
+	runStart := time.Now()
+	pid := 0
+	if cmd != nil && cmd.Process != nil {
+		pid = cmd.Process.Pid
+	}
+	exitReason = ExitReasonProcessExit
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			LogPanic(fmt.Sprintf("health checker (port=%d, pid=%d)", port, pid), recovered)
+			exitReason = ExitReasonProcessExit
+		}
+		Logger("[health-check] Run exiting for port %d (PID=%d) after %v with reason: %s",
+			port, pid, time.Since(runStart), exitReason)
+	}()
+	Logger("[health-check] Run started for port %d (PID=%d, currentBin=%s)", port, pid, currentBinPath)
+
 	// Channel to receive process exit notification
 	done := make(chan struct{}, 1)
 	go func() {
+		defer func() {
+			LogPanic(fmt.Sprintf("health checker wait goroutine (port=%d, pid=%d)", port, pid), recover())
+		}()
+		Logger("[health-check] Wait goroutine started for port %d (PID=%d)", port, pid)
 		cmd.Process.Wait()
+		Logger("[health-check] Wait goroutine observed process exit for port %d (PID=%d)", port, pid)
 		close(done)
 	}()
 
@@ -54,31 +70,51 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 
 	// Initialize next check time
 	hc.state.SetNextHealthCheckTime(time.Now().Add(HealthCheckInterval))
+	Logger("[health-check] Initial next health check scheduled at %s",
+		hc.state.GetNextHealthCheckTime().Format(time.RFC3339))
 
 	consecutiveFailures := 0
 
 	for {
+		nextScheduled := hc.state.GetNextHealthCheckTime()
+		Logger("[health-check] Waiting for next event (port=%d, PID=%d, nextHealth=%s, consecutiveFailures=%d)",
+			port,
+			pid,
+			formatMaybeTime(nextScheduled),
+			consecutiveFailures)
 		select {
 		case <-done:
 			// Process exited on its own
-			Logger("Process exited (PID=%d)", cmd.Process.Pid)
-			return ExitReasonProcessExit
+			Logger("Process exited (PID=%d)", pid)
+			exitReason = ExitReasonProcessExit
+			return exitReason
 
 		case <-hc.state.GetRestartChannel():
 			// Restart requested via API
-			Logger("Restart requested via API, stopping server (PID=%d)...", cmd.Process.Pid)
+			Logger("Restart requested via API, stopping server (PID=%d)...", pid)
 			hc.gracefulStop(cmd)
 			WaitForDone(done, 5*time.Second)
-			return ExitReasonRestart
+			exitReason = ExitReasonRestart
+			return exitReason
 
 		case <-hc.state.GetDaemonRestartChannel():
 			// Daemon restart requested via API
-			Logger("Daemon restart requested, stopping server (PID=%d)...", cmd.Process.Pid)
+			Logger("Daemon restart requested, stopping server (PID=%d)...", pid)
 			hc.gracefulStop(cmd)
 			WaitForDone(done, 5*time.Second)
-			return ExitReasonDaemonRestart
+			exitReason = ExitReasonDaemonRestart
+			return exitReason
 
-		case <-healthTicker.C:
+		case tickAt := <-healthTicker.C:
+			if hc.state.IsDaemonShutdownRequested() {
+				Logger("[health-check] Daemon shutdown requested, skipping health tick at %s", tickAt.Format(time.RFC3339))
+				continue
+			}
+			Logger("[health-check] Health ticker fired at %s (port=%d, PID=%d, last scheduled=%s)",
+				tickAt.Format(time.RFC3339),
+				port,
+				pid,
+				formatMaybeTime(nextScheduled))
 			// Check if health checks are paused (e.g., after exec-restart)
 			if hc.state.IsHealthChecksPaused() {
 				Logger("[health-check] Health checks paused, skipping this check")
@@ -88,9 +124,10 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 			}
 
 			checkStart := time.Now()
-			Logger("[health-check] Starting periodic health check for port %d (PID=%d)", port, cmd.Process.Pid)
+			Logger("[health-check] Starting periodic health check for port %d (PID=%d)", port, pid)
 
 			// Update next check time
+			Logger("[health-check] Updating next health check time for port %d", port)
 			hc.state.SetNextHealthCheckTime(time.Now().Add(HealthCheckInterval))
 			Logger("[health-check] Next health check scheduled at %s", hc.state.GetNextHealthCheckTime().Format("2006-01-02T15:04:05"))
 
@@ -103,11 +140,12 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 
 				if consecutiveFailures >= MaxConsecutiveFailures {
 					Logger("[health-check] CRITICAL: Port %d is not accessible after %d consecutive checks, killing server (PID=%d)...",
-						port, consecutiveFailures, cmd.Process.Pid)
+						port, consecutiveFailures, pid)
 					hc.killProcess(cmd)
 					WaitForDone(done, 5*time.Second)
 					Logger("[health-check] Health check loop exiting with reason: %s", ExitReasonPortDead)
-					return ExitReasonPortDead
+					exitReason = ExitReasonPortDead
+					return exitReason
 				}
 				Logger("[health-check] Health check cycle completed in %v (FAILURE)", time.Since(checkStart))
 			} else {
@@ -124,7 +162,12 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 				Logger("[health-check] Health check cycle completed successfully in %v (PASSED)", time.Since(checkStart))
 			}
 
-		case <-upgradeTicker.C:
+		case tickAt := <-upgradeTicker.C:
+			if hc.state.IsDaemonShutdownRequested() {
+				Logger("[health-check] Daemon shutdown requested, skipping upgrade tick at %s", tickAt.Format(time.RFC3339))
+				continue
+			}
+			Logger("[health-check] Upgrade ticker fired at %s (currentBin=%s)", tickAt.Format(time.RFC3339), currentBinPath)
 			if newerBin := findNewerBinary(currentBinPath); newerBin != "" {
 				Logger("Detected newer binary: %s, triggering exec restart...", newerBin)
 				hc.state.SetBinPath(newerBin)
@@ -141,7 +184,8 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 					// 2. /ping endpoint returns "pong"
 					if hc.checkProcessAlive(port) {
 						Logger("Exec-restart succeeded: server is still running with new binary")
-						return ExitReasonUpgrade
+						exitReason = ExitReasonUpgrade
+						return exitReason
 					}
 					// Fallback: exec didn't work, need to start fresh
 					Logger("Exec-restart verification failed, falling back to kill+start...")
@@ -152,10 +196,18 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 				Logger("Falling back: killing old process and starting new one...")
 				hc.gracefulStop(cmd)
 				WaitForDone(done, 5*time.Second)
-				return ExitReasonUpgrade
+				exitReason = ExitReasonUpgrade
+				return exitReason
 			}
 		}
 	}
+}
+
+func formatMaybeTime(t time.Time) string {
+	if t.IsZero() {
+		return "<zero>"
+	}
+	return t.Format(time.RFC3339)
 }
 
 // gracefulStop performs a graceful shutdown of the process
@@ -178,95 +230,6 @@ func (hc *HealthChecker) gracefulStop(cmd *exec.Cmd) {
 func (hc *HealthChecker) killProcess(cmd *exec.Cmd) {
 	pm := NewProcessManager(hc.state)
 	pm.KillProcessGroup(cmd)
-}
-
-// callExecRestartEndpoint calls the server's /api/server/exec-restart endpoint
-// which performs a graceful shutdown and then uses syscall.Exec to replace
-// the current process with the new binary (preserving PID).
-// Returns true if the request was successful (the server will exec and not return).
-func callExecRestartEndpoint() bool {
-	token, err := loadFirstToken()
-	if err != nil {
-		Logger("Failed to load auth token: %v", err)
-		return false
-	}
-
-	port := config.DefaultServerPort
-	url := fmt.Sprintf("http://localhost:%d/api/server/exec-restart", port)
-
-	req, err := http.NewRequest(http.MethodPost, url, nil)
-	if err != nil {
-		Logger("Failed to create exec-restart request: %v", err)
-		return false
-	}
-
-	// Add auth cookie
-	if token != "" {
-		req.AddCookie(&http.Cookie{
-			Name:  "ai-critic-token",
-			Value: token,
-		})
-	}
-
-	// Use a short timeout since the server will exec and not respond normally
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		Logger("Failed to call exec-restart endpoint: %v", err)
-		return false
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusOK {
-		Logger("Exec-restart request accepted (server will restart)")
-		return true
-	}
-
-	Logger("Exec-restart endpoint returned status: %d", resp.StatusCode)
-	return false
-}
-
-// CallShutdownEndpoint calls the server's shutdown endpoint with auth.
-// Returns true if the request was successful.
-func CallShutdownEndpoint() bool {
-	token, err := loadFirstToken()
-	if err != nil {
-		Logger("Failed to load auth token: %v", err)
-		return false
-	}
-
-	port := config.DefaultServerPort
-	url := fmt.Sprintf("http://localhost:%d/api/shutdown", port)
-
-	req, err := http.NewRequest(http.MethodPost, url, nil)
-	if err != nil {
-		Logger("Failed to create shutdown request: %v", err)
-		return false
-	}
-
-	// Add auth cookie
-	if token != "" {
-		req.AddCookie(&http.Cookie{
-			Name:  "ai-critic-token",
-			Value: token,
-		})
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		Logger("Failed to call shutdown endpoint: %v", err)
-		return false
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusOK {
-		Logger("Shutdown endpoint returned success")
-		return true
-	}
-
-	Logger("Shutdown endpoint returned status: %d", resp.StatusCode)
-	return false
 }
 
 // checkPingEndpoint checks if the server's /ping endpoint returns "pong"
@@ -332,22 +295,4 @@ func (hc *HealthChecker) checkTCPConnectivity(port int) bool {
 
 	Logger("[health-check] TCP connection established successfully")
 	return true
-}
-
-// loadFirstToken reads the first non-empty line from the credentials file.
-func loadFirstToken() (string, error) {
-	f, err := os.Open(config.CredentialsFile)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			return line, nil
-		}
-	}
-	return "", scanner.Err()
 }

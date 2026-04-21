@@ -13,6 +13,8 @@ Example: `go run ./script/server/run`
 ## Build and Run
 
 - `build` - Build frontend (`ai-critic-react`) and then build the Go server.
+- `bundle` - Build frontend and backend into a single host-platform `ai-critic-server-<goos>-<goarch>` binary.
+- `bundle/for-linux` - Build frontend and cross-compile a single `ai-critic-server-linux-amd64` bundle.
 - `release` - Build frontend once, then cross-compile release binaries for `linux/amd64` and `linux/arm64`.
 - `run` - Start local dev mode (build server, start Vite, run server with `--dev`).
 - `run/quick-test` - Start quick-test server workflow (auto-kill/restart, optional Vite control).

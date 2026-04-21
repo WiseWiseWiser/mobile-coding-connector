@@ -30,6 +30,7 @@ type State struct {
 	restartCount        int // how many times the server has been restarted
 	restartCh           chan struct{}
 	daemonRestartCh     chan struct{}
+	daemonShutdown      bool      // background daemon loops should stop or pause
 	healthCheckPaused   bool      // if true, health check is temporarily paused
 	healthCheckResumeAt time.Time // time when health check should resume
 }
@@ -170,28 +171,59 @@ func (s *State) GetDaemonRestartChannel() <-chan struct{} {
 	return s.daemonRestartCh
 }
 
+// RequestDaemonShutdown marks the daemon as shutting down so background loops can stop.
+func (s *State) RequestDaemonShutdown() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	already := s.daemonShutdown
+	s.daemonShutdown = true
+	return !already
+}
+
+// ClearDaemonShutdown clears the daemon shutdown marker after a failed exec/restart.
+func (s *State) ClearDaemonShutdown() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.daemonShutdown = false
+}
+
+// IsDaemonShutdownRequested reports whether background daemon loops should stop.
+func (s *State) IsDaemonShutdownRequested() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.daemonShutdown
+}
+
 // PauseHealthChecks pauses health checks for the specified duration
 func (s *State) PauseHealthChecks(duration time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.healthCheckPaused = true
 	s.healthCheckResumeAt = time.Now().Add(duration)
-	Logger("Health checks paused until %s", s.healthCheckResumeAt.Format("15:04:05"))
+	Logger("Health checks paused until %s (duration=%v)", s.healthCheckResumeAt.Format(time.RFC3339), duration)
 }
 
 // IsHealthChecksPaused returns true if health checks are currently paused
 func (s *State) IsHealthChecksPaused() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if !s.healthCheckPaused {
 		return false
 	}
-	// Check if pause has expired
-	if time.Now().After(s.healthCheckResumeAt) {
+
+	now := time.Now()
+	if now.After(s.healthCheckResumeAt) {
 		s.healthCheckPaused = false
-		Logger("Health checks resumed (pause period ended)")
+		Logger("Health checks resumed (pause expired at %s, now=%s)",
+			s.healthCheckResumeAt.Format(time.RFC3339),
+			now.Format(time.RFC3339))
 		return false
 	}
+
+	Logger("Health checks still paused until %s (remaining=%v)",
+		s.healthCheckResumeAt.Format(time.RFC3339),
+		time.Until(s.healthCheckResumeAt).Truncate(time.Second))
 	return true
 }
 

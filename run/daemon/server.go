@@ -9,11 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
 
 var currentCmd atomic.Value
@@ -54,14 +52,20 @@ func (s *HTTPServer) Start() {
 	mux.HandleFunc("/api/keep-alive/set-binary", s.handleSetBinary)
 	mux.HandleFunc("/api/keep-alive/logs", s.handleLogs)
 	mux.HandleFunc("/api/keep-alive/restart-daemon", s.handleRestartDaemon)
+	mux.HandleFunc("/api/keep-alive/exec-replace", s.handleExecReplace)
 
 	addr := fmt.Sprintf(":%d", config.KeepAlivePort)
 	Logger("Keep-alive management server listening on %s", addr)
 
 	go func() {
+		defer func() {
+			LogPanic("keep-alive management server", recover())
+		}()
+		Logger("Keep-alive management server goroutine started on %s", addr)
 		if err := http.ListenAndServe(addr, mux); err != nil {
 			Logger("Keep-alive management server error: %v", err)
 		}
+		Logger("Keep-alive management server goroutine exited")
 	}()
 }
 
@@ -382,162 +386,4 @@ func (s *HTTPServer) fixDomainTunnel(domain string, serverPort int, token string
 
 	Logger("Failed to fix tunnel for %s: status %s", domain, resp.Status)
 	return false
-}
-
-// killProcess kills a process by PID
-func killProcess(cmd *exec.Cmd) {
-	if cmd.Process == nil {
-		return
-	}
-
-	pgid, err := syscall.Getpgid(cmd.Process.Pid)
-	if err != nil {
-		// Fallback: kill just the process
-		Logger("Warning: could not get process group, falling back to process kill")
-		cmd.Process.Signal(syscall.SIGTERM)
-		time.Sleep(3 * time.Second)
-		cmd.Process.Signal(syscall.SIGKILL)
-		return
-	}
-
-	// Force kill the entire process group
-	Logger("Killing process group %d", pgid)
-	syscall.Kill(-pgid, syscall.SIGKILL)
-}
-
-// handleRestartDaemon handles restarting the keep-alive daemon itself using exec.
-// It streams logs via SSE, finds the newest binary, and replaces the current process.
-func (s *HTTPServer) handleRestartDaemon(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	sseWriter := sse.NewWriter(w)
-	if sseWriter == nil {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-
-	sseWriter.SendLog("Restarting keep-alive daemon...")
-
-	// Request daemon restart to stop health checker
-	s.state.RequestDaemonRestart()
-	sseWriter.SendLog("Health checker stop requested, waiting for it to exit...")
-	time.Sleep(2 * time.Second)
-	sseWriter.SendLog("Health checker should be stopped now")
-
-	// Stop the running server gracefully before exec
-	cmd := getCurrentCommand()
-	if cmd != nil && cmd.Process != nil {
-		pid := cmd.Process.Pid
-		sseWriter.SendLog(fmt.Sprintf("Stopping server PID %d before restart...", pid))
-
-		// Create a channel to wait for process exit
-		done := make(chan struct{}, 1)
-		go func() {
-			cmd.Process.Wait()
-			close(done)
-		}()
-
-		// Try graceful shutdown first
-		if CallShutdownEndpoint() {
-			sseWriter.SendLog("Graceful shutdown request sent")
-			select {
-			case <-done:
-				sseWriter.SendLog("Server stopped gracefully")
-			case <-time.After(30 * time.Second):
-				sseWriter.SendLog("Graceful shutdown timeout, force killing...")
-				killProcess(cmd)
-				// Wait a bit for the process to actually die
-				select {
-				case <-done:
-					sseWriter.SendLog("Server force stopped")
-				case <-time.After(5 * time.Second):
-					sseWriter.SendLog("Warning: server may still be running")
-				}
-			}
-		} else {
-			sseWriter.SendLog("Shutdown endpoint unavailable, using direct kill")
-			killProcess(cmd)
-			select {
-			case <-done:
-				sseWriter.SendLog("Server stopped")
-			case <-time.After(5 * time.Second):
-				sseWriter.SendLog("Warning: server may still be running")
-			}
-		}
-
-		setCurrentCommand(nil)
-		s.state.SetServerPID(0)
-	}
-
-	// Get current binary and args
-	currentBin, err := os.Executable()
-	if err != nil {
-		sseWriter.SendError(fmt.Sprintf("Failed to get current executable: %v", err))
-		sseWriter.SendDone(map[string]string{"success": "false"})
-		return
-	}
-	sseWriter.SendLog(fmt.Sprintf("Current binary: %s", currentBin))
-
-	// Find newest binary
-	newerBin := FindNewerBinary(currentBin)
-	if newerBin == "" {
-		sseWriter.SendLog("No newer binary found, using current binary")
-		newerBin = currentBin
-	} else {
-		sseWriter.SendLog(fmt.Sprintf("Found newer binary: %s", newerBin))
-	}
-
-	// Get current working directory
-	workDir, err := os.Getwd()
-	if err != nil {
-		sseWriter.SendError(fmt.Sprintf("Failed to get working directory: %v", err))
-		sseWriter.SendDone(map[string]string{"success": "false"})
-		return
-	}
-	sseWriter.SendLog(fmt.Sprintf("Working directory: %s", workDir))
-
-	// Get OS args (skip the first arg which is the program name)
-	args := os.Args
-	sseWriter.SendLog(fmt.Sprintf("Arguments: %v", args))
-
-	// Ensure binary is executable
-	if err := os.Chmod(newerBin, 0755); err != nil {
-		sseWriter.SendError(fmt.Sprintf("Failed to make binary executable: %v", err))
-		sseWriter.SendDone(map[string]string{"success": "false"})
-		return
-	}
-
-	sseWriter.SendLog("Preparing to exec...")
-	sseWriter.SendStatus("restarting", map[string]string{
-		"binary": newerBin,
-		"args":   fmt.Sprintf("%v", args),
-	})
-
-	// Send done before exec since exec won't return
-	sseWriter.SendDone(map[string]string{
-		"success":   "true",
-		"message":   "Daemon restarting via exec",
-		"binary":    newerBin,
-		"directory": workDir,
-	})
-
-	// Flush to ensure client receives the done event
-	if flusher, ok := w.(http.Flusher); ok {
-		flusher.Flush()
-	}
-
-	// Small delay to allow SSE to be sent
-	time.Sleep(100 * time.Millisecond)
-
-	// Execute the new binary, replacing current process
-	// syscall.Exec never returns on success
-	Logger("Executing: %s %v in %s", newerBin, args, workDir)
-	err = syscall.Exec(newerBin, args, os.Environ())
-
-	// If we get here, exec failed
-	// We can't send SSE anymore since we've already sent done, so just log
-	Logger("ERROR: syscall.Exec failed: %v", err)
 }

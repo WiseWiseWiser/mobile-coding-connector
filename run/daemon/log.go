@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -62,4 +63,13 @@ func GetStderrWriter() io.Writer {
 		return globalLogger.GetStderr()
 	}
 	return os.Stderr
+}
+
+// LogPanic records a recovered panic with stack trace.
+func LogPanic(context string, recovered interface{}) {
+	if recovered == nil {
+		return
+	}
+	Logger("[panic] %s: %v", context, recovered)
+	Logger("[panic] %s stack:\n%s", context, string(debug.Stack()))
 }
