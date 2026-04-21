@@ -18,9 +18,9 @@
 //
 // `data` chunks are UTF-8 strings; non-UTF-8 bytes are replaced. Heartbeat
 // events are emitted when no other event has been sent for
-// HeartbeatInterval, to keep intermediaries (e.g. Cloudflare tunnels) from
-// closing the connection on idle timeouts. Clients must accept (and may
-// ignore) heartbeat events.
+// ndjsonstream.HeartbeatInterval, to keep intermediaries (e.g. Cloudflare
+// tunnels) from closing the connection on idle timeouts. Clients must
+// accept (and may ignore) heartbeat events.
 package exec
 
 import (
@@ -32,15 +32,10 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/xhd2015/lifelog-private/ai-critic/server/ndjsonstream"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
 )
-
-// HeartbeatInterval is the maximum idle gap allowed between events on the
-// /api/exec stream before a heartbeat is emitted. It is chosen below common
-// proxy idle timeouts (Cloudflare tunnel: 100s).
-const HeartbeatInterval = 60 * time.Second
 
 // ExecRequest is the JSON body accepted by POST /api/exec.
 type ExecRequest struct {
@@ -84,12 +79,7 @@ func handleExec(w http.ResponseWriter, r *http.Request) {
 	ctxCmd.Dir = prepared.Dir
 
 	// Switch response to NDJSON streaming BEFORE we start writing events.
-	w.Header().Set("Content-Type", "application/x-ndjson")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	flusher, _ := w.(http.Flusher)
-	stream := newNDJSONWriter(w, flusher)
+	stream := ndjsonstream.NewWriter(w)
 
 	// Heartbeat loop: emit a heartbeat event when the stream has been idle
 	// for HeartbeatInterval, so reverse proxies (e.g. Cloudflare tunnels)
@@ -100,7 +90,7 @@ func handleExec(w http.ResponseWriter, r *http.Request) {
 	heartbeatDone.Add(1)
 	go func() {
 		defer heartbeatDone.Done()
-		runHeartbeat(stream, HeartbeatInterval, stopHeartbeat)
+		ndjsonstream.RunHeartbeat(stream, ndjsonstream.HeartbeatInterval, stopHeartbeat)
 	}()
 	defer func() {
 		close(stopHeartbeat)
@@ -109,17 +99,17 @@ func handleExec(w http.ResponseWriter, r *http.Request) {
 
 	stdoutPipe, err := ctxCmd.StdoutPipe()
 	if err != nil {
-		stream.sendError(fmt.Sprintf("stdout pipe: %v", err))
+		stream.SendError(fmt.Sprintf("stdout pipe: %v", err))
 		return
 	}
 	stderrPipe, err := ctxCmd.StderrPipe()
 	if err != nil {
-		stream.sendError(fmt.Sprintf("stderr pipe: %v", err))
+		stream.SendError(fmt.Sprintf("stderr pipe: %v", err))
 		return
 	}
 
 	if err := ctxCmd.Start(); err != nil {
-		stream.sendError(fmt.Sprintf("failed to start: %v", err))
+		stream.SendError(fmt.Sprintf("failed to start: %v", err))
 		return
 	}
 
@@ -144,21 +134,21 @@ func handleExec(w http.ResponseWriter, r *http.Request) {
 		if errors.As(waitErr, &exitErr) {
 			exitCode = exitErr.ExitCode()
 		} else {
-			stream.sendError(fmt.Sprintf("wait: %v", waitErr))
+			stream.SendError(fmt.Sprintf("wait: %v", waitErr))
 			return
 		}
 	}
 
-	stream.send(map[string]any{"type": "exit", "code": exitCode})
+	stream.Send(map[string]any{"type": "exit", "code": exitCode})
 }
 
 // pumpPipe reads from pipe and forwards each non-empty chunk as a typed event.
-func pumpPipe(pipe io.Reader, kind string, stream *ndjsonWriter) {
+func pumpPipe(pipe io.Reader, kind string, stream *ndjsonstream.Writer) {
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := pipe.Read(buf)
 		if n > 0 {
-			stream.send(map[string]any{"type": kind, "data": safeString(buf[:n])})
+			stream.Send(map[string]any{"type": kind, "data": safeString(buf[:n])})
 		}
 		if err != nil {
 			return
@@ -171,73 +161,6 @@ func pumpPipe(pipe io.Reader, kind string, stream *ndjsonWriter) {
 // output (and avoids silently dropping bytes).
 func safeString(b []byte) string {
 	return strings.ToValidUTF8(string(b), "\uFFFD")
-}
-
-// ndjsonWriter serializes writes so concurrent pumpers don't interleave
-// bytes within a single JSON line. It also tracks the time of the last send
-// so a heartbeat goroutine can fill idle gaps.
-type ndjsonWriter struct {
-	mu       sync.Mutex
-	w        http.ResponseWriter
-	flusher  http.Flusher
-	lastSend time.Time
-}
-
-func newNDJSONWriter(w http.ResponseWriter, flusher http.Flusher) *ndjsonWriter {
-	return &ndjsonWriter{w: w, flusher: flusher, lastSend: time.Now()}
-}
-
-func (n *ndjsonWriter) send(v any) {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return
-	}
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.w.Write(data)
-	n.w.Write([]byte{'\n'})
-	if n.flusher != nil {
-		n.flusher.Flush()
-	}
-	n.lastSend = time.Now()
-}
-
-// sendHeartbeatIfIdle emits a heartbeat only when the stream has been idle
-// for at least minIdle. Returns true if a heartbeat was sent.
-func (n *ndjsonWriter) sendHeartbeatIfIdle(minIdle time.Duration) bool {
-	n.mu.Lock()
-	idle := time.Since(n.lastSend) >= minIdle
-	n.mu.Unlock()
-	if !idle {
-		return false
-	}
-	n.send(map[string]any{"type": "heartbeat"})
-	return true
-}
-
-func (n *ndjsonWriter) sendError(message string) {
-	n.send(map[string]any{"type": "error", "message": message})
-}
-
-// runHeartbeat wakes up frequently enough to guarantee that any idle gap of
-// at least `interval` is covered by at most one missed tick. It stops when
-// `stop` is closed.
-func runHeartbeat(stream *ndjsonWriter, interval time.Duration, stop <-chan struct{}) {
-	// Check twice per interval so we catch idleness near the boundary.
-	tick := interval / 2
-	if tick <= 0 {
-		tick = interval
-	}
-	ticker := time.NewTicker(tick)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		case <-ticker.C:
-			stream.sendHeartbeatIfIdle(interval)
-		}
-	}
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {

@@ -45,6 +45,23 @@ Commands:
       code. Every argument after 'exec' is forwarded verbatim to the
       remote binary.
 
+  git <subcommand> [args...]
+      Git utilities that run on the remote server. Subcommands:
+        clone [--private-key <key-file>] [--https-proxy <proxy-url>] <repo> [dir]
+            Clone <repo> on the remote machine. If [dir] is omitted, the
+            repository is cloned into ~/<repo_base_name>. If the target
+            already exists, the command errors out.
+        -C <dir> fetch [--private-key <key-file>] [--https-proxy <proxy-url>]
+            Run 'git fetch' inside <dir> on the remote machine.
+        -C <dir> pull [--private-key <key-file>] [--https-proxy <proxy-url>]
+            Run 'git pull --ff-only' inside <dir> on the remote machine.
+
+  proxy <subcommand> [args...]
+      Inspect proxy servers configured in the remote server's settings.
+      Subcommands:
+        list
+            List all configured proxy servers. Passwords are masked.
+
 Examples:
   remote-agent config
   remote-agent --server https://host.example.com --token abc upload ./foo.txt /tmp/foo.txt
@@ -53,6 +70,11 @@ Examples:
   remote-agent local reap --filter ai-critic --signal
   remote-agent exec ls -la /tmp
   remote-agent exec sh -c 'echo hi; sleep 1'
+  remote-agent git clone https://github.com/foo/bar.git
+  remote-agent git clone --private-key ~/.ssh/id_rsa git@host:foo/bar.git /tmp/bar
+  remote-agent git -C ~/bar fetch --private-key ~/.ssh/id_rsa
+  remote-agent git -C ~/bar pull --private-key ~/.ssh/id_rsa
+  remote-agent proxy list
 `
 
 func main() {
@@ -97,6 +119,14 @@ func run(args []string) error {
 		return runLocal(rest)
 	case "exec":
 		return runExec(func() (*client.Client, error) {
+			return resolveClient(server, token)
+		}, rest)
+	case "git":
+		return runGit(func() (*client.Client, error) {
+			return resolveClient(server, token)
+		}, rest)
+	case "proxy":
+		return runProxy(func() (*client.Client, error) {
 			return resolveClient(server, token)
 		}, rest)
 	default:

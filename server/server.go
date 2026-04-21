@@ -41,6 +41,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/fakellm"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/features"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/fileupload"
+	servergit "github.com/xhd2015/lifelog-private/ai-critic/server/git"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/keepalive"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/logs"
@@ -511,6 +512,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Exec API (runs arbitrary subprocesses for the remote-agent CLI)
 	serverexec.RegisterAPI(mux)
+
+	// Git API (server-side git operations for the remote-agent CLI)
+	servergit.RegisterAPI(mux)
 
 	// Domains API
 	domains.RegisterAPI(mux)
