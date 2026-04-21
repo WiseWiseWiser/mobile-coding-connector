@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
@@ -177,6 +179,76 @@ func handleProxyTest(w http.ResponseWriter, r *http.Request) {
 
 	sw.SendLog("Connection test completed successfully.")
 	sw.SendDone(map[string]string{"success": "true", "message": "Proxy connection test passed"})
+}
+
+// SelectProxyForHost returns the proxy that should be used for the given
+// host according to the currently-saved config. Selection rules:
+//  1. If the config is disabled globally, nothing is selected.
+//  2. A proxy "matches" when one of its Domains equals host exactly OR
+//     is a parent domain of host (i.e. host == D or host has suffix "."+D).
+//  3. When multiple proxies match, the last one wins. This matches the
+//     user-facing convention of "later entries override earlier ones".
+//
+// Returns (proxy, true) on a successful match; (nil, false) otherwise.
+// The caller is responsible for converting the *ProxyServer into a URL
+// string via ProxyURL.
+func (cfg *ProxyConfig) SelectProxyForHost(host string) (*ProxyServer, bool) {
+	if cfg == nil || !cfg.Enabled {
+		return nil, false
+	}
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return nil, false
+	}
+	var selected *ProxyServer
+	for _, p := range cfg.Servers {
+		if p == nil {
+			continue
+		}
+		if domainListMatches(p.Domains, host) {
+			selected = p
+		}
+	}
+	return selected, selected != nil
+}
+
+// domainListMatches reports whether host is equal to or a subdomain of any
+// entry in domains. Matching is case-insensitive. Empty entries and
+// wildcard leading dots are tolerated (".example.com" == "example.com").
+func domainListMatches(domains []string, host string) bool {
+	for _, d := range domains {
+		d = strings.ToLower(strings.TrimSpace(d))
+		d = strings.TrimPrefix(d, ".")
+		if d == "" {
+			continue
+		}
+		if host == d || strings.HasSuffix(host, "."+d) {
+			return true
+		}
+	}
+	return false
+}
+
+// ProxyURL renders a *ProxyServer as a URL string suitable for the
+// https_proxy / http_proxy environment variables. Returns "" for a nil
+// receiver. Credentials are embedded when set; the port is always
+// included.
+func (p *ProxyServer) ProxyURL() string {
+	if p == nil {
+		return ""
+	}
+	scheme := strings.ToLower(p.Protocol)
+	if scheme == "" {
+		scheme = "http"
+	}
+	u := &url.URL{
+		Scheme: scheme,
+		Host:   fmt.Sprintf("%s:%d", p.Host, p.Port),
+	}
+	if p.Username != "" || p.Password != "" {
+		u.User = url.UserPassword(p.Username, p.Password)
+	}
+	return u.String()
 }
 
 func handleProxyConfig(w http.ResponseWriter, r *http.Request) {

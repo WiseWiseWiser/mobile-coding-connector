@@ -32,6 +32,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,6 +41,7 @@ import (
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/ndjsonstream"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/proxyconfig"
 )
 
 // CloneRequest is the JSON body accepted by POST /api/remote-agent/git/clone.
@@ -106,34 +108,41 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runStreaming(w, r, req.PrivateKey, func(keyPath string) *exec.Cmd {
+	proxy := resolveProxy(req.HTTPSProxy, req.Repo)
+
+	runStreaming(w, r, req.PrivateKey, proxy.Note, func(keyPath string) *exec.Cmd {
 		gc := gitrunner.Clone(req.Repo, targetDir)
-		return applyCommonOpts(gc, keyPath, req.HTTPSProxy).Exec()
+		return applyCommonOpts(gc, keyPath, proxy.URL).Exec()
 	})
 }
 
 func handleFetch(w http.ResponseWriter, r *http.Request) {
-	handleRepoOp(w, r, func(dir string, req RepoOpRequest) func(keyPath string) *exec.Cmd {
-		return func(keyPath string) *exec.Cmd {
+	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(keyPath string) *exec.Cmd) {
+		proxy := resolveProxy(req.HTTPSProxy, originURL(dir))
+		return proxy.Note, func(keyPath string) *exec.Cmd {
 			gc := gitrunner.Fetch().Dir(dir)
-			return applyCommonOpts(gc, keyPath, req.HTTPSProxy).Exec()
+			return applyCommonOpts(gc, keyPath, proxy.URL).Exec()
 		}
 	})
 }
 
 func handlePull(w http.ResponseWriter, r *http.Request) {
-	handleRepoOp(w, r, func(dir string, req RepoOpRequest) func(keyPath string) *exec.Cmd {
-		return func(keyPath string) *exec.Cmd {
+	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(keyPath string) *exec.Cmd) {
+		proxy := resolveProxy(req.HTTPSProxy, originURL(dir))
+		return proxy.Note, func(keyPath string) *exec.Cmd {
 			gc := gitrunner.PullFFOnly().Dir(dir)
-			return applyCommonOpts(gc, keyPath, req.HTTPSProxy).Exec()
+			return applyCommonOpts(gc, keyPath, proxy.URL).Exec()
 		}
 	})
 }
 
 // handleRepoOp decodes a RepoOpRequest, validates that Dir is an existing
 // git repository, and streams the command built by makeCmdBuilder back to
-// the client.
-func handleRepoOp(w http.ResponseWriter, r *http.Request, makeCmdBuilder func(dir string, req RepoOpRequest) func(keyPath string) *exec.Cmd) {
+// the client. makeCmdBuilder returns an optional human-readable note that
+// is emitted on the stream before the command starts (used e.g. to
+// announce an auto-selected proxy), along with the actual command
+// factory.
+func handleRepoOp(w http.ResponseWriter, r *http.Request, makeCmdBuilder func(dir string, req RepoOpRequest) (note string, makeCmd func(keyPath string) *exec.Cmd)) {
 	if r.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -175,17 +184,19 @@ func handleRepoOp(w http.ResponseWriter, r *http.Request, makeCmdBuilder func(di
 		return
 	}
 
-	runStreaming(w, r, req.PrivateKey, makeCmdBuilder(dir, req))
+	note, makeCmd := makeCmdBuilder(dir, req)
+	runStreaming(w, r, req.PrivateKey, note, makeCmd)
 }
 
 // runStreaming materializes the optional private key, opens the NDJSON
-// response stream, starts the command produced by makeCmd, pumps its
-// stdout/stderr through the stream, and emits the final exit event.
+// response stream, optionally emits a preamble note (on stderr), starts
+// the command produced by makeCmd, pumps its stdout/stderr through the
+// stream, and emits the final exit event.
 //
 // The command process is killed when the HTTP client disconnects. All
 // heartbeat and cleanup plumbing is handled here so individual handlers
 // stay short.
-func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, makeCmd func(keyPath string) *exec.Cmd) {
+func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, note string, makeCmd func(keyPath string) *exec.Cmd) {
 	keyPath, cleanupKey, err := writePrivateKey(privateKey)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("write private key: %v", err))
@@ -195,6 +206,14 @@ func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, mak
 
 	// Switch response to NDJSON streaming BEFORE we start writing events.
 	stream := ndjsonstream.NewWriter(w)
+
+	// Emit an informational note (e.g. "auto-selected proxy ...") before
+	// the command's own output so the client sees it in context. The
+	// note is written to the stderr channel so it visually groups with
+	// git's own progress output.
+	if note != "" {
+		stream.Send(map[string]any{"type": "stderr", "data": note + "\n"})
+	}
 
 	stopHeartbeat := make(chan struct{})
 	var heartbeatDone sync.WaitGroup
@@ -267,6 +286,104 @@ func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, mak
 	}
 
 	stream.Send(map[string]any{"type": "exit", "code": exitCode})
+}
+
+// resolvedProxy carries both the proxy URL to apply (URL) and a short,
+// credential-free description of how it was chosen (Note). Note is
+// empty when no proxy should be applied and also when the caller
+// supplied the URL explicitly (in that case there's nothing new to
+// tell the user).
+type resolvedProxy struct {
+	URL  string
+	Note string
+}
+
+// resolveProxy returns the proxy URL to apply to the git process plus a
+// short log-worthy note describing the selection.
+//
+// Precedence:
+//  1. An explicit URL supplied by the client wins; no note is emitted.
+//  2. Otherwise, the host is parsed out of repo and matched against the
+//     proxies saved in settings (via proxyconfig.SelectProxyForHost).
+//     When multiple proxies match the host, the last one is selected,
+//     consistent with the user-facing "later entries override earlier"
+//     convention. The note explains which proxy was picked.
+//  3. If nothing matches (or the repo URL can't be parsed, or proxies
+//     are disabled), URL is empty and no proxy is applied. The note is
+//     empty in that case too.
+func resolveProxy(explicit string, repo string) resolvedProxy {
+	if explicit != "" {
+		return resolvedProxy{URL: explicit}
+	}
+	host := repoHost(repo)
+	if host == "" {
+		return resolvedProxy{}
+	}
+	cfg, err := proxyconfig.LoadConfig()
+	if err != nil {
+		return resolvedProxy{}
+	}
+	p, ok := cfg.SelectProxyForHost(host)
+	if !ok {
+		return resolvedProxy{}
+	}
+	label := p.Name
+	if label == "" {
+		label = p.ID
+	}
+	return resolvedProxy{
+		URL:  p.ProxyURL(),
+		Note: fmt.Sprintf("remote-agent: auto-selected proxy %q (%s) for host %s", label, redactedProxyURL(p), host),
+	}
+}
+
+// redactedProxyURL is like p.ProxyURL but strips credentials so the
+// result is safe to log.
+func redactedProxyURL(p *proxyconfig.ProxyServer) string {
+	if p == nil {
+		return ""
+	}
+	stripped := *p
+	stripped.Username = ""
+	stripped.Password = ""
+	return stripped.ProxyURL()
+}
+
+// originURL returns the URL of the 'origin' remote in dir, or "" when
+// that can't be determined. A failure here isn't fatal for the caller;
+// it simply means we can't auto-select a proxy.
+func originURL(dir string) string {
+	out, err := gitrunner.NewCommand("remote", "get-url", "origin").Dir(dir).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// repoHost extracts the hostname from a git URL. It understands the
+// three common forms documented on repoBaseName. Returns "" when the
+// URL has no discernible host (e.g. a bare local path).
+func repoHost(repo string) string {
+	s := strings.TrimSpace(repo)
+	if s == "" {
+		return ""
+	}
+	if strings.Contains(s, "://") {
+		u, err := url.Parse(s)
+		if err != nil {
+			return ""
+		}
+		return strings.ToLower(u.Hostname())
+	}
+	// scp-like form: [user@]host:path
+	if idx := strings.Index(s, ":"); idx >= 0 && !strings.Contains(s[:idx], "/") {
+		host := s[:idx]
+		if at := strings.LastIndex(host, "@"); at >= 0 {
+			host = host[at+1:]
+		}
+		return strings.ToLower(host)
+	}
+	return ""
 }
 
 // applyCommonOpts wires the optional SSH key and https_proxy environment
