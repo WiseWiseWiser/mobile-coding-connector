@@ -35,6 +35,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -126,7 +127,11 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 
 	proxy := proxyselect.ForRepoURL(req.HTTPSProxy, repo)
 
-	note := joinNotes(rewriteNote, proxy.Note)
+	note := joinNotes(
+		buildCloneDebugNote(req, targetDir, repo, proxy),
+		rewriteNote,
+		proxy.Note,
+	)
 
 	runStreaming(w, r, req.PrivateKey, note, func(keyPath string) *exec.Cmd {
 		gc := gitrunner.Clone(repo, targetDir)
@@ -261,6 +266,9 @@ func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, not
 	}()
 
 	cmd := makeCmd(keyPath)
+	if cmdNote := describeCommand(cmd); cmdNote != "" {
+		stream.Send(map[string]any{"type": "stderr", "data": cmdNote + "\n"})
+	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -319,6 +327,77 @@ func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, not
 	}
 
 	stream.Send(map[string]any{"type": "exit", "code": exitCode})
+}
+
+func buildCloneDebugNote(req CloneRequest, targetDir string, effectiveRepo string, proxy proxyselect.Resolved) string {
+	sshUser := strings.TrimSpace(req.SSHUser)
+	if sshUser == "" {
+		sshUser = "git"
+	}
+
+	keyStatus := "not provided"
+	if req.PrivateKey != "" {
+		keyStatus = fmt.Sprintf("provided (%d bytes)", len(req.PrivateKey))
+	}
+
+	transport := "https/http"
+	if gitutil.IsSSH(effectiveRepo) {
+		transport = "ssh"
+	}
+
+	proxyStatus := "(none)"
+	switch {
+	case proxy.URL != "":
+		proxyStatus = proxy.URL
+	case req.HTTPSProxy != "":
+		proxyStatus = req.HTTPSProxy
+	}
+
+	return strings.Join([]string{
+		fmt.Sprintf("clone debug: requested repo=%s", req.Repo),
+		fmt.Sprintf("clone debug: effective repo=%s", effectiveRepo),
+		fmt.Sprintf("clone debug: target dir=%s", targetDir),
+		fmt.Sprintf("clone debug: ssh user=%s", sshUser),
+		fmt.Sprintf("clone debug: private key=%s", keyStatus),
+		fmt.Sprintf("clone debug: transport=%s", transport),
+		fmt.Sprintf("clone debug: proxy=%s", proxyStatus),
+	}, "\n")
+}
+
+func describeCommand(cmd *exec.Cmd) string {
+	if cmd == nil {
+		return ""
+	}
+	var lines []string
+	if len(cmd.Args) > 0 {
+		lines = append(lines, "clone debug: exec argv="+strings.Join(cmd.Args, " "))
+	}
+	var envStatus []string
+	if v, ok := lookupEnv(cmd.Env, "GIT_SSH_COMMAND"); ok {
+		hasProxyCommand := strings.Contains(v, "ProxyCommand=")
+		envStatus = append(envStatus, fmt.Sprintf("GIT_SSH_COMMAND=set(proxy=%t)", hasProxyCommand))
+	}
+	if _, ok := lookupEnv(cmd.Env, "https_proxy"); ok {
+		envStatus = append(envStatus, "https_proxy=set")
+	}
+	if _, ok := lookupEnv(cmd.Env, "HTTPS_PROXY"); ok {
+		envStatus = append(envStatus, "HTTPS_PROXY=set")
+	}
+	sort.Strings(envStatus)
+	if len(envStatus) > 0 {
+		lines = append(lines, "clone debug: env="+strings.Join(envStatus, ", "))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func lookupEnv(env []string, key string) (string, bool) {
+	prefix := key + "="
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			return strings.TrimPrefix(entry, prefix), true
+		}
+	}
+	return "", false
 }
 
 // applyCommonOpts wires the optional SSH key and proxy settings onto a
