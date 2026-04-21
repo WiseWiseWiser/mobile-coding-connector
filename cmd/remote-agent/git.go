@@ -44,7 +44,9 @@ Options:
                        which writes it to a temp file and sets
                        GIT_SSH_COMMAND for the clone.
   --https-proxy URL    Value the server exports as https_proxy /
-                       HTTPS_PROXY for the 'git clone' process.
+                       HTTPS_PROXY for HTTPS git traffic, and also uses
+                       as the SSH proxy when the repo is rewritten to
+                       SSH.
   --ssh-user USER      SSH user to use when the server rewrites an HTTPS
                        <repo> to SSH. Only consulted together with
                        --private-key. Defaults to 'git'. Use 'gitlab'

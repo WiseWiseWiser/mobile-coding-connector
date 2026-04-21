@@ -5,8 +5,10 @@ package gitrunner
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
@@ -14,7 +16,8 @@ import (
 
 // SSHKeyConfig holds SSH key configuration for git operations
 type SSHKeyConfig struct {
-	KeyPath string // Path to SSH private key file
+	KeyPath  string // Path to SSH private key file
+	ProxyURL string // Optional proxy URL for SSH transport
 }
 
 // Command represents a git command to be executed
@@ -82,13 +85,11 @@ func (c *Command) Build() *exec.Cmd {
 	}
 
 	// Configure SSH if needed
-	if c.sshConfig != nil && c.sshConfig.KeyPath != "" {
-		// Build SSH command with key and options to prevent interactive prompts
-		sshCmd := fmt.Sprintf(
-			"ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes",
-			c.sshConfig.KeyPath,
-		)
-		env = append(env, fmt.Sprintf("GIT_SSH_COMMAND=%s", sshCmd))
+	if c.sshConfig != nil {
+		sshCmd := buildSSHCommand(c.sshConfig)
+		if sshCmd != "" {
+			env = append(env, fmt.Sprintf("GIT_SSH_COMMAND=%s", sshCmd))
+		}
 	}
 
 	// Always suppress git prompts in background mode
@@ -103,6 +104,81 @@ func (c *Command) Build() *exec.Cmd {
 	// Close stdin to prevent interactive prompts from hanging
 	cmd.Stdin = nil
 	return cmd
+}
+
+func buildSSHCommand(cfg *SSHKeyConfig) string {
+	if cfg == nil {
+		return ""
+	}
+	args := []string{
+		"ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "BatchMode=yes",
+	}
+	if cfg.KeyPath != "" {
+		args = append(args, "-i", cfg.KeyPath)
+	}
+	if proxyCmd := proxyCommandForURL(cfg.ProxyURL); proxyCmd != "" {
+		args = append(args, "-o", "ProxyCommand="+proxyCmd)
+	}
+	return joinShellArgs(args)
+}
+
+func proxyCommandForURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	host := u.Host
+	if host == "" {
+		return ""
+	}
+
+	proto := strings.ToLower(u.Scheme)
+	if proto == "" {
+		proto = "http"
+	}
+
+	proxyVersion := ""
+	switch proto {
+	case "http":
+		proxyVersion = "connect"
+	case "socks5":
+		proxyVersion = "5"
+	default:
+		return ""
+	}
+
+	return joinShellArgs([]string{
+		"nc",
+		"-X", proxyVersion,
+		"-x", host,
+		"%h",
+		"%p",
+	})
+}
+
+func joinShellArgs(args []string) string {
+	var quoted []string
+	for _, arg := range args {
+		if arg == "" {
+			continue
+		}
+		quoted = append(quoted, shellQuote(arg))
+	}
+	return strings.Join(quoted, " ")
+}
+
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	return strconv.Quote(s)
 }
 
 // Run executes the command and returns the combined output

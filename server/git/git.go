@@ -114,8 +114,6 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 
 	// If the caller supplied an SSH private key but an HTTPS repo URL,
 	// rewrite the URL to its SSH form so the key is actually used.
-	// Proxies only apply to HTTPS traffic; once we've switched to SSH
-	// the https_proxy env is silently dropped.
 	repo := req.Repo
 	var rewriteNote string
 	if req.PrivateKey != "" && !gitutil.IsSSH(repo) {
@@ -126,14 +124,7 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var proxy proxyselect.Resolved
-	if gitutil.IsSSH(repo) {
-		// SSH ignores https_proxy; don't advertise a proxy selection
-		// the user would find misleading.
-		proxy = proxyselect.Resolved{}
-	} else {
-		proxy = proxyselect.ForRepoURL(req.HTTPSProxy, repo)
-	}
+	proxy := proxyselect.ForRepoURL(req.HTTPSProxy, repo)
 
 	note := joinNotes(rewriteNote, proxy.Note)
 
@@ -330,11 +321,14 @@ func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, not
 	stream.Send(map[string]any{"type": "exit", "code": exitCode})
 }
 
-// applyCommonOpts wires the optional SSH key and https_proxy environment
-// onto a gitrunner command. Both knobs are shared by clone/fetch/pull.
+// applyCommonOpts wires the optional SSH key and proxy settings onto a
+// gitrunner command. Both knobs are shared by clone/fetch/pull.
 func applyCommonOpts(gc *gitrunner.Command, keyPath string, httpsProxy string) *gitrunner.Command {
-	if keyPath != "" {
-		gc = gc.WithSSHKey(keyPath)
+	if keyPath != "" || httpsProxy != "" {
+		gc = gc.WithSSHConfig(&gitrunner.SSHKeyConfig{
+			KeyPath:  keyPath,
+			ProxyURL: httpsProxy,
+		})
 	}
 	if httpsProxy != "" {
 		gc = gc.WithEnv("https_proxy", httpsProxy).WithEnv("HTTPS_PROXY", httpsProxy)
