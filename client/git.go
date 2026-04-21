@@ -9,8 +9,8 @@ import (
 	"os"
 )
 
-// GitCloneRequest is the body of POST /api/git/clone. Kept in sync with
-// the server's server/git.CloneRequest.
+// GitCloneRequest is the body of POST /api/remote-agent/git/clone.
+// Kept in sync with the server's server/git.CloneRequest.
 type GitCloneRequest struct {
 	// Repo is the repository URL to clone. Required.
 	Repo string `json:"repo"`
@@ -26,8 +26,9 @@ type GitCloneRequest struct {
 	HTTPSProxy string `json:"https_proxy"`
 }
 
-// GitRepoOpRequest is the body of POST /api/git/fetch and POST /api/git/pull.
-// Dir is required and must be an existing git repository on the server.
+// GitRepoOpRequest is the body of POST /api/remote-agent/git/fetch and
+// POST /api/remote-agent/git/pull. Dir is required and must be an
+// existing git repository on the server.
 type GitRepoOpRequest struct {
 	Dir        string `json:"dir"`
 	PrivateKey string `json:"private_key"`
@@ -40,7 +41,7 @@ func (c *Client) GitClone(req GitCloneRequest, handler ExecHandler) (int, error)
 	if req.Repo == "" {
 		return 0, fmt.Errorf("git clone: repo must be set")
 	}
-	return c.streamGit("/api/git/clone", req, handler)
+	return c.streamGit("/api/remote-agent/git/clone", req, handler)
 }
 
 // GitCloneWithKeyFile is a convenience wrapper around GitClone that reads
@@ -62,7 +63,7 @@ func (c *Client) GitFetch(req GitRepoOpRequest, handler ExecHandler) (int, error
 	if req.Dir == "" {
 		return 0, fmt.Errorf("git fetch: dir must be set")
 	}
-	return c.streamGit("/api/git/fetch", req, handler)
+	return c.streamGit("/api/remote-agent/git/fetch", req, handler)
 }
 
 // GitFetchWithKeyFile reads a local private-key file and forwards its
@@ -83,7 +84,7 @@ func (c *Client) GitPull(req GitRepoOpRequest, handler ExecHandler) (int, error)
 	if req.Dir == "" {
 		return 0, fmt.Errorf("git pull: dir must be set")
 	}
-	return c.streamGit("/api/git/pull", req, handler)
+	return c.streamGit("/api/remote-agent/git/pull", req, handler)
 }
 
 // GitPullWithKeyFile reads a local private-key file and forwards its

@@ -3,8 +3,8 @@
 // idle gaps so reverse proxies (e.g. Cloudflare tunnels) don't drop the
 // connection during long-running commands.
 //
-// It is used by /api/exec and /api/git/clone, both of which stream
-// stdout/stderr chunks from a subprocess back to the client.
+// It is used by /api/exec and /api/remote-agent/git/*, all of which
+// stream stdout/stderr chunks from a subprocess back to the client.
 package ndjsonstream
 
 import (

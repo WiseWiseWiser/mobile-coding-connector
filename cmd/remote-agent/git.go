@@ -35,8 +35,8 @@ Examples:
 
 const gitCloneHelp = `Usage: remote-agent git clone [--private-key <key-file>] [--https-proxy <proxy-url>] <repo> [dir]
 
-Clone <repo> on the remote machine via the server's /api/git/clone
-endpoint.
+Clone <repo> on the remote machine via the server's
+/api/remote-agent/git/clone endpoint.
 
 Options:
   --private-key FILE   Local path to an SSH private key. The file is
@@ -133,7 +133,7 @@ func runGit(resolve func() (*client.Client, error), args []string) error {
 	}
 }
 
-// runGitClone invokes the server's /api/git/clone endpoint.
+// runGitClone invokes the server's /api/remote-agent/git/clone endpoint.
 func runGitClone(resolve func() (*client.Client, error), args []string) error {
 	var privateKey string
 	var httpsProxy string

@@ -1,10 +1,17 @@
 // Package git exposes HTTP endpoints for git operations that run on the
 // server host. It currently offers:
 //
-//	POST /api/git/clone  — clone a repository into ~/<repo_base_name> or a
-//	                       caller-supplied directory.
-//	POST /api/git/fetch  — git fetch inside an existing repository.
-//	POST /api/git/pull   — git pull --ff-only inside an existing repository.
+//	POST /api/remote-agent/git/clone  — clone a repository into
+//	                                    ~/<repo_base_name> or a caller-
+//	                                    supplied directory.
+//	POST /api/remote-agent/git/fetch  — git fetch inside an existing
+//	                                    repository.
+//	POST /api/remote-agent/git/pull   — git pull --ff-only inside an
+//	                                    existing repository.
+//
+// These paths are namespaced under /api/remote-agent/ to avoid colliding
+// with /api/git/{fetch,pull,push} owned by server/github, which accepts
+// a different request shape (project_id + encrypted SSH key).
 //
 // Every endpoint streams stdout/stderr back to the client as
 // newline-delimited JSON (NDJSON) events, using the same event protocol
@@ -35,7 +42,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/ndjsonstream"
 )
 
-// CloneRequest is the JSON body accepted by POST /api/git/clone.
+// CloneRequest is the JSON body accepted by POST /api/remote-agent/git/clone.
 type CloneRequest struct {
 	// Repo is the repository URL to clone. Required.
 	Repo string `json:"repo"`
@@ -51,20 +58,20 @@ type CloneRequest struct {
 	HTTPSProxy string `json:"https_proxy"`
 }
 
-// RepoOpRequest is the JSON body accepted by POST /api/git/fetch and
-// POST /api/git/pull. Dir is required and must be an existing git
-// repository.
+// RepoOpRequest is the JSON body accepted by POST /api/remote-agent/git/fetch
+// and POST /api/remote-agent/git/pull. Dir is required and must be an
+// existing git repository.
 type RepoOpRequest struct {
 	Dir        string `json:"dir"`
 	PrivateKey string `json:"private_key"`
 	HTTPSProxy string `json:"https_proxy"`
 }
 
-// RegisterAPI registers the /api/git/* endpoints.
+// RegisterAPI registers the /api/remote-agent/git/* endpoints.
 func RegisterAPI(mux *http.ServeMux) {
-	mux.HandleFunc("/api/git/clone", handleClone)
-	mux.HandleFunc("/api/git/fetch", handleFetch)
-	mux.HandleFunc("/api/git/pull", handlePull)
+	mux.HandleFunc("/api/remote-agent/git/clone", handleClone)
+	mux.HandleFunc("/api/remote-agent/git/fetch", handleFetch)
+	mux.HandleFunc("/api/remote-agent/git/pull", handlePull)
 }
 
 func handleClone(w http.ResponseWriter, r *http.Request) {
