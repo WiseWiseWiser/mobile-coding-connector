@@ -17,6 +17,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/proxyselect"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
@@ -378,7 +379,19 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 	if keyFile != nil {
 		keyPath = keyFile.Path
 	}
-	cmd := gitrunner.Clone(req.RepoURL, targetDir, keyPath).Exec()
+	gc := gitrunner.Clone(req.RepoURL, targetDir, keyPath)
+
+	// Auto-select a proxy from the server's saved proxy settings when
+	// the target host matches one of the configured domains. Explicit
+	// per-request overrides aren't supported for this endpoint today;
+	// callers that want to bypass the auto-selection would need to do
+	// so in the proxy settings.
+	proxy := proxyselect.ForRepoURL("", req.RepoURL)
+	if proxy.URL != "" {
+		gc = gc.WithEnv("https_proxy", proxy.URL).WithEnv("HTTPS_PROXY", proxy.URL)
+	}
+
+	cmd := gc.Exec()
 
 	// Stream clone output via SSE
 	sw := sse.NewWriter(w)
@@ -389,6 +402,9 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 
 	// Log the clone command for diagnostics
 	sw.SendLog(fmt.Sprintf("$ git clone --progress %s %s", req.RepoURL, targetDir))
+	if proxy.Note != "" {
+		sw.SendLog(proxy.Note)
+	}
 	if keyFile != nil {
 		sw.SendLog(fmt.Sprintf("Using SSH key: %s (%d bytes)", keyFile.KeyType, keyFile.Size))
 	}

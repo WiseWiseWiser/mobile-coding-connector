@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/proxyselect"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
 
@@ -113,7 +113,12 @@ func runGitOp(w http.ResponseWriter, r *http.Request, gitCmd string, gitArgs ...
 		keyPath = keyFile.Path
 	}
 
-	var cmd *exec.Cmd
+	// Auto-select a proxy from the server's saved proxy settings based
+	// on the project's origin remote. Fetch/pull/push all reach out to
+	// the same remote, so a single lookup suffices.
+	proxy := proxyselect.ForRepoDir("", project.Dir)
+
+	var gc *gitrunner.Command
 	if gitCmd == "push" {
 		// For push, get current branch and use explicit upstream format
 		branch, err := gitrunner.GetCurrentBranch(project.Dir)
@@ -121,12 +126,20 @@ func runGitOp(w http.ResponseWriter, r *http.Request, gitCmd string, gitArgs ...
 			sw.SendError(fmt.Sprintf("Failed to get current branch: %v", err))
 			return
 		}
-		cmd = gitrunner.Push(branch, keyPath).Dir(project.Dir).Exec()
+		gc = gitrunner.Push(branch, keyPath).Dir(project.Dir)
 		sw.SendLog(fmt.Sprintf("$ git push origin HEAD:%s %s", branch, project.Dir))
 	} else {
-		cmd = gitrunner.NewCommand(append([]string{gitCmd}, gitArgs...)...).Dir(project.Dir).WithSSHKey(keyPath).Exec()
+		gc = gitrunner.NewCommand(append([]string{gitCmd}, gitArgs...)...).Dir(project.Dir).WithSSHKey(keyPath)
 		sw.SendLog(fmt.Sprintf("$ git %s %s", gitCmd, project.Dir))
 	}
+
+	if proxy.URL != "" {
+		gc = gc.WithEnv("https_proxy", proxy.URL).WithEnv("HTTPS_PROXY", proxy.URL)
+	}
+	if proxy.Note != "" {
+		sw.SendLog(proxy.Note)
+	}
+	cmd := gc.Exec()
 
 	if keyFile != nil {
 		sw.SendLog(fmt.Sprintf("Using SSH key: %s", keyFile.KeyType))
