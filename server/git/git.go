@@ -39,6 +39,7 @@ import (
 	"sync"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/gitutil"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/ndjsonstream"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/proxyselect"
 )
@@ -57,6 +58,10 @@ type CloneRequest struct {
 	// HTTPSProxy is the value to export as https_proxy / HTTPS_PROXY for
 	// the git process. Optional.
 	HTTPSProxy string `json:"https_proxy"`
+	// SSHUser is the user component used when the server rewrites an
+	// HTTPS URL to its SSH form (see ToSSH). Only consulted when a
+	// PrivateKey is also provided. Defaults to "git" when empty.
+	SSHUser string `json:"ssh_user"`
 }
 
 // RepoOpRequest is the JSON body accepted by POST /api/remote-agent/git/fetch
@@ -107,12 +112,50 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	proxy := proxyselect.ForRepoURL(req.HTTPSProxy, req.Repo)
+	// If the caller supplied an SSH private key but an HTTPS repo URL,
+	// rewrite the URL to its SSH form so the key is actually used.
+	// Proxies only apply to HTTPS traffic; once we've switched to SSH
+	// the https_proxy env is silently dropped.
+	repo := req.Repo
+	var rewriteNote string
+	if req.PrivateKey != "" && !gitutil.IsSSH(repo) {
+		sshURL := gitutil.ToSSH(repo, req.SSHUser)
+		if sshURL != repo {
+			rewriteNote = fmt.Sprintf("rewrote HTTPS repo URL to SSH (using key): %s -> %s", repo, sshURL)
+			repo = sshURL
+		}
+	}
 
-	runStreaming(w, r, req.PrivateKey, proxy.Note, func(keyPath string) *exec.Cmd {
-		gc := gitrunner.Clone(req.Repo, targetDir)
+	var proxy proxyselect.Resolved
+	if gitutil.IsSSH(repo) {
+		// SSH ignores https_proxy; don't advertise a proxy selection
+		// the user would find misleading.
+		proxy = proxyselect.Resolved{}
+	} else {
+		proxy = proxyselect.ForRepoURL(req.HTTPSProxy, repo)
+	}
+
+	note := joinNotes(rewriteNote, proxy.Note)
+
+	runStreaming(w, r, req.PrivateKey, note, func(keyPath string) *exec.Cmd {
+		gc := gitrunner.Clone(repo, targetDir)
 		return applyCommonOpts(gc, keyPath, proxy.URL).Exec()
 	})
+}
+
+// joinNotes concatenates non-empty notes with newlines so multiple
+// informational preambles can be emitted as a single preamble block.
+func joinNotes(notes ...string) string {
+	var parts []string
+	for _, n := range notes {
+		if n != "" {
+			parts = append(parts, n)
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "\n")
 }
 
 func handleFetch(w http.ResponseWriter, r *http.Request) {

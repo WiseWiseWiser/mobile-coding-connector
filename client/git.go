@@ -24,6 +24,10 @@ type GitCloneRequest struct {
 	// HTTPSProxy is the value to export as https_proxy / HTTPS_PROXY for
 	// the remote git process.
 	HTTPSProxy string `json:"https_proxy"`
+	// SSHUser is the user component the server uses when rewriting an
+	// HTTPS URL to SSH. Only consulted when PrivateKey is also set.
+	// Defaults to "git" server-side when empty.
+	SSHUser string `json:"ssh_user"`
 }
 
 // GitRepoOpRequest is the body of POST /api/remote-agent/git/fetch and

@@ -33,7 +33,7 @@ Examples:
   remote-agent git -C ~/bar pull --private-key ~/.ssh/id_rsa
 `
 
-const gitCloneHelp = `Usage: remote-agent git clone [--private-key <key-file>] [--https-proxy <proxy-url>] <repo> [dir]
+const gitCloneHelp = `Usage: remote-agent git clone [--private-key <key-file>] [--https-proxy <proxy-url>] [--ssh-user <user>] <repo> [dir]
 
 Clone <repo> on the remote machine via the server's
 /api/remote-agent/git/clone endpoint.
@@ -45,7 +45,18 @@ Options:
                        GIT_SSH_COMMAND for the clone.
   --https-proxy URL    Value the server exports as https_proxy /
                        HTTPS_PROXY for the 'git clone' process.
+  --ssh-user USER      SSH user to use when the server rewrites an HTTPS
+                       <repo> to SSH. Only consulted together with
+                       --private-key. Defaults to 'git'. Use 'gitlab'
+                       for self-hosted GitLab instances that require
+                       it (e.g. git.garena.com).
   -h, --help           Show this help message.
+
+URL rewriting:
+  If <repo> is an HTTPS URL and --private-key is supplied, the server
+  rewrites it to the scp-like SSH form (<ssh-user>@host:path) before
+  cloning, so the provided key is actually used. Pass an SSH URL
+  directly to skip this rewrite.
 
 Path resolution:
   If [dir] is omitted, the server clones into ~/<repo_base_name>, where
@@ -137,10 +148,12 @@ func runGit(resolve func() (*client.Client, error), args []string) error {
 func runGitClone(resolve func() (*client.Client, error), args []string) error {
 	var privateKey string
 	var httpsProxy string
+	var sshUser string
 
 	args, err := flags.
 		String("--private-key", &privateKey).
 		String("--https-proxy", &httpsProxy).
+		String("--ssh-user", &sshUser).
 		Help("-h,--help", gitCloneHelp).
 		Parse(args)
 	if err != nil {
@@ -169,6 +182,7 @@ func runGitClone(resolve func() (*client.Client, error), args []string) error {
 		Repo:       repo,
 		Dir:        dir,
 		HTTPSProxy: httpsProxy,
+		SSHUser:    sshUser,
 	}, privateKey, gitStreamHandler())
 	if err != nil {
 		return err
