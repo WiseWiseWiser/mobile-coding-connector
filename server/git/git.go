@@ -32,9 +32,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -133,9 +135,9 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 		proxy.Note,
 	)
 
-	runStreaming(w, r, req.PrivateKey, note, func(keyPath string) *exec.Cmd {
+	runStreaming(w, r, req.PrivateKey, note, func(keyPath string) (*exec.Cmd, error) {
 		gc := gitrunner.Clone(repo, targetDir)
-		return applyCommonOpts(gc, keyPath, proxy.URL).Exec()
+		return buildGitExecCmd(applyCommonOpts(gc, keyPath, proxy.URL))
 	})
 }
 
@@ -155,21 +157,21 @@ func joinNotes(notes ...string) string {
 }
 
 func handleFetch(w http.ResponseWriter, r *http.Request) {
-	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(keyPath string) *exec.Cmd) {
+	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(keyPath string) (*exec.Cmd, error)) {
 		proxy := proxyselect.ForRepoDir(req.HTTPSProxy, dir)
-		return proxy.Note, func(keyPath string) *exec.Cmd {
+		return proxy.Note, func(keyPath string) (*exec.Cmd, error) {
 			gc := gitrunner.Fetch().Dir(dir)
-			return applyCommonOpts(gc, keyPath, proxy.URL).Exec()
+			return buildGitExecCmd(applyCommonOpts(gc, keyPath, proxy.URL))
 		}
 	})
 }
 
 func handlePull(w http.ResponseWriter, r *http.Request) {
-	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(keyPath string) *exec.Cmd) {
+	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(keyPath string) (*exec.Cmd, error)) {
 		proxy := proxyselect.ForRepoDir(req.HTTPSProxy, dir)
-		return proxy.Note, func(keyPath string) *exec.Cmd {
+		return proxy.Note, func(keyPath string) (*exec.Cmd, error) {
 			gc := gitrunner.PullFFOnly().Dir(dir)
-			return applyCommonOpts(gc, keyPath, proxy.URL).Exec()
+			return buildGitExecCmd(applyCommonOpts(gc, keyPath, proxy.URL))
 		}
 	})
 }
@@ -180,7 +182,7 @@ func handlePull(w http.ResponseWriter, r *http.Request) {
 // is emitted on the stream before the command starts (used e.g. to
 // announce an auto-selected proxy), along with the actual command
 // factory.
-func handleRepoOp(w http.ResponseWriter, r *http.Request, makeCmdBuilder func(dir string, req RepoOpRequest) (note string, makeCmd func(keyPath string) *exec.Cmd)) {
+func handleRepoOp(w http.ResponseWriter, r *http.Request, makeCmdBuilder func(dir string, req RepoOpRequest) (note string, makeCmd func(keyPath string) (*exec.Cmd, error))) {
 	if r.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -234,7 +236,7 @@ func handleRepoOp(w http.ResponseWriter, r *http.Request, makeCmdBuilder func(di
 // The command process is killed when the HTTP client disconnects. All
 // heartbeat and cleanup plumbing is handled here so individual handlers
 // stay short.
-func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, note string, makeCmd func(keyPath string) *exec.Cmd) {
+func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, note string, makeCmd func(keyPath string) (*exec.Cmd, error)) {
 	keyPath, cleanupKey, err := writePrivateKey(privateKey)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("write private key: %v", err))
@@ -265,7 +267,11 @@ func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, not
 		heartbeatDone.Wait()
 	}()
 
-	cmd := makeCmd(keyPath)
+	cmd, err := makeCmd(keyPath)
+	if err != nil {
+		stream.SendError(err.Error())
+		return
+	}
 	if cmdNote := describeCommand(cmd); cmdNote != "" {
 		stream.Send(map[string]any{"type": "stderr", "data": cmdNote + "\n"})
 	}
@@ -348,9 +354,9 @@ func buildCloneDebugNote(req CloneRequest, targetDir string, effectiveRepo strin
 	proxyStatus := "(none)"
 	switch {
 	case proxy.URL != "":
-		proxyStatus = proxy.URL
+		proxyStatus = redactURLSecrets(proxy.URL)
 	case req.HTTPSProxy != "":
-		proxyStatus = req.HTTPSProxy
+		proxyStatus = redactURLSecrets(req.HTTPSProxy)
 	}
 
 	return strings.Join([]string{
@@ -374,20 +380,55 @@ func describeCommand(cmd *exec.Cmd) string {
 	}
 	var envStatus []string
 	if v, ok := lookupEnv(cmd.Env, "GIT_SSH_COMMAND"); ok {
-		hasProxyCommand := strings.Contains(v, "ProxyCommand=")
-		envStatus = append(envStatus, fmt.Sprintf("GIT_SSH_COMMAND=set(proxy=%t)", hasProxyCommand))
+		envStatus = append(envStatus, fmt.Sprintf("GIT_SSH_COMMAND=%s", redactSSHCommandSecrets(v)))
 	}
-	if _, ok := lookupEnv(cmd.Env, "https_proxy"); ok {
-		envStatus = append(envStatus, "https_proxy=set")
+	if v, ok := lookupEnv(cmd.Env, "https_proxy"); ok {
+		envStatus = append(envStatus, fmt.Sprintf("https_proxy=%s", redactURLSecrets(v)))
 	}
-	if _, ok := lookupEnv(cmd.Env, "HTTPS_PROXY"); ok {
-		envStatus = append(envStatus, "HTTPS_PROXY=set")
+	if v, ok := lookupEnv(cmd.Env, "HTTPS_PROXY"); ok {
+		envStatus = append(envStatus, fmt.Sprintf("HTTPS_PROXY=%s", redactURLSecrets(v)))
 	}
 	sort.Strings(envStatus)
-	if len(envStatus) > 0 {
-		lines = append(lines, "clone debug: env="+strings.Join(envStatus, ", "))
+	for _, line := range envStatus {
+		lines = append(lines, "clone debug: env "+line)
 	}
 	return strings.Join(lines, "\n")
+}
+
+var (
+	sshIdentityFileRE = regexp.MustCompile(`(?:(?:"-i")|(?:'-i')|(?:\b-i\b))\s+(?:"[^"]*"|'[^']*'|[^\s]+)`)
+	urlLikeRE         = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.\-]*://[^\s"'` + "`" + `]+`)
+)
+
+func redactSSHCommandSecrets(cmd string) string {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return cmd
+	}
+	cmd = sshIdentityFileRE.ReplaceAllString(cmd, `"-i" "<redacted-private-key-path>"`)
+	return redactURLSecrets(cmd)
+}
+
+func redactURLSecrets(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return raw
+	}
+	return urlLikeRE.ReplaceAllStringFunc(raw, redactOneURL)
+}
+
+func redactOneURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" || u.User == nil {
+		return raw
+	}
+	username := u.User.Username()
+	if username != "" {
+		u.User = url.UserPassword(username, "<redacted>")
+	} else {
+		u.User = url.User("<redacted>")
+	}
+	return u.String()
 }
 
 func lookupEnv(env []string, key string) (string, bool) {
@@ -398,6 +439,13 @@ func lookupEnv(env []string, key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func buildGitExecCmd(gc *gitrunner.Command) (*exec.Cmd, error) {
+	if err := gc.Validate(); err != nil {
+		return nil, err
+	}
+	return gc.Exec(), nil
 }
 
 // applyCommonOpts wires the optional SSH key and proxy settings onto a

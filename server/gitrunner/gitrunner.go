@@ -14,6 +14,8 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
+var isToolAvailable = tool_resolve.IsAvailable
+
 // SSHKeyConfig holds SSH key configuration for git operations
 type SSHKeyConfig struct {
 	KeyPath  string // Path to SSH private key file
@@ -67,6 +69,15 @@ func (c *Command) WithEnv(key, value string) *Command {
 func (c *Command) AllowPrompts() *Command {
 	c.noPrompts = false
 	return c
+}
+
+// Validate checks that any external helpers implied by the SSH config
+// are available before we try to start git.
+func (c *Command) Validate() error {
+	if c == nil {
+		return nil
+	}
+	return validateSSHConfig(c.sshConfig)
 }
 
 // Build creates the exec.Cmd with all proper environment variables set
@@ -161,6 +172,19 @@ func proxyCommandForURL(rawURL string) string {
 		"%h",
 		"%p",
 	})
+}
+
+func validateSSHConfig(cfg *SSHKeyConfig) error {
+	if cfg == nil {
+		return nil
+	}
+	if proxyCommandForURL(cfg.ProxyURL) == "" {
+		return nil
+	}
+	if isToolAvailable("nc") {
+		return nil
+	}
+	return fmt.Errorf("ssh proxy requires 'nc' on the remote server, but it is not installed. Install it first, for example: `remote-agent exec apt install netcat`")
 }
 
 func joinShellArgs(args []string) string {

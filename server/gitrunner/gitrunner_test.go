@@ -5,6 +5,32 @@ import (
 	"testing"
 )
 
+func TestValidateSSHConfigRequiresNCWhenProxyEnabled(t *testing.T) {
+	prev := isToolAvailable
+	isToolAvailable = func(name string) bool { return false }
+	defer func() { isToolAvailable = prev }()
+
+	err := validateSSHConfig(&SSHKeyConfig{
+		ProxyURL: "http://proxy.example.com:3128",
+	})
+	if err == nil {
+		t.Fatalf("validateSSHConfig() error = nil, want missing nc error")
+	}
+	if !strings.Contains(err.Error(), "remote-agent exec apt install netcat") {
+		t.Fatalf("validateSSHConfig() = %q, want install hint", err.Error())
+	}
+}
+
+func TestValidateSSHConfigSkipsNCWithoutProxy(t *testing.T) {
+	prev := isToolAvailable
+	isToolAvailable = func(name string) bool { return false }
+	defer func() { isToolAvailable = prev }()
+
+	if err := validateSSHConfig(&SSHKeyConfig{}); err != nil {
+		t.Fatalf("validateSSHConfig() error = %v, want nil", err)
+	}
+}
+
 func TestBuildSSHCommandIncludesKeyAndHTTPProxy(t *testing.T) {
 	cmd := buildSSHCommand(&SSHKeyConfig{
 		KeyPath:  "/tmp/test key",
