@@ -8,6 +8,9 @@
 //	                                    repository.
 //	POST /api/remote-agent/git/pull   — git pull --ff-only inside an
 //	                                    existing repository.
+//	POST /api/remote-agent/git/push   — git push origin HEAD:<current-
+//	                                    branch> inside an existing
+//	                                    repository.
 //
 // These paths are namespaced under /api/remote-agent/ to avoid colliding
 // with /api/git/{fetch,pull,push} owned by server/github, which accepts
@@ -67,9 +70,9 @@ type CloneRequest struct {
 	SSHUser string `json:"ssh_user"`
 }
 
-// RepoOpRequest is the JSON body accepted by POST /api/remote-agent/git/fetch
-// and POST /api/remote-agent/git/pull. Dir is required and must be an
-// existing git repository.
+// RepoOpRequest is the JSON body accepted by POST /api/remote-agent/git/fetch,
+// POST /api/remote-agent/git/pull, and POST /api/remote-agent/git/push.
+// Dir is required and must be an existing git repository.
 type RepoOpRequest struct {
 	Dir        string `json:"dir"`
 	PrivateKey string `json:"private_key"`
@@ -81,6 +84,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/remote-agent/git/clone", handleClone)
 	mux.HandleFunc("/api/remote-agent/git/fetch", handleFetch)
 	mux.HandleFunc("/api/remote-agent/git/pull", handlePull)
+	mux.HandleFunc("/api/remote-agent/git/push", handlePush)
 }
 
 func handleClone(w http.ResponseWriter, r *http.Request) {
@@ -171,6 +175,20 @@ func handlePull(w http.ResponseWriter, r *http.Request) {
 		proxy := proxyselect.ForRepoDir(req.HTTPSProxy, dir)
 		return proxy.Note, func(keyPath string) (*exec.Cmd, error) {
 			gc := gitrunner.PullFFOnly().Dir(dir)
+			return buildGitExecCmd(applyCommonOpts(gc, keyPath, proxy.URL))
+		}
+	})
+}
+
+func handlePush(w http.ResponseWriter, r *http.Request) {
+	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(keyPath string) (*exec.Cmd, error)) {
+		proxy := proxyselect.ForRepoDir(req.HTTPSProxy, dir)
+		return proxy.Note, func(keyPath string) (*exec.Cmd, error) {
+			branch, err := gitrunner.GetCurrentBranch(dir)
+			if err != nil {
+				return nil, fmt.Errorf("resolve current branch: %w", err)
+			}
+			gc := gitrunner.Push(branch).Dir(dir)
 			return buildGitExecCmd(applyCommonOpts(gc, keyPath, proxy.URL))
 		}
 	})

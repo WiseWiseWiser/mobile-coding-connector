@@ -55,6 +55,9 @@ Commands:
             Run 'git fetch' inside <dir> on the remote machine.
         -C <dir> pull [--private-key <key-file>] [--https-proxy <proxy-url>]
             Run 'git pull --ff-only' inside <dir> on the remote machine.
+        -C <dir> push [--private-key <key-file>] [--https-proxy <proxy-url>]
+            Run 'git push origin HEAD:<current-branch>' inside <dir> on
+            the remote machine.
 
   proxy <subcommand> [args...]
       Inspect proxy servers configured in the remote server's settings.
@@ -74,6 +77,7 @@ Examples:
   remote-agent git clone --private-key ~/.ssh/id_rsa git@host:foo/bar.git /tmp/bar
   remote-agent git -C ~/bar fetch --private-key ~/.ssh/id_rsa
   remote-agent git -C ~/bar pull --private-key ~/.ssh/id_rsa
+  remote-agent git -C ~/bar push --private-key ~/.ssh/id_rsa
   remote-agent proxy list
 `
 

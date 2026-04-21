@@ -30,8 +30,9 @@ type GitCloneRequest struct {
 	SSHUser string `json:"ssh_user"`
 }
 
-// GitRepoOpRequest is the body of POST /api/remote-agent/git/fetch and
-// POST /api/remote-agent/git/pull. Dir is required and must be an
+// GitRepoOpRequest is the body of POST /api/remote-agent/git/fetch,
+// POST /api/remote-agent/git/pull, and POST /api/remote-agent/git/push.
+// Dir is required and must be an
 // existing git repository on the server.
 type GitRepoOpRequest struct {
 	Dir        string `json:"dir"`
@@ -102,6 +103,28 @@ func (c *Client) GitPullWithKeyFile(req GitRepoOpRequest, keyFile string, handle
 		req.PrivateKey = string(data)
 	}
 	return c.GitPull(req, handler)
+}
+
+// GitPush invokes 'git push origin HEAD:<current-branch>' inside req.Dir
+// on the server.
+func (c *Client) GitPush(req GitRepoOpRequest, handler ExecHandler) (int, error) {
+	if req.Dir == "" {
+		return 0, fmt.Errorf("git push: dir must be set")
+	}
+	return c.streamGit("/api/remote-agent/git/push", req, handler)
+}
+
+// GitPushWithKeyFile reads a local private-key file and forwards its
+// contents to the server before calling GitPush.
+func (c *Client) GitPushWithKeyFile(req GitRepoOpRequest, keyFile string, handler ExecHandler) (int, error) {
+	if keyFile != "" {
+		data, err := os.ReadFile(keyFile)
+		if err != nil {
+			return 0, fmt.Errorf("read private key file: %w", err)
+		}
+		req.PrivateKey = string(data)
+	}
+	return c.GitPush(req, handler)
 }
 
 // streamGit POSTs body as JSON to path and consumes the NDJSON event

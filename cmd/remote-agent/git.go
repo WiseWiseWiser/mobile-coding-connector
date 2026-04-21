@@ -27,10 +27,15 @@ Subcommands:
       Run 'git pull --ff-only' inside <dir> on the remote machine.
       '-C <dir>' must appear right after 'git'.
 
+  -C <dir> push [--private-key <key-file>] [--https-proxy <proxy-url>]
+      Run 'git push origin HEAD:<current-branch>' inside <dir> on the
+      remote machine. '-C <dir>' must appear right after 'git'.
+
 Examples:
   remote-agent git clone https://github.com/foo/bar.git
   remote-agent git -C ~/bar fetch --private-key ~/.ssh/id_rsa
   remote-agent git -C ~/bar pull --private-key ~/.ssh/id_rsa
+  remote-agent git -C ~/bar push --private-key ~/.ssh/id_rsa
 `
 
 const gitCloneHelp = `Usage: remote-agent git clone [--private-key <key-file>] [--https-proxy <proxy-url>] [--ssh-user <user>] <repo> [dir]
@@ -90,10 +95,22 @@ Options:
   -h, --help           Show this help message.
 `
 
+const gitPushHelp = `Usage: remote-agent git -C <dir> push [--private-key <key-file>] [--https-proxy <proxy-url>]
+
+Run 'git push origin HEAD:<current-branch>' inside <dir> on the remote
+machine. <dir> must already be a git repository on the server. '-C <dir>'
+must appear right after 'git' and is required for this subcommand.
+
+Options:
+  --private-key FILE   Local path to an SSH private key.
+  --https-proxy URL    Value the server exports as https_proxy / HTTPS_PROXY.
+  -h, --help           Show this help message.
+`
+
 // runGit dispatches 'remote-agent git [-C <dir>] <subcommand> [args...]'.
 //
 // The optional '-C <dir>' prefix must appear right after 'git'. It is
-// required for fetch/pull (which operate on an existing repo) and
+// required for fetch/pull/push (which operate on an existing repo) and
 // rejected for clone (which has its own positional <dir>).
 func runGit(resolve func() (*client.Client, error), args []string) error {
 	if len(args) == 0 {
@@ -138,6 +155,11 @@ func runGit(resolve func() (*client.Client, error), args []string) error {
 			return fmt.Errorf("'git pull' requires '-C <dir>' between 'git' and 'pull'")
 		}
 		return runGitRepoOp(resolve, cDir, "pull", rest)
+	case "push":
+		if !cDirSet {
+			return fmt.Errorf("'git push' requires '-C <dir>' between 'git' and 'push'")
+		}
+		return runGitRepoOp(resolve, cDir, "push", rest)
 	case "-h", "--help":
 		fmt.Print(gitHelp)
 		return nil
@@ -195,7 +217,7 @@ func runGitClone(resolve func() (*client.Client, error), args []string) error {
 	return nil
 }
 
-// runGitRepoOp handles the fetch and pull subcommands, which share the
+// runGitRepoOp handles the fetch, pull, and push subcommands, which share the
 // same flag set and request shape.
 func runGitRepoOp(resolve func() (*client.Client, error), dir string, op string, args []string) error {
 	var privateKey string
@@ -204,6 +226,8 @@ func runGitRepoOp(resolve func() (*client.Client, error), dir string, op string,
 	helpText := gitFetchHelp
 	if op == "pull" {
 		helpText = gitPullHelp
+	} else if op == "push" {
+		helpText = gitPushHelp
 	}
 
 	args, err := flags.
@@ -233,6 +257,8 @@ func runGitRepoOp(resolve func() (*client.Client, error), dir string, op string,
 		exitCode, err = cli.GitFetchWithKeyFile(req, privateKey, gitStreamHandler())
 	case "pull":
 		exitCode, err = cli.GitPullWithKeyFile(req, privateKey, gitStreamHandler())
+	case "push":
+		exitCode, err = cli.GitPushWithKeyFile(req, privateKey, gitStreamHandler())
 	default:
 		return fmt.Errorf("internal: unknown git op %q", op)
 	}
