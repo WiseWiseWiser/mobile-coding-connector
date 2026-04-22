@@ -10,6 +10,71 @@ import (
 	"strings"
 )
 
+type KeepAlivePing struct {
+	Running      bool   `json:"running"`
+	StartCommand string `json:"start_command,omitempty"`
+}
+
+type KeepAliveStatus struct {
+	Running             bool   `json:"running"`
+	BinaryPath          string `json:"binary_path"`
+	DaemonBinaryPath    string `json:"daemon_binary_path"`
+	ServerPort          int    `json:"server_port"`
+	ServerPID           int    `json:"server_pid"`
+	KeepAlivePort       int    `json:"keep_alive_port"`
+	KeepAlivePID        int    `json:"keep_alive_pid"`
+	StartedAt           string `json:"started_at,omitempty"`
+	Uptime              string `json:"uptime,omitempty"`
+	NextBinary          string `json:"next_binary,omitempty"`
+	NextHealthCheckTime string `json:"next_health_check_time,omitempty"`
+	RestartCount        int    `json:"restart_count"`
+}
+
+type MemoryStatus struct {
+	Total       uint64  `json:"total"`
+	Used        uint64  `json:"used"`
+	Free        uint64  `json:"free"`
+	UsedPercent float64 `json:"used_percent"`
+}
+
+type DiskStatus struct {
+	Filesystem string  `json:"filesystem"`
+	Size       uint64  `json:"size"`
+	Used       uint64  `json:"used"`
+	Available  uint64  `json:"available"`
+	UsePercent float64 `json:"use_percent"`
+	MountPoint string  `json:"mount_point"`
+}
+
+type CPUStatus struct {
+	NumCPU      int     `json:"num_cpu"`
+	UsedPercent float64 `json:"used_percent"`
+}
+
+type OSInfo struct {
+	OS      string `json:"os"`
+	Arch    string `json:"arch"`
+	Kernel  string `json:"kernel"`
+	Version string `json:"version"`
+}
+
+type ProcessStatus struct {
+	PID     int    `json:"pid"`
+	Name    string `json:"name"`
+	CPU     string `json:"cpu"`
+	Mem     string `json:"mem"`
+	Command string `json:"command"`
+}
+
+type ServerStatus struct {
+	Memory MemoryStatus    `json:"memory"`
+	Disk   []DiskStatus    `json:"disk"`
+	CPU    CPUStatus       `json:"cpu"`
+	OSInfo OSInfo          `json:"os_info"`
+	TopCPU []ProcessStatus `json:"top_cpu"`
+	TopMem []ProcessStatus `json:"top_mem"`
+}
+
 // ServerStreamEvent is one JSON payload emitted by the server's SSE endpoints.
 type ServerStreamEvent struct {
 	Type        string `json:"type"`
@@ -38,6 +103,30 @@ type RestartServerResult struct {
 	Binary    string
 	Directory string
 	Message   string
+}
+
+func (c *Client) PingKeepAlive() (*KeepAlivePing, error) {
+	var out KeepAlivePing
+	if err := c.getJSON("/api/keep-alive/ping", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) GetKeepAliveStatus() (*KeepAliveStatus, error) {
+	var out KeepAliveStatus
+	if err := c.getJSON("/api/keep-alive/status", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) GetServerStatus() (*ServerStatus, error) {
+	var out ServerStatus
+	if err := c.getJSON("/api/server/status", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func (c *Client) BuildNext(projectID string, handler func(ServerStreamEvent)) (*BuildNextResult, error) {
@@ -161,4 +250,24 @@ func defaultStreamError(message string, fallback string) string {
 		return fallback
 	}
 	return message
+}
+
+func (c *Client) getJSON(path string, out any) error {
+	req, err := c.NewRequest(http.MethodGet, path, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return readAPIError(resp)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("decode %s response: %w", path, err)
+	}
+	return nil
 }

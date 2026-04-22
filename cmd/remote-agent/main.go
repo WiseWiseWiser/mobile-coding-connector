@@ -43,8 +43,9 @@ Commands:
   exec <BINARY> [ARGS...]
       Run a subprocess on the server. Stdout and stderr are streamed back
       as they are produced; the client's exit code mirrors the remote exit
-      code. Every argument after 'exec' is forwarded verbatim to the
-      remote binary.
+      code. When launched from an interactive terminal, stdin is forwarded
+      through a PTY so commands can prompt for user input. Every argument
+      after 'exec' is forwarded verbatim to the remote binary.
 
   bash [cwd]
       Start an interactive shell on the remote server using the same
@@ -77,6 +78,8 @@ Commands:
             Trigger the same "Build Next" action as the Manage Server page.
         restart
             Trigger the same "Restart Server" action as the Manage Server page.
+        status
+            Show the same keep-alive and machine status as the Manage Server page.
 
   skill <subcommand> [args...]
       Manage the embedded remote-agent skill definition. Subcommands:
@@ -101,6 +104,7 @@ Examples:
   remote-agent proxy list
   remote-agent server build-next
   remote-agent server restart
+  remote-agent server status
   remote-agent skill install --codex
 `
 
