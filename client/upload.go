@@ -33,6 +33,11 @@ type UploadResult struct {
 	Size   int64  `json:"size"`
 }
 
+// UploadOptions configures optional server-side handling for uploads.
+type UploadOptions struct {
+	ChmodExec bool
+}
+
 // UploadFile reads localFile and uploads it to remotePath on the server
 // using the server's chunked-upload protocol.
 //
@@ -43,7 +48,7 @@ type UploadResult struct {
 //     server's home directory (fetched via GetHome).
 //
 // onProgress may be nil; when set, it is invoked after each chunk completes.
-func (c *Client) UploadFile(localFile string, remotePath string, onProgress func(UploadProgress)) (*UploadResult, error) {
+func (c *Client) UploadFile(localFile string, remotePath string, opts UploadOptions, onProgress func(UploadProgress)) (*UploadResult, error) {
 	baseName := filepath.Base(localFile)
 	if remotePath == "" {
 		remotePath = baseName
@@ -81,7 +86,7 @@ func (c *Client) UploadFile(localFile string, remotePath string, onProgress func
 		totalChunks = 1
 	}
 
-	uploadID, err := c.initUpload(remotePath, totalChunks, totalSize)
+	uploadID, err := c.initUpload(remotePath, totalChunks, totalSize, opts)
 	if err != nil {
 		return nil, fmt.Errorf("init upload failed: %w", err)
 	}
@@ -116,11 +121,12 @@ func (c *Client) UploadFile(localFile string, remotePath string, onProgress func
 	return result, nil
 }
 
-func (c *Client) initUpload(remotePath string, totalChunks int, totalSize int64) (string, error) {
+func (c *Client) initUpload(remotePath string, totalChunks int, totalSize int64, opts UploadOptions) (string, error) {
 	body := map[string]any{
 		"path":         remotePath,
 		"total_chunks": totalChunks,
 		"total_size":   totalSize,
+		"chmod_exec":   opts.ChmodExec,
 	}
 	buf, err := json.Marshal(body)
 	if err != nil {

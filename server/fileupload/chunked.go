@@ -21,6 +21,7 @@ type chunkSession struct {
 	DestPath    string
 	TotalChunks int
 	TotalSize   int64
+	ChmodExec   bool
 	TempDir     string
 	CreatedAt   time.Time
 	Received    map[int]bool // chunk index -> received
@@ -73,6 +74,7 @@ func handleUploadInit(w http.ResponseWriter, r *http.Request) {
 		Path        string `json:"path"`
 		TotalChunks int    `json:"total_chunks"`
 		TotalSize   int64  `json:"total_size"`
+		ChmodExec   bool   `json:"chmod_exec"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -102,6 +104,7 @@ func handleUploadInit(w http.ResponseWriter, r *http.Request) {
 		DestPath:    destPath,
 		TotalChunks: req.TotalChunks,
 		TotalSize:   req.TotalSize,
+		ChmodExec:   req.ChmodExec,
 		TempDir:     tempDir,
 		CreatedAt:   time.Now(),
 		Received:    make(map[int]bool),
@@ -276,6 +279,13 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 
 	// Cleanup temp directory
 	os.RemoveAll(session.TempDir)
+
+	if session.ChmodExec {
+		if err := os.Chmod(session.DestPath, 0755); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to chmod destination file: %v", err))
+			return
+		}
+	}
 
 	// Return absolute path so clients see the real final location.
 	absPath, absErr := filepath.Abs(session.DestPath)

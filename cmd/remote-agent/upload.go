@@ -25,10 +25,13 @@ func runUpload(cli *client.Client, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to stat local file: %w", err)
 	}
+	chmodExec := isExecutableMode(stat.Mode())
 
 	fmt.Printf("Uploading %s (%s) -> %s\n", localFile, formatSize(stat.Size()), describeRemote(remotePath))
 
-	result, err := cli.UploadFile(localFile, remotePath, func(p client.UploadProgress) {
+	result, err := cli.UploadFile(localFile, remotePath, client.UploadOptions{
+		ChmodExec: chmodExec,
+	}, func(p client.UploadProgress) {
 		percent := 100
 		if p.TotalBytes > 0 {
 			percent = int(p.CompletedBytes * 100 / p.TotalBytes)
@@ -43,6 +46,10 @@ func runUpload(cli *client.Client, args []string) error {
 
 	fmt.Printf("Upload complete: %s (%s)\n", result.Path, formatSize(result.Size))
 	return nil
+}
+
+func isExecutableMode(mode os.FileMode) bool {
+	return mode.IsRegular() && mode&0o111 != 0
 }
 
 func describeRemote(remotePath string) string {
