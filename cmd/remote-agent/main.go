@@ -6,6 +6,7 @@ import (
 
 	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/client"
+	remoteagentskill "github.com/xhd2015/lifelog-private/ai-critic/cmd/remote-agent/skill"
 )
 
 const help = `Usage: remote-agent [--server URL] [--token TOKEN] <command> [args...]
@@ -45,6 +46,10 @@ Commands:
       code. Every argument after 'exec' is forwarded verbatim to the
       remote binary.
 
+  bash [cwd]
+      Start an interactive shell on the remote server using the same
+      terminal WebSocket API as the frontend terminal page.
+
   git <subcommand> [args...]
       Git utilities that run on the remote server. Subcommands:
         clone [--private-key <key-file>] [--https-proxy <proxy-url>] <repo> [dir]
@@ -65,6 +70,19 @@ Commands:
         list
             List all configured proxy servers. Passwords are masked.
 
+  server <subcommand> [args...]
+      Execute server-management actions exposed by the remote server UI.
+      Subcommands:
+        build-next [--project <id>]
+            Trigger the same "Build Next" action as the Manage Server page.
+        restart
+            Trigger the same "Restart Server" action as the Manage Server page.
+
+  skill <subcommand> [args...]
+      Manage the embedded remote-agent skill definition. Subcommands:
+        install [<dir>] [--cursor|--codex]
+            Install the packaged SKILL.md for Cursor or Codex.
+
 Examples:
   remote-agent config
   remote-agent --server https://host.example.com --token abc upload ./foo.txt /tmp/foo.txt
@@ -73,12 +91,17 @@ Examples:
   remote-agent local reap --filter ai-critic --signal
   remote-agent exec ls -la /tmp
   remote-agent exec sh -c 'echo hi; sleep 1'
+  remote-agent bash
+  remote-agent bash ~/work/repo
   remote-agent git clone https://github.com/foo/bar.git
   remote-agent git clone --private-key ~/.ssh/id_rsa git@host:foo/bar.git /tmp/bar
   remote-agent git -C ~/bar fetch --private-key ~/.ssh/id_rsa
   remote-agent git -C ~/bar pull --private-key ~/.ssh/id_rsa
   remote-agent git -C ~/bar push --private-key ~/.ssh/id_rsa
   remote-agent proxy list
+  remote-agent server build-next
+  remote-agent server restart
+  remote-agent skill install --codex
 `
 
 func main() {
@@ -125,6 +148,10 @@ func run(args []string) error {
 		return runExec(func() (*client.Client, error) {
 			return resolveClient(server, token)
 		}, rest)
+	case "bash":
+		return runBash(func() (*client.Client, error) {
+			return resolveClient(server, token)
+		}, rest)
 	case "git":
 		return runGit(func() (*client.Client, error) {
 			return resolveClient(server, token)
@@ -133,6 +160,12 @@ func run(args []string) error {
 		return runProxy(func() (*client.Client, error) {
 			return resolveClient(server, token)
 		}, rest)
+	case "server":
+		return runServer(func() (*client.Client, error) {
+			return resolveClient(server, token)
+		}, rest)
+	case "skill":
+		return remoteagentskill.Handle(rest)
 	default:
 		return fmt.Errorf("unknown command: %s", cmd)
 	}

@@ -379,6 +379,23 @@ var requiredTools = []toolDef{
 		installWindows: "Download from https://github.com/junegunn/fzf/releases",
 	},
 	{
+		name:        "rg",
+		displayName: "ripgrep",
+		category:    CategoryFoundation,
+		description: "Fast recursive search tool for files and directories",
+		purpose:     "Search code, logs, and config files quickly from the terminal",
+		docURL:      "https://github.com/BurntSushi/ripgrep",
+		versionCmd:  []string{"rg", "--version"},
+		installMacOS: []string{
+			"brew install ripgrep",
+		},
+		installLinux: []string{
+			"apt-get update",
+			"apt-get install -y ripgrep",
+		},
+		installWindows: "winget install BurntSushi.ripgrep.MSVC",
+	},
+	{
 		name:        "vim",
 		category:    CategoryFoundation,
 		description: "Terminal-based text editor",
