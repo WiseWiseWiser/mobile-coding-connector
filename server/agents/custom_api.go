@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/custom"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/common_opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
@@ -18,13 +19,50 @@ type LaunchCustomAgentResult struct {
 	URL       string
 }
 
-func LaunchCustomAgent(agentID string, projectDir string) (*LaunchCustomAgentResult, error) {
+func LaunchCustomAgent(agentID string, projectDir string, resumeSessionID string) (*LaunchCustomAgentResult, error) {
 	agent, err := custom.LoadAgent(agentID)
 	if err != nil {
 		return nil, err
 	}
 	if agent == nil {
 		return nil, fmt.Errorf("agent not found: %s", agentID)
+	}
+
+	var (
+		sessionID string
+		createdAt time.Time
+	)
+	if resumeSessionID != "" {
+		if running := GetRunningCustomAgentSession(resumeSessionID); running != nil {
+			if running.AgentID != agentID {
+				return nil, fmt.Errorf("session %s belongs to agent %s, not %s", resumeSessionID, running.AgentID, agentID)
+			}
+			if projectDir != "" && running.ProjectDir != "" && running.ProjectDir != projectDir {
+				return nil, fmt.Errorf("session %s belongs to project %s, not %s", resumeSessionID, running.ProjectDir, projectDir)
+			}
+			return &LaunchCustomAgentResult{
+				SessionID: running.ID,
+				Port:      running.Port,
+				URL:       fmt.Sprintf("http://127.0.0.1:%d", running.Port),
+			}, nil
+		}
+
+		savedSession, err := custom.LoadSession(agentID, resumeSessionID)
+		if err != nil {
+			return nil, fmt.Errorf("load session %s: %w", resumeSessionID, err)
+		}
+		if savedSession == nil {
+			return nil, fmt.Errorf("session not found: %s", resumeSessionID)
+		}
+		if projectDir == "" {
+			projectDir = savedSession.ProjectDir
+		} else if savedSession.ProjectDir != "" && savedSession.ProjectDir != projectDir {
+			return nil, fmt.Errorf("session %s belongs to project %s, not %s", resumeSessionID, savedSession.ProjectDir, projectDir)
+		}
+		sessionID = savedSession.ID
+		if t, err := time.Parse(time.RFC3339, savedSession.CreatedAt); err == nil {
+			createdAt = t
+		}
 	}
 
 	if info, err := os.Stat(projectDir); err != nil || !info.IsDir() {
@@ -62,7 +100,12 @@ func LaunchCustomAgent(agentID string, projectDir string) (*LaunchCustomAgentRes
 	}
 
 	now := time.Now()
-	sessionID := fmt.Sprintf("%s-%d", agentID, now.UnixMilli())
+	if createdAt.IsZero() {
+		createdAt = now
+	}
+	if sessionID == "" {
+		sessionID = fmt.Sprintf("%s-%d", agentID, now.UnixMilli())
+	}
 
 	sessionMgr.mu.Lock()
 	sessionMgr.counter++
@@ -71,9 +114,10 @@ func LaunchCustomAgent(agentID string, projectDir string) (*LaunchCustomAgentRes
 	session := &customAgentSession{
 		id:         sessionID,
 		agentID:    agentID,
+		agentName:  agent.Name,
 		projectDir: projectDir,
 		port:       port,
-		createdAt:  now,
+		createdAt:  createdAt,
 		cmd:        cmd.Cmd,
 	}
 
@@ -90,7 +134,7 @@ func LaunchCustomAgent(agentID string, projectDir string) (*LaunchCustomAgentRes
 		AgentName:  agent.Name,
 		ProjectDir: projectDir,
 		Port:       port,
-		CreatedAt:  now.Format(time.RFC3339),
+		CreatedAt:  createdAt.Format(time.RFC3339),
 		Status:     "running",
 	}
 	custom.SaveSession(sessionData)
@@ -127,6 +171,7 @@ func monitorCustomAgentProcess(session *customAgentSession) {
 type customAgentSession struct {
 	id         string
 	agentID    string
+	agentName  string
 	projectDir string
 	port       int
 	createdAt  time.Time
@@ -167,7 +212,7 @@ func GetCustomAgentSessions() []AgentSessionInfo {
 		result = append(result, AgentSessionInfo{
 			ID:         s.id,
 			AgentID:    s.agentID,
-			AgentName:  "Custom: " + s.agentID,
+			AgentName:  s.agentName,
 			ProjectDir: s.projectDir,
 			Port:       s.port,
 			CreatedAt:  s.createdAt.Format(time.RFC3339),
@@ -188,4 +233,33 @@ func GetRunningCustomSessionIDs() map[string]bool {
 		ids[id] = true
 	}
 	return ids
+}
+
+// GetRunningCustomAgentSession returns info about a currently running custom-agent session.
+func GetRunningCustomAgentSession(sessionID string) *AgentSessionInfo {
+	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
+
+	session := customAgentSessions[sessionID]
+	if session == nil {
+		return nil
+	}
+
+	return &AgentSessionInfo{
+		ID:         session.id,
+		AgentID:    session.agentID,
+		AgentName:  session.agentName,
+		ProjectDir: session.projectDir,
+		Port:       session.port,
+		CreatedAt:  session.createdAt.Format(time.RFC3339),
+		Status:     "running",
+	}
+}
+
+func WaitForCustomAgentSessionReady(sessionID string, timeout time.Duration) error {
+	session := GetRunningCustomAgentSession(sessionID)
+	if session == nil {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+	return common_opencode.WaitForSessionReady(session.Port, timeout)
 }

@@ -9,6 +9,7 @@ import type { PortForward } from '../../hooks/usePortForwards';
 import { CloudflareInlineDiagnostics } from './CloudflareInlineDiagnostics';
 import { TunnelGroupsSection } from './TunnelGroupsSection';
 import { PortForwardCard } from './PortForwardCard';
+import { ServicesSection } from './ServicesSection';
 
 // ---- Port Forwarding View ----
 
@@ -69,6 +70,8 @@ export function PortForwardingView({
 }: PortForwardingViewProps) {
     return (
         <div className="mcc-ports">
+            <ServicesSection availableProviders={availableProviders} />
+
             <div className="mcc-section-header">
                 <h2>Port Forwarding</h2>
             </div>

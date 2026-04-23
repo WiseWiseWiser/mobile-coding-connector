@@ -35,7 +35,8 @@ export interface StreamLogFileParams {
 }
 
 export function streamLogFile(params: StreamLogFileParams = {}): Promise<Response> {
-    const url = new URL(`${API_BASE}/api/logs/stream`);
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    const url = new URL(`${API_BASE}/api/logs/stream`, base);
     if (params.file) {
         url.searchParams.set('file', params.file);
     }

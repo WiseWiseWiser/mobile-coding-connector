@@ -81,6 +81,21 @@ Commands:
         status
             Show the same keep-alive and machine status as the Manage Server page.
 
+  agent <subcommand> [args...]
+      Manage remote custom agents and their saved sessions. Subcommands:
+        list
+            List custom agents.
+        show <agent-id>
+            Show one custom agent as JSON.
+        add [<agent-id>] [options...]
+            Create a custom agent.
+        delete <agent-id>
+            Delete a custom agent.
+        sessions <agent-id>
+            List saved sessions for one custom agent.
+        run <agent-id> [--project <dir>] [--resume <session-id|latest>]
+            Start a new session or resume an existing saved session.
+
   skill <subcommand> [args...]
       Manage the embedded remote-agent skill definition. Subcommands:
         install [<dir>] [--cursor|--codex]
@@ -105,6 +120,10 @@ Examples:
   remote-agent server build-next
   remote-agent server restart
   remote-agent server status
+  remote-agent agent list
+  remote-agent agent add build-review --template build --name "Build Review"
+  remote-agent agent sessions build-review
+  remote-agent agent run build-review --project ~/work/repo
   remote-agent skill install --codex
 `
 
@@ -166,6 +185,10 @@ func run(args []string) error {
 		}, rest)
 	case "server":
 		return runServer(func() (*client.Client, error) {
+			return resolveClient(server, token)
+		}, rest)
+	case "agent":
+		return runAgent(func() (*client.Client, error) {
 			return resolveClient(server, token)
 		}, rest)
 	case "skill":

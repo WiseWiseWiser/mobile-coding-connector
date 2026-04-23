@@ -193,7 +193,7 @@ function App() {
                             <Route path=":agentId/:sessionId" element={<AgentChatRoute />} />
                         </Route>
                         <Route path="terminal" element={<TerminalPage />} />
-                        <Route path="network" element={<PortsLayout />}>
+                        <Route path="service" element={<PortsLayout />}>
                             <Route index element={<PortListRoute />} />
                             <Route path="diagnostics" element={<CloudflareDiagnosticsRoute />} />
                             <Route path="port-diagnose/:port" element={<PortDiagnoseRoute />} />
@@ -252,7 +252,7 @@ function App() {
                             <Route path=":agentId/:sessionId" element={<AgentChatRoute />} />
                         </Route>
                         <Route path="terminal" element={<TerminalPage />} />
-                        <Route path="network" element={<PortsLayout />}>
+                        <Route path="service" element={<PortsLayout />}>
                             <Route index element={<PortListRoute />} />
                             <Route path="diagnostics" element={<CloudflareDiagnosticsRoute />} />
                             <Route path="port-diagnose/:port" element={<PortDiagnoseRoute />} />

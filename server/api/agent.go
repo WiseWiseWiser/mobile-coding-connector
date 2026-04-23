@@ -66,9 +66,23 @@ func handleCustomAgentRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Route: /api/custom-agents/sessions/{sessionID}
+	// Route: /api/custom-agents/sessions/{sessionID}/proxy/{rest...}
 	if strings.HasPrefix(path, "sessions/") {
-		sessionID := strings.TrimPrefix(path, "sessions/")
-		if sessionID != "" {
+		sessionPath := strings.TrimPrefix(path, "sessions/")
+		if sessionPath != "" {
+			parts := strings.SplitN(sessionPath, "/", 2)
+			sessionID := parts[0]
+			if sessionID == "" {
+				http.Error(w, "Not found", http.StatusNotFound)
+				return
+			}
+			if len(parts) == 2 {
+				tail := parts[1]
+				if tail == "proxy" || strings.HasPrefix(tail, "proxy/") {
+					handleCustomAgentSessionProxy(w, r, sessionID, strings.TrimPrefix(tail, "proxy"))
+					return
+				}
+			}
 			handleCustomAgentSessionByID(w, r, sessionID)
 			return
 		}

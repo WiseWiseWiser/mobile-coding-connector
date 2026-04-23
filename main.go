@@ -17,6 +17,7 @@ var templateHTML string
 
 func main() {
 	server.Init(distFS, templateHTML)
+	run.SetStartSideEffects(server.RunSideEffectTasks)
 
 	err := run.Run(os.Args[1:])
 	if err != nil {
