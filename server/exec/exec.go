@@ -35,6 +35,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
@@ -74,6 +75,13 @@ func (w *wsConnWriter) writeJSON(v any) error {
 		return err
 	}
 	return w.writeMessage(websocket.TextMessage, data)
+}
+
+func (w *wsConnWriter) writeClose(code int, text string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	msg := websocket.FormatCloseMessage(code, text)
+	return w.conn.WriteControl(websocket.CloseMessage, msg, noDeadline())
 }
 
 var execWSUpgrader = websocket.Upgrader{
@@ -233,12 +241,14 @@ func handleExecWebSocket(w http.ResponseWriter, r *http.Request) {
 		exitCode, err := execExitCode(waitErr)
 		if err != nil {
 			_ = writer.writeJSON(map[string]any{"type": "error", "message": fmt.Sprintf("wait: %v", err)})
+			_ = writer.writeClose(websocket.CloseNormalClosure, "")
 			return
 		}
 		if outputErr := <-outputErrCh; outputErr != nil {
 			return
 		}
 		_ = writer.writeJSON(map[string]any{"type": "exit", "code": exitCode})
+		_ = writer.writeClose(websocket.CloseNormalClosure, "")
 	case <-stdinErrCh:
 		killProcess(ctxCmd)
 		<-waitErrCh
@@ -248,9 +258,11 @@ func handleExecWebSocket(w http.ResponseWriter, r *http.Request) {
 			exitCode, exitErr := execExitCode(waitErr)
 			if exitErr != nil {
 				_ = writer.writeJSON(map[string]any{"type": "error", "message": fmt.Sprintf("wait: %v", exitErr)})
+				_ = writer.writeClose(websocket.CloseNormalClosure, "")
 				return
 			}
 			_ = writer.writeJSON(map[string]any{"type": "exit", "code": exitCode})
+			_ = writer.writeClose(websocket.CloseNormalClosure, "")
 			return
 		}
 		killProcess(ctxCmd)
@@ -360,6 +372,10 @@ func killProcess(cmd *exec.Cmd) {
 		return
 	}
 	_ = cmd.Process.Kill()
+}
+
+func noDeadline() time.Time {
+	return time.Time{}
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {
