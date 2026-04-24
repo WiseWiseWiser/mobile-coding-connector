@@ -16,6 +16,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
 const (
@@ -44,6 +45,8 @@ type ServiceDefinition struct {
 	Name        string              `json:"name"`
 	Command     string              `json:"command"`
 	ProjectDir  string              `json:"projectDir,omitempty"`
+	WorkingDir  string              `json:"workingDir,omitempty"`
+	ExtraEnv    map[string]string   `json:"extraEnv,omitempty"`
 	PortForward *ServicePortForward `json:"portForward,omitempty"`
 	CreatedAt   string              `json:"createdAt"`
 	UpdatedAt   string              `json:"updatedAt"`
@@ -66,6 +69,9 @@ type ServiceStatus struct {
 	Name           string                    `json:"name"`
 	Command        string                    `json:"command"`
 	ProjectDir     string                    `json:"projectDir,omitempty"`
+	WorkingDir     string                    `json:"workingDir,omitempty"`
+	ExtraEnv       map[string]string         `json:"extraEnv,omitempty"`
+	EffectivePath  string                    `json:"effectivePath,omitempty"`
 	LogPath        string                    `json:"logPath"`
 	Status         string                    `json:"status"`
 	PID            int                       `json:"pid"`
@@ -154,6 +160,8 @@ func (m *Manager) loadDefinitionsLocked() {
 
 	for i := range defs {
 		defs[i].ProjectDir = normalizeProjectDir(defs[i].ProjectDir)
+		defs[i].WorkingDir = normalizeWorkingDir(defs[i].WorkingDir)
+		defs[i].ExtraEnv = normalizeExtraEnv(defs[i].ExtraEnv)
 	}
 	m.definitions = defs
 }
@@ -236,6 +244,7 @@ func (m *Manager) List(projectDir string) []ServiceStatus {
 	result := make([]ServiceStatus, 0, len(defs))
 	for _, def := range defs {
 		proc := m.processes[def.ID]
+		serviceEnv := buildServiceEnv(def)
 		logPath := serviceLogPath(def.ID)
 		status := StatusStopped
 		pid := 0
@@ -291,6 +300,9 @@ func (m *Manager) List(projectDir string) []ServiceStatus {
 			Name:           def.Name,
 			Command:        def.Command,
 			ProjectDir:     def.ProjectDir,
+			WorkingDir:     def.WorkingDir,
+			ExtraEnv:       cloneStringMap(def.ExtraEnv),
+			EffectivePath:  lookupEnvValue(serviceEnv, "PATH"),
 			LogPath:        logPath,
 			Status:         status,
 			PID:            pid,
@@ -306,6 +318,8 @@ func (m *Manager) List(projectDir string) []ServiceStatus {
 
 func (m *Manager) CreateOrUpdate(def ServiceDefinition) (*ServiceStatus, error) {
 	def.ProjectDir = normalizeProjectDir(def.ProjectDir)
+	def.WorkingDir = normalizeWorkingDir(def.WorkingDir)
+	def.ExtraEnv = normalizeExtraEnv(def.ExtraEnv)
 	if err := validateDefinition(def); err != nil {
 		return nil, err
 	}
@@ -464,7 +478,7 @@ func (m *Manager) start(id string, force bool) error {
 	proc.status = StatusStarting
 	proc.lastExitError = ""
 	logPath := proc.logPath
-	projectDir := def.ProjectDir
+	workingDir := def.WorkingDir
 	m.mu.Unlock()
 
 	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
@@ -486,8 +500,21 @@ func (m *Manager) start(id string, force bool) error {
 	startMarker := fmt.Sprintf("\n[%s] starting service %s\n", time.Now().Format(time.RFC3339), def.Name)
 	_, _ = logFile.WriteString(startMarker)
 
-	cmd := exec.Command("bash", "-lc", def.Command)
-	cmd.Dir = projectDir
+	serviceEnv := buildServiceEnv(def)
+	shellCommand := def.Command
+	if pathVal := lookupEnvValue(serviceEnv, "PATH"); pathVal != "" {
+		// Keep login-shell behavior, but restore the resolved PATH after
+		// profile scripts run. Verified locally:
+		//   bash -c  'echo $PATH'  -> keeps the injected tool_resolve PATH entries
+		//   bash -lc 'echo $PATH'  -> login startup files reset PATH and drop them
+		// So we prepend an explicit export for PATH before running the command.
+		shellCommand = fmt.Sprintf("export PATH=%s; %s", shellQuote(pathVal), def.Command)
+	}
+	cmd := exec.Command("bash", "-lc", shellCommand)
+	cmd.Dir = workingDir
+	// Match terminal/tool execution behavior so managed services can find
+	// binaries installed in tool_resolve's extra PATH entries.
+	cmd.Env = serviceEnv
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -796,6 +823,11 @@ func validateDefinition(def ServiceDefinition) error {
 	if strings.TrimSpace(def.Command) == "" {
 		return fmt.Errorf("service command is required")
 	}
+	for key := range def.ExtraEnv {
+		if !isValidEnvKey(key) {
+			return fmt.Errorf("invalid environment variable name: %s", key)
+		}
+	}
 	if def.PortForward != nil {
 		if def.PortForward.Port <= 0 || def.PortForward.Port > 65535 {
 			return fmt.Errorf("service port must be between 1 and 65535")
@@ -805,7 +837,10 @@ func validateDefinition(def ServiceDefinition) error {
 }
 
 func definitionChanged(oldDef ServiceDefinition, newDef ServiceDefinition) bool {
-	if oldDef.Name != newDef.Name || oldDef.Command != newDef.Command || oldDef.ProjectDir != newDef.ProjectDir {
+	if oldDef.Name != newDef.Name || oldDef.Command != newDef.Command || oldDef.ProjectDir != newDef.ProjectDir || oldDef.WorkingDir != newDef.WorkingDir {
+		return true
+	}
+	if !stringMapEqual(oldDef.ExtraEnv, newDef.ExtraEnv) {
 		return true
 	}
 
@@ -944,6 +979,132 @@ func normalizeProjectDir(projectDir string) string {
 		return projectDir
 	}
 	return abs
+}
+
+func normalizeWorkingDir(workingDir string) string {
+	workingDir = strings.TrimSpace(workingDir)
+	if workingDir == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			workingDir = strings.TrimSpace(home)
+		}
+		if workingDir == "" {
+			if cwd, err := os.Getwd(); err == nil {
+				workingDir = cwd
+			}
+		}
+	}
+	if workingDir == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(workingDir)
+	if err != nil {
+		return workingDir
+	}
+	return abs
+}
+
+func normalizeExtraEnv(extraEnv map[string]string) map[string]string {
+	if len(extraEnv) == 0 {
+		return nil
+	}
+	normalized := make(map[string]string, len(extraEnv))
+	for key, value := range extraEnv {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		normalized[key] = value
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func buildServiceEnv(def ServiceDefinition) []string {
+	env := tool_resolve.AppendExtraPaths(os.Environ())
+	if len(def.ExtraEnv) == 0 {
+		return env
+	}
+	envMap := make(map[string]string, len(env)+len(def.ExtraEnv))
+	for _, item := range env {
+		if idx := strings.IndexByte(item, '='); idx >= 0 {
+			envMap[item[:idx]] = item[idx+1:]
+		}
+	}
+	for key, value := range def.ExtraEnv {
+		envMap[key] = value
+	}
+	merged := make([]string, 0, len(envMap))
+	for key, value := range envMap {
+		merged = append(merged, fmt.Sprintf("%s=%s", key, value))
+	}
+	return merged
+}
+
+func lookupEnvValue(env []string, key string) string {
+	prefix := key + "="
+	for _, item := range env {
+		if strings.HasPrefix(item, prefix) {
+			return strings.TrimPrefix(item, prefix)
+		}
+	}
+	return ""
+}
+
+func isValidEnvKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	for i, ch := range key {
+		if i == 0 {
+			if ch != '_' && !(ch >= 'A' && ch <= 'Z') && !(ch >= 'a' && ch <= 'z') {
+				return false
+			}
+			continue
+		}
+		if ch != '_' && !(ch >= 'A' && ch <= 'Z') && !(ch >= 'a' && ch <= 'z') && !(ch >= '0' && ch <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
+func stringMapEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, value := range a {
+		if b[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func cloneStringMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]string, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
+}
+
+func shellQuote(s string) string {
+	safe := true
+	for _, c := range s {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '/' || c == '.' || c == '-' || c == '_') {
+			safe = false
+			break
+		}
+	}
+	if safe && s != "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func handleServices(w http.ResponseWriter, r *http.Request) {

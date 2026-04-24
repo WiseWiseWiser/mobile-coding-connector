@@ -137,9 +137,22 @@ func runServerRestart(resolve func() (*client.Client, error), args []string) err
 		return err
 	}
 
-	if result != nil && result.Binary != "" {
-		fmt.Printf("Restart requested with binary: %s\n", result.Binary)
+	if result != nil {
+		if result.KeepAlive != nil {
+			fmt.Printf("Server is back up: PID %d  Uptime %s  Restarts %d\n",
+				result.KeepAlive.ServerPID,
+				displayOrDash(result.KeepAlive.Uptime),
+				result.KeepAlive.RestartCount,
+			)
+			fmt.Printf("Binary: %s\n", displayOrDash(result.KeepAlive.BinaryPath))
+			return nil
+		}
+		if result.Binary != "" {
+			fmt.Printf("Server is back up. Requested binary: %s\n", result.Binary)
+			return nil
+		}
 	}
+	fmt.Println("Server is back up and reachable.")
 	return nil
 }
 

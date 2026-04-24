@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -250,27 +251,31 @@ func GetFullSearchPATH() string {
 	// Get all extra paths
 	extras := AllExtraPaths()
 
-	// First pass: collect all paths into a map to deduplicate
-	pathSet := make(map[string]bool)
+	// First pass: collect paths in first-seen order while deduplicating.
+	seen := make(map[string]bool)
+	var orderedPaths []string
 
 	// Add system PATH entries
 	for _, p := range strings.Split(systemPath, ":") {
 		p = strings.TrimSpace(p)
-		if p != "" {
-			pathSet[p] = true
+		if p != "" && !seen[p] {
+			seen[p] = true
+			orderedPaths = append(orderedPaths, p)
 		}
 	}
 
 	// Add extra paths
 	for _, p := range extras {
 		p = strings.TrimSpace(p)
-		if p != "" {
-			pathSet[p] = true
+		if p != "" && !seen[p] {
+			seen[p] = true
+			orderedPaths = append(orderedPaths, p)
 		}
 	}
 
 	// Second pass: check which directories have node and their versions
 	type dirInfo struct {
+		index       int
 		dir         string
 		nodeVersion string
 		hasNode     bool
@@ -278,9 +283,9 @@ func GetFullSearchPATH() string {
 
 	var dirInfos []dirInfo
 
-	for p := range pathSet {
+	for idx, p := range orderedPaths {
 		nodePath := filepath.Join(p, "node")
-		info := dirInfo{dir: p}
+		info := dirInfo{index: idx, dir: p}
 
 		if isExecutable(nodePath) {
 			info.hasNode = true
@@ -296,27 +301,19 @@ func GetFullSearchPATH() string {
 		dirInfos = append(dirInfos, info)
 	}
 
-	// Sort: directories with higher node versions come first
-	// Directories without node come last (maintaining original order)
-	for i := 0; i < len(dirInfos)-1; i++ {
-		for j := i + 1; j < len(dirInfos); j++ {
-			shouldSwap := false
-
-			// Both have node: higher version comes first
-			if dirInfos[i].hasNode && dirInfos[j].hasNode {
-				if CompareVersions(dirInfos[j].nodeVersion, dirInfos[i].nodeVersion) {
-					shouldSwap = true
-				}
-			} else if !dirInfos[i].hasNode && dirInfos[j].hasNode {
-				// j has node but i doesn't: swap so node dirs come first
-				shouldSwap = true
-			}
-
-			if shouldSwap {
-				dirInfos[i], dirInfos[j] = dirInfos[j], dirInfos[i]
-			}
+	// Sort: directories with higher node versions come first.
+	// For equal priority, preserve the original first-seen order.
+	sort.SliceStable(dirInfos, func(i, j int) bool {
+		left := dirInfos[i]
+		right := dirInfos[j]
+		if left.hasNode != right.hasNode {
+			return left.hasNode
 		}
-	}
+		if left.hasNode && right.hasNode && CompareVersions(left.nodeVersion, right.nodeVersion) != CompareVersions(right.nodeVersion, left.nodeVersion) {
+			return CompareVersions(left.nodeVersion, right.nodeVersion)
+		}
+		return left.index < right.index
+	})
 
 	// Build final PATH
 	var result []string

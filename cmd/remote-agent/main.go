@@ -49,7 +49,19 @@ Commands:
 
   bash [cwd]
       Start an interactive shell on the remote server using the same
-      terminal WebSocket API as the frontend terminal page.
+      terminal WebSocket API as the frontend terminal page. The server-side
+      terminal stays alive after the client disconnects.
+
+  terminal <subcommand> [args...]
+      Manage persistent remote terminal sessions. Subcommands:
+        list
+            List terminal sessions, including exited ones.
+        new [--name NAME]
+            Create a detached terminal session on the server.
+        close <id-or-name>
+            Remove a terminal session from the server.
+        attach <id-or-name>
+            Attach this terminal to an existing remote terminal session.
 
   git <subcommand> [args...]
       Git utilities that run on the remote server. Subcommands:
@@ -111,6 +123,10 @@ Examples:
   remote-agent exec sh -c 'echo hi; sleep 1'
   remote-agent bash
   remote-agent bash ~/work/repo
+  remote-agent terminal list
+  remote-agent terminal new --name Debug
+  remote-agent terminal attach session-1
+  remote-agent terminal close Debug
   remote-agent git clone https://github.com/foo/bar.git
   remote-agent git clone --private-key ~/.ssh/id_rsa git@host:foo/bar.git /tmp/bar
   remote-agent git -C ~/bar fetch --private-key ~/.ssh/id_rsa
@@ -173,6 +189,10 @@ func run(args []string) error {
 		}, rest)
 	case "bash":
 		return runBash(func() (*client.Client, error) {
+			return resolveClient(server, token)
+		}, rest)
+	case "terminal":
+		return runTerminal(func() (*client.Client, error) {
 			return resolveClient(server, token)
 		}, rest)
 	case "git":

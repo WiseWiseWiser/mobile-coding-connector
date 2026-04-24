@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchOwnedDomains } from '../../api/cloudflare';
+import { fetchHomeDir } from '../../api/files';
 import { consumeSSEStream } from '../../api/sse';
 import { deleteService, fetchServices, restartService, saveService, startService, stopService, type ServiceDefinition, type ServiceStatus } from '../../api/services';
 import { streamLogFile } from '../../api/logs';
@@ -18,6 +19,8 @@ interface ServiceFormState {
     id?: string;
     name: string;
     command: string;
+    workingDir: string;
+    extraEnvText: string;
     enablePortForward: boolean;
     port: string;
     label: string;
@@ -26,16 +29,20 @@ interface ServiceFormState {
     subdomain: string;
 }
 
-const DEFAULT_FORM: ServiceFormState = {
-    name: '',
-    command: '',
-    enablePortForward: false,
-    port: '',
-    label: '',
-    provider: TunnelProviders.Localtunnel,
-    baseDomain: '',
-    subdomain: '',
-};
+function createDefaultForm(workingDir = ''): ServiceFormState {
+    return {
+        name: '',
+        command: '',
+        workingDir,
+        extraEnvText: '',
+        enablePortForward: false,
+        port: '',
+        label: '',
+        provider: TunnelProviders.Localtunnel,
+        baseDomain: '',
+        subdomain: '',
+    };
+}
 
 function formatTime(value?: string): string {
     if (!value) return '';
@@ -52,11 +59,44 @@ function appendLogLine<T>(lines: T[], next: T, max = 300): T[] {
     return merged.slice(merged.length - max);
 }
 
+function stringifyEnvMap(env?: Record<string, string>): string {
+    if (!env || Object.keys(env).length === 0) return '';
+    return Object.entries(env)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+}
+
+function parseEnvText(value: string): { env?: Record<string, string>; error?: string } {
+    const lines = value.split(/\r?\n/);
+    const env: Record<string, string> = {};
+    for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i].trim();
+        if (!line || line.startsWith('#')) continue;
+        const idx = line.indexOf('=');
+        if (idx <= 0) {
+            return { error: `Invalid env on line ${i + 1}. Use KEY=VALUE.` };
+        }
+        const key = line.slice(0, idx).trim();
+        const envValue = line.slice(idx + 1);
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+            return { error: `Invalid env name on line ${i + 1}: ${key}` };
+        }
+        env[key] = envValue;
+    }
+    if (Object.keys(env).length === 0) {
+        return {};
+    }
+    return { env };
+}
+
 function toFormState(service: ServiceStatus): ServiceFormState {
     return {
         id: service.id,
         name: service.name,
         command: service.command,
+        workingDir: service.workingDir || '',
+        extraEnvText: stringifyEnvMap(service.extraEnv),
         enablePortForward: !!service.portForward,
         port: service.portForward?.port ? String(service.portForward.port) : '',
         label: service.portForward?.label || '',
@@ -68,13 +108,14 @@ function toFormState(service: ServiceStatus): ServiceFormState {
 
 export function ServicesSection({ availableProviders }: ServicesSectionProps) {
     const { projectDir } = useProjectDir();
+    const [homeDir, setHomeDir] = useState('');
     const [services, setServices] = useState<ServiceStatus[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
     const [showForm, setShowForm] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [form, setForm] = useState<ServiceFormState>(DEFAULT_FORM);
+    const [form, setForm] = useState<ServiceFormState>(createDefaultForm());
     const [deleteTarget, setDeleteTarget] = useState<ServiceStatus | null>(null);
 
     const providerButtons = useMemo(
@@ -101,16 +142,29 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
         return () => clearInterval(timer);
     }, [projectDir]);
 
+    useEffect(() => {
+        fetchHomeDir()
+            .then((dir) => setHomeDir(dir))
+            .catch(() => {});
+    }, []);
+
     const resetForm = () => {
-        setForm(DEFAULT_FORM);
+        setForm(createDefaultForm(homeDir));
         setShowForm(false);
     };
 
     const handleSave = async () => {
         const name = form.name.trim();
         const command = form.command.trim();
+        const workingDir = form.workingDir.trim();
         if (!name || !command) {
             setActionError('Name and command are required.');
+            return;
+        }
+
+        const parsedEnv = parseEnvText(form.extraEnvText);
+        if (parsedEnv.error) {
+            setActionError(parsedEnv.error);
             return;
         }
 
@@ -138,6 +192,8 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                 name,
                 command,
                 projectDir: projectDir || undefined,
+                workingDir: workingDir || undefined,
+                extraEnv: parsedEnv.env,
                 portForward,
             });
             await refreshServices();
@@ -217,6 +273,26 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                                     onChange={(e) => setForm((prev) => ({ ...prev, command: e.target.value }))}
                                 />
                             </div>
+                            <div className="mcc-form-field">
+                                <label>Working Dir</label>
+                                <input
+                                    type="text"
+                                    placeholder={homeDir || '/home/user'}
+                                    value={form.workingDir}
+                                    onChange={(e) => setForm((prev) => ({ ...prev, workingDir: e.target.value }))}
+                                />
+                            </div>
+                            <div className="mcc-form-field">
+                                <label>Extra Env</label>
+                                <textarea
+                                    className="mcc-service-env-input"
+                                    placeholder={'NODE_ENV=development\nPORT=3000'}
+                                    value={form.extraEnvText}
+                                    onChange={(e) => setForm((prev) => ({ ...prev, extraEnvText: e.target.value }))}
+                                    rows={5}
+                                />
+                                <div className="mcc-service-field-hint">One <code>KEY=VALUE</code> entry per line.</div>
+                            </div>
                         </div>
 
                         <button
@@ -294,7 +370,7 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                     <button
                         className="mcc-add-port-btn"
                         onClick={() => {
-                            setForm(DEFAULT_FORM);
+                            setForm(createDefaultForm(homeDir));
                             setShowForm(true);
                         }}
                     >
@@ -389,7 +465,19 @@ function ServiceCard({ service, onEdit, onStart, onStop, onRestart, onDelete }: 
 
             <div className="mcc-service-meta">
                 <span>PID: {service.pid || 'n/a'}</span>
-                <span>Dir: {service.projectDir || 'server default'}</span>
+                <span>Scope: {service.projectDir || 'all projects'}</span>
+                <span>Working Dir: {service.workingDir || 'home dir'}</span>
+            </div>
+
+            <div className="mcc-service-env-block">
+                <div className="mcc-service-env-title">Effective PATH</div>
+                <div className="mcc-service-env-value">{service.effectivePath || 'Unavailable'}</div>
+                {service.extraEnv && Object.keys(service.extraEnv).length > 0 && (
+                    <>
+                        <div className="mcc-service-env-title">Extra Env</div>
+                        <div className="mcc-service-env-value">{stringifyEnvMap(service.extraEnv)}</div>
+                    </>
+                )}
             </div>
 
             {service.portForward ? (

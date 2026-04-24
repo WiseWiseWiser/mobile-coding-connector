@@ -1437,6 +1437,36 @@ a.mcc-tunnel-mapping-hostname:hover {
     font-size: 12px;
 }
 
+.mcc-service-env-block {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    background: rgba(15, 23, 42, 0.45);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 10px;
+}
+
+.mcc-service-env-title {
+    margin-bottom: 6px;
+    color: #94a3b8;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.mcc-service-env-title:not(:first-child) {
+    margin-top: 10px;
+}
+
+.mcc-service-env-value {
+    color: #cbd5e1;
+    font-size: 12px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 .mcc-service-forward {
     margin-bottom: 12px;
     padding: 10px 12px;
@@ -1732,8 +1762,39 @@ a.mcc-tunnel-mapping-hostname:hover {
     border-color: #60a5fa;
 }
 
+.mcc-form-field textarea {
+    width: 100%;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #f1f5f9;
+    font-size: 14px;
+    resize: vertical;
+    min-height: 108px;
+}
+
+.mcc-form-field textarea:focus {
+    outline: none;
+    border-color: #60a5fa;
+}
+
 .mcc-form-field input::placeholder {
     color: #64748b;
+}
+
+.mcc-form-field textarea::placeholder {
+    color: #64748b;
+}
+
+.mcc-service-field-hint {
+    margin-top: 6px;
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.mcc-service-env-input {
+    font-family: 'Monaco', 'Menlo', monospace;
 }
 
 /* Provider selector */

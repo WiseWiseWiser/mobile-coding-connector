@@ -23,7 +23,8 @@ import (
 const bashHelp = `Usage: remote-agent bash [--name <name>] [cwd]
 
 Start an interactive shell on the remote server using the same terminal
-WebSocket API as the frontend terminal page.
+WebSocket API as the frontend terminal page. Disconnecting this client does
+not close the server-side terminal session.
 
 Arguments:
   cwd                  Optional working directory on the remote server.
@@ -50,6 +51,13 @@ type terminalServerMessage struct {
 	SessionID string `json:"session_id,omitempty"`
 }
 
+type terminalConnectOptions struct {
+	sessionID      string
+	name           string
+	cwd            string
+	attachSnapshot bool
+}
+
 type wsWriter struct {
 	conn *websocket.Conn
 	mu   sync.Mutex
@@ -69,10 +77,10 @@ func (w *wsWriter) writeJSON(v any) error {
 	return w.writeMessage(websocket.TextMessage, data)
 }
 
-func (w *wsWriter) closeDelete() error {
+func (w *wsWriter) close(code int) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	msg := websocket.FormatCloseMessage(4000, "")
+	msg := websocket.FormatCloseMessage(code, "")
 	return w.conn.WriteControl(websocket.CloseMessage, msg, noDeadline())
 }
 
@@ -92,12 +100,19 @@ func runBash(resolve func() (*client.Client, error), args []string) error {
 		return fmt.Errorf("remote-agent bash requires an interactive terminal on stdin/stdout")
 	}
 
+	return runTerminalSession(resolve, terminalConnectOptions{
+		name: firstArgOr(name, "Terminal"),
+		cwd:  firstArg(args),
+	})
+}
+
+func runTerminalSession(resolve func() (*client.Client, error), opts terminalConnectOptions) error {
 	cli, err := resolve()
 	if err != nil {
 		return err
 	}
 
-	wsURL, err := terminalWebSocketURL(cli, name, firstArg(args))
+	wsURL, err := terminalWebSocketURL(cli, opts)
 	if err != nil {
 		return err
 	}
@@ -154,11 +169,11 @@ func runBash(resolve func() (*client.Client, error), args []string) error {
 		}
 	}
 
-	_ = writer.closeDelete()
+	_ = writer.close(websocket.CloseNormalClosure)
 	return runErr
 }
 
-func terminalWebSocketURL(cli *client.Client, name string, cwd string) (string, error) {
+func terminalWebSocketURL(cli *client.Client, opts terminalConnectOptions) (string, error) {
 	base, err := url.Parse(cli.Server)
 	if err != nil {
 		return "", fmt.Errorf("invalid server url %q: %w", cli.Server, err)
@@ -173,11 +188,17 @@ func terminalWebSocketURL(cli *client.Client, name string, cwd string) (string, 
 	}
 	base.Path = "/api/terminal"
 	q := base.Query()
-	if strings.TrimSpace(name) != "" {
-		q.Set("name", name)
+	if strings.TrimSpace(opts.sessionID) != "" {
+		q.Set("session_id", opts.sessionID)
 	}
-	if strings.TrimSpace(cwd) != "" {
-		q.Set("cwd", cwd)
+	if opts.attachSnapshot {
+		q.Set("attach_mode", "screen")
+	}
+	if strings.TrimSpace(opts.name) != "" {
+		q.Set("name", opts.name)
+	}
+	if strings.TrimSpace(opts.cwd) != "" {
+		q.Set("cwd", opts.cwd)
 	}
 	base.RawQuery = q.Encode()
 	return base.String(), nil
@@ -295,6 +316,13 @@ func firstArg(args []string) string {
 		return ""
 	}
 	return args[0]
+}
+
+func firstArgOr(v string, fallback string) string {
+	if strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	return v
 }
 
 func noDeadline() time.Time {

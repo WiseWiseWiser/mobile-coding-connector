@@ -18,6 +18,9 @@ export interface ServiceStatus {
     name: string;
     command: string;
     projectDir?: string;
+    workingDir?: string;
+    extraEnv?: Record<string, string>;
+    effectivePath?: string;
     logPath: string;
     status: 'starting' | 'running' | 'stopped' | 'error';
     pid: number;
@@ -33,6 +36,8 @@ export interface ServiceDefinition {
     name: string;
     command: string;
     projectDir?: string;
+    workingDir?: string;
+    extraEnv?: Record<string, string>;
     portForward?: ServicePortForward;
 }
 
