@@ -2,15 +2,21 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"strings"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/custom"
+	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
 )
 
 type launchCustomAgentRequest struct {
 	ProjectDir string `json:"projectDir"`
+	SessionID  string `json:"sessionId,omitempty"`
 }
 
 type launchCustomAgentResponse struct {
@@ -32,7 +38,7 @@ func handleLaunchCustomAgent(w http.ResponseWriter, r *http.Request, agentID str
 		return
 	}
 
-	result, err := agents.LaunchCustomAgent(agentID, req.ProjectDir)
+	result, err := agents.LaunchCustomAgent(agentID, req.ProjectDir, req.SessionID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -96,4 +102,37 @@ func handleCustomAgentSessionByID(w http.ResponseWriter, r *http.Request, sessio
 
 	_ = agents.StopCustomAgentSession(sessionID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func handleCustomAgentSessionProxy(w http.ResponseWriter, r *http.Request, sessionID string, rest string) {
+	session := agents.GetRunningCustomAgentSession(sessionID)
+	if session == nil {
+		http.Error(w, "session is not running", http.StatusNotFound)
+		return
+	}
+
+	restPath := "/"
+	rest = strings.TrimPrefix(rest, "/")
+	if rest != "" {
+		restPath = "/" + rest
+	}
+
+	r.URL.Path = restPath
+	r.URL.RawPath = ""
+
+	if restPath == "/event" || restPath == "/global/event" {
+		opencode_exposed.ProxySSE(w, r, session.Port)
+		return
+	}
+	if strings.Contains(restPath, "/message") && r.Method == http.MethodGet {
+		opencode_exposed.ProxyMessages(w, r, session.Port)
+		return
+	}
+
+	targetURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", session.Port))
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		http.Error(w, fmt.Sprintf("proxy error: %v", err), http.StatusBadGateway)
+	}
+	proxy.ServeHTTP(w, r)
 }

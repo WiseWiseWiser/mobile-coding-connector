@@ -9,7 +9,7 @@ const NavTabs = {
     Home: 'home',
     Agent: 'agent',
     Terminal: 'terminal',
-    Network: 'network',
+    Service: 'service',
     Files: 'files',
 } as const;
 
@@ -261,7 +261,7 @@ export function MobileCodingConnector() {
                         onSubmit={handleTerminalSubmit}
                     />
                 );
-            case NavTabs.Network:
+            case NavTabs.Service:
                 return (
                     <PortForwardingView
                         ports={mockPortForwards}
@@ -326,9 +326,9 @@ export function MobileCodingConnector() {
                 />
                 <NavButton
                     icon={<PortsIcon />}
-                    label="Network"
-                    active={activeTab === NavTabs.Network}
-                    onClick={() => handleTabChange(NavTabs.Network)}
+                    label="Services"
+                    active={activeTab === NavTabs.Service}
+                    onClick={() => handleTabChange(NavTabs.Service)}
                 />
                 <NavButton
                     icon={<FilesIcon />}

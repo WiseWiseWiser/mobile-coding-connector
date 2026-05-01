@@ -35,6 +35,8 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
@@ -81,6 +83,8 @@ var execWSUpgrader = websocket.Upgrader{
 		return true
 	},
 }
+
+const execClientDisconnectGracePeriod = 500 * time.Millisecond
 
 // RegisterAPI registers the /api/exec endpoint.
 func RegisterAPI(mux *http.ServeMux) {
@@ -232,13 +236,13 @@ func handleExecWebSocket(w http.ResponseWriter, r *http.Request) {
 	case waitErr := <-waitErrCh:
 		exitCode, err := execExitCode(waitErr)
 		if err != nil {
-			_ = writer.writeJSON(map[string]any{"type": "error", "message": fmt.Sprintf("wait: %v", err)})
+			sendExecWSResult(writer, stdinErrCh, map[string]any{"type": "error", "message": fmt.Sprintf("wait: %v", err)})
 			return
 		}
 		if outputErr := <-outputErrCh; outputErr != nil {
 			return
 		}
-		_ = writer.writeJSON(map[string]any{"type": "exit", "code": exitCode})
+		sendExecWSResult(writer, stdinErrCh, map[string]any{"type": "exit", "code": exitCode})
 	case <-stdinErrCh:
 		killProcess(ctxCmd)
 		<-waitErrCh
@@ -247,10 +251,10 @@ func handleExecWebSocket(w http.ResponseWriter, r *http.Request) {
 			waitErr := <-waitErrCh
 			exitCode, exitErr := execExitCode(waitErr)
 			if exitErr != nil {
-				_ = writer.writeJSON(map[string]any{"type": "error", "message": fmt.Sprintf("wait: %v", exitErr)})
+				sendExecWSResult(writer, stdinErrCh, map[string]any{"type": "error", "message": fmt.Sprintf("wait: %v", exitErr)})
 				return
 			}
-			_ = writer.writeJSON(map[string]any{"type": "exit", "code": exitCode})
+			sendExecWSResult(writer, stdinErrCh, map[string]any{"type": "exit", "code": exitCode})
 			return
 		}
 		killProcess(ctxCmd)
@@ -336,12 +340,25 @@ func pumpExecPTY(ptmx *os.File, writer *wsConnWriter) error {
 			}
 		}
 		if err != nil {
-			if err == io.EOF {
+			if isExpectedPTYClose(err) {
 				return nil
 			}
 			return err
 		}
 	}
+}
+
+func isExpectedPTYClose(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, os.ErrClosed) {
+		return true
+	}
+	// On Linux PTYs commonly report EIO when the slave side closes after the
+	// child process exits. Treat that the same as EOF so we can still emit the
+	// final exit status to the client.
+	return errors.Is(err, syscall.EIO)
 }
 
 func execExitCode(waitErr error) (int, error) {
@@ -360,6 +377,20 @@ func killProcess(cmd *exec.Cmd) {
 		return
 	}
 	_ = cmd.Process.Kill()
+}
+
+func sendExecWSResult(writer *wsConnWriter, stdinErrCh <-chan error, payload map[string]any) {
+	_ = writer.writeJSON(payload)
+	waitForExecClientDisconnect(stdinErrCh, execClientDisconnectGracePeriod)
+}
+
+func waitForExecClientDisconnect(stdinErrCh <-chan error, timeout time.Duration) {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-stdinErrCh:
+	case <-timer.C:
+	}
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {

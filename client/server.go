@@ -3,11 +3,13 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type KeepAlivePing struct {
@@ -103,6 +105,7 @@ type RestartServerResult struct {
 	Binary    string
 	Directory string
 	Message   string
+	KeepAlive *KeepAliveStatus
 }
 
 func (c *Client) PingKeepAlive() (*KeepAlivePing, error) {
@@ -161,17 +164,62 @@ func (c *Client) BuildNext(projectID string, handler func(ServerStreamEvent)) (*
 }
 
 func (c *Client) RestartServer(handler func(ServerStreamEvent)) (*RestartServerResult, error) {
+	req, err := c.NewRequest(http.MethodPost, "/api/server/exec-restart", bytes.NewReader([]byte(`{}`)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, readAPIError(resp)
+	}
+
 	var result *RestartServerResult
-	err := c.postSSEJSON("/api/server/exec-restart", map[string]any{}, handler, func(ev ServerStreamEvent) error {
+	var streamErr error
+	var sawDone bool
+	var restartTransitionReached bool
+	var connectionClosedAfterRestart bool
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		payload := strings.TrimPrefix(line, "data: ")
+		var ev ServerStreamEvent
+		if err := json.Unmarshal([]byte(payload), &ev); err != nil {
+			return nil, fmt.Errorf("decode stream event: %w", err)
+		}
+		if handler != nil {
+			handler(ev)
+		}
+		if isRestartTransitionEvent(ev) {
+			restartTransitionReached = true
+		}
+
 		switch ev.Type {
 		case "error":
 			if ev.Message == "" {
-				return fmt.Errorf("server restart failed")
+				streamErr = fmt.Errorf("server restart failed")
+				break
 			}
-			return errors.New(ev.Message)
+			streamErr = errors.New(ev.Message)
 		case "done":
+			sawDone = true
 			if ev.Success == "false" {
-				return errors.New(defaultStreamError(ev.Message, "server restart failed"))
+				streamErr = errors.New(defaultStreamError(ev.Message, "server restart failed"))
+				break
 			}
 			result = &RestartServerResult{
 				Binary:    ev.Binary,
@@ -179,12 +227,127 @@ func (c *Client) RestartServer(handler func(ServerStreamEvent)) (*RestartServerR
 				Message:   ev.Message,
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		if streamErr != nil {
+			break
+		}
 	}
+
+	if streamErr == nil {
+		if err := scanner.Err(); err != nil {
+			if !restartTransitionReached {
+				return nil, fmt.Errorf("read stream: %w", err)
+			}
+			connectionClosedAfterRestart = true
+			emitServerStreamLog(handler, "Connection closed while server restarts; waiting for server to come back...")
+		}
+	}
+
+	if streamErr != nil {
+		return nil, streamErr
+	}
+	if !sawDone && !restartTransitionReached {
+		return nil, fmt.Errorf("stream ended without completion event")
+	}
+	if result == nil {
+		result = &RestartServerResult{
+			Message: "Server restart in progress",
+		}
+	}
+	if restartTransitionReached && !connectionClosedAfterRestart {
+		emitServerStreamLog(handler, "Waiting for server to come back...")
+	}
+
+	if err := c.waitForServerReachable(75*time.Second, 1500*time.Millisecond); err != nil {
+		return result, err
+	}
+
+	result.KeepAlive = c.getKeepAliveStatusBestEffort()
 	return result, nil
+}
+
+func isRestartTransitionEvent(ev ServerStreamEvent) bool {
+	if ev.Type == "done" && ev.Success != "false" {
+		return true
+	}
+	if ev.Type != "log" {
+		return false
+	}
+	switch ev.Message {
+	case "Preparing to exec...",
+		"Initiating graceful shutdown (30s max)...",
+		"Graceful shutdown completed",
+		"Graceful shutdown timeout reached, proceeding with restart":
+		return true
+	default:
+		return false
+	}
+}
+
+func emitServerStreamLog(handler func(ServerStreamEvent), message string) {
+	if handler == nil || strings.TrimSpace(message) == "" {
+		return
+	}
+	handler(ServerStreamEvent{
+		Type:    "log",
+		Message: message,
+	})
+}
+
+func (c *Client) waitForServerReachable(timeout time.Duration, interval time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+
+	for {
+		if err := c.checkAuthWithTimeout(3 * time.Second); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(interval)
+	}
+
+	if lastErr == nil {
+		return fmt.Errorf("server restart acknowledged, but the server did not become reachable within %v", timeout)
+	}
+	return fmt.Errorf("server restart acknowledged, but the server did not become reachable within %v: %w", timeout, lastErr)
+}
+
+func (c *Client) checkAuthWithTimeout(timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	req, err := c.NewRequest(http.MethodGet, "/api/auth/check", nil)
+	if err != nil {
+		return err
+	}
+	req = req.WithContext(ctx)
+
+	resp, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return readAPIError(resp)
+	}
+	return nil
+}
+
+func (c *Client) getKeepAliveStatusBestEffort() *KeepAliveStatus {
+	ping, err := c.PingKeepAlive()
+	if err != nil || !ping.Running {
+		return nil
+	}
+	status, err := c.GetKeepAliveStatus()
+	if err != nil {
+		return nil
+	}
+	return status
 }
 
 func (c *Client) postSSEJSON(path string, body any, handler func(ServerStreamEvent), onEvent func(ServerStreamEvent) error) error {

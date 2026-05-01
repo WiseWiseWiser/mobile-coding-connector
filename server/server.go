@@ -50,6 +50,7 @@ import (
 	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward/providers/localtunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/proxyconfig"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/services"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sshservers"
@@ -99,30 +100,6 @@ func IsQuickTestMode() bool {
 
 func GetQuickTestQuitChan() <-chan struct{} {
 	return quickTestQuitChan
-}
-
-func RunBackgroundTasks() {
-	fmt.Printf("[auto-task] Running background tasks\n")
-	opencode_exposed.StartHealthCheck()
-	unified_tunnel.StartGlobalHealthChecks()
-}
-
-func RunStartupTasks() {
-	fmt.Printf("[auto-task] Running startup tasks\n")
-	domains.AutoStartTunnels()
-	opencode_exposed.AutoStartWebServer()
-
-	go func() {
-		time.Sleep(2 * time.Second)
-		domains.InitDomainTunnels()
-		exposedurls.InitExposedURLTunnels()
-	}()
-}
-
-func RunSideEffectTasks() {
-	fmt.Printf("[auto-task] Running side effect tasks\n")
-	RunBackgroundTasks()
-	RunStartupTasks()
 }
 
 func Init(fs embed.FS, tmpl string) {
@@ -312,6 +289,10 @@ func Serve(port int, dev bool) error {
 				fmt.Printf("Stopping port forward for port %d...\n", pf.LocalPort)
 				pfManager.Remove(pf.LocalPort)
 			}
+
+			// Stop managed services
+			fmt.Println("Stopping managed services...")
+			services.Shutdown()
 
 			// Stop all managed subprocesses
 			fmt.Println("Stopping all managed subprocesses...")
@@ -535,6 +516,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Features API
 	features.RegisterAPI(mux)
+
+	// Services API
+	services.RegisterAPI(mux)
 
 	// Server status API
 	RegisterServerStatusAPI(mux)

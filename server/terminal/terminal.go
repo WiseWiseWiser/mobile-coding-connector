@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -46,6 +45,7 @@ type SessionInfo struct {
 	Name      string `json:"name"`
 	Cwd       string `json:"cwd"`
 	CreatedAt string `json:"created_at"`
+	Status    string `json:"status"`
 	// Connected is true when a WebSocket client is currently attached
 	Connected bool `json:"connected"`
 }
@@ -68,11 +68,16 @@ type session struct {
 
 	cmd  *exec.Cmd
 	ptmx *os.File
+	cols int
+	rows int
 
 	mu         sync.Mutex
 	scrollback []byte // ring buffer of recent output
 	conn       *websocket.Conn
 	done       chan struct{} // closed when pty exits
+	exited     bool
+	closeOnce  sync.Once
+	waitOnce   sync.Once
 }
 
 // sessionManager keeps track of all active terminal sessions
@@ -184,6 +189,8 @@ func (m *sessionManager) create(name, cwd string) (*session, error) {
 		createdAt: time.Now(),
 		cmd:       cmd,
 		ptmx:      ptmx,
+		cols:      80,
+		rows:      24,
 		done:      make(chan struct{}),
 	}
 
@@ -240,6 +247,8 @@ func (m *sessionManager) createSSH(name, host string, port int, user, sshKeyPath
 		createdAt: time.Now(),
 		cmd:       cmd,
 		ptmx:      ptmx,
+		cols:      80,
+		rows:      24,
 		done:      make(chan struct{}),
 	}
 
@@ -305,6 +314,7 @@ func (m *sessionManager) listPaginated(page, pageSize int) *TerminalSessionsResp
 			Name:      s.name,
 			Cwd:       s.cwd,
 			CreatedAt: s.createdAt.Format(time.RFC3339),
+			Status:    s.status(),
 			Connected: s.conn != nil,
 		}
 		s.mu.Unlock()
@@ -357,14 +367,16 @@ func (s *session) readLoop() {
 			}
 		}
 		if err != nil {
-			if err != io.EOF {
-				// Terminal exited unexpectedly; notify attached client
-				s.mu.Lock()
-				ws := s.conn
-				s.mu.Unlock()
-				if ws != nil {
-					ws.WriteMessage(websocket.TextMessage, []byte("\r\n[Terminal exited]"))
-				}
+			s.markExited()
+			s.appendExitMarker()
+			s.wait()
+
+			// Notify an attached client that the session has finished.
+			s.mu.Lock()
+			ws := s.conn
+			s.mu.Unlock()
+			if ws != nil {
+				ws.WriteMessage(websocket.TextMessage, []byte("\r\n[Terminal exited]"))
 			}
 			return
 		}
@@ -429,35 +441,65 @@ func stripAlternateScreenPairs(data []byte) []byte {
 	return data
 }
 
-func (s *session) attach(conn *websocket.Conn) {
+func (s *session) snapshotInput() ([]byte, int, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	scrollbackCopy := make([]byte, len(s.scrollback))
+	copy(scrollbackCopy, s.scrollback)
+
+	cols := s.cols
+	rows := s.rows
+	if cols <= 0 {
+		cols = 80
+	}
+	if rows <= 0 {
+		rows = 24
+	}
+	return scrollbackCopy, cols, rows
+}
+
+func (s *session) setSize(cols, rows int) {
+	s.mu.Lock()
+	s.cols = cols
+	s.rows = rows
+	s.mu.Unlock()
+}
+
+func (s *session) attach(conn *websocket.Conn, attachMode string) {
 	s.mu.Lock()
 	// Detach previous connection if any
 	if s.conn != nil {
 		s.conn.Close()
 	}
 	s.conn = conn
-	// Replay scrollback to the new client
-	if len(s.scrollback) > 0 {
-		scrollbackCopy := make([]byte, len(s.scrollback))
-		copy(scrollbackCopy, s.scrollback)
-		s.mu.Unlock()
+	s.mu.Unlock()
 
-		altScreenActive := isAlternateScreenActive(scrollbackCopy)
-		if !altScreenActive {
-			// No TUI running — send terminal reset to clear any stale alternate screen state
-			// ESC[?1049l = exit alternate screen buffer
-			// ESC[0m = reset all attributes
-			conn.WriteMessage(websocket.BinaryMessage, []byte("\x1b[?1049l\x1b[0m"))
-			// Strip completed alternate screen pairs and terminal queries
-			scrollbackCopy = stripAlternateScreenPairs(scrollbackCopy)
-			scrollbackCopy = stripTerminalQueries(scrollbackCopy)
-		}
-		// If alt screen is active (TUI still running), replay scrollback as-is
-		// so the TUI can redraw itself
-		conn.WriteMessage(websocket.BinaryMessage, scrollbackCopy)
-	} else {
-		s.mu.Unlock()
+	scrollbackCopy, cols, rows := s.snapshotInput()
+	if len(scrollbackCopy) == 0 {
+		return
 	}
+
+	if attachMode == "screen" {
+		if snapshot, ok := renderScreenSnapshot(scrollbackCopy, cols, rows); ok {
+			conn.WriteMessage(websocket.BinaryMessage, snapshot)
+			return
+		}
+	}
+
+	altScreenActive := isAlternateScreenActive(scrollbackCopy)
+	if !altScreenActive {
+		// No TUI running — send terminal reset to clear any stale alternate screen state
+		// ESC[?1049l = exit alternate screen buffer
+		// ESC[0m = reset all attributes
+		conn.WriteMessage(websocket.BinaryMessage, []byte("\x1b[?1049l\x1b[0m"))
+		// Strip completed alternate screen pairs and terminal queries
+		scrollbackCopy = stripAlternateScreenPairs(scrollbackCopy)
+		scrollbackCopy = stripTerminalQueries(scrollbackCopy)
+	}
+	// If alt screen is active (TUI still running), replay scrollback as-is
+	// so the TUI can redraw itself
+	conn.WriteMessage(websocket.BinaryMessage, scrollbackCopy)
 }
 
 func (s *session) detach(conn *websocket.Conn) {
@@ -469,16 +511,58 @@ func (s *session) detach(conn *websocket.Conn) {
 	}
 }
 
-func (s *session) close() {
-	s.mu.Lock()
-	if s.conn != nil {
-		s.conn.Close()
-		s.conn = nil
+func (s *session) status() string {
+	if s.exited {
+		return "exited"
 	}
+	return "running"
+}
+
+func (s *session) markExited() {
+	s.mu.Lock()
+	s.exited = true
 	s.mu.Unlock()
-	s.ptmx.Close()
-	s.cmd.Process.Kill()
-	s.cmd.Wait()
+}
+
+func (s *session) appendExitMarker() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	exitMarker := []byte("\r\n[Terminal exited]")
+	if bytes.HasSuffix(s.scrollback, exitMarker) {
+		return
+	}
+	s.scrollback = append(s.scrollback, exitMarker...)
+	if len(s.scrollback) > maxScrollback {
+		s.scrollback = s.scrollback[len(s.scrollback)-maxScrollback:]
+	}
+}
+
+func (s *session) wait() {
+	s.waitOnce.Do(func() {
+		if s.cmd != nil {
+			s.cmd.Wait()
+		}
+	})
+}
+
+func (s *session) close() {
+	s.closeOnce.Do(func() {
+		s.mu.Lock()
+		if s.conn != nil {
+			s.conn.Close()
+			s.conn = nil
+		}
+		s.mu.Unlock()
+
+		if s.ptmx != nil {
+			s.ptmx.Close()
+		}
+		if s.cmd != nil && s.cmd.Process != nil && s.cmd.ProcessState == nil {
+			s.cmd.Process.Kill()
+		}
+		s.wait()
+	})
 }
 
 // replaceLoginWithRCFile replaces --login in shell flags with --rcfile <path>.
@@ -512,6 +596,7 @@ func handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.URL.Query().Get("session_id")
 	cwd := r.URL.Query().Get("cwd")
 	name := r.URL.Query().Get("name")
+	attachMode := r.URL.Query().Get("attach_mode")
 	if name == "" {
 		name = "Terminal"
 	}
@@ -631,7 +716,7 @@ func handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Attach this WebSocket to the session
-	s.attach(conn)
+	s.attach(conn, attachMode)
 
 	// Read from WebSocket and write to PTY.
 	// When the WS closes, this loop exits and we detach.
@@ -666,6 +751,7 @@ func handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 								Rows: uint16(msg.Rows),
 								Cols: uint16(msg.Cols),
 							})
+							s.setSize(msg.Cols, msg.Rows)
 						}
 						continue
 					case "close_delete":
@@ -684,8 +770,8 @@ func handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Wait for the session to end or the connection to close
 	select {
 	case <-s.done:
-		// PTY exited, remove session
-		manager.remove(s.id)
+		// PTY exited; keep the session record so users can inspect or close it explicitly.
+		s.detach(conn)
 		conn.Close()
 	case result := <-wsCloseCh:
 		// Close code 4000 = client requests session deletion (e.g., React StrictMode cleanup).
