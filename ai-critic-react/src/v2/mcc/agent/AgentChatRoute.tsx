@@ -80,6 +80,7 @@ export function AgentChatRoute() {
                         onStopAgent={ctx.onStopAgent}
                         onConfigureAgent={(aid) => ctx.navigateToView(`${aid}/settings`)}
                         onNavigateToView={ctx.navigateToView}
+                        onOpenWebUI={(aid) => ctx.navigateToView(`${aid}-web`)}
                         externalSessions={ctx.externalSessions}
                     />
                 );
@@ -159,6 +160,7 @@ export function AgentChatRoute() {
                 onStopAgent={ctx.onStopAgent}
                 onConfigureAgent={(aid) => ctx.navigateToView(`${aid}/settings`)}
                 onNavigateToView={ctx.navigateToView}
+                onOpenWebUI={(aid) => ctx.navigateToView(`${aid}-web`)}
                 externalSessions={ctx.externalSessions}
             />
         );

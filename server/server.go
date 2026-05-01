@@ -25,10 +25,9 @@ import (
 	"github.com/xhd2015/kool/pkgs/web"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/actions"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
-	customagentapi "github.com/xhd2015/lifelog-private/ai-critic/server/api"
 	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/web/codexweb"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/web/cursorweb"
+	customagentapi "github.com/xhd2015/lifelog-private/ai-critic/server/api"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/checkpoint"
 	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
@@ -560,9 +559,6 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Build from source API
 	registerBuildAPI(mux)
-
-	// Codex Web API
-	codexweb.RegisterRoutes(mux)
 
 	// Cursor Web API
 	cursorweb.RegisterRoutes(mux)

@@ -18,6 +18,7 @@ import './AgentView.css';
 
 export interface AgentOutletContext {
     projectName: string | null;
+    projectDir: string | null;
     agents: AgentDef[];
     agentsLoading: boolean;
     sessions: Record<string, AgentSessionInfo>;
@@ -136,6 +137,7 @@ export function AgentLayout() {
 
     const ctx: AgentOutletContext = {
         projectName,
+        projectDir,
         agents,
         agentsLoading,
         sessions,

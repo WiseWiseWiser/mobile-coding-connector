@@ -25,9 +25,9 @@ export function ExperimentalView() {
                         <BeakerIcon />
                     </div>
                     <div className="mcc-experimental-card-content">
-                        <h3>Codex Web</h3>
+                        <h3>Codex</h3>
                         <p>
-                            Web interface for OpenAI Codex CLI. Run Codex commands through a web UI.
+                            Native WebSocket interface for OpenAI Codex CLI JSON streams.
                         </p>
                         <span className="mcc-experimental-status mcc-experimental-status-active">Click to Open</span>
                     </div>
