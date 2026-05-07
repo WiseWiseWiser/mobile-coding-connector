@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -671,6 +672,7 @@ func (r *codexActiveRun) runCodex(ctx context.Context, cmdPath, projectDir, prom
 	cmd := exec.CommandContext(ctx, cmdPath, args...)
 	cmd.Dir = projectDir
 	cmd.Env = tool_resolve.AppendExtraPaths(append(os.Environ(), "TERM=xterm-256color"))
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -776,18 +778,17 @@ func buildCodexExecArgs(projectDir, sessionID string, msg codexWSClientMessage) 
 	if sandbox == "" {
 		sandbox = "danger-full-access"
 	}
-	approval := strings.TrimSpace(msg.ApprovalPolicy)
-	if approval == "" {
-		approval = "never"
-	}
 
 	args := []string{
 		"exec",
 		"--json",
 		"--skip-git-repo-check",
 		"--cd", projectDir,
-		"--ask-for-approval", approval,
-		"--sandbox", sandbox,
+	}
+	if sandbox == "danger-full-access" {
+		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+	} else {
+		args = append(args, "--sandbox", sandbox)
 	}
 	if model != "" {
 		args = append(args, "--model", model)
@@ -987,6 +988,9 @@ func (r *codexActiveRun) cancelRun() {
 		cancel()
 	}
 	if cmd != nil && cmd.Process != nil {
+		if cmd.Process.Pid > 0 {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
 		_ = cmd.Process.Kill()
 	}
 }
