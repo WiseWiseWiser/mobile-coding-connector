@@ -7,7 +7,7 @@ import { fetchDomains } from '../../../../api/domains';
 import { fetchCloudflareStatus } from '../../../../api/cloudflare';
 import { fetchTerminalConfig } from '../../../../api/terminalConfig';
 import { fetchOpencodeAuthStatus, type OpencodeAuthStatus } from '../../../../api/agents';
-import { loadSSHKeys, loadGitHubToken, loadGitUserConfig } from './gitStorage';
+import { loadSSHKeys, loadGitHubToken, loadGitUserConfigs, formatGitUserConfig } from './gitStorage';
 import { PageView } from '../../../../pure-view/PageView';
 import './ExportPage.css';
 
@@ -210,16 +210,18 @@ export function ExportPage() {
         });
 
         // Browser Data - Git Config
-        const gitUserConfig = loadGitUserConfig();
-        const hasGitConfig = !!(gitUserConfig.name || gitUserConfig.email);
+        const gitUserConfigs = loadGitUserConfigs();
+        const hasGitConfig = gitUserConfigs.length > 0;
         newItems.push({
             id: 'browser_git_config',
             category: 'browser',
-            label: 'Git User Config',
-            description: 'Git name and email settings',
+            label: 'Git Identities',
+            description: 'Git names and emails used for commits',
             checked: hasGitConfig,
             exists: hasGitConfig,
-            details: hasGitConfig ? `${gitUserConfig.name || '(no name)'} <${gitUserConfig.email || '(no email)'}>` : 'None',
+            details: hasGitConfig
+                ? `${gitUserConfigs.length} identity${gitUserConfigs.length === 1 ? '' : 'ies'}: ${gitUserConfigs.map(formatGitUserConfig).join(', ')}`
+                : 'None',
         });
 
         setItems(newItems);

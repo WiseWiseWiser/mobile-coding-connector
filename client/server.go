@@ -108,6 +108,18 @@ type RestartServerResult struct {
 	KeepAlive *KeepAliveStatus
 }
 
+type NextBinaryTarget struct {
+	BinaryPath             string `json:"binary_path"`
+	BinaryName             string `json:"binary_name"`
+	Version                int    `json:"version"`
+	BaseName               string `json:"base_name"`
+	Directory              string `json:"directory"`
+	CurrentPath            string `json:"current_path"`
+	CurrentName            string `json:"current_name"`
+	CurrentVersion         int    `json:"current_version"`
+	PreviousHighestVersion int    `json:"previous_highest_version"`
+}
+
 func (c *Client) PingKeepAlive() (*KeepAlivePing, error) {
 	var out KeepAlivePing
 	if err := c.getJSON("/api/keep-alive/ping", &out); err != nil {
@@ -127,6 +139,14 @@ func (c *Client) GetKeepAliveStatus() (*KeepAliveStatus, error) {
 func (c *Client) GetServerStatus() (*ServerStatus, error) {
 	var out ServerStatus
 	if err := c.getJSON("/api/server/status", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) GetNextBinaryTarget() (*NextBinaryTarget, error) {
+	var out NextBinaryTarget
+	if err := c.getJSON("/api/build/next-binary-target", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

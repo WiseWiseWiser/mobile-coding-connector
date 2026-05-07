@@ -12,7 +12,18 @@ import type { OAuthConfigStatus } from '../../../../api/auth';
 import { KeyIcon } from '../../../../pure-view/icons/KeyIcon';
 import { PlusIcon } from '../../../../pure-view/icons/PlusIcon';
 import { GitHubIcon } from '../../../../pure-view/icons/GitHubIcon';
-import { loadSSHKeys, saveSSHKeys, loadGitHubToken, saveGitHubToken, loadGitUserConfig, saveGitUserConfig } from './gitStorage';
+import {
+    loadSSHKeys,
+    saveSSHKeys,
+    loadGitHubToken,
+    saveGitHubToken,
+    loadGitUserConfigs,
+    saveGitUserConfigs,
+    loadGitUserConfigsFromServer,
+    saveGitUserConfigsToServer,
+    createGitUserConfig,
+    formatGitUserConfig,
+} from './gitStorage';
 import type { SSHKey, GitUserConfig } from './gitStorage';
 import { FlexInput } from '../../../../pure-view/FlexInput';
 import './GitSettings.css';
@@ -512,20 +523,80 @@ function GitHubOAuthPanel() {
 // ---- Git Config Panel ----
 
 function GitConfigPanel() {
-    const [config, setConfig] = useState<GitUserConfig>(() => loadGitUserConfig());
-    const [name, setName] = useState(config.name);
-    const [email, setEmail] = useState(config.email);
+    const [configs, setConfigs] = useState<GitUserConfig[]>(() => loadGitUserConfigs());
+    const [showForm, setShowForm] = useState(false);
+    const [editingConfig, setEditingConfig] = useState<GitUserConfig | null>(null);
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
     const [saved, setSaved] = useState(false);
 
-    const handleSave = () => {
-        const newConfig: GitUserConfig = {
-            name: name.trim(),
-            email: email.trim(),
+    const resetForm = () => {
+        setName('');
+        setEmail('');
+        setEditingConfig(null);
+        setShowForm(false);
+    };
+
+    useEffect(() => {
+        let cancelled = false;
+        loadGitUserConfigsFromServer()
+            .then((serverConfigs) => {
+                if (!cancelled) {
+                    setConfigs(serverConfigs);
+                }
+            })
+            .catch(() => {
+                // Local storage remains the offline fallback for the settings UI.
+            });
+        return () => {
+            cancelled = true;
         };
-        saveGitUserConfig(newConfig);
-        setConfig(newConfig);
+    }, []);
+
+    const handleAdd = () => {
+        setName('');
+        setEmail('');
+        setEditingConfig(null);
+        setShowForm(true);
+        setSaved(false);
+    };
+
+    const handleEdit = (config: GitUserConfig) => {
+        setName(config.name);
+        setEmail(config.email);
+        setEditingConfig(config);
+        setShowForm(true);
+        setSaved(false);
+    };
+
+    const persistConfigs = (nextConfigs: GitUserConfig[]) => {
+        saveGitUserConfigs(nextConfigs);
+        setConfigs(nextConfigs);
+        saveGitUserConfigsToServer(nextConfigs)
+            .then(setConfigs)
+            .catch(() => {
+                // Keep the browser copy even if the server settings API is unavailable.
+            });
+    };
+
+    const handleSave = () => {
+        const newConfig = editingConfig
+            ? { ...editingConfig, name: name.trim(), email: email.trim() }
+            : createGitUserConfig(name, email);
+        const newConfigs = editingConfig
+            ? configs.map(config => config.id === editingConfig.id ? newConfig : config)
+            : [...configs, newConfig];
+        persistConfigs(newConfigs);
+        resetForm();
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
+    };
+
+    const handleDelete = (id: string) => {
+        persistConfigs(configs.filter(config => config.id !== id));
+        if (editingConfig?.id === id) {
+            resetForm();
+        }
     };
 
     const isValid = name.trim() && email.trim();
@@ -533,45 +604,81 @@ function GitConfigPanel() {
     return (
         <div className="mcc-git-config-panel">
             <p className="mcc-git-desc">
-                Configure your Git user name and email. These will be used for all Git commits.
+                Configure the Git names and emails available for commits. Pick the identity for each project on its project home page.
             </p>
 
-            <div className="mcc-add-port-form">
-                <div className="mcc-git-form-fields">
-                    <div className="mcc-form-field">
-                        <label>User Name *</label>
-                        <FlexInput
-                            value={name}
-                            onChange={setName}
-                            placeholder="John Doe"
-                        />
-                    </div>
-                    <div className="mcc-form-field">
-                        <label>Email *</label>
-                        <FlexInput
-                            type="email"
-                            value={email}
-                            onChange={setEmail}
-                            placeholder="john@example.com"
-                        />
-                    </div>
+            {configs.length > 0 ? (
+                <div className="mcc-git-identity-list">
+                    {configs.map(config => (
+                        <div key={config.id} className="mcc-git-identity-card">
+                            <div className="mcc-git-identity-header">
+                                <KeyIcon />
+                                <span className="mcc-git-identity-name">{config.name}</span>
+                                <span className="mcc-git-identity-email">{config.email}</span>
+                            </div>
+                            <div className="mcc-ssh-key-actions">
+                                <button className="mcc-port-action-btn" onClick={() => handleEdit(config)}>Edit</button>
+                                <button className="mcc-port-action-btn mcc-port-stop" onClick={() => handleDelete(config.id)}>Delete</button>
+                            </div>
+                        </div>
+                    ))}
                 </div>
+            ) : (
+                <div className="mcc-git-empty">No Git identities configured. Add one before committing from projects.</div>
+            )}
 
-                {saved && (
-                    <div className="mcc-git-success" style={{ marginTop: '12px' }}>
-                        Configuration saved successfully!
+            {showForm ? (
+                <div className="mcc-add-port-form">
+                    <div className="mcc-add-port-header">
+                        <span>{editingConfig ? 'Edit Git Identity' : 'Add Git Identity'}</span>
+                        <button className="mcc-close-btn" onClick={resetForm}>×</button>
                     </div>
-                )}
+                    <div className="mcc-git-form-fields">
+                        <div className="mcc-form-field">
+                            <label>User Name *</label>
+                            <FlexInput
+                                value={name}
+                                onChange={setName}
+                                placeholder="John Doe"
+                            />
+                        </div>
+                        <div className="mcc-form-field">
+                            <label>Email *</label>
+                            <FlexInput
+                                type="email"
+                                value={email}
+                                onChange={setEmail}
+                                placeholder="john@example.com"
+                            />
+                        </div>
+                    </div>
 
-                <button
-                    className="mcc-forward-btn"
-                    onClick={handleSave}
-                    disabled={!isValid}
-                    style={{ marginTop: '16px' }}
-                >
-                    Save Configuration
+                    <button
+                        className="mcc-forward-btn"
+                        onClick={handleSave}
+                        disabled={!isValid}
+                    >
+                        {editingConfig ? 'Update Identity' : 'Save Identity'}
+                    </button>
+                </div>
+            ) : (
+                <button className="mcc-add-port-btn" onClick={handleAdd}>
+                    <PlusIcon />
+                    <span>Add Git Identity</span>
                 </button>
-            </div>
+            )}
+
+            {saved && (
+                <div className="mcc-git-success" style={{ marginTop: '12px' }}>
+                    Git identity saved successfully.
+                </div>
+            )}
+
+            {configs.length > 0 && (
+                <p className="mcc-git-hint">
+                    Available: {configs.map(formatGitUserConfig).join(', ')}
+                </p>
+            )}
         </div>
     );
 }

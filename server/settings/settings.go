@@ -20,6 +20,7 @@ import (
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/settings/export", handleExport)
 	mux.HandleFunc("/api/settings/import", handleImport)
+	mux.HandleFunc("/api/settings/git-user-configs", handleGitUserConfigs)
 
 	// Zip-based export/import
 	mux.HandleFunc("/api/settings/export-zip", handleExportZip)

@@ -22,6 +22,9 @@ export interface ProjectInfo {
     dir: string;
     ssh_key_id?: string;
     use_ssh: boolean;
+    git_user_config_id?: string;
+    git_user_name?: string;
+    git_user_email?: string;
     created_at: string;
     dir_exists: boolean;
     git_status?: {
@@ -99,6 +102,9 @@ export async function addProject(req: AddProjectRequest): Promise<AddProjectResp
 export interface ProjectUpdate {
     ssh_key_id?: string | null;
     use_ssh?: boolean;
+    git_user_config_id?: string | null;
+    git_user_name?: string;
+    git_user_email?: string;
     parent_id?: string | null;
     worktrees?: WorktreeConfig;
 }

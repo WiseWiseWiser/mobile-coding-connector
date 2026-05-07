@@ -115,7 +115,15 @@ func runExecInteractive(resolve func() (*client.Client, error), args []string) e
 	if err != nil {
 		return fmt.Errorf("enable raw mode: %w", err)
 	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
+	restored := false
+	restoreTerminal := func() {
+		if restored {
+			return
+		}
+		restored = true
+		_ = term.Restore(int(os.Stdin.Fd()), oldState)
+	}
+	defer restoreTerminal()
 
 	if err := sendTerminalResize(writer); err != nil {
 		return err
@@ -148,6 +156,7 @@ func runExecInteractive(resolve func() (*client.Client, error), args []string) e
 				return res.err
 			}
 			if res.exitCode != 0 {
+				restoreTerminal()
 				os.Exit(normalizeExitCode(res.exitCode))
 			}
 			return nil

@@ -29,6 +29,7 @@ const (
 	DomainsFile                    = DataDir + "/server-domains.json"
 	CloudflareFile                 = DataDir + "/cloudflare.json"
 	TerminalConfFile               = DataDir + "/terminal-config.json"
+	GitUserConfigsFile             = DataDir + "/git-user-configs.json"
 	ProjectsFile                   = DataDir + "/projects.json"
 	AgentsFile                     = DataDir + "/agents.json"
 	OpencodeFile                   = DataDir + "/opencode.json"

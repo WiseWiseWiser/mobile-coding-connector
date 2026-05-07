@@ -53,6 +53,14 @@ export function V2Provider({ children }: { children: React.ReactNode }) {
 
     const [currentProject, setCurrentProject] = useState<ProjectInfo | null>(null);
 
+    useEffect(() => {
+        if (!currentProject) return;
+        const updatedProject = projectsList.find(p => p.id === currentProject.id);
+        if (updatedProject && updatedProject !== currentProject) {
+            setCurrentProject(updatedProject);
+        }
+    }, [projectsList, currentProject]);
+
     // Server config state
     const [serverConfig, setServerConfig] = useState<ServerConfig | null>(null);
     const [serverConfigLoading, setServerConfigLoading] = useState(true);

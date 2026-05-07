@@ -8,7 +8,7 @@ import {
     type ImportFilePreview,
     type BrowserExportData,
 } from '../../../../api/settingsExport';
-import { loadSSHKeys, loadGitHubToken, loadGitUserConfig } from './gitStorage';
+import { loadSSHKeys, loadGitHubToken, loadGitUserConfigs, normalizeGitUserConfigs, formatGitUserConfig } from './gitStorage';
 import { PageView } from '../../../../pure-view/PageView';
 import './ImportPage.css';
 
@@ -97,14 +97,20 @@ function computeBrowserDataPreview(data: BrowserExportData): BrowserDataItem[] {
         });
     }
 
-    if (data.git_configs?.git_user_config) {
-        const existing = loadGitUserConfig();
-        const hasExisting = !!(existing.name || existing.email);
-        const gc = data.git_configs.git_user_config;
+    const incomingGitUsers = data.git_configs?.git_user_configs?.length
+        ? normalizeGitUserConfigs(data.git_configs.git_user_configs)
+        : data.git_configs?.git_user_config
+            ? normalizeGitUserConfigs([data.git_configs.git_user_config])
+            : [];
+
+    if (incomingGitUsers.length > 0) {
+        const existing = loadGitUserConfigs();
+        const existingIds = new Set(existing.map(c => c.id));
+        const newCount = incomingGitUsers.filter(c => !existingIds.has(c.id)).length;
         items.push({
-            label: 'Git User Config',
-            detail: `${gc.name || '(no name)'} <${gc.email || '(no email)'}>`,
-            action: hasExisting ? FileActions.Overwrite : FileActions.Create,
+            label: 'Git Identities',
+            detail: `${incomingGitUsers.length} identity${incomingGitUsers.length === 1 ? '' : 'ies'}: ${incomingGitUsers.map(formatGitUserConfig).join(', ')}`,
+            action: existing.length === 0 ? FileActions.Create : newCount > 0 ? FileActions.Merge : FileActions.Overwrite,
         });
     }
 

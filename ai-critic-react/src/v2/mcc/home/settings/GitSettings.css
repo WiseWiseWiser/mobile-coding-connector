@@ -278,3 +278,57 @@
     margin-top: 8px;
 }
 
+/* ==================== Git Config ==================== */
+
+.mcc-git-config-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.mcc-git-identity-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mcc-git-identity-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px 14px;
+}
+
+.mcc-git-identity-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: #94a3b8;
+    min-width: 0;
+}
+
+.mcc-git-identity-name {
+    font-weight: 600;
+    color: #f1f5f9;
+    font-size: 14px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-git-identity-email {
+    margin-left: auto;
+    padding: 2px 8px;
+    background: #334155;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #94a3b8;
+    font-family: 'Monaco', 'Menlo', monospace;
+    min-width: 0;
+    max-width: 58%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

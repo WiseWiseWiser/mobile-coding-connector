@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"math"
+	"os"
+	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +21,10 @@ Subcommands:
   build-next [--project <id>]
       Trigger the same "Build Next" action as the Manage Server page.
       Build logs are streamed back live.
+
+  upload-next <local-binary>
+      Upload a local server binary to the next remote binary path, deriving
+      the remote name from the existing ai-critic-server-vN sequence.
 
   restart
       Trigger the same "Restart Server" action as the Manage Server page.
@@ -37,6 +44,23 @@ Options:
   --project ID       Build the specified buildable project. If omitted,
                      the server chooses the same default project as the UI.
   -h, --help         Show this help message.
+`
+
+const serverUploadNextHelp = `Usage: remote-agent server upload-next <local-binary>
+
+Upload <local-binary> to the next remote server binary path. The remote
+filename is derived by scanning the current server binary directory for
+the current binary's base name and choosing max(existing -vN)+1.
+
+For example, if the remote directory contains:
+  ai-critic-server-v1
+  ai-critic-server-v2
+  ai-critic-server-v10
+  ai-critic-server-v15
+
+the upload target is ai-critic-server-v16 in that same directory.
+
+The uploaded file is marked executable on the remote server.
 `
 
 const serverRestartHelp = `Usage: remote-agent server restart
@@ -64,6 +88,8 @@ func runServer(resolve func() (*client.Client, error), args []string) error {
 	switch sub {
 	case "build-next":
 		return runServerBuildNext(resolve, rest)
+	case "upload-next":
+		return runServerUploadNext(resolve, rest)
 	case "restart":
 		return runServerRestart(resolve, rest)
 	case "status":
@@ -112,6 +138,156 @@ func runServerBuildNext(resolve func() (*client.Client, error), args []string) e
 		}
 	}
 	return nil
+}
+
+func runServerUploadNext(resolve func() (*client.Client, error), args []string) error {
+	if len(args) != 1 {
+		if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+			fmt.Print(serverUploadNextHelp)
+			return nil
+		}
+		return fmt.Errorf("server upload-next requires exactly 1 argument <local-binary>")
+	}
+
+	localBinary := args[0]
+	stat, err := os.Stat(localBinary)
+	if err != nil {
+		return fmt.Errorf("failed to stat local binary: %w", err)
+	}
+	if stat.IsDir() {
+		return fmt.Errorf("local binary is a directory, not a file: %s", localBinary)
+	}
+
+	cli, err := resolve()
+	if err != nil {
+		return err
+	}
+
+	target, usedCompatTarget, err := getNextBinaryTargetForUpload(cli)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(target.BinaryPath) == "" {
+		return fmt.Errorf("server returned empty next binary path")
+	}
+
+	if usedCompatTarget {
+		fmt.Println("Derived target from keep-alive status and remote directory listing.")
+	}
+	fmt.Printf("Next remote binary: %s\n", target.BinaryPath)
+	if target.CurrentPath != "" {
+		fmt.Printf("Current remote binary: %s\n", target.CurrentPath)
+	}
+	if target.PreviousHighestVersion > 0 || target.Version > 0 {
+		fmt.Printf("Version: v%d -> v%d\n", target.PreviousHighestVersion, target.Version)
+	}
+	fmt.Printf("Uploading %s (%s) -> %s\n", localBinary, formatSize(stat.Size()), target.BinaryPath)
+
+	result, err := cli.UploadFile(localBinary, target.BinaryPath, client.UploadOptions{
+		ChmodExec: true,
+	}, func(p client.UploadProgress) {
+		percent := 100
+		if p.TotalBytes > 0 {
+			percent = int(p.CompletedBytes * 100 / p.TotalBytes)
+		}
+		fmt.Printf("  chunk %d/%d uploaded (%s / %s, %d%%)\n",
+			p.ChunkIndex+1, p.TotalChunks,
+			formatSize(p.CompletedBytes), formatSize(p.TotalBytes), percent)
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Upload complete: %s (%s)\n", result.Path, formatSize(result.Size))
+	return nil
+}
+
+func getNextBinaryTargetForUpload(cli *client.Client) (*client.NextBinaryTarget, bool, error) {
+	target, err := cli.GetNextBinaryTarget()
+	if err == nil {
+		return target, false, nil
+	}
+
+	compatTarget, compatErr := deriveNextBinaryTargetCompat(cli)
+	if compatErr != nil {
+		return nil, false, fmt.Errorf("failed to get next binary target: %w; compatibility fallback failed: %v", err, compatErr)
+	}
+	return compatTarget, true, nil
+}
+
+func deriveNextBinaryTargetCompat(cli *client.Client) (*client.NextBinaryTarget, error) {
+	ping, err := cli.PingKeepAlive()
+	if err != nil {
+		return nil, fmt.Errorf("ping keep-alive: %w", err)
+	}
+	if ping == nil || !ping.Running {
+		return nil, fmt.Errorf("keep-alive is not running")
+	}
+
+	status, err := cli.GetKeepAliveStatus()
+	if err != nil {
+		return nil, fmt.Errorf("get keep-alive status: %w", err)
+	}
+	currentPath := strings.TrimSpace(status.BinaryPath)
+	if currentPath == "" {
+		return nil, fmt.Errorf("keep-alive status did not include server binary path")
+	}
+
+	dir := path.Dir(currentPath)
+	browse, err := cli.BrowseDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("browse remote binary directory %s: %w", dir, err)
+	}
+	return nextBinaryTargetFromRemoteEntries(currentPath, browse.Entries)
+}
+
+func nextBinaryTargetFromRemoteEntries(currentPath string, entries []client.BrowseEntry) (*client.NextBinaryTarget, error) {
+	currentPath = strings.TrimSpace(currentPath)
+	if currentPath == "" {
+		return nil, fmt.Errorf("current binary path is empty")
+	}
+
+	dir := path.Dir(currentPath)
+	currentName := path.Base(currentPath)
+	baseName, currentVersion := parseRemoteBinaryVersion(currentName)
+	if baseName == "" || baseName == "." || baseName == "/" {
+		return nil, fmt.Errorf("invalid current binary name: %s", currentName)
+	}
+
+	highestVersion := currentVersion
+	for _, entry := range entries {
+		if entry.IsDir {
+			continue
+		}
+		base, version := parseRemoteBinaryVersion(entry.Name)
+		if base == baseName && version > highestVersion {
+			highestVersion = version
+		}
+	}
+
+	nextVersion := highestVersion + 1
+	binaryName := fmt.Sprintf("%s-v%d", baseName, nextVersion)
+	return &client.NextBinaryTarget{
+		BinaryPath:             path.Join(dir, binaryName),
+		BinaryName:             binaryName,
+		Version:                nextVersion,
+		BaseName:               baseName,
+		Directory:              dir,
+		CurrentPath:            currentPath,
+		CurrentName:            currentName,
+		CurrentVersion:         currentVersion,
+		PreviousHighestVersion: highestVersion,
+	}, nil
+}
+
+func parseRemoteBinaryVersion(name string) (string, int) {
+	if idx := strings.LastIndex(name, "-v"); idx != -1 && idx < len(name)-2 {
+		versionStr := name[idx+2:]
+		if version, err := strconv.Atoi(versionStr); err == nil {
+			return name[:idx], version
+		}
+	}
+	return name, 0
 }
 
 func runServerRestart(resolve func() (*client.Client, error), args []string) error {

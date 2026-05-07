@@ -730,6 +730,7 @@ func FindAvailablePort(startPort int, maxAttempts int) (int, error) {
 // proper environment setup with all PATH additions from tool_resolve.
 func registerBuildAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/build/buildable-projects", handleBuildableProjectsMain)
+	mux.HandleFunc("/api/build/next-binary-target", handleNextBinaryTargetMain)
 	mux.HandleFunc("/api/build/build-next", handleBuildNextMain)
 }
 
@@ -842,6 +843,24 @@ func handleBuildableProjectsMain(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(buildable)
 }
 
+// handleNextBinaryTargetMain returns the path that should receive the next
+// server binary upload.
+func handleNextBinaryTargetMain(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	target, err := nextBinaryTarget()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to derive next binary target: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(target)
+}
+
 // handleBuildNextMain builds the next binary from a project source with SSE streaming.
 // This runs in the main server to ensure proper environment with PATH additions.
 func handleBuildNextMain(w http.ResponseWriter, r *http.Request) {
@@ -884,18 +903,12 @@ func handleBuildNextMain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the upload target path (next binary)
-	binPath, err := os.Executable()
+	target, err := nextBinaryTarget()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to get executable path: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to derive next binary target: %v", err), http.StatusInternalServerError)
 		return
 	}
-
-	dir := filepath.Dir(binPath)
-	currentBase, currentVersion := parseBinVersion(binPath)
-	nextVersion := currentVersion + 1
-	newName := fmt.Sprintf("%s-v%d", currentBase, nextVersion)
-	destPath := filepath.Join(dir, newName)
+	destPath := target.BinaryPath
 
 	// Create SSE writer
 	sw := sse.NewWriter(w)
@@ -905,7 +918,7 @@ func handleBuildNextMain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log build start
-	sw.SendLog(fmt.Sprintf("Building next binary (v%d) from project %s...", nextVersion, project.Name))
+	sw.SendLog(fmt.Sprintf("Building next binary (v%d) from project %s...", target.Version, project.Name))
 	sw.SendLog(fmt.Sprintf("Target: %s", destPath))
 
 	// Create destination directory if needed
@@ -947,13 +960,68 @@ func handleBuildNextMain(w http.ResponseWriter, r *http.Request) {
 	// Send done event with result data
 	sw.SendDone(map[string]string{
 		"success":      "true",
-		"message":      fmt.Sprintf("Built %s (%s) v%d", newName, project.Name, nextVersion),
+		"message":      fmt.Sprintf("Built %s (%s) v%d", target.BinaryName, project.Name, target.Version),
 		"binary_path":  destPath,
-		"binary_name":  newName,
-		"version":      strconv.Itoa(nextVersion),
+		"binary_name":  target.BinaryName,
+		"version":      strconv.Itoa(target.Version),
 		"size":         strconv.FormatInt(info.Size(), 10),
 		"project_name": project.Name,
 	})
+}
+
+type nextBinaryTargetInfo struct {
+	BinaryPath   string `json:"binary_path"`
+	BinaryName   string `json:"binary_name"`
+	Version      int    `json:"version"`
+	BaseName     string `json:"base_name"`
+	Directory    string `json:"directory"`
+	CurrentPath  string `json:"current_path"`
+	CurrentName  string `json:"current_name"`
+	CurrentVer   int    `json:"current_version"`
+	PreviousHigh int    `json:"previous_highest_version"`
+}
+
+func nextBinaryTarget() (*nextBinaryTargetInfo, error) {
+	binPath, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("get executable path: %w", err)
+	}
+	return nextBinaryTargetForPath(binPath)
+}
+
+func nextBinaryTargetForPath(currentBin string) (*nextBinaryTargetInfo, error) {
+	baseName, currentVer := parseBinVersion(filepath.Base(currentBin))
+	dir := filepath.Dir(currentBin)
+	highestVer := currentVer
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read binary directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		base, ver := parseBinVersion(entry.Name())
+		if base == baseName && ver > highestVer {
+			highestVer = ver
+		}
+	}
+
+	nextVersion := highestVer + 1
+	newName := fmt.Sprintf("%s-v%d", baseName, nextVersion)
+	return &nextBinaryTargetInfo{
+		BinaryPath:   filepath.Join(dir, newName),
+		BinaryName:   newName,
+		Version:      nextVersion,
+		BaseName:     baseName,
+		Directory:    dir,
+		CurrentPath:  currentBin,
+		CurrentName:  filepath.Base(currentBin),
+		CurrentVer:   currentVer,
+		PreviousHigh: highestVer,
+	}, nil
 }
 
 // parseBinVersion extracts the base name and version from a binary path.

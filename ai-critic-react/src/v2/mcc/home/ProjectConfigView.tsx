@@ -7,8 +7,8 @@ import { NavTabs } from '../types';
 import { updateProject, runGitOp, GitOps, addProject } from '../../../api/projects';
 import type { GitOp } from '../../../api/projects';
 import { cloneRepo } from '../../../api/auth';
-import { loadSSHKeys } from './settings/gitStorage';
-import type { SSHKey } from './settings/gitStorage';
+import { loadSSHKeys, loadGitUserConfigs, loadGitUserConfigsFromServer, formatGitUserConfig } from './settings/gitStorage';
+import type { SSHKey, GitUserConfig } from './settings/gitStorage';
 import { encryptWithServerKey } from './crypto';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import { StreamingLogs } from '../../StreamingComponents';
@@ -35,6 +35,8 @@ export function ProjectConfigView() {
     const sshValidation = useSSHKeyValidation(project);
     const [sshKeys, setSshKeys] = useState<SSHKey[]>([]);
     const [selectedKeyId, setSelectedKeyId] = useState('');
+    const [gitUserConfigs, setGitUserConfigs] = useState<GitUserConfig[]>([]);
+    const [selectedGitUserConfigId, setSelectedGitUserConfigId] = useState('');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -59,10 +61,25 @@ export function ProjectConfigView() {
     useEffect(() => {
         const keys = loadSSHKeys();
         setSshKeys(keys);
-        if (project?.ssh_key_id) {
-            setSelectedKeyId(project.ssh_key_id);
-        }
+        setSelectedKeyId(project?.ssh_key_id || '');
     }, [project?.ssh_key_id]);
+
+    useEffect(() => {
+        const configs = loadGitUserConfigs();
+        setGitUserConfigs(configs);
+        setSelectedGitUserConfigId(project?.git_user_config_id || '');
+        let cancelled = false;
+        loadGitUserConfigsFromServer()
+            .then((serverConfigs) => {
+                if (!cancelled) {
+                    setGitUserConfigs(serverConfigs);
+                }
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [project?.git_user_config_id]);
 
     useEffect(() => {
         if (project?.dir && !newSubProjectDir) {
@@ -82,7 +99,7 @@ export function ProjectConfigView() {
         );
     }
 
-    const handleSave = async () => {
+    const handleSaveSSHKey = async () => {
         setSaving(true);
         setError('');
         setSuccess('');
@@ -100,7 +117,7 @@ export function ProjectConfigView() {
         }
     };
 
-    const handleUnset = async () => {
+    const handleUnsetSSHKey = async () => {
         setSaving(true);
         setError('');
         setSuccess('');
@@ -112,6 +129,53 @@ export function ProjectConfigView() {
             setSelectedKeyId('');
             fetchProjects();
             setSuccess('SSH key removed');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to update project');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSaveGitIdentity = async () => {
+        const selectedConfig = selectedGitUserConfigId
+            ? gitUserConfigs.find(config => config.id === selectedGitUserConfigId)
+            : null;
+        if (selectedGitUserConfigId && !selectedConfig) {
+            setError('Selected Git identity is not available');
+            return;
+        }
+
+        setSaving(true);
+        setError('');
+        setSuccess('');
+        try {
+            await updateProject(project.id, {
+                git_user_config_id: selectedGitUserConfigId || '',
+                git_user_name: selectedConfig?.name || '',
+                git_user_email: selectedConfig?.email || '',
+            });
+            fetchProjects();
+            setSuccess('Git commit identity updated successfully');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to update project');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleUnsetGitIdentity = async () => {
+        setSaving(true);
+        setError('');
+        setSuccess('');
+        try {
+            await updateProject(project.id, {
+                git_user_config_id: '',
+                git_user_name: '',
+                git_user_email: '',
+            });
+            setSelectedGitUserConfigId('');
+            fetchProjects();
+            setSuccess('Git commit identity removed');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to update project');
         } finally {
@@ -158,6 +222,12 @@ export function ProjectConfigView() {
     };
 
     const currentKey = sshKeys.find(k => k.id === project.ssh_key_id);
+    const currentGitUserConfig = gitUserConfigs.find(config => config.id === project.git_user_config_id);
+    const selectedGitUserConfig = gitUserConfigs.find(config => config.id === selectedGitUserConfigId);
+    const projectGitUserConfig = project.git_user_name && project.git_user_email
+        ? { name: project.git_user_name, email: project.git_user_email }
+        : null;
+    const displayedGitUserConfig = currentGitUserConfig || projectGitUserConfig;
 
     const isSubProject = !!project.parent_id;
 
@@ -212,6 +282,120 @@ export function ProjectConfigView() {
                 <div style={{ fontSize: '13px', color: '#64748b' }}>
                     {project.repo_url}
                 </div>
+            </div>
+
+            {error && (
+                <div style={{ margin: '12px 16px 0', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, color: '#fca5a5', fontSize: '13px' }}>
+                    {error}
+                </div>
+            )}
+            {success && (
+                <div style={{ margin: '12px 16px 0', padding: '10px 14px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: 8, color: '#86efac', fontSize: '13px' }}>
+                    {success}
+                </div>
+            )}
+
+            {/* Git Commit Identity Section */}
+            <div style={{ padding: '16px', marginTop: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <KeyIcon />
+                    <span style={{ fontSize: '15px', fontWeight: 600, color: '#e2e8f0' }}>Git Identity for Commits</span>
+                </div>
+                <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: 12 }}>
+                    Select the Git user name and email to apply when this project creates commits.
+                </div>
+
+                {displayedGitUserConfig ? (
+                    <div style={{
+                        padding: '10px 14px',
+                        background: 'rgba(96, 165, 250, 0.08)',
+                        border: '1px solid rgba(96, 165, 250, 0.2)',
+                        borderRadius: 8,
+                        marginBottom: 12,
+                        fontSize: '13px',
+                        color: '#93c5fd',
+                    }}>
+                        Current: <strong>{displayedGitUserConfig.name}</strong> ({displayedGitUserConfig.email})
+                    </div>
+                ) : project.git_user_config_id ? (
+                    <div style={{
+                        padding: '10px 14px',
+                        background: 'rgba(245, 158, 11, 0.1)',
+                        border: '1px solid rgba(245, 158, 11, 0.2)',
+                        borderRadius: 8,
+                        marginBottom: 12,
+                        fontSize: '13px',
+                        color: '#fbbf24',
+                    }}>
+                        The selected Git identity is no longer available. Choose another identity.
+                    </div>
+                ) : (
+                    <div style={{
+                        padding: '10px 14px',
+                        background: 'rgba(148, 163, 184, 0.05)',
+                        border: '1px solid #334155',
+                        borderRadius: 8,
+                        marginBottom: 12,
+                        fontSize: '13px',
+                        color: '#64748b',
+                    }}>
+                        No Git identity selected
+                    </div>
+                )}
+
+                {gitUserConfigs.length === 0 ? (
+                    <div style={{ fontSize: '13px', color: '#94a3b8' }}>
+                        No Git identities available.{' '}
+                        <button
+                            style={{ background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer', fontSize: '13px', textDecoration: 'underline', padding: 0 }}
+                            onClick={() => navigate('/home/settings/git')}
+                        >
+                            Add one in Git Settings
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        <CustomSelect
+                            value={selectedGitUserConfigId}
+                            onChange={setSelectedGitUserConfigId}
+                            placeholder="-- No Git identity --"
+                            options={[
+                                { value: '', label: '-- No Git identity --' },
+                                ...gitUserConfigs.map(config => ({
+                                    value: config.id,
+                                    label: config.name,
+                                    sublabel: config.email,
+                                })),
+                            ]}
+                        />
+
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            <button
+                                className="mcc-port-action-btn"
+                                onClick={handleSaveGitIdentity}
+                                disabled={saving}
+                                style={{ flex: 1, padding: '10px 16px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
+                            >
+                                {saving ? 'Saving...' : 'Save Identity'}
+                            </button>
+                            {project.git_user_config_id && (
+                                <button
+                                    className="mcc-port-action-btn"
+                                    onClick={handleUnsetGitIdentity}
+                                    disabled={saving}
+                                    style={{ padding: '10px 16px', background: '#1e293b', color: '#f87171', border: '1px solid #334155', borderRadius: 8, fontSize: '14px', cursor: 'pointer' }}
+                                >
+                                    Unset Identity
+                                </button>
+                            )}
+                        </div>
+                        {selectedGitUserConfig && (
+                            <div style={{ marginTop: 8, fontSize: '12px', color: '#64748b' }}>
+                                Selected: {formatGitUserConfig(selectedGitUserConfig)}
+                            </div>
+                        )}
+                    </>
+                )}
             </div>
 
             {/* Git Operations Section */}
@@ -354,7 +538,7 @@ export function ProjectConfigView() {
                         <div style={{ display: 'flex', gap: 10 }}>
                             <button
                                 className="mcc-port-action-btn"
-                                onClick={handleSave}
+                                onClick={handleSaveSSHKey}
                                 disabled={saving}
                                 style={{ flex: 1, padding: '10px 16px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
                             >
@@ -363,7 +547,7 @@ export function ProjectConfigView() {
                             {project.ssh_key_id && (
                                 <button
                                     className="mcc-port-action-btn"
-                                    onClick={handleUnset}
+                                    onClick={handleUnsetSSHKey}
                                     disabled={saving}
                                     style={{ padding: '10px 16px', background: '#1e293b', color: '#f87171', border: '1px solid #334155', borderRadius: 8, fontSize: '14px', cursor: 'pointer' }}
                                 >
@@ -374,16 +558,6 @@ export function ProjectConfigView() {
                     </>
                 )}
 
-                {error && (
-                    <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, color: '#fca5a5', fontSize: '13px' }}>
-                        {error}
-                    </div>
-                )}
-                {success && (
-                    <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: 8, color: '#86efac', fontSize: '13px' }}>
-                        {success}
-                    </div>
-                )}
             </div>
 
             {/* Sub Projects Section - only for root projects */}

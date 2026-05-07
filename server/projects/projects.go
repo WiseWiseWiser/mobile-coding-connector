@@ -33,16 +33,19 @@ type WorktreeIDMap struct {
 }
 
 type Project struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	RepoURL   string `json:"repo_url"`
-	Dir       string `json:"dir"`
-	SSHKeyID  string `json:"ssh_key_id,omitempty"`
-	UseSSH    bool   `json:"use_ssh"`
-	CreatedAt string `json:"created_at"`
-	ParentID  string `json:"parent_id,omitempty"`
-	Todos     []Todo `json:"todos,omitempty"`
-	Readme    string `json:"readme,omitempty"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	RepoURL         string `json:"repo_url"`
+	Dir             string `json:"dir"`
+	SSHKeyID        string `json:"ssh_key_id,omitempty"`
+	UseSSH          bool   `json:"use_ssh"`
+	GitUserConfigID string `json:"git_user_config_id,omitempty"`
+	GitUserName     string `json:"git_user_name,omitempty"`
+	GitUserEmail    string `json:"git_user_email,omitempty"`
+	CreatedAt       string `json:"created_at"`
+	ParentID        string `json:"parent_id,omitempty"`
+	Todos           []Todo `json:"todos,omitempty"`
+	Readme          string `json:"readme,omitempty"`
 
 	Worktrees *WorktreeIDMap `json:"worktrees,omitempty"`
 }
@@ -170,10 +173,13 @@ func Remove(id string) error {
 // ProjectUpdate contains the fields that can be updated.
 // Pointer fields: nil means "no change", non-nil means "set to this value" (empty string means "unset").
 type ProjectUpdate struct {
-	SSHKeyID *string `json:"ssh_key_id"`
-	UseSSH   *bool   `json:"use_ssh"`
-	ParentID *string `json:"parent_id"`
-	Readme   *string `json:"readme"`
+	SSHKeyID        *string `json:"ssh_key_id"`
+	UseSSH          *bool   `json:"use_ssh"`
+	GitUserConfigID *string `json:"git_user_config_id"`
+	GitUserName     *string `json:"git_user_name"`
+	GitUserEmail    *string `json:"git_user_email"`
+	ParentID        *string `json:"parent_id"`
+	Readme          *string `json:"readme"`
 }
 
 func Update(id string, updates ProjectUpdate) (*Project, error) {
@@ -192,6 +198,15 @@ func Update(id string, updates ProjectUpdate) (*Project, error) {
 		}
 		if updates.UseSSH != nil {
 			list[i].UseSSH = *updates.UseSSH
+		}
+		if updates.GitUserConfigID != nil {
+			list[i].GitUserConfigID = *updates.GitUserConfigID
+		}
+		if updates.GitUserName != nil {
+			list[i].GitUserName = *updates.GitUserName
+		}
+		if updates.GitUserEmail != nil {
+			list[i].GitUserEmail = *updates.GitUserEmail
 		}
 		if updates.ParentID != nil {
 			list[i].ParentID = *updates.ParentID

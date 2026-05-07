@@ -1,18 +1,20 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { toolsPath } from '../../../route/route';
+import { projectPath, toolsPath } from '../../../route/route';
 import { getGitStatus, getDiff, stageFile, unstageFile, gitCommit, gitCheckout, gitRemove, listUntrackedDir, generateCommitMessage } from '../../../api/review';
 import type { GitStatusFile } from '../../../api/review';
 import type { DiffFile } from '../../../components/code-review/types';
 import { DiffViewer } from '../../DiffViewer';
 import type { FileDiff, DiffHunk, DiffLine } from '../../../api/checkpoints';
 import { statusBadge, getFileIcon, formatFileSize, getFileSuffix } from './utils';
-import { loadGitUserConfig } from '../home/settings/gitStorage';
+import { loadGitUserConfigs, loadGitUserConfigsFromServer, formatGitUserConfig } from '../home/settings/gitStorage';
+import type { GitUserConfig } from '../home/settings/gitStorage';
 import { GitPushSection } from './GitPushSection';
 import { ConfirmModal } from '../ConfirmModal';
 import { NoZoomingInput } from '../components/NoZoomingInput';
 import { useStreamingAction } from '../../../hooks/useStreamingAction';
 import { StreamingLogs } from '../../StreamingComponents';
+import { useV2Context } from '../../V2Context';
 import './FilesView.css';
 import './GitCommitView.css';
 
@@ -103,6 +105,7 @@ function renderFileTags(f: GitStatusFile): React.ReactNode {
 }
 
 export function GitCommitView({ projectName, projectDir, sshKeyId, onBack }: GitCommitViewProps) {
+    const { currentProject, projectsList } = useV2Context();
     const [stagedFiles, setStagedFiles] = useState<GitStatusFile[]>([]);
     const [unstagedFiles, setUnstagedFiles] = useState<GitStatusFile[]>([]);
     const [branch, setBranch] = useState('');
@@ -115,7 +118,7 @@ export function GitCommitView({ projectName, projectDir, sshKeyId, onBack }: Git
     const [diffs, setDiffs] = useState<FileDiff[]>([]);
     const [loadingDiffs, setLoadingDiffs] = useState(false);
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
-    const [gitUserConfig, setGitUserConfig] = useState<{ name: string; email: string }>({ name: '', email: '' });
+    const [gitUserConfigs, setGitUserConfigs] = useState<GitUserConfig[]>([]);
     const [modalState, setModalState] = useState<{
         type: 'discard' | 'remove';
         file: GitStatusFile;
@@ -132,11 +135,39 @@ export function GitCommitView({ projectName, projectDir, sshKeyId, onBack }: Git
 
     const messageRef = useRef<HTMLTextAreaElement>(null);
 
-    // Load git user config on mount
+    const projectForCommit = useMemo(() => {
+        if (projectName) {
+            return projectsList.find(project => project.name === projectName) || currentProject;
+        }
+        return currentProject;
+    }, [currentProject, projectName, projectsList]);
+
+    const selectedGitUserConfig = useMemo(() => {
+        const selectedId = projectForCommit?.git_user_config_id;
+        if (!selectedId) return null;
+        return gitUserConfigs.find(config => config.id === selectedId) || null;
+    }, [gitUserConfigs, projectForCommit?.git_user_config_id]);
+    const commitGitUserConfig = selectedGitUserConfig || (
+        projectForCommit?.git_user_name && projectForCommit?.git_user_email
+            ? { name: projectForCommit.git_user_name, email: projectForCommit.git_user_email }
+            : null
+    );
+
+    // Load git user configs on mount
     useEffect(() => {
-        const config = loadGitUserConfig();
-        setGitUserConfig(config);
-    }, []);
+        setGitUserConfigs(loadGitUserConfigs());
+        let cancelled = false;
+        loadGitUserConfigsFromServer()
+            .then((serverConfigs) => {
+                if (!cancelled) {
+                    setGitUserConfigs(serverConfigs);
+                }
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [projectDir]);
 
     const refresh = async () => {
         if (stagedFiles.length === 0 && unstagedFiles.length === 0) {
@@ -303,12 +334,8 @@ export function GitCommitView({ projectName, projectDir, sshKeyId, onBack }: Git
             setError('Commit message is required');
             return;
         }
-        if (!gitUserConfig.name.trim()) {
-            setError('Git user name is not configured. Please configure it in Settings > Git Settings > Git Config.');
-            return;
-        }
-        if (!gitUserConfig.email.trim()) {
-            setError('Git user email is not configured. Please configure it in Settings > Git Settings > Git Config.');
+        if (!commitGitUserConfig) {
+            setError('Git identity is not configured for this project. Select one on the project home page before committing.');
             return;
         }
         setCommitting(true);
@@ -316,8 +343,8 @@ export function GitCommitView({ projectName, projectDir, sshKeyId, onBack }: Git
         setSuccess('');
         try {
             const result = await gitCommit(commitMessage.trim(), projectDir, {
-                name: gitUserConfig.name,
-                email: gitUserConfig.email,
+                name: commitGitUserConfig.name,
+                email: commitGitUserConfig.email,
             });
             setSuccess(result.output || 'Committed successfully');
             setCommitMessage('');
@@ -595,6 +622,14 @@ export function GitCommitView({ projectName, projectDir, sshKeyId, onBack }: Git
             <div className="mcc-git-commit-section">
                 <div className="mcc-checkpoint-section-label">Commit Message</div>
                 <div className="mcc-git-commit-form">
+                    <div className={`mcc-git-commit-identity ${commitGitUserConfig ? '' : 'mcc-git-commit-identity-missing'}`}>
+                        <span>
+                            Git identity: {commitGitUserConfig ? formatGitUserConfig(commitGitUserConfig) : 'Not selected'}
+                        </span>
+                        {!commitGitUserConfig && projectName && (
+                            <Link to={projectPath(projectName)}>Select on project home</Link>
+                        )}
+                    </div>
                     <NoZoomingInput>
                         <textarea
                             ref={messageRef}

@@ -1,6 +1,20 @@
 // Settings export/import API client and types
 
-import { loadSSHKeys, loadGitHubToken, saveSSHKeys, saveGitHubToken, loadGitUserConfig, saveGitUserConfig, type SSHKey, type GitUserConfig } from '../v2/mcc/home/settings/gitStorage';
+import {
+    loadSSHKeys,
+    loadGitHubToken,
+    saveSSHKeys,
+    saveGitHubToken,
+    loadGitUserConfig,
+    saveGitUserConfig,
+    loadGitUserConfigs,
+    saveGitUserConfigs,
+    loadGitUserConfigsFromServer,
+    saveGitUserConfigsToServer,
+    type SSHKey,
+    type GitUserConfig,
+    type LegacyGitUserConfig,
+} from '../v2/mcc/home/settings/gitStorage';
 import { loadCursorAPIKey, saveCursorAPIKey } from '../v2/mcc/agent/cursorStorage';
 
 /** The top-level export JSON structure */
@@ -47,7 +61,8 @@ export interface CredentialsExport {
 export interface GitConfigsExport {
     ssh_keys: SSHKey[];
     github_token: string;
-    git_user_config?: GitUserConfig;
+    git_user_configs?: GitUserConfig[];
+    git_user_config?: LegacyGitUserConfig;
     cursor_api_key?: string;
 }
 
@@ -106,9 +121,11 @@ export async function buildExportData(selectedSections: ExportSectionKey[]): Pro
 
     // Gather client-side data (local storage)
     if (includeGit) {
+        const gitUserConfigs = await loadGitUserConfigsFromServer().catch(() => loadGitUserConfigs());
         sections.git_configs = {
             ssh_keys: loadSSHKeys(),
             github_token: loadGitHubToken(),
+            git_user_configs: gitUserConfigs,
             git_user_config: loadGitUserConfig(),
             cursor_api_key: loadCursorAPIKey() || undefined,
         };
@@ -151,8 +168,12 @@ export async function applyImportData(data: SettingsExportData, selectedSections
         if (gc.github_token) {
             saveGitHubToken(gc.github_token);
         }
-        if (gc.git_user_config) {
+        if (Array.isArray(gc.git_user_configs)) {
+            saveGitUserConfigs(gc.git_user_configs);
+            await saveGitUserConfigsToServer(gc.git_user_configs).catch(() => undefined);
+        } else if (gc.git_user_config) {
             saveGitUserConfig(gc.git_user_config);
+            await saveGitUserConfigsToServer([gc.git_user_config]).catch(() => undefined);
         }
         if (gc.cursor_api_key) {
             saveCursorAPIKey(gc.cursor_api_key);
@@ -191,10 +212,12 @@ export interface ExportZipOptions {
 export async function exportSettingsZip(options: ExportZipOptions): Promise<void> {
     let browserData: BrowserExportData | undefined;
     if (options.includeBrowser) {
+        const gitUserConfigs = await loadGitUserConfigsFromServer().catch(() => loadGitUserConfigs());
         browserData = {
             git_configs: {
                 ssh_keys: loadSSHKeys(),
                 github_token: loadGitHubToken(),
+                git_user_configs: gitUserConfigs,
                 git_user_config: loadGitUserConfig(),
                 cursor_api_key: loadCursorAPIKey() || undefined,
             },
@@ -325,8 +348,12 @@ export function applyBrowserData(data: BrowserExportData): void {
         if (gc.github_token) {
             saveGitHubToken(gc.github_token);
         }
-        if (gc.git_user_config) {
+        if (Array.isArray(gc.git_user_configs)) {
+            saveGitUserConfigs(gc.git_user_configs);
+            void saveGitUserConfigsToServer(gc.git_user_configs).catch(() => undefined);
+        } else if (gc.git_user_config) {
             saveGitUserConfig(gc.git_user_config);
+            void saveGitUserConfigsToServer([gc.git_user_config]).catch(() => undefined);
         }
         if (gc.cursor_api_key) {
             saveCursorAPIKey(gc.cursor_api_key);

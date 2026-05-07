@@ -83,11 +83,43 @@ Commands:
         list
             List all configured proxy servers. Passwords are masked.
 
+  project <subcommand> [args...]
+      Inspect and update projects known to the remote server. Subcommands:
+        list
+            List projects and their configured Git commit identity.
+        git-config get|check <project-id-or-name-or-dir>
+            Show the Git commit identity configured for one project.
+        git-config set <project-id-or-name-or-dir> --name NAME --email EMAIL [--identity-id ID]
+            Set the Git commit identity used by this project.
+        git-config unset <project-id-or-name-or-dir>
+            Clear the Git commit identity for this project.
+
+  settings <subcommand> [args...]
+      Manage remote server settings. Subcommands:
+        git-users list
+            List configured Git commit identities.
+        git-users add --name NAME --email EMAIL [--id ID]
+            Add a Git commit identity.
+        git-users set <id> --name NAME --email EMAIL
+            Update a Git commit identity.
+        git-users delete <id>
+            Delete a Git commit identity.
+
+  service <subcommand> [args...]
+      Manage services exposed by the frontend's Services tab.
+      Subcommands:
+        list
+            List all managed services.
+        stop|start|restart|logs <service-name-or-id>
+            Control one service or stream its logs.
+
   server <subcommand> [args...]
       Execute server-management actions exposed by the remote server UI.
       Subcommands:
         build-next [--project <id>]
             Trigger the same "Build Next" action as the Manage Server page.
+        upload-next <local-binary>
+            Upload a local binary to the next remote ai-critic-server-vN path.
         restart
             Trigger the same "Restart Server" action as the Manage Server page.
         status
@@ -133,7 +165,16 @@ Examples:
   remote-agent git -C ~/bar pull --private-key ~/.ssh/id_rsa
   remote-agent git -C ~/bar push --private-key ~/.ssh/id_rsa
   remote-agent proxy list
+  remote-agent project list
+  remote-agent project git-config check my-project
+  remote-agent project git-config set my-project --name "Jane Doe" --email jane@example.com
+  remote-agent settings git-users list
+  remote-agent settings git-users add --name "Jane Doe" --email jane@example.com
+  remote-agent service list
+  remote-agent service restart web
+  remote-agent service logs svc-123
   remote-agent server build-next
+  remote-agent server upload-next ./ai-critic-server-linux-amd64
   remote-agent server restart
   remote-agent server status
   remote-agent agent list
@@ -201,6 +242,18 @@ func run(args []string) error {
 		}, rest)
 	case "proxy":
 		return runProxy(func() (*client.Client, error) {
+			return resolveClient(server, token)
+		}, rest)
+	case "project":
+		return runProject(func() (*client.Client, error) {
+			return resolveClient(server, token)
+		}, rest)
+	case "settings":
+		return runSettings(func() (*client.Client, error) {
+			return resolveClient(server, token)
+		}, rest)
+	case "service":
+		return runService(func() (*client.Client, error) {
 			return resolveClient(server, token)
 		}, rest)
 	case "server":
