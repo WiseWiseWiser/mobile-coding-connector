@@ -134,6 +134,7 @@ export function SessionListRoute() {
                 onOpenSessions={(aid) => ctx.navigateToView(aid)}
                 onStopAgent={ctx.onStopAgent}
                 onConfigureAgent={(aid) => ctx.navigateToView(`${aid}/settings`)}
+                onOpenWebUI={(aid) => ctx.navigateToView(`${aid}-web`)}
                 externalSessions={ctx.externalSessions}
             />
         );

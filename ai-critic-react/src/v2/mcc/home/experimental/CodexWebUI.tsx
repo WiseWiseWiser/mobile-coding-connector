@@ -1,14 +1,31 @@
-import { WebServiceUI } from './WebServiceUI';
+import { useNavigate } from 'react-router-dom';
+import { useProjectDir } from '../../../../hooks/project/useProjectDir';
+import { useV2Context } from '../../../V2Context';
+import { CodexCliChat } from '../../agent/CodexCliChat';
 
-export function CodexWebUI() {
+export interface CodexWebUIProps {
+    backPath?: string;
+}
+
+export function CodexWebUI({ backPath = '../experimental' }: CodexWebUIProps) {
+    const navigate = useNavigate();
+    const { currentProject } = useV2Context();
+    const { projectDir } = useProjectDir();
+
+    if (!projectDir) {
+        return (
+            <div className="mcc-agent-view">
+                <div className="mcc-agent-error">No project directory selected.</div>
+            </div>
+        );
+    }
+
     return (
-        <WebServiceUI
-            port={3000}
-            title="Codex Web"
-            statusEndpoint="/api/codex-web/status"
-            startEndpoint="/api/codex-web/start"
-            stopEndpoint="/api/codex-web/stop"
-            backPath="../experimental"
+        <CodexCliChat
+            projectName={currentProject?.name ?? null}
+            projectDir={projectDir}
+            onBack={() => navigate(backPath)}
+            onSettings={() => navigate('settings')}
         />
     );
 }

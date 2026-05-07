@@ -26,7 +26,6 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/actions"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
 	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/web/codexweb"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/web/cursorweb"
 	customagentapi "github.com/xhd2015/lifelog-private/ai-critic/server/api"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
@@ -544,9 +543,6 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Build from source API
 	registerBuildAPI(mux)
-
-	// Codex Web API
-	codexweb.RegisterRoutes(mux)
 
 	// Cursor Web API
 	cursorweb.RegisterRoutes(mux)

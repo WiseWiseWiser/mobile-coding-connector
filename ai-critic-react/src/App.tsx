@@ -4,7 +4,7 @@ import AppGen from './AppGen';
 import CodeReview from './CodeReview';
 import { AppLayout } from './components/layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, ToolsView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, AgentEditorRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, FeatureListView, FeatureDetailView, CodexWebUI, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings, CursorACPSessionSettings } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, ToolsView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, AgentEditorRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, AgentCodexWebRoute, AgentCodexSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, FeatureListView, FeatureDetailView, CodexWebUI, CodexWebSettingsRoute, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings, CursorACPSessionSettings } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './logs';
 import './App.css';
@@ -176,6 +176,7 @@ function App() {
                             <Route path="feature-maker" element={<FeatureListView />} />
                             <Route path="feature-maker/:featureId" element={<FeatureDetailView />} />
                             <Route path="codex-web" element={<CodexWebUI />} />
+                            <Route path="codex-web/settings" element={<CodexWebSettingsRoute />} />
                             <Route path="cursor-web" element={<CursorWebUI />} />
                             <Route path="opencode-web" element={<OpencodeWebUI />} />
                             <Route path="opencode-web/settings" element={<OpencodeWebSettingsView />} />
@@ -187,6 +188,8 @@ function App() {
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
                             <Route path="new" element={<AgentEditorRoute />} />
+                            <Route path="codex-web" element={<AgentCodexWebRoute />} />
+                            <Route path="codex-web/settings" element={<AgentCodexSettingsRoute />} />
                             <Route path=":agentId" element={<SessionListRoute />} />
                             <Route path=":agentId/edit" element={<AgentEditorRoute />} />
                             <Route path=":agentId/settings" element={<AgentSettingsRoute />} />
@@ -235,6 +238,7 @@ function App() {
                             <Route path="feature-maker" element={<FeatureListView />} />
                             <Route path="feature-maker/:featureId" element={<FeatureDetailView />} />
                             <Route path="codex-web" element={<CodexWebUI />} />
+                            <Route path="codex-web/settings" element={<CodexWebSettingsRoute />} />
                             <Route path="cursor-web" element={<CursorWebUI />} />
                             <Route path="opencode-web" element={<OpencodeWebUI />} />
                             <Route path="opencode-web/settings" element={<OpencodeWebSettingsView />} />
@@ -246,6 +250,8 @@ function App() {
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
                             <Route path="new" element={<AgentEditorRoute />} />
+                            <Route path="codex-web" element={<AgentCodexWebRoute />} />
+                            <Route path="codex-web/settings" element={<AgentCodexSettingsRoute />} />
                             <Route path=":agentId" element={<SessionListRoute />} />
                             <Route path=":agentId/edit" element={<AgentEditorRoute />} />
                             <Route path=":agentId/settings" element={<AgentSettingsRoute />} />

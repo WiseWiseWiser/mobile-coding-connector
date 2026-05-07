@@ -19,6 +19,7 @@ export interface AgentPickerProps {
     onStopAgent: (agentId: string) => void;
     onConfigureAgent: (agentId: string) => void;
     onNavigateToView?: (view: string) => void;
+    onOpenWebUI?: (agentId: string) => void;
     onCreateAgent?: () => void;
     onEditAgent?: (agent: CustomAgent) => void;
     // External sessions from CLI/web opencode
@@ -43,6 +44,7 @@ export function AgentPicker({
     onStopAgent,
     onConfigureAgent,
     onNavigateToView,
+    onOpenWebUI,
     onCreateAgent,
     onEditAgent,
     externalSessions = [],
@@ -165,6 +167,7 @@ export function AgentPicker({
             <div className="mcc-agent-list">
                 {agents.map(agent => {
                     const agentSession = sessions[agent.id];
+                    const supportsWebUI = agent.id === 'codex';
                     return (
                         <div key={agent.id} className="mcc-agent-card">
                             <div className="mcc-agent-card-header">
@@ -189,6 +192,11 @@ export function AgentPicker({
                             </div>
                             <div className="mcc-agent-card-desc">{agent.description}</div>
                             <div className="mcc-agent-card-actions">
+                                {supportsWebUI && agent.installed && (
+                                    <ActionButton onClick={() => onOpenWebUI?.(agent.id)}>
+                                        Open Codex
+                                    </ActionButton>
+                                )}
                                 {agent.headless && agent.installed && agentSession && (
                                     <>
                                         <ActionButton onClick={() => onOpenSessions(agent.id)}>
@@ -213,7 +221,7 @@ export function AgentPicker({
                                         Start Chat
                                     </ActionButton>
                                 )}
-                                {!agent.headless && agent.installed && (
+                                {!agent.headless && agent.installed && !supportsWebUI && (
                                     <span className="mcc-agent-card-note">Terminal-only agent</span>
                                 )}
                                 {!agent.installed && (

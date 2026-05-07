@@ -151,6 +151,10 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/opencode/exposed-server/stop/stream", handleOpencodeWebServerStopStreaming)
 	mux.HandleFunc("/api/agents/opencode/web-server/domain-map", handleOpencodeWebServerDomainMap)
 	mux.HandleFunc("/api/agents/opencode/web-server/domain-map/stream", handleOpencodeWebServerDomainMapStreaming)
+	mux.HandleFunc("/api/agents/codex/models", handleCodexModels)
+	mux.HandleFunc("/api/agents/codex/sessions", handleCodexSessions)
+	mux.HandleFunc("/api/agents/codex/session-messages", handleCodexSessionMessages)
+	mux.HandleFunc("/api/agents/codex/ws", handleCodexWebSocket)
 	mux.HandleFunc("/api/agents/sessions", handleAgentSessions)
 	// Proxy: /api/agents/sessions/{sessionID}/proxy/... -> opencode server
 	mux.HandleFunc("/api/agents/sessions/", handleAgentSessionProxy)

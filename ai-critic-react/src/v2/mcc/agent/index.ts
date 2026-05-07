@@ -5,5 +5,7 @@ export { AgentEditorRoute } from './AgentEditorRoute';
 export { SessionListRoute } from './SessionListRoute';
 export { AgentChatRoute } from './AgentChatRoute';
 export { AgentSettingsRoute } from './AgentSettingsRoute';
+export { AgentCodexWebRoute } from './AgentCodexWebRoute';
+export { AgentCodexSettingsRoute } from './AgentCodexSettingsRoute';
 export { ModelSelector } from '../components/ModelSelector';
 export type { ModelOption, ModelSelectorProps } from '../components/ModelSelector';

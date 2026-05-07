@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { ModelSelector, type ModelOption } from '../components/ModelSelector';
 
 export interface AgentChatHeaderProps {
@@ -11,6 +12,7 @@ export interface AgentChatHeaderProps {
     availableModels?: ModelOption[];
     currentModel?: { modelID: string; providerID: string };
     onModelChange?: (model: { modelID: string; providerID: string }) => void;
+    rightActions?: ReactNode;
 }
 
 export function AgentChatHeader({ 
@@ -22,7 +24,8 @@ export function AgentChatHeader({
     contextPercent,
     availableModels,
     currentModel,
-    onModelChange 
+    onModelChange,
+    rightActions,
 }: AgentChatHeaderProps) {
     const hasModels = availableModels && availableModels.length > 0 && onModelChange;
 
@@ -51,6 +54,7 @@ export function AgentChatHeader({
                     </div>
                 )}
             </div>
+            {rightActions}
             {onStop && <button className="mcc-agent-stop-btn" onClick={onStop}>{stopLabel}</button>}
         </div>
     );

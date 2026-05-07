@@ -16,6 +16,7 @@ export function AgentPickerRoute() {
             onStopAgent={ctx.onStopAgent}
             onConfigureAgent={(agentId) => ctx.navigateToView(`${agentId}/settings`)}
             onNavigateToView={ctx.navigateToView}
+            onOpenWebUI={(agentId) => ctx.navigateToView(`${agentId}-web`)}
             onCreateAgent={() => ctx.navigateToView('new')}
             onEditAgent={(agent) => ctx.navigateToView(`${agent.id}/edit`)}
             externalSessions={ctx.externalSessions}
