@@ -100,11 +100,12 @@ type serviceProcess struct {
 }
 
 type Manager struct {
-	mu            sync.Mutex
-	definitions   []ServiceDefinition
-	processes     map[string]*serviceProcess
-	healthStop    chan struct{}
-	healthStarted bool
+	mu                 sync.Mutex
+	definitions        []ServiceDefinition
+	processes          map[string]*serviceProcess
+	healthStop         chan struct{}
+	healthStarted      bool
+	portForwardManager *portforward.Manager
 }
 
 var (
@@ -114,7 +115,8 @@ var (
 
 func NewManager() *Manager {
 	m := &Manager{
-		processes: make(map[string]*serviceProcess),
+		processes:          make(map[string]*serviceProcess),
+		portForwardManager: portforward.GetDefaultManager(),
 	}
 	m.loadDefinitionsLocked()
 	return m
@@ -237,7 +239,7 @@ func (m *Manager) List(projectDir string) []ServiceStatus {
 	projectDir = normalizeProjectDir(projectDir)
 	defs := m.filteredDefinitionsLocked(projectDir)
 	portMap := make(map[int]portforward.PortForward)
-	for _, pf := range portforward.GetDefaultManager().List() {
+	for _, pf := range m.getPortForwardManager().List() {
 		portMap[pf.LocalPort] = pf
 	}
 
@@ -633,7 +635,7 @@ func (m *Manager) stop(id string, removeForward bool, wait bool) error {
 	m.mu.Unlock()
 
 	if removeForward && ownedForward && port > 0 {
-		_ = portforward.GetDefaultManager().Remove(port)
+		_ = m.getPortForwardManager().Remove(port)
 		m.mu.Lock()
 		if current := m.processes[id]; current != nil {
 			current.ownedForward = false
@@ -667,7 +669,7 @@ func (m *Manager) ensurePortForward(id string, def ServiceDefinition) error {
 	}
 
 	pf := def.PortForward
-	manager := portforward.GetDefaultManager()
+	manager := m.getPortForwardManager()
 	desiredProvider := normalizeProvider(pf.Provider)
 	desiredLabel := resolveForwardLabel(pf)
 
@@ -676,14 +678,18 @@ func (m *Manager) ensurePortForward(id string, def ServiceDefinition) error {
 			continue
 		}
 		if existing.Provider == desiredProvider && existing.Label == desiredLabel {
-			m.mu.Lock()
-			if proc := m.processes[id]; proc != nil {
-				proc.ownedForward = false
-			}
-			m.mu.Unlock()
 			return nil
 		}
-		return nil
+		if existing.Type != portforward.PortForwardTypePortForward {
+			return fmt.Errorf("port %d is already forwarded by %s as %q; expected %s %q",
+				pf.Port, existing.Provider, existing.Label, desiredProvider, desiredLabel)
+		}
+		fmt.Printf("[services] replacing stale port forward for service %s: port=%d old=%s/%q new=%s/%q\n",
+			id, pf.Port, existing.Provider, existing.Label, desiredProvider, desiredLabel)
+		if err := manager.Remove(pf.Port); err != nil && !strings.Contains(err.Error(), "not being forwarded") {
+			return fmt.Errorf("failed to remove stale port forward on port %d: %w", pf.Port, err)
+		}
+		break
 	}
 
 	if _, err := manager.Add(pf.Port, desiredLabel, desiredProvider); err != nil {
@@ -696,6 +702,13 @@ func (m *Manager) ensurePortForward(id string, def ServiceDefinition) error {
 	}
 	m.mu.Unlock()
 	return nil
+}
+
+func (m *Manager) getPortForwardManager() *portforward.Manager {
+	if m.portForwardManager != nil {
+		return m.portForwardManager
+	}
+	return portforward.GetDefaultManager()
 }
 
 func (m *Manager) reconcileProcesses() {

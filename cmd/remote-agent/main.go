@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/client"
@@ -194,6 +195,7 @@ func main() {
 func run(args []string) error {
 	var server string
 	var token string
+	tokenSpecified := hasGlobalFlag(args, "--token")
 
 	args, err := flags.
 		String("--server", &server).
@@ -217,7 +219,7 @@ func run(args []string) error {
 	case "config":
 		return runConfig(rest)
 	case "upload":
-		cli, err := resolveClient(server, token)
+		cli, err := resolveClient(server, token, tokenSpecified)
 		if err != nil {
 			return err
 		}
@@ -226,43 +228,43 @@ func run(args []string) error {
 		return runLocal(rest)
 	case "exec":
 		return runExec(func() (*client.Client, error) {
-			return resolveClient(server, token)
+			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "bash":
 		return runBash(func() (*client.Client, error) {
-			return resolveClient(server, token)
+			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "terminal":
 		return runTerminal(func() (*client.Client, error) {
-			return resolveClient(server, token)
+			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "git":
 		return runGit(func() (*client.Client, error) {
-			return resolveClient(server, token)
+			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "proxy":
 		return runProxy(func() (*client.Client, error) {
-			return resolveClient(server, token)
+			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "project":
 		return runProject(func() (*client.Client, error) {
-			return resolveClient(server, token)
+			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "settings":
 		return runSettings(func() (*client.Client, error) {
-			return resolveClient(server, token)
+			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "service":
 		return runService(func() (*client.Client, error) {
-			return resolveClient(server, token)
+			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "server":
 		return runServer(func() (*client.Client, error) {
-			return resolveClient(server, token)
+			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "agent":
 		return runAgent(func() (*client.Client, error) {
-			return resolveClient(server, token)
+			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "skill":
 		return remoteagentskill.Handle(rest)
@@ -273,7 +275,7 @@ func run(args []string) error {
 
 // resolveClient builds a client.Client using CLI flags, falling back to the
 // default domain saved via 'remote-agent config'.
-func resolveClient(server string, token string) (*client.Client, error) {
+func resolveClient(server string, token string, tokenSpecified bool) (*client.Client, error) {
 	cfg, _ := loadConfig()
 
 	// When --server is not supplied, use the saved default domain's
@@ -288,7 +290,37 @@ func resolveClient(server string, token string) (*client.Client, error) {
 		if token == "" {
 			token = def.Token
 		}
+	} else if !tokenSpecified {
+		if domain := cfg.FindDomain(server); domain != nil {
+			token = domain.Token
+		}
 	}
 
 	return client.New(server, token), nil
+}
+
+// hasGlobalFlag reports whether a global flag was present before the command.
+// The remote-agent parser stops at the first command token, so command-specific
+// arguments after that point should not affect global credential resolution.
+func hasGlobalFlag(args []string, name string) bool {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			return false
+		}
+		if arg == name || strings.HasPrefix(arg, name+"=") {
+			return true
+		}
+		switch arg {
+		case "--server", "--token":
+			if i+1 < len(args) {
+				i++
+			}
+			continue
+		}
+		if !strings.HasPrefix(arg, "-") {
+			return false
+		}
+	}
+	return false
 }

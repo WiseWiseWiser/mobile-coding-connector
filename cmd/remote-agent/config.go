@@ -36,11 +36,30 @@ func (c *agentConfig) DefaultDomain() *domainConfig {
 		return nil
 	}
 	for i := range c.Domains {
-		if c.Domains[i].Server == c.Default {
+		if normalizeServerForMatch(c.Domains[i].Server) == normalizeServerForMatch(c.Default) {
 			return &c.Domains[i]
 		}
 	}
 	return nil
+}
+
+// FindDomain returns the saved domain matching server, ignoring trailing
+// slashes so command-line URLs and config UI URLs resolve consistently.
+func (c *agentConfig) FindDomain(server string) *domainConfig {
+	if c == nil || strings.TrimSpace(server) == "" {
+		return nil
+	}
+	target := normalizeServerForMatch(server)
+	for i := range c.Domains {
+		if normalizeServerForMatch(c.Domains[i].Server) == target {
+			return &c.Domains[i]
+		}
+	}
+	return nil
+}
+
+func normalizeServerForMatch(server string) string {
+	return strings.TrimRight(strings.TrimSpace(server), "/")
 }
 
 func configFilePath() (string, error) {

@@ -416,6 +416,21 @@ func (m *Manager) Add(port int, label string, providerName string) (*PortForward
 		return nil, fmt.Errorf("unknown provider: %s", providerName)
 	}
 
+	var staleSameHost []*tunnel
+	if isCloudflareHostnameProvider(providerName) {
+		for existingPort, existing := range m.tunnels {
+			if existingPort == port || !isCloudflareHostnameProvider(existing.provider) {
+				continue
+			}
+			if sameForwardHostname(existing.label, label) {
+				fmt.Printf("[Manager.Add] Replacing stale Cloudflare hostname mapping: port=%d label=%q -> port=%d\n",
+					existingPort, existing.label, port)
+				delete(m.tunnels, existingPort)
+				staleSameHost = append(staleSameHost, existing)
+			}
+		}
+	}
+
 	t := &tunnel{
 		port:     port,
 		label:    label,
@@ -425,6 +440,12 @@ func (m *Manager) Add(port int, label string, providerName string) (*PortForward
 	m.tunnels[port] = t
 	m.notifySubscribers()
 	m.mu.Unlock()
+
+	for _, stale := range staleSameHost {
+		if stale.stop != nil {
+			stale.stop()
+		}
+	}
 
 	fmt.Printf("[Manager.Add] Starting tunnel with provider: %s, label: %q\n", providerName, label)
 	quicktest.LogHeavyOperationWithCallerStack("[Manager.Add] provider=%s label=%q", providerName, label)
@@ -475,6 +496,14 @@ func (m *Manager) Add(port int, label string, providerName string) (*PortForward
 		Provider:  providerName,
 		Status:    StatusConnecting,
 	}, nil
+}
+
+func isCloudflareHostnameProvider(provider string) bool {
+	return provider == ProviderCloudflareOwned || provider == ProviderCloudflareTunnel
+}
+
+func sameForwardHostname(a string, b string) bool {
+	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
 }
 
 // Remove stops and removes a port forward
@@ -1285,9 +1314,9 @@ func handleDiagnostics(w http.ResponseWriter, _ *http.Request) {
 // --- Tunnel Groups API ---
 
 type tunnelGroupInfo struct {
-	Name     string               `json:"name"`
-	Running  bool                 `json:"running"`
-	Mappings []tunnelMappingInfo  `json:"mappings"`
+	Name     string                 `json:"name"`
+	Running  bool                   `json:"running"`
+	Mappings []tunnelMappingInfo    `json:"mappings"`
 	Config   *tunnelGroupConfigInfo `json:"config,omitempty"`
 }
 

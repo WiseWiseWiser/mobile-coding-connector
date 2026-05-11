@@ -168,6 +168,17 @@ func (utm *UnifiedTunnelManager) AddMapping(mapping *IngressMapping) error {
 		}
 	}
 
+	for id, existing := range utm.mappings {
+		if id == mapping.ID {
+			continue
+		}
+		if strings.EqualFold(existing.Hostname, mapping.Hostname) {
+			fmt.Printf("[unified-tunnel] AddMapping: removing stale mapping with same hostname: id=%s hostname=%s service=%s\n",
+				id, existing.Hostname, existing.Service)
+			delete(utm.mappings, id)
+		}
+	}
+
 	// Add or update the mapping
 	utm.mappings[mapping.ID] = mapping
 	fmt.Printf("[unified-tunnel] AddMapping: mapping added/updated, calling rebuildAndRestartLocked\n")
@@ -593,7 +604,10 @@ func (utm *UnifiedTunnelManager) startProcessLocked() error {
 			logFile.Close()
 		}
 		utm.mu.Lock()
-		utm.running = false
+		if utm.cmd == cmd {
+			utm.cmd = nil
+			utm.running = false
+		}
 		utm.mu.Unlock()
 	}()
 
