@@ -7,6 +7,7 @@ import (
 
 	"github.com/xhd2015/less-gen/flags"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/commit_msg"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 )
 
 var genCommitMsgHelp = `Usage: gen-commit-msg [options]
@@ -16,6 +17,9 @@ Logs are printed to stderr; the resulting commit message is printed to stdout.
 
 Options:
   --dir DIR    Git directory to use (defaults to current directory)
+  --model MODEL
+              Model to use for generation
+  --commit     Run git commit with the generated message after printing it
   -h, --help   Show this help message
 `
 
@@ -23,9 +27,11 @@ Options:
 func RunGenCommitMsg(args []string) error {
 	var dir string
 	var model string
+	var commit bool
 	_, err := flags.
 		String("--dir", &dir).
 		String("--model", &model).
+		Bool("--commit", &commit).
 		Help("-h,--help", genCommitMsgHelp).
 		Parse(args)
 	if err != nil {
@@ -37,7 +43,7 @@ func RunGenCommitMsg(args []string) error {
 	}
 
 	msg, err := commit_msg.Generate(dir, commit_msg.GenerateOptions{
-		Model: model,
+		Model:  model,
 		Logger: &stderrLogger{},
 	})
 	if err != nil {
@@ -50,6 +56,17 @@ func RunGenCommitMsg(args []string) error {
 	quotedMsg := shellQuote(msg)
 	fmt.Fprintf(os.Stderr, "\nRun:\n  git commit -m %s\n", quotedMsg)
 
+	if commit {
+		fmt.Fprintf(os.Stderr, "\nRunning git commit...\n")
+		output, err := gitrunner.Commit(msg).Dir(dir).Run()
+		if len(output) > 0 {
+			fmt.Fprint(os.Stderr, string(output))
+		}
+		if err != nil {
+			return fmt.Errorf("git commit failed: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -59,9 +76,14 @@ func (l *stderrLogger) Log(msg string)   { fmt.Fprintf(os.Stderr, "%s\n", msg) }
 func (l *stderrLogger) Error(msg string) { fmt.Fprintf(os.Stderr, "ERROR: %s\n", msg) }
 
 func shellQuote(s string) string {
-	s = strings.ReplaceAll(s, "\n", "\\n")
-	if !strings.ContainsAny(s, "'\"\\$ !`") {
+	if !strings.ContainsAny(s, "'\"\\$ !`\n\r\t") {
 		return "'" + s + "'"
 	}
-	return "$'" + strings.NewReplacer("\\", "\\\\", "'", "\\'", "\n", "\\n").Replace(s) + "'"
+	return "$'" + strings.NewReplacer(
+		"\\", "\\\\",
+		"'", "\\'",
+		"\n", "\\n",
+		"\r", "\\r",
+		"\t", "\\t",
+	).Replace(s) + "'"
 }
