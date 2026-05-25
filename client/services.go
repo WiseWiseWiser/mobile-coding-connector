@@ -2,6 +2,7 @@ package client
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,12 +47,28 @@ type ServiceStatus struct {
 	LastExitError  string                    `json:"lastExitError,omitempty"`
 	DesiredRunning bool                      `json:"desiredRunning"`
 	PortForward    *ServicePortForwardStatus `json:"portForward,omitempty"`
+	UpgradeTarget  string                    `json:"upgradeTarget,omitempty"`
 }
 
 type LogStreamEvent struct {
 	Type    string `json:"type"`
 	Message string `json:"message,omitempty"`
 	Status  string `json:"status,omitempty"`
+}
+
+type ServiceUpgradeRequest struct {
+	ID        string `json:"id"`
+	TmpPath   string `json:"tmpPath"`
+	LocalBase string `json:"localBase"`
+	Target    string `json:"target,omitempty"`
+}
+
+type ServiceUpgradeResult struct {
+	Status           string         `json:"status"`
+	TmpPath          string         `json:"tmpPath"`
+	TargetPath       string         `json:"targetPath"`
+	RememberedTarget string         `json:"rememberedTarget,omitempty"`
+	Service          *ServiceStatus `json:"service,omitempty"`
 }
 
 func (c *Client) ListServices(projectDir string) ([]ServiceStatus, error) {
@@ -98,6 +115,33 @@ func (c *Client) StopService(id string) error {
 
 func (c *Client) RestartService(id string) error {
 	return c.postServiceAction("/api/services/restart", id)
+}
+
+func (c *Client) UpgradeService(upgrade ServiceUpgradeRequest) (*ServiceUpgradeResult, error) {
+	body, err := json.Marshal(upgrade)
+	if err != nil {
+		return nil, err
+	}
+	req, err := c.NewRequest(http.MethodPost, "/api/services/upgrade", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, readAPIError(resp)
+	}
+
+	var out ServiceUpgradeResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode /api/services/upgrade response: %w", err)
+	}
+	return &out, nil
 }
 
 func (c *Client) postServiceAction(path string, id string) error {

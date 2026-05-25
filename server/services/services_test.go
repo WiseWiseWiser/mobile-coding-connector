@@ -2,6 +2,8 @@ package services
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -85,6 +87,135 @@ func TestEnsurePortForwardKeepsExistingServiceOwnership(t *testing.T) {
 	if provider.StopCount() != 0 {
 		t.Fatalf("stop count = %d, want 0", provider.StopCount())
 	}
+}
+
+func TestServiceUpgradeTargetFallbackAndRemoteMemory(t *testing.T) {
+	useTempServicesConfig(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	m := &Manager{
+		definitions: []ServiceDefinition{
+			{ID: "svc-1", Name: "web", Command: "sleep 10"},
+		},
+		processes: map[string]*serviceProcess{},
+	}
+
+	selected, err := m.selectServiceUpgradeTarget("svc-1", "server-linux-amd64", "")
+	if err != nil {
+		t.Fatalf("selectServiceUpgradeTarget() default error = %v", err)
+	}
+	if selected.Path != filepath.Join(home, "server-linux-amd64") {
+		t.Fatalf("default target path = %q, want %q", selected.Path, filepath.Join(home, "server-linux-amd64"))
+	}
+	if selected.Remembered != "" {
+		t.Fatalf("default remembered target = %q, want empty", selected.Remembered)
+	}
+
+	selected, err = m.selectServiceUpgradeTarget("svc-1", "server-linux-amd64", "~/bin/server")
+	if err != nil {
+		t.Fatalf("selectServiceUpgradeTarget() specified error = %v", err)
+	}
+	if selected.Path != filepath.Join(home, "bin", "server") {
+		t.Fatalf("specified target path = %q, want %q", selected.Path, filepath.Join(home, "bin", "server"))
+	}
+	if selected.Remembered != "~/bin/server" {
+		t.Fatalf("specified remembered target = %q, want ~/bin/server", selected.Remembered)
+	}
+	if m.definitions[0].UpgradeTarget != "~/bin/server" {
+		t.Fatalf("service upgrade target = %q, want ~/bin/server", m.definitions[0].UpgradeTarget)
+	}
+
+	selected, err = m.selectServiceUpgradeTarget("svc-1", "server-linux-amd64", "")
+	if err != nil {
+		t.Fatalf("selectServiceUpgradeTarget() remembered error = %v", err)
+	}
+	if selected.Path != filepath.Join(home, "bin", "server") {
+		t.Fatalf("remembered target path = %q, want %q", selected.Path, filepath.Join(home, "bin", "server"))
+	}
+	if selected.Remembered != "~/bin/server" {
+		t.Fatalf("remembered target = %q, want ~/bin/server", selected.Remembered)
+	}
+}
+
+func TestCreateOrUpdatePreservesServiceUpgradeTarget(t *testing.T) {
+	useTempServicesConfig(t)
+
+	m := &Manager{
+		definitions: []ServiceDefinition{
+			{ID: "svc-1", Name: "web", Command: "sleep 10", UpgradeTarget: "~/bin/server"},
+		},
+		processes: map[string]*serviceProcess{},
+	}
+
+	if _, err := m.CreateOrUpdate(ServiceDefinition{ID: "svc-1", Name: "web", Command: "sleep 20"}); err != nil {
+		t.Fatalf("CreateOrUpdate() error = %v", err)
+	}
+	if m.definitions[0].UpgradeTarget != "~/bin/server" {
+		t.Fatalf("upgrade target after update = %q, want ~/bin/server", m.definitions[0].UpgradeTarget)
+	}
+}
+
+func TestResolveServiceUpgradeTargetPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	tests := []struct {
+		name   string
+		target string
+		want   string
+	}{
+		{name: "default relative", target: "server-linux-amd64", want: filepath.Join(home, "server-linux-amd64")},
+		{name: "home shorthand", target: "~/bin/server", want: filepath.Join(home, "bin", "server")},
+		{name: "home directory shorthand", target: "~/", want: filepath.Join(home, "server-linux-amd64")},
+		{name: "absolute", target: "/opt/agent/server", want: "/opt/agent/server"},
+		{name: "directory target", target: "/opt/agent/", want: "/opt/agent/server-linux-amd64"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveServiceUpgradeTargetPath(tt.target, "server-linux-amd64")
+			if err != nil {
+				t.Fatalf("resolveServiceUpgradeTargetPath() error = %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("resolveServiceUpgradeTargetPath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMoveServiceUpgradeFileSetsExecutableBit(t *testing.T) {
+	dir := t.TempDir()
+	tmpPath := filepath.Join(dir, "uploaded.tmp")
+	targetPath := filepath.Join(dir, "bin", "server")
+	if err := os.WriteFile(tmpPath, []byte("binary"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if err := moveServiceUpgradeFile(tmpPath, targetPath); err != nil {
+		t.Fatalf("moveServiceUpgradeFile() error = %v", err)
+	}
+
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		t.Fatalf("Stat(target) error = %v", err)
+	}
+	if info.Mode()&0111 == 0 {
+		t.Fatalf("target mode = %v, executable bit is not set", info.Mode())
+	}
+	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
+		t.Fatalf("tmp path still exists or stat failed unexpectedly: %v", err)
+	}
+}
+
+func useTempServicesConfig(t *testing.T) {
+	t.Helper()
+	oldPath := servicesConfigPath
+	servicesConfigPath = filepath.Join(t.TempDir(), "services.json")
+	t.Cleanup(func() {
+		servicesConfigPath = oldPath
+	})
 }
 
 type testPortForwardProvider struct {

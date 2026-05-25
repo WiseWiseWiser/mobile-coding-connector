@@ -25,6 +25,9 @@ Subcommands:
   restart <service-name-or-id>
       Restart one service.
 
+  upgrade <service-name-or-id> <local-binary> [--target <remote-path>]
+      Upload a replacement binary, then stop, replace, and start one service.
+
   logs [--lines N] <service-name-or-id>
       Stream one service's log file.
 `
@@ -64,6 +67,8 @@ func runService(resolve func() (*client.Client, error), args []string) error {
 		return runServiceAction(resolve, "stop", args[1:])
 	case "restart":
 		return runServiceAction(resolve, "restart", args[1:])
+	case "upgrade":
+		return runServiceUpgrade(resolve, args[1:])
 	case "logs":
 		return runServiceLogs(resolve, args[1:])
 	case "-h", "--help":
@@ -263,6 +268,9 @@ func printService(service client.ServiceStatus) {
 	fmt.Printf("%s %s\n", label("Command"), displayOrDash(service.Command))
 	fmt.Printf("%s %s\n", label("Desired"), boolWord(service.DesiredRunning))
 	fmt.Printf("%s %s\n", label("Log Path"), displayOrDash(service.LogPath))
+	if service.UpgradeTarget != "" {
+		fmt.Printf("%s %s\n", label("Upgrade"), service.UpgradeTarget)
+	}
 
 	if service.PortForward != nil {
 		fmt.Printf("%s %s\n", label("Port"), formatPortForward(service.PortForward))
