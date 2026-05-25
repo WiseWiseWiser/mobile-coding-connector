@@ -31,6 +31,17 @@ type ServicePortForwardStatus struct {
 	Active     bool   `json:"active"`
 }
 
+type ServiceDefinition struct {
+	ID            string              `json:"id,omitempty"`
+	Name          string              `json:"name"`
+	Command       string              `json:"command"`
+	ProjectDir    string              `json:"projectDir,omitempty"`
+	WorkingDir    string              `json:"workingDir,omitempty"`
+	ExtraEnv      map[string]string   `json:"extraEnv,omitempty"`
+	PortForward   *ServicePortForward `json:"portForward,omitempty"`
+	UpgradeTarget string              `json:"upgradeTarget,omitempty"`
+}
+
 type ServiceStatus struct {
 	ID             string                    `json:"id"`
 	Name           string                    `json:"name"`
@@ -115,6 +126,41 @@ func (c *Client) StopService(id string) error {
 
 func (c *Client) RestartService(id string) error {
 	return c.postServiceAction("/api/services/restart", id)
+}
+
+func (c *Client) SaveService(def ServiceDefinition, restart bool) (*ServiceStatus, error) {
+	body, err := json.Marshal(def)
+	if err != nil {
+		return nil, err
+	}
+	path := "/api/services"
+	if !restart {
+		path += "?restart=false"
+	}
+	method := http.MethodPost
+	if strings.TrimSpace(def.ID) != "" {
+		method = http.MethodPut
+	}
+	req, err := c.NewRequest(method, path, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, readAPIError(resp)
+	}
+
+	var out ServiceStatus
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode /api/services response: %w", err)
+	}
+	return &out, nil
 }
 
 func (c *Client) UpgradeService(upgrade ServiceUpgradeRequest) (*ServiceUpgradeResult, error) {

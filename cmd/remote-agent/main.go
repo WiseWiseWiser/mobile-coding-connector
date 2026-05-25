@@ -113,6 +113,10 @@ Commands:
             List all managed services.
         stop|start|restart|logs <service-name-or-id>
             Control one service or stream its logs.
+        rename <service-name-or-id> <new-name>
+            Rename one service without restarting it.
+        update <service-name-or-id> [--field value...]
+            Update one service definition without restarting it.
         upgrade <service-name-or-id> <local-binary> [--target <remote-path>]
             Upload a binary first, then stop, replace, and start the service.
 
@@ -175,6 +179,8 @@ Examples:
   remote-agent settings git-users add --name "Jane Doe" --email jane@example.com
   remote-agent service list
   remote-agent service restart web
+  remote-agent service rename web api
+  remote-agent service update api --command './server --port 8080'
   remote-agent service upgrade web ./ai-critic-server-linux-amd64
   remote-agent service logs svc-123
   remote-agent server build-next

@@ -128,3 +128,97 @@ func TestRunServiceUpgradeUploadsBeforeRemoteUpgrade(t *testing.T) {
 		t.Fatalf("upgrade target = %q, want ~/bin/server", upgradeReq.Target)
 	}
 }
+
+func TestRunServiceRenameSavesWithoutRestart(t *testing.T) {
+	var saved client.ServiceDefinition
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/services":
+			if r.Method == http.MethodGet {
+				writeJSON(w, []client.ServiceStatus{{ID: "svc-1", Name: "web", Command: "run", WorkingDir: "/work"}})
+				return
+			}
+			if r.Method != http.MethodPut || r.URL.Query().Get("restart") != "false" {
+				t.Fatalf("save request = %s %s, want PUT /api/services?restart=false", r.Method, r.URL.String())
+			}
+			if err := json.NewDecoder(r.Body).Decode(&saved); err != nil {
+				t.Fatalf("decode save request: %v", err)
+			}
+			writeJSON(w, client.ServiceStatus{ID: "svc-1", Name: saved.Name, Command: saved.Command, WorkingDir: saved.WorkingDir})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	resolve := func() (*client.Client, error) {
+		return client.New(server.URL, ""), nil
+	}
+	if err := runServiceRename(resolve, []string{"web", "api"}); err != nil {
+		t.Fatalf("runServiceRename() error = %v", err)
+	}
+	if saved.Name != "api" {
+		t.Fatalf("saved name = %q, want api", saved.Name)
+	}
+	if saved.Command != "run" || saved.WorkingDir != "/work" {
+		t.Fatalf("saved definition did not preserve command/working dir: %#v", saved)
+	}
+}
+
+func TestRunServiceUpdatePatchesFieldsWithoutRestart(t *testing.T) {
+	var saved client.ServiceDefinition
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/services":
+			if r.Method == http.MethodGet {
+				writeJSON(w, []client.ServiceStatus{{
+					ID:          "svc-1",
+					Name:        "web",
+					Command:     "old",
+					WorkingDir:  "/old",
+					ExtraEnv:    map[string]string{"OLD": "1", "KEEP": "yes"},
+					PortForward: &client.ServicePortForwardStatus{Port: 8080, Label: "old-label", Provider: "localtunnel"},
+				}})
+				return
+			}
+			if r.Method != http.MethodPut || r.URL.Query().Get("restart") != "false" {
+				t.Fatalf("save request = %s %s, want PUT /api/services?restart=false", r.Method, r.URL.String())
+			}
+			if err := json.NewDecoder(r.Body).Decode(&saved); err != nil {
+				t.Fatalf("decode save request: %v", err)
+			}
+			writeJSON(w, client.ServiceStatus{ID: "svc-1", Name: saved.Name, Command: saved.Command})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	resolve := func() (*client.Client, error) {
+		return client.New(server.URL, ""), nil
+	}
+	err := runServiceUpdate(resolve, []string{
+		"web",
+		"--command", "new",
+		"--working-dir", "/new",
+		"--env", "A=1",
+		"--unset-env", "OLD",
+		"--port", "9090",
+		"--port-label", "api",
+	})
+	if err != nil {
+		t.Fatalf("runServiceUpdate() error = %v", err)
+	}
+	if saved.Command != "new" || saved.WorkingDir != "/new" {
+		t.Fatalf("saved command/working dir = %q/%q, want new//new", saved.Command, saved.WorkingDir)
+	}
+	if saved.ExtraEnv["A"] != "1" || saved.ExtraEnv["KEEP"] != "yes" {
+		t.Fatalf("saved env = %#v, want A and KEEP", saved.ExtraEnv)
+	}
+	if _, ok := saved.ExtraEnv["OLD"]; ok {
+		t.Fatalf("saved env still has OLD: %#v", saved.ExtraEnv)
+	}
+	if saved.PortForward == nil || saved.PortForward.Port != 9090 || saved.PortForward.Label != "api" || saved.PortForward.Provider != "localtunnel" {
+		t.Fatalf("saved port forward = %#v, want port 9090 label api provider preserved", saved.PortForward)
+	}
+}

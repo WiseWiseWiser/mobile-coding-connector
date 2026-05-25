@@ -156,6 +156,33 @@ func TestCreateOrUpdatePreservesServiceUpgradeTarget(t *testing.T) {
 	}
 }
 
+func TestCreateOrUpdateNoRestartDoesNotMutateRunningProcessDefinition(t *testing.T) {
+	useTempServicesConfig(t)
+
+	oldDef := ServiceDefinition{ID: "svc-1", Name: "web", Command: "sleep 10", WorkingDir: "/old"}
+	m := &Manager{
+		definitions: []ServiceDefinition{oldDef},
+		processes: map[string]*serviceProcess{
+			"svc-1": {def: oldDef, desired: true},
+		},
+	}
+
+	if _, err := m.CreateOrUpdateNoRestart(ServiceDefinition{
+		ID:         "svc-1",
+		Name:       "web",
+		Command:    "sleep 20",
+		WorkingDir: "/new",
+	}); err != nil {
+		t.Fatalf("CreateOrUpdateNoRestart() error = %v", err)
+	}
+	if m.definitions[0].Command != "sleep 20" || m.definitions[0].WorkingDir != "/new" {
+		t.Fatalf("saved definition = command %q dir %q, want updated", m.definitions[0].Command, m.definitions[0].WorkingDir)
+	}
+	if proc := m.processes["svc-1"]; proc.def.Command != "sleep 10" || proc.def.WorkingDir != "/old" {
+		t.Fatalf("running process definition changed to command %q dir %q", proc.def.Command, proc.def.WorkingDir)
+	}
+}
+
 func TestResolveServiceUpgradeTargetPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

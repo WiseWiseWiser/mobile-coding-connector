@@ -348,6 +348,14 @@ func (m *Manager) List(projectDir string) []ServiceStatus {
 }
 
 func (m *Manager) CreateOrUpdate(def ServiceDefinition) (*ServiceStatus, error) {
+	return m.createOrUpdate(def, true)
+}
+
+func (m *Manager) CreateOrUpdateNoRestart(def ServiceDefinition) (*ServiceStatus, error) {
+	return m.createOrUpdate(def, false)
+}
+
+func (m *Manager) createOrUpdate(def ServiceDefinition, restartChanged bool) (*ServiceStatus, error) {
 	def.ProjectDir = normalizeProjectDir(def.ProjectDir)
 	def.WorkingDir = normalizeWorkingDir(def.WorkingDir)
 	def.ExtraEnv = normalizeExtraEnv(def.ExtraEnv)
@@ -393,7 +401,7 @@ func (m *Manager) CreateOrUpdate(def ServiceDefinition) (*ServiceStatus, error) 
 	}
 
 	proc := m.processes[def.ID]
-	if proc != nil {
+	if proc != nil && restartChanged {
 		proc.def = def
 		shouldRestart = proc.desired && (existing == nil || definitionChanged(*existing, def))
 	}
@@ -1389,7 +1397,8 @@ func handleServices(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		saved, err := manager.CreateOrUpdate(req)
+		restartChanged := serviceSaveShouldRestart(r)
+		saved, err := manager.createOrUpdate(req, restartChanged)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -1415,6 +1424,18 @@ func handleServices(w http.ResponseWriter, r *http.Request) {
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func serviceSaveShouldRestart(r *http.Request) bool {
+	value := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("restart")))
+	switch value {
+	case "", "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return true
 	}
 }
 
