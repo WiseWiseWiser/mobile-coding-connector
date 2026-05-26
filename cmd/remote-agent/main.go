@@ -48,6 +48,11 @@ Commands:
       through a PTY so commands can prompt for user input. Every argument
       after 'exec' is forwarded verbatim to the remote binary.
 
+  request <api-path> [json-body]
+      Call an arbitrary API endpoint on the remote server. Uses GET when
+      json-body is omitted, POST with application/json when supplied or
+      piped on stdin.
+
   bash [cwd]
       Start an interactive shell on the remote server using the same
       terminal WebSocket API as the frontend terminal page. The server-side
@@ -66,15 +71,15 @@ Commands:
 
   git <subcommand> [args...]
       Git utilities that run on the remote server. Subcommands:
-        clone [--private-key <key-file>] [--https-proxy <proxy-url>] <repo> [dir]
-            Clone <repo> on the remote machine. If [dir] is omitted, the
+        clone [--private-key <key-file>] [--git-token <token>] [--https-proxy <proxy-url>] <repo-or-remote-dir> [dir]
+            Clone <repo-or-remote-dir> on the remote machine. If [dir] is omitted, the
             repository is cloned into ~/<repo_base_name>. If the target
             already exists, the command errors out.
-        -C <dir> fetch [--private-key <key-file>] [--https-proxy <proxy-url>]
+        -C <dir> fetch [--private-key <key-file>] [--git-token <token>] [--https-proxy <proxy-url>]
             Run 'git fetch' inside <dir> on the remote machine.
-        -C <dir> pull [--private-key <key-file>] [--https-proxy <proxy-url>]
+        -C <dir> pull [--private-key <key-file>] [--git-token <token>] [--https-proxy <proxy-url>]
             Run 'git pull --ff-only' inside <dir> on the remote machine.
-        -C <dir> push [--private-key <key-file>] [--https-proxy <proxy-url>]
+        -C <dir> push [--private-key <key-file>] [--git-token <token>] [--https-proxy <proxy-url>]
             Run 'git push origin HEAD:<current-branch>' inside <dir> on
             the remote machine.
 
@@ -160,6 +165,8 @@ Examples:
   remote-agent local reap --filter ai-critic --signal
   remote-agent exec ls -la /tmp
   remote-agent exec sh -c 'echo hi; sleep 1'
+  remote-agent request /api/services
+  remote-agent request /api/services/start?id=svc-123 '{}'
   remote-agent bash
   remote-agent bash ~/work/repo
   remote-agent terminal list
@@ -168,6 +175,7 @@ Examples:
   remote-agent terminal close Debug
   remote-agent git clone https://github.com/foo/bar.git
   remote-agent git clone --private-key ~/.ssh/id_rsa git@host:foo/bar.git /tmp/bar
+  remote-agent git clone https://github.com/foo/private-bar.git ~/bar --git-token ghp_example
   remote-agent git -C ~/bar fetch --private-key ~/.ssh/id_rsa
   remote-agent git -C ~/bar pull --private-key ~/.ssh/id_rsa
   remote-agent git -C ~/bar push --private-key ~/.ssh/id_rsa
@@ -237,6 +245,10 @@ func run(args []string) error {
 		return runLocal(rest)
 	case "exec":
 		return runExec(func() (*client.Client, error) {
+			return resolveClient(server, token, tokenSpecified)
+		}, rest)
+	case "request":
+		return runRequest(func() (*client.Client, error) {
 			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "bash":

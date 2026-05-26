@@ -70,3 +70,23 @@ func TestProxyCommandForURLRejectsUnsupportedSchemes(t *testing.T) {
 		t.Fatalf("proxyCommandForURL() = %q, want empty for unsupported scheme", got)
 	}
 }
+
+func TestBuildPreservesCustomAskPass(t *testing.T) {
+	cmd := NewCommand("fetch").WithEnv("GIT_ASKPASS", "/tmp/git-askpass").Build()
+
+	got := envValues(cmd.Env, "GIT_ASKPASS")
+	if len(got) != 1 || got[0] != "/tmp/git-askpass" {
+		t.Fatalf("GIT_ASKPASS values = %v, want only custom helper", got)
+	}
+}
+
+func envValues(env []string, key string) []string {
+	prefix := key + "="
+	var values []string
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			values = append(values, strings.TrimPrefix(entry, prefix))
+		}
+	}
+	return values
+}

@@ -45,12 +45,23 @@ remote-agent exec ls -la /tmp
 remote-agent exec sh -c 'uname -a && whoami'
 ```
 
+### Call Remote APIs
+
+Call arbitrary API endpoints on the configured server:
+
+```bash
+remote-agent request /api/services
+remote-agent request /api/services/start?id=svc-123 '{}'
+echo '{"name":"demo"}' | remote-agent request /api/some
+```
+
 ### Manage Remote Git Repositories
 
 Clone, fetch, pull, or push repositories on the remote machine:
 
 ```bash
 remote-agent git clone https://github.com/example/project.git
+remote-agent git clone https://github.com/example/private-project.git ~/project --git-token ghp_example
 remote-agent git -C ~/project fetch
 remote-agent git -C ~/project pull
 remote-agent git -C ~/project push

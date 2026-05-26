@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
+	"github.com/xhd2015/lifelog-private/ai-critic/server/cmdjson"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
 )
@@ -28,6 +29,7 @@ type StatusResponse struct {
 	Installed     bool           `json:"installed"`
 	Authenticated bool           `json:"authenticated"`
 	Error         string         `json:"error,omitempty"`
+	Warnings      []string       `json:"warnings,omitempty"`
 	CertFiles     []CertFileInfo `json:"cert_files,omitempty"`
 }
 
@@ -60,11 +62,14 @@ func CheckStatus() StatusResponse {
 	resp.Installed = true
 	resp.CertFiles = ListCertFiles()
 
-	// First check if tunnel list command succeeds (most reliable indicator)
-	out, err := exec.Command("cloudflared", "tunnel", "list", "--output", "json").CombinedOutput()
+	// First check if tunnel list command succeeds (most reliable indicator).
+	result, err := cmdjson.Run[[]unified_tunnel.TunnelInfo](exec.Command("cloudflared", "tunnel", "list", "--output", "json"))
 	if err == nil {
 		// Tunnel list succeeded - user is authenticated
 		resp.Authenticated = true
+		if warning := result.Warning(); warning != "" {
+			resp.Warnings = append(resp.Warnings, warning)
+		}
 		return resp
 	}
 
@@ -74,7 +79,7 @@ func CheckStatus() StatusResponse {
 	// - Network issues
 	// - Permissions issues
 	// So we check if cert.pem exists as a reliable indicator of authentication
-	errStr := strings.TrimSpace(string(out))
+	errStr := err.Error()
 	if hasCertFile() {
 		// User has cert.pem, so they are authenticated
 		resp.Authenticated = true
@@ -193,22 +198,16 @@ func handleTunnels(w http.ResponseWriter, r *http.Request) {
 }
 
 func listTunnels(w http.ResponseWriter) {
-	out, err := exec.Command("cloudflared", "tunnel", "list", "--output", "json").CombinedOutput()
+	result, err := cmdjson.Run[[]unified_tunnel.TunnelInfo](exec.Command("cloudflared", "tunnel", "list", "--output", "json"))
 	if err != nil {
-		http.Error(w, strings.TrimSpace(string(out)), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	// Parse and re-encode to ensure valid JSON
-	var tunnels []unified_tunnel.TunnelInfo
-	if err := json.Unmarshal(out, &tunnels); err != nil {
-		// If parse fails, return raw output
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(out)
-		return
+	if warning := result.WarningHeader(); warning != "" {
+		w.Header().Set("X-Command-Stderr-Warning", warning)
 	}
 
-	writeJSON(w, tunnels)
+	writeJSON(w, result.Data)
 }
 
 func createTunnel(w http.ResponseWriter, r *http.Request) {
