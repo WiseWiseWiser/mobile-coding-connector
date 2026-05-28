@@ -21,7 +21,7 @@ import (
 	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
 	opencode_internal "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	"github.com/xhd2015/agent-traces/agent/streaming/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 

@@ -9,7 +9,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/proxyselect"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	"github.com/xhd2015/agent-traces/agent/streaming/sse"
 )
 
 // registerGitOpsAPI registers git operation endpoints.

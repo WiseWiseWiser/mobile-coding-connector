@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	"github.com/xhd2015/agent-traces/agent/streaming/sse"
 )
 
 // StatusResponse represents server status.

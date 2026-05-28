@@ -7,6 +7,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/sashabaranov/go-openai v1.41.2
+	github.com/xhd2015/agent-traces v0.0.4
 	github.com/xhd2015/kool v0.0.101
 	github.com/xhd2015/less-gen v0.0.19
 	github.com/xhd2015/xgo v1.1.14

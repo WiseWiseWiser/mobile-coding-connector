@@ -14,7 +14,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cmdjson"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	"github.com/xhd2015/agent-traces/agent/streaming/sse"
 )
 
 // CertFileInfo describes a cloudflared credential file.

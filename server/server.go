@@ -52,7 +52,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/services"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	"github.com/xhd2015/agent-traces/agent/streaming/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/sshservers"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/subprocess"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
