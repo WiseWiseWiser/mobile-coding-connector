@@ -15,14 +15,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/cursor"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/cursor_acp"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/common_opencode"
 	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
 	opencode_internal "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
-	"github.com/xhd2015/agent-traces/agent/streaming/sse"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
 // AgentDef defines a supported coding agent

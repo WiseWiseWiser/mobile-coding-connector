@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_exec"
 )
 
 // ServerManager manages the cursor-web process.

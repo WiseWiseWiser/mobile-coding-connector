@@ -10,8 +10,8 @@ import (
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/proc_manager"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_exec"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 )
 
 const (

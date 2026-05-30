@@ -19,7 +19,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 )
 
 var upgrader = websocket.Upgrader{

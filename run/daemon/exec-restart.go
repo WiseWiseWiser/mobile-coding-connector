@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/agent-traces/agent/streaming/sse"
 )
 
 // callExecRestartEndpoint calls the server's /api/server/exec-restart endpoint

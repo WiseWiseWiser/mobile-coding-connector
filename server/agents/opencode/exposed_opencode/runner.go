@@ -10,7 +10,7 @@ import (
 
 	common "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/common_opencode"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/proc_manager"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_exec"
 )
 
 const procName = "opencode-web"

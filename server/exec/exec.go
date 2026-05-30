@@ -42,7 +42,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/ndjsonstream"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_exec"
 )
 
 // ExecRequest is the JSON body accepted by POST /api/exec.

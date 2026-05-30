@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/agent-traces/agent/streaming/sse"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
 )
 
 // Action represents a user-defined custom action

@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 )
 
 // ChatMessage follows ACP message format.

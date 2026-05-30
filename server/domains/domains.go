@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
 	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/domains/pick"
-	"github.com/xhd2015/agent-traces/agent/streaming/sse"
 )
 
 var (

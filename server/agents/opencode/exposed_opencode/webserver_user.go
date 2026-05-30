@@ -12,7 +12,7 @@ import (
 	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/basic_auth_proxy"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 )
 
 // GetWebServerStatus checks if the OpenCode web server is running and if its port is mapped.
