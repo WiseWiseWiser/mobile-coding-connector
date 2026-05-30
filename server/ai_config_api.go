@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/config"
 )
 
 // registerAIConfigAPI registers the AI config management API endpoints

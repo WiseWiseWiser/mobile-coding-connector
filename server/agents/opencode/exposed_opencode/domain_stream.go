@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward"
+	"github.com/xhd2015/ai-critic/server/proxy/portforward"
 )
 
 // StreamSession represents an active domain mapping streaming session.

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/jsonfile"
+	"github.com/xhd2015/ai-critic/server/jsonfile"
 )
 
 type SessionEntry struct {

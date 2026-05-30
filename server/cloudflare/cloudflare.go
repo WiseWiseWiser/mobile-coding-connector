@@ -12,9 +12,9 @@ import (
 	"strings"
 
 	"github.com/xhd2015/agent-pro/agent/streaming/sse"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cmdjson"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
+	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
+	"github.com/xhd2015/ai-critic/server/cmdjson"
+	"github.com/xhd2015/ai-critic/server/quicktest"
 )
 
 // CertFileInfo describes a cloudflared credential file.

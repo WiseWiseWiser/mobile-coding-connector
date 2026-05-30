@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/config"
 )
 
 // SSHServer represents a user-configured SSH server connection

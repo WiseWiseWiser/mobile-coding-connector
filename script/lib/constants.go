@@ -1,6 +1,6 @@
 package lib
 
-import "github.com/xhd2015/lifelog-private/ai-critic/server/config"
+import "github.com/xhd2015/ai-critic/server/config"
 
 const (
 	// BinaryName is the name of the server binary used in releases and installs.

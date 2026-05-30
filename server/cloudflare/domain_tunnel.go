@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
+	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
+	"github.com/xhd2015/ai-critic/server/config"
 )
 
 // DomainTunnelStatus describes the runtime status of a domain tunnel.

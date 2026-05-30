@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/config"
 )
 
 // AgentConfig holds the configuration for a single agent

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xhd2015/ai-critic/client"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/client"
 )
 
 const serviceUpgradeHelp = `Usage: remote-agent service upgrade <service-name-or-id> <local-binary> [--target <remote-path>]

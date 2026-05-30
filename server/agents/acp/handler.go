@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
+	"github.com/xhd2015/ai-critic/server/projects"
 )
 
 // RegisterAgentAPI registers HTTP endpoints for a given ACP agent at the specified prefix.

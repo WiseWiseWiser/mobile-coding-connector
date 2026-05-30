@@ -45,9 +45,9 @@ import (
 	"sync"
 
 	gitrunner "github.com/xhd2015/agent-pro/agent/git_runner"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/gitutil"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/ndjsonstream"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/proxyselect"
+	"github.com/xhd2015/ai-critic/server/gitutil"
+	"github.com/xhd2015/ai-critic/server/ndjsonstream"
+	"github.com/xhd2015/ai-critic/server/proxy/proxyselect"
 )
 
 // CloneRequest is the JSON body accepted by POST /api/remote-agent/git/clone.

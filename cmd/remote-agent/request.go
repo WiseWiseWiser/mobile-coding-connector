@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/xhd2015/ai-critic/client"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/client"
 )
 
 const requestHelp = `Usage: remote-agent request <api-path> [json-body]

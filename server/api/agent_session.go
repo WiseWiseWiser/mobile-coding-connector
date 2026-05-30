@@ -9,9 +9,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/custom"
-	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
+	"github.com/xhd2015/ai-critic/server/agents"
+	"github.com/xhd2015/ai-critic/server/agents/custom"
+	opencode_exposed "github.com/xhd2015/ai-critic/server/agents/opencode/exposed_opencode"
 )
 
 type launchCustomAgentRequest struct {

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/client"
+	"github.com/xhd2015/ai-critic/client"
 )
 
 func TestRunGitSubcommandsForwardGitToken(t *testing.T) {

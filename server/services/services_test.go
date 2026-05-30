@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward"
+	"github.com/xhd2015/ai-critic/server/proxy/portforward"
 )
 
 func TestEnsurePortForwardReplacesMismatchedForwardForSamePort(t *testing.T) {

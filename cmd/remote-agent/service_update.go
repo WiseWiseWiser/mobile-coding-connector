@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/xhd2015/ai-critic/client"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/client"
 )
 
 func runServiceRename(resolve func() (*client.Client, error), args []string) error {

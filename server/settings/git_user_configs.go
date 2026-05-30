@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/config"
 )
 
 // GitUserConfig is one Git author/committer identity exposed by the Git

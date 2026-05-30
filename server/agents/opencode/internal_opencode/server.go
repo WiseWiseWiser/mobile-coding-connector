@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	common "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/common_opencode"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
+	common "github.com/xhd2015/ai-critic/server/agents/opencode/common_opencode"
+	"github.com/xhd2015/ai-critic/server/quicktest"
 )
 
 var (

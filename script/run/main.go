@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/xhd2015/agent-pro/pkgs/containers/podman"
+	"github.com/xhd2015/ai-critic/script/lib"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 	"github.com/xhd2015/xgo/support/cmd"
 )
 

@@ -39,8 +39,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
+	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/quicktest"
 	"gopkg.in/yaml.v3"
 )
 

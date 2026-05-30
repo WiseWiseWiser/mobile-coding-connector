@@ -5,9 +5,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/xhd2015/ai-critic/client"
+	remoteagentskill "github.com/xhd2015/ai-critic/cmd/remote-agent/skill"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/client"
-	remoteagentskill "github.com/xhd2015/lifelog-private/ai-critic/cmd/remote-agent/skill"
 )
 
 const help = `Usage: remote-agent [--server URL] [--token TOKEN] <command> [args...]

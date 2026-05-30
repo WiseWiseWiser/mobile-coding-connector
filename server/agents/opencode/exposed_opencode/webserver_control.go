@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/basic_auth_proxy"
+	"github.com/xhd2015/ai-critic/server/cloudflare"
+	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
+	"github.com/xhd2015/ai-critic/server/proxy/basic_auth_proxy"
 )
 
 // WebServerProcessID is the ID used for managing the web server subprocess.

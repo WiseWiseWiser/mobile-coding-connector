@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/acp"
 	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
+	"github.com/xhd2015/ai-critic/server/agents/acp"
 )
 
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)

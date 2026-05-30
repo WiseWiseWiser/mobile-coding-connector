@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xhd2015/ai-critic/run/daemon"
+	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/terminal"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/run/daemon"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
 )
 
 const keepAliveHelp = `Usage: ai-critic keep-alive [options]

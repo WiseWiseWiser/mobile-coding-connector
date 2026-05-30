@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/exposedurls"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/services"
+	opencode_exposed "github.com/xhd2015/ai-critic/server/agents/opencode/exposed_opencode"
+	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
+	"github.com/xhd2015/ai-critic/server/domains"
+	"github.com/xhd2015/ai-critic/server/exposedurls"
+	"github.com/xhd2015/ai-critic/server/services"
 )
 
 func RunBackgroundTasks() {

@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cmdjson"
+	"github.com/xhd2015/ai-critic/server/cmdjson"
 	"gopkg.in/yaml.v3"
 )
 

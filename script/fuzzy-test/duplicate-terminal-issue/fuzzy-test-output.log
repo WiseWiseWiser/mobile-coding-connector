@@ -29,15 +29,15 @@ Serving quick-test server at http://localhost:3580
 [2026-05-30T02:13:22.010Z] [LATENCY] Delaying sessions API by 1598ms
 [opencode] Registry process dead or port unreachable: PID=63229, Port=58688
 [opencode] Starting: opencode serve --port 59293
-  /Users/xhd2015/Projects/xhd2015/ai-critic/server/quicktest/quicktest.go:67 github.com/xhd2015/lifelog-private/ai-critic/server/quicktest.LogHeavyOperationWithCallerStack
-  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/opencode/internal_opencode/server.go:132 github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode.startOpencodeWebServer
-  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/opencode/internal_opencode/server.go:90 github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode.GetOrStartOpencodeServer.func1
-  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/opencode/internal_opencode/process_registry.go:49 github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode.WithLock
-  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/opencode/internal_opencode/server.go:63 github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode.GetOrStartOpencodeServer
-  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/agents.go:1185 github.com/xhd2015/lifelog-private/ai-critic/server/agents.handleExternalSessions
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/quicktest/quicktest.go:67 github.com/xhd2015/ai-critic/server/quicktest.LogHeavyOperationWithCallerStack
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/opencode/internal_opencode/server.go:132 github.com/xhd2015/ai-critic/server/agents/opencode/internal_opencode.startOpencodeWebServer
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/opencode/internal_opencode/server.go:90 github.com/xhd2015/ai-critic/server/agents/opencode/internal_opencode.GetOrStartOpencodeServer.func1
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/opencode/internal_opencode/process_registry.go:49 github.com/xhd2015/ai-critic/server/agents/opencode/internal_opencode.WithLock
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/opencode/internal_opencode/server.go:63 github.com/xhd2015/ai-critic/server/agents/opencode/internal_opencode.GetOrStartOpencodeServer
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/agents.go:1185 github.com/xhd2015/ai-critic/server/agents.handleExternalSessions
   /Users/xhd2015/installed/go1.24.11/src/net/http/server.go:2294 net/http.HandlerFunc.ServeHTTP
   /Users/xhd2015/installed/go1.24.11/src/net/http/server.go:2822 net/http.(*ServeMux).ServeHTTP
-  /Users/xhd2015/Projects/xhd2015/ai-critic/server/auth/auth.go:84 github.com/xhd2015/lifelog-private/ai-critic/server.Serve.Middleware.func6
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/auth/auth.go:84 github.com/xhd2015/ai-critic/server.Serve.Middleware.func6
   /Users/xhd2015/installed/go1.24.11/src/net/http/server.go:2294 net/http.HandlerFunc.ServeHTTP
 [tunnel-group-manager] Created extension group with tunnel manager
 [tunnel-group-manager] Created core group with tunnel manager

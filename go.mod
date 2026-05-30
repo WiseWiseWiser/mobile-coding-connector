@@ -1,4 +1,4 @@
-module github.com/xhd2015/lifelog-private/ai-critic
+module github.com/xhd2015/ai-critic
 
 go 1.24.11
 

@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/xhd2015/agent-pro/pkgs/containers/podman"
+	"github.com/xhd2015/ai-critic/script/lib"
+	envpkg "github.com/xhd2015/ai-critic/server/env"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
-	envpkg "github.com/xhd2015/lifelog-private/ai-critic/server/env"
 )
 
 const help = `Usage: go run ./script/debug-server-and-frontend [options] [script]

@@ -112,7 +112,7 @@ When executing external commands (like `opencode`, `claude`, etc.), **always use
 ### Usage
 
 ```go
-import "github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
+import "github.com/xhd2015/ai-critic/server/tool_exec"
 
 // Basic usage - automatic PATH resolution
 cmd, err := tool_exec.New("opencode", []string{"web", "start"}, nil)

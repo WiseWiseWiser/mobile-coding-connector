@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/client"
+	"github.com/xhd2015/ai-critic/client"
 )
 
 const proxyHelp = `Usage: remote-agent proxy <subcommand> [args...]

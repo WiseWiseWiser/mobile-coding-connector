@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
-	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
+	"github.com/xhd2015/ai-critic/server/auth"
+	cloudflareSettings "github.com/xhd2015/ai-critic/server/cloudflare"
+	"github.com/xhd2015/ai-critic/server/domains"
+	"github.com/xhd2015/ai-critic/server/encrypt"
+	"github.com/xhd2015/ai-critic/server/terminal"
 )
 
 // RegisterAPI registers settings export/import endpoints.
