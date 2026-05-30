@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -121,6 +122,7 @@ func (m *sessionManager) create(name, cwd string) (*session, error) {
 	m.mu.Lock()
 	m.counter++
 	id := fmt.Sprintf("session-%d", m.counter)
+	log.Printf("[terminal] creating session %s (name=%q, cwd=%s)", id, name, cwd)
 	m.mu.Unlock()
 
 	// Load terminal config for shell, flags, and extra paths

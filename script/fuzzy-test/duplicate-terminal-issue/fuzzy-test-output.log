@@ -1,0 +1,112 @@
+[fuzzy] Building and starting server...
+
+> ai-critic-react@0.0.0 dev
+> vite
+
+
+  VITE v7.3.1  ready in 224 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+[fuzzy] Waiting for server on port 3580...
+[config] Process management paths initialized
+Serving quick-test server at http://localhost:3580
+[fuzzy] Server is ready
+[fuzzy] Starting fuzzy test against http://localhost:3580
+[fuzzy] Headless: true, Max iterations: 50 (0=forever)
+[fuzzy] Press Ctrl-C to stop
+
+[2026-05-30T02:13:20.402Z] [FUZZY] === Terminal Duplicate Session Fuzzy Test ===
+[2026-05-30T02:13:20.404Z] [FUZZY] BASE_URL:     http://localhost:3580
+[2026-05-30T02:13:20.404Z] [FUZZY] HEADLESS:     true
+[2026-05-30T02:13:20.404Z] [FUZZY] MAX_ITER:     50 (0=forever)
+[2026-05-30T02:13:20.404Z] [FUZZY] Press Ctrl-C to stop
+
+
+[2026-05-30T02:13:21.585Z] [FUZZY] === Iteration 1 (delay 4768ms) ===
+[2026-05-30T02:13:21.585Z] [FUZZY] Navigating to /terminal...
+[2026-05-30T02:13:21.658Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/?token=cnTYAHUyJqJc
+[2026-05-30T02:13:22.010Z] [LATENCY] Delaying sessions API by 1598ms
+[opencode] Registry process dead or port unreachable: PID=63229, Port=58688
+[opencode] Starting: opencode serve --port 59293
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/quicktest/quicktest.go:67 github.com/xhd2015/lifelog-private/ai-critic/server/quicktest.LogHeavyOperationWithCallerStack
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/opencode/internal_opencode/server.go:132 github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode.startOpencodeWebServer
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/opencode/internal_opencode/server.go:90 github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode.GetOrStartOpencodeServer.func1
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/opencode/internal_opencode/process_registry.go:49 github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode.WithLock
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/opencode/internal_opencode/server.go:63 github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/internal_opencode.GetOrStartOpencodeServer
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/agents/agents.go:1185 github.com/xhd2015/lifelog-private/ai-critic/server/agents.handleExternalSessions
+  /Users/xhd2015/installed/go1.24.11/src/net/http/server.go:2294 net/http.HandlerFunc.ServeHTTP
+  /Users/xhd2015/installed/go1.24.11/src/net/http/server.go:2822 net/http.(*ServeMux).ServeHTTP
+  /Users/xhd2015/Projects/xhd2015/ai-critic/server/auth/auth.go:84 github.com/xhd2015/lifelog-private/ai-critic/server.Serve.Middleware.func6
+  /Users/xhd2015/installed/go1.24.11/src/net/http/server.go:2294 net/http.HandlerFunc.ServeHTTP
+[tunnel-group-manager] Created extension group with tunnel manager
+[tunnel-group-manager] Created core group with tunnel manager
+Warning: OPENCODE_SERVER_PASSWORD is not set; server is unsecured.
+opencode server listening on http://127.0.0.1:59293
+[opencode] Internal server started on port 59293
+[2026-05-30T02:13:23.642Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?name=Terminal+1
+2026/05/30 10:13:23 [terminal] creating session session-1 (name="Terminal 1", cwd=/Users/xhd2015)
+[2026-05-30T02:13:23.654Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?name=Terminal+1
+2026/05/30 10:13:23 [terminal] creating session session-2 (name="Terminal 1", cwd=/Users/xhd2015)
+[2026-05-30T02:13:25.368Z] [CHECK] Sessions: 1 [session-2]
+[2026-05-30T02:13:25.368Z] [FUZZY] Refreshing in 2772ms...
+[2026-05-30T02:13:28.171Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/?token=cnTYAHUyJqJc
+[2026-05-30T02:13:28.434Z] [LATENCY] Delaying sessions API by 2103ms
+[2026-05-30T02:13:30.559Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?session_id=session-2&cwd=%2FUsers%2Fxhd2015&name=Terminal+1
+[2026-05-30T02:13:30.562Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?session_id=session-2&cwd=%2FUsers%2Fxhd2015&name=Terminal+1
+[2026-05-30T02:13:32.200Z] [CHECK] Sessions: 1 [session-2]
+[2026-05-30T02:13:32.200Z] [STATS] iter=1 checks=2 dup=0 maxSessions=1 elapsed=11s
+
+[2026-05-30T02:13:32.200Z] [FUZZY] === Iteration 2 (delay 2850ms) ===
+[2026-05-30T02:13:32.200Z] [FUZZY] Navigating to /terminal...
+[2026-05-30T02:13:32.223Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/?token=cnTYAHUyJqJc
+[2026-05-30T02:13:32.507Z] [LATENCY] Delaying sessions API by 2932ms
+[2026-05-30T02:13:35.458Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?session_id=session-2&cwd=%2FUsers%2Fxhd2015&name=Terminal+1
+[2026-05-30T02:13:35.464Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?session_id=session-2&cwd=%2FUsers%2Fxhd2015&name=Terminal+1
+[2026-05-30T02:13:37.040Z] [CHECK] Sessions: 1 [session-2]
+[2026-05-30T02:13:37.040Z] [FUZZY] Refreshing in 3762ms...
+[2026-05-30T02:13:40.836Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/?token=cnTYAHUyJqJc
+[2026-05-30T02:13:41.084Z] [LATENCY] Delaying sessions API by 2640ms
+[2026-05-30T02:13:43.750Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?session_id=session-2&cwd=%2FUsers%2Fxhd2015&name=Terminal+1
+[2026-05-30T02:13:43.758Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?session_id=session-2&cwd=%2FUsers%2Fxhd2015&name=Terminal+1
+[2026-05-30T02:13:45.797Z] [CHECK] Sessions: 1 [session-2]
+[2026-05-30T02:13:45.797Z] [STATS] iter=2 checks=4 dup=0 maxSessions=1 elapsed=24s
+
+[2026-05-30T02:13:45.797Z] [FUZZY] === Iteration 3 (delay 3817ms) ===
+[2026-05-30T02:13:45.797Z] [FUZZY] Navigating to /terminal...
+[2026-05-30T02:13:45.824Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/?token=cnTYAHUyJqJc
+[2026-05-30T02:13:46.060Z] [LATENCY] Delaying sessions API by 2056ms
+[2026-05-30T02:13:48.139Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?session_id=session-2&cwd=%2FUsers%2Fxhd2015&name=Terminal+1
+[2026-05-30T02:13:48.147Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?session_id=session-2&cwd=%2FUsers%2Fxhd2015&name=Terminal+1
+[2026-05-30T02:13:48.171Z] [CHECK] Sessions: 1 [session-2]
+[2026-05-30T02:13:48.172Z] [FUZZY] Refreshing in 4379ms...
+[2026-05-30T02:13:52.570Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/?token=cnTYAHUyJqJc
+[2026-05-30T02:13:52.829Z] [LATENCY] Delaying sessions API by 2453ms
+[2026-05-30T02:13:55.298Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?session_id=session-2&cwd=%2FUsers%2Fxhd2015&name=Terminal+1
+[2026-05-30T02:13:55.305Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?session_id=session-2&cwd=%2FUsers%2Fxhd2015&name=Terminal+1
+[2026-05-30T02:13:56.150Z] [CHECK] Sessions: 1 [session-2]
+[2026-05-30T02:13:56.150Z] [STATS] iter=3 checks=6 dup=0 maxSessions=1 elapsed=35s
+
+[2026-05-30T02:13:56.150Z] [FUZZY] === Iteration 4 (delay 1167ms) ===
+[2026-05-30T02:13:56.150Z] [FUZZY] Navigating to /terminal...
+[2026-05-30T02:13:56.170Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/?token=cnTYAHUyJqJc
+[2026-05-30T02:13:56.435Z] [LATENCY] Delaying sessions API by 183ms
+[2026-05-30T02:13:56.779Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?session_id=session-2&cwd=%2FUsers%2Fxhd2015&name=Terminal+1
+[2026-05-30T02:13:56.783Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/api/terminal?session_id=session-2&cwd=%2FUsers%2Fxhd2015&name=Terminal+1
+[2026-05-30T02:13:59.282Z] [CHECK] Sessions: 1 [session-2]
+[2026-05-30T02:13:59.282Z] [FUZZY] Refreshing in 1298ms...
+[2026-05-30T02:14:00.615Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/?token=cnTYAHUyJqJc
+[2026-05-30T02:14:00.882Z] [LATENCY] Delaying sessions API by 2547ms
+[2026-05-30T02:14:02.935Z] [CHECK] Sessions: 1 [session-2]
+[2026-05-30T02:14:02.935Z] [STATS] iter=4 checks=8 dup=0 maxSessions=1 elapsed=41s
+
+[2026-05-30T02:14:02.935Z] [FUZZY] === Iteration 5 (delay 590ms) ===
+[2026-05-30T02:14:02.935Z] [FUZZY] Navigating to /terminal...
+[2026-05-30T02:14:02.962Z] [WS-FUZZY] new WebSocket: ws://localhost:3580/?token=cnTYAHUyJqJc
+[2026-05-30T02:14:03.336Z] [LATENCY] Delaying sessions API by 2622ms
+
+[fuzzy] Received signal interrupt, stopping...
+
+[fuzzy] Log saved to script/fuzzy-test/fuzzy-test-output.log
+[fuzzy] Stopping server...
+[fuzzy] Stopping Vite...

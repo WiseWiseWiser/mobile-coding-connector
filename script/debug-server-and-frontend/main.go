@@ -29,6 +29,9 @@ Options:
   --restart-exec    Use exec restart when port is in use (preserves PID, faster but riskier)
 
 If script is omitted, a default script is used to open the root page and print the title.
+
+Example:
+  go run ./script/debug-server-and-frontend [options] 'await navigate('/'); console.log('Page title:', await page.title());'
 `
 
 const defaultDebugScript = "await navigate('/'); console.log('Page title:', await page.title());"
