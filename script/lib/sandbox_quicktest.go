@@ -2,7 +2,6 @@ package lib
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/xhd2015/agent-pro/pkgs/containers/podman"
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
@@ -34,7 +34,7 @@ type SandboxQuickTestResult struct {
 // copies the binary. Call SandboxQuickTestStart afterwards to start vite and
 // the server inside the container.
 func SandboxQuickTestPrepare(opts SandboxQuickTestOptions) error {
-	if err := EnsurePodman(); err != nil {
+	if err := podman.EnsurePodman(); err != nil {
 		return err
 	}
 
@@ -43,7 +43,7 @@ func SandboxQuickTestPrepare(opts SandboxQuickTestOptions) error {
 		return err
 	}
 
-	vmArch, vmErr := PodmanArch()
+	vmArch, vmErr := podman.PodmanArch()
 	if vmErr == nil && vmArch != goarch {
 		return fmt.Errorf(
 			"target arch %q differs from podman VM arch %q.\n"+
@@ -71,10 +71,10 @@ func SandboxQuickTestPrepare(opts SandboxQuickTestOptions) error {
 	containerName := opts.ContainerName
 	containerPort := opts.ContainerPort
 
-	status, _ := InspectContainerStatus(containerName)
-	if status != "running" && CheckPort(containerPort) {
+	status, _ := podman.InspectStatus(containerName)
+	if status != "running" && podman.CheckPort(containerPort) {
 		fmt.Printf("Port %d is in use, killing existing process...\n", containerPort)
-		killedPid, killErr := KillPortPid(containerPort)
+		killedPid, killErr := podman.KillPortPid(containerPort)
 		if killErr != nil {
 			return fmt.Errorf("failed to kill process on port %d: %v", containerPort, killErr)
 		}
@@ -92,7 +92,7 @@ func SandboxQuickTestPrepare(opts SandboxQuickTestOptions) error {
 	_ = exec.Command("podman", "exec", containerName, "pkill", "-f", "ai-critic").Run()
 
 	fmt.Println("Copying binary into container...")
-	if err := RunVerbose("podman", "cp", binaryPath, containerName+":/usr/local/bin/ai-critic"); err != nil {
+	if err := podman.Run("podman", "cp", binaryPath, containerName+":/usr/local/bin/ai-critic"); err != nil {
 		return fmt.Errorf("failed to copy binary: %v", err)
 	}
 
@@ -108,7 +108,7 @@ func SandboxQuickTestStart(ctx context.Context, opts SandboxQuickTestOptions) (*
 
 	projectDir := resolveDefaultProjectDir()
 	var viteCmd *exec.Cmd
-	if !CheckPort(ViteDevPort) {
+	if !podman.CheckPort(ViteDevPort) {
 		fmt.Println("\n=== Starting Vite dev server ===")
 		var err error
 		viteCmd, err = startViteDevServer(projectDir)
@@ -226,33 +226,18 @@ func quickTestContainerConfig(goarch string, containerPort int, files *sandboxFi
 	}, "\n")
 }
 
-func configHash(cfg string) string {
-	h := sha256.Sum256([]byte(cfg))
-	return fmt.Sprintf("%x", h[:8])
-}
-
-func inspectContainerLabel(containerName, label string) string {
-	var buf strings.Builder
-	c := exec.Command("podman", "inspect", "--format", fmt.Sprintf("{{index .Config.Labels %q}}", label), containerName)
-	c.Stdout = &buf
-	if err := c.Run(); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(buf.String())
-}
-
 func ensureQuickTestContainer(containerName, goarch string, containerPort int, files *sandboxFiles) error {
 	cfg := quickTestContainerConfig(goarch, containerPort, files)
-	wantHash := configHash(cfg)
+	wantHash := podman.ConfigHash(cfg)
 
-	status, err := InspectContainerStatus(containerName)
+	status, err := podman.InspectStatus(containerName)
 	if err != nil {
 		return createAndStartQuickTestContainer(containerName, goarch, containerPort, files, wantHash)
 	}
 
-	if gotHash := inspectContainerLabel(containerName, quickTestConfigLabel); gotHash != wantHash {
+	if gotHash := podman.InspectLabel(containerName, quickTestConfigLabel); gotHash != wantHash {
 		fmt.Printf("Container %q config changed (got %s, want %s), recreating...\n", containerName, gotHash, wantHash)
-		_ = RunVerbose("podman", "rm", "-f", containerName)
+		_ = podman.Run("podman", "rm", "-f", containerName)
 		return createAndStartQuickTestContainer(containerName, goarch, containerPort, files, wantHash)
 	}
 
@@ -262,7 +247,7 @@ func ensureQuickTestContainer(containerName, goarch string, containerPort int, f
 	}
 
 	fmt.Printf("Container %q is stopped, restarting...\n", containerName)
-	if err := RunVerbose("podman", "start", containerName); err != nil {
+	if err := podman.Run("podman", "start", containerName); err != nil {
 		return fmt.Errorf("failed to start container: %v", err)
 	}
 	return nil
@@ -289,12 +274,12 @@ func createAndStartQuickTestContainer(containerName, goarch string, containerPor
 		"sleep", "infinity",
 	}
 
-	if err := RunVerbose("podman", args...); err != nil {
+	if err := podman.Run("podman", args...); err != nil {
 		return fmt.Errorf("failed to create container: %v", err)
 	}
 
 	fmt.Println("Starting container...")
-	if err := RunVerbose("podman", "start", containerName); err != nil {
+	if err := podman.Run("podman", "start", containerName); err != nil {
 		return fmt.Errorf("failed to start container: %v", err)
 	}
 	return nil

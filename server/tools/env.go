@@ -1,7 +1,7 @@
 package tools
 
 import (
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 )
 
 // AppendExtraPaths appends extra paths to the PATH variable in the given

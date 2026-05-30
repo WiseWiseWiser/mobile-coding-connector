@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xhd2015/agent-pro/pkgs/containers/podman"
 	"github.com/xhd2015/xgo/support/cmd"
 )
 
@@ -73,7 +74,7 @@ func QuickTestPrepare(opts *QuickTestOptions) error {
 
 	binaryPath := "/tmp/ai-critic-quick"
 
-	if CheckPort(port) {
+	if podman.CheckPort(port) {
 		if opts.RestartExec {
 			fmt.Printf("Port %d is in use, trying exec-restart (RestartExec flag is set)...\n", port)
 			if tryExecRestart(port, binaryPath) {
@@ -85,7 +86,7 @@ func QuickTestPrepare(opts *QuickTestOptions) error {
 		}
 
 		fmt.Printf("Port %d is in use, killing existing server...\n", port)
-		killedPid, err := KillPortPid(port)
+		killedPid, err := podman.KillPortPid(port)
 		if err != nil {
 			return fmt.Errorf("failed to kill process on port %d: %v", port, err)
 		}
@@ -98,7 +99,7 @@ func QuickTestPrepare(opts *QuickTestOptions) error {
 
 	if !opts.NoVite {
 		fmt.Printf("Checking for existing vite on port %d...\n", ViteDevPort)
-		killedVitePid, err := KillPortPid(ViteDevPort)
+		killedVitePid, err := podman.KillPortPid(ViteDevPort)
 		if err != nil {
 			return err
 		}

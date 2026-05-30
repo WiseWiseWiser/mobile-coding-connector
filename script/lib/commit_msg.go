@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/commit_msg"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
+	"github.com/xhd2015/agent-pro/agent/commit_msg"
+	gitrunner "github.com/xhd2015/agent-pro/agent/git_runner"
 )
 
 var genCommitMsgHelp = `Usage: gen-commit-msg [options]

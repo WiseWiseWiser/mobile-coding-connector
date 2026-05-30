@@ -3,7 +3,7 @@ package custom
 import (
 	"path/filepath"
 
-	opencode_sessions "github.com/xhd2015/agent-traces/agent/opencode/ai_critic/sessions"
+	opencode_sessions "github.com/xhd2015/agent-pro/agent/opencode/ai_critic/sessions"
 )
 
 const SessionsDirName = "sessions"

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
+	gitrunner "github.com/xhd2015/agent-pro/agent/git_runner"
 )
 
 // FileSnapshot stores the state of a single file at a checkpoint (metadata only).
