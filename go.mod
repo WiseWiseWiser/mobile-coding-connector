@@ -10,6 +10,7 @@ require (
 	github.com/xhd2015/agent-pro v0.0.7
 	github.com/xhd2015/kool v0.0.101
 	github.com/xhd2015/less-gen v0.0.19
+	github.com/xhd2015/skills v0.0.3
 	github.com/xhd2015/xgo v1.1.14
 	golang.org/x/crypto v0.47.0
 	golang.org/x/term v0.39.0

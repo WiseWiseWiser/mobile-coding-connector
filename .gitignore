@@ -8,6 +8,7 @@ dist
 .DS_Store
 
 .opencode
+.agents
 .env
 .env.local
 

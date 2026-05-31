@@ -154,6 +154,8 @@ Commands:
 
   skill <subcommand> [args...]
       Manage the embedded remote-agent skill definition. Subcommands:
+        show
+            Print the content of SKILL.md.
         install [<dir>] [--cursor|--codex]
             Install the packaged SKILL.md for Cursor or Codex.
 
@@ -199,6 +201,7 @@ Examples:
   remote-agent agent add build-review --template build --name "Build Review"
   remote-agent agent sessions build-review
   remote-agent agent run build-review --project ~/work/repo
+  remote-agent skill show
   remote-agent skill install --codex
 `
 
