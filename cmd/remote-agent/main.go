@@ -137,8 +137,14 @@ Commands:
         status
             Show the same keep-alive and machine status as the Manage Server page.
 
-  agent <subcommand> [args...]
-      Manage remote custom agents and their saved sessions. Subcommands:
+   auth <subcommand> [args...]
+       Check authentication status against the configured server.
+       Subcommands:
+         status
+             Verify the server is reachable and the token is valid.
+
+   agent <subcommand> [args...]
+       Manage remote custom agents and their saved sessions. Subcommands:
         list
             List custom agents.
         show <agent-id>
@@ -212,8 +218,9 @@ Examples:
   remote-agent server build-next
   remote-agent server upload-next ./ai-critic-server-linux-amd64
   remote-agent server restart
-  remote-agent server status
-  remote-agent agent list
+   remote-agent server status
+   remote-agent auth status
+   remote-agent agent list
   remote-agent agent add build-review --template build --name "Build Review"
   remote-agent agent sessions build-review
   remote-agent agent run build-review --project ~/work/repo
@@ -300,6 +307,10 @@ func run(args []string) error {
 		}, rest)
 	case "server":
 		return runServer(func() (*client.Client, error) {
+			return resolveClient(server, token, tokenSpecified)
+		}, rest)
+	case "auth":
+		return runAuth(func() (*client.Client, error) {
 			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "agent":

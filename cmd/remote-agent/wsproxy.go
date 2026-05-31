@@ -419,21 +419,25 @@ func wsproxyConfigSet(getClient func() (*client.Client, error), args []string) e
 	return nil
 }
 
-const vmessLinkHelp = `Usage: remote-agent ws-proxy vmess-link [--export FILE]
+const vmessLinkHelp = `Usage: remote-agent ws-proxy vmess-link [--export FILE] [--smaller-qr]
 
-  Get the vmess:// link and manual config for Shadowrocket import.
+  Get the vmess:// link and manual config for import into supported clients
+  (Shadowrocket, V2RayU, Clash, sing-box, v2rayNG, Surge, etc.).
   Always displays a QR code for phone scanning.
 
 Options:
-  --export FILE   write output to FILE
-  -h, --help      show this help
+  --export FILE    write output to FILE
+  --smaller-qr     use compact quadrant QR (N/2 x N/2); default is full-size
+  -h, --help       show this help
 `
 
 func wsproxyVMessLink(getClient func() (*client.Client, error), args []string) error {
 	var exportFile string
+	var smallerQR bool
 
 	_, err := flags.
 		String("--export", &exportFile).
+		Bool("--smaller-qr", &smallerQR).
 		Help("-h,--help", vmessLinkHelp).
 		Parse(args)
 	if err != nil {
@@ -473,21 +477,28 @@ func wsproxyVMessLink(getClient func() (*client.Client, error), args []string) e
 	}
 	json.Unmarshal(data, &result)
 
-	qrStr := generateQRCode(result.VMessLink)
+	qrStr := generateQRCode(result.VMessLink, smallerQR)
 
 	var buf strings.Builder
 
 	buf.WriteString(result.VMessLink)
 	buf.WriteString("\n\n")
-	buf.WriteString("── Usage ──────────────────────────────────────────\n")
-	buf.WriteString("  Import to Shadowrocket (3 ways):\n")
-	buf.WriteString("    1. Copy the vmess:// link above and open in Safari\n")
-	buf.WriteString("    2. Scan the QR code below with Shadowrocket\n")
-	buf.WriteString("    3. Enter the config below manually\n")
+	buf.WriteString("── Import ─────────────────────────────────────────\n")
+	buf.WriteString("  iOS / iPadOS\n")
+	buf.WriteString("    Shadowrocket:     Scan QR code or paste link in Safari\n")
+	buf.WriteString("    Quantumult X:     Import vmess:// link\n")
+	buf.WriteString("    Surge:            Import vmess:// link\n")
 	buf.WriteString("\n")
-	buf.WriteString("  Tip: use --export <file> to save to a file\n")
-	buf.WriteString("────────────────────────────────────────────────────\n")
+	buf.WriteString("  macOS\n")
+	buf.WriteString("    V2RayU:           Paste vmess:// link\n")
+	buf.WriteString("    Shadowrocket:     Paste vmess:// link   (M-chip)\n")
+	buf.WriteString("    Surge:            Import vmess:// link\n")
+	buf.WriteString("    Clash / sing-box: Manual config below\n")
 	buf.WriteString("\n")
+	buf.WriteString("  Android\n")
+	buf.WriteString("    v2rayNG:          Paste vmess:// link\n")
+	buf.WriteString("\n")
+	buf.WriteString("── Config ────────────────────────────────────────\n")
 	buf.WriteString(fmt.Sprintf("  Type:    VMess\n"))
 	buf.WriteString(fmt.Sprintf("  Address: %s\n", result.Host))
 	buf.WriteString(fmt.Sprintf("  Port:    %s\n", result.Port))
@@ -496,6 +507,8 @@ func wsproxyVMessLink(getClient func() (*client.Client, error), args []string) e
 	buf.WriteString(fmt.Sprintf("  Network: %s\n", result.Network))
 	buf.WriteString(fmt.Sprintf("  Path:    %s\n", result.Path))
 	buf.WriteString(fmt.Sprintf("  TLS:     %s\n", result.TLS))
+	buf.WriteString("\n")
+	buf.WriteString("  Tip: --export FILE to save output\n")
 	buf.WriteString("\n")
 	buf.WriteString(qrStr)
 
@@ -512,12 +525,85 @@ func wsproxyVMessLink(getClient func() (*client.Client, error), args []string) e
 	return nil
 }
 
-func generateQRCode(content string) string {
+func generateQRCode(content string, smaller bool) string {
 	qr, err := qrcode.New(content, qrcode.Low)
 	if err != nil {
 		return fmt.Sprintf("[QR code error: %v]", err)
 	}
+	if smaller {
+		return renderQuadrantQR(qr)
+	}
 	return qr.ToSmallString(false)
+}
+
+func renderQuadrantQR(qr *qrcode.QRCode) string {
+	bmp := qr.Bitmap()
+	return renderQuadrantQRFromBitmap(bmp)
+}
+
+func renderQuadrantQRFromBitmap(bmp [][]bool) string {
+	nrow := len(bmp)
+	if nrow == 0 {
+		return ""
+	}
+	ncol := len(bmp[0])
+
+	quietZone := 4
+	if nrow <= 2*quietZone || ncol <= 2*quietZone {
+		quietZone = 0
+	}
+	startY := quietZone
+	endY := nrow - quietZone
+	startX := quietZone
+	endX := ncol - quietZone
+
+	var buf strings.Builder
+	for y := startY; y < endY; y += 2 {
+		for x := startX; x < endX; x++ {
+			ul := bmp[y][x]
+			ur := false
+			if x+1 < endX {
+				ur = bmp[y][x+1]
+			}
+			ll := false
+			lr := false
+			if y+1 < endY {
+				ll = bmp[y+1][x]
+				if x+1 < endX {
+					lr = bmp[y+1][x+1]
+				}
+			}
+
+			var idx int
+			if ul {
+				idx |= 8
+			}
+			if ur {
+				idx |= 4
+			}
+			if ll {
+				idx |= 2
+			}
+			if lr {
+				idx |= 1
+			}
+
+			buf.WriteRune(quadrantChars[idx])
+
+			if x+1 < endX {
+				x++
+			}
+		}
+		buf.WriteRune('\n')
+	}
+	return buf.String()
+}
+
+var quadrantChars = [16]rune{
+	' ', '▗', '▖', '▄',
+	'▝', '▐', '▞', '▟',
+	'▘', '▚', '▌', '▙',
+	'▀', '▜', '▛', '█',
 }
 
 func argsHave(name string, args []string) bool {

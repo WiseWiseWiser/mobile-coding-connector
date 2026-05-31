@@ -235,6 +235,7 @@ func ImportCredentials(newTokens []string) error {
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/login", handleLogin)
 	mux.HandleFunc("/api/auth/check", handleAuthCheck)
+	mux.HandleFunc("/api/auth/status", handleAuthStatus)
 	mux.HandleFunc("/api/auth/setup", handleSetup)
 	mux.HandleFunc("/api/auth/credentials", handleListCredentials)
 	mux.HandleFunc("/api/auth/credentials/add", handleAddCredential)
@@ -285,6 +286,53 @@ func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if quicktest.Enabled() {
+		json.NewEncoder(w).Encode(map[string]any{"status": "ok", "initialized": true})
+		return
+	}
+
+	var token string
+	if cookie, err := r.Cookie(cookieName); err == nil {
+		token = cookie.Value
+	}
+
+	authHeader := r.Header.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		bearerToken := strings.TrimPrefix(authHeader, "Bearer ")
+		if token != "" && bearerToken != "" && token != bearerToken {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]any{"status": "unauthorized", "initialized": true})
+			return
+		}
+		if token == "" {
+			token = bearerToken
+		}
+	}
+
+	initialized, valid := loadAndCheckToken(token)
+
+	if !initialized {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{"status": "not_initialized", "initialized": false})
+		return
+	}
+	if !valid {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{"status": "unauthorized", "initialized": true})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]any{"status": "ok", "initialized": true})
 }
 
 func handleSetup(w http.ResponseWriter, r *http.Request) {

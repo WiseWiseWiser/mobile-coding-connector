@@ -163,7 +163,7 @@ func Serve(port int, dev bool) error {
 	mux := http.NewServeMux()
 
 	// Wrap with auth middleware - skip login, auth check, setup, ping, public key and path-info endpoints
-	handler := auth.Middleware(mux, []string{"/api/login", "/api/auth/check", "/api/auth/setup", "/ping", "/api/encrypt/public-key", "/api/tools/path-info"})
+	handler := auth.Middleware(mux, []string{"/api/login", "/api/auth/check", "/api/auth/status", "/api/auth/setup", "/ping", "/api/encrypt/public-key", "/api/tools/path-info"})
 
 	// Wrap with quick-test mode handler if enabled
 	if quicktest.Enabled() {
