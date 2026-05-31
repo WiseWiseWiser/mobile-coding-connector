@@ -152,12 +152,28 @@ Commands:
         run <agent-id> [--project <dir>] [--resume <session-id|latest>]
             Start a new session or resume an existing saved session.
 
-  skill <subcommand> [args...]
-      Manage the embedded remote-agent skill definition. Subcommands:
-        show
-            Print the content of SKILL.md.
-        install [<dir>] [--cursor|--codex]
-            Install the packaged SKILL.md for Cursor or Codex.
+   skill <subcommand> [args...]
+       Manage the embedded remote-agent skill definition. Subcommands:
+         show
+             Print the content of SKILL.md.
+         install [<dir>] [--cursor|--codex]
+             Install the packaged SKILL.md for Cursor or Codex.
+
+   ws-proxy <subcommand> [args...]
+       Manage the WebSocket-based mobile proxy (Xray + Cloudflare Tunnel).
+       Subcommands:
+         start [--tmp] [--upstream-proxy URL]
+             Start the proxy. With --tmp, uses temporary Quick Tunnel.
+         stop
+             Stop the proxy.
+         status
+             Show proxy status.
+         config
+             Show current configuration.
+         config set --upstream-proxy URL [--port PORT] [--path PATH]
+             Update configuration.
+         vmess-link [--export FILE]
+             Get the vmess:// link, manual config, and QR code for Shadowrocket import.
 
 Examples:
   remote-agent config
@@ -292,6 +308,10 @@ func run(args []string) error {
 		}, rest)
 	case "skill":
 		return remoteagentskill.Handle(rest)
+	case "ws-proxy":
+		return runWSProxy(func() (*client.Client, error) {
+			return resolveClient(server, token, tokenSpecified)
+		}, rest)
 	default:
 		return fmt.Errorf("unknown command: %s", cmd)
 	}

@@ -97,9 +97,9 @@ type TunnelProvider struct {
 var _ portforward.Provider = (*TunnelProvider)(nil)
 
 func NewTunnelProvider(cfg config.CloudflareTunnelConfig) *TunnelProvider {
-	// Configure the extension tunnel group
 	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 	tg.SetConfig(cfg)
+	unified_tunnel.NotifyExtensionConfigured()
 
 	return &TunnelProvider{cfg: cfg}
 }

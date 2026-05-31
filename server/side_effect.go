@@ -8,6 +8,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/ai-critic/server/domains"
 	"github.com/xhd2015/ai-critic/server/exposedurls"
+	"github.com/xhd2015/ai-critic/server/proxy/wsproxy"
 	"github.com/xhd2015/ai-critic/server/services"
 )
 
@@ -23,6 +24,7 @@ func RunStartupTasks() {
 	domains.AutoStartTunnels()
 	opencode_exposed.AutoStartWebServer()
 	services.AutoStartConfiguredServices()
+	wsproxy.AutoStart()
 
 	go func() {
 		time.Sleep(2 * time.Second)

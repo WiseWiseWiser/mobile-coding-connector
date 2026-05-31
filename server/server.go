@@ -50,6 +50,7 @@ import (
 	pfcloudflare "github.com/xhd2015/ai-critic/server/proxy/portforward/providers/cloudflare"
 	pflocaltunnel "github.com/xhd2015/ai-critic/server/proxy/portforward/providers/localtunnel"
 	"github.com/xhd2015/ai-critic/server/proxy/proxyconfig"
+	"github.com/xhd2015/ai-critic/server/proxy/wsproxy"
 	"github.com/xhd2015/ai-critic/server/quicktest"
 	"github.com/xhd2015/ai-critic/server/services"
 	"github.com/xhd2015/ai-critic/server/settings"
@@ -456,6 +457,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 	}
 
 	portforward.RegisterAPI(mux)
+
+	// WS proxy API (Xray + Cloudflare Tunnel for iPhone access)
+	wsproxy.RegisterAPI(mux)
 
 	// GitHub API
 	github.RegisterAPI(mux)
