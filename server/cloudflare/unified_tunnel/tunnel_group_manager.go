@@ -17,9 +17,21 @@ type TunnelGroupManager struct {
 }
 
 var (
-	groupManager     *TunnelGroupManager
-	groupManagerOnce sync.Once
+	groupManager         *TunnelGroupManager
+	groupManagerOnce     sync.Once
+	extensionConfigured  = make(chan struct{})
+	extensionNotifyOnce  sync.Once
 )
+
+func NotifyExtensionConfigured() {
+	extensionNotifyOnce.Do(func() {
+		close(extensionConfigured)
+	})
+}
+
+func WaitExtensionConfig() <-chan struct{} {
+	return extensionConfigured
+}
 
 func GetTunnelGroupManager() *TunnelGroupManager {
 	groupManagerOnce.Do(func() {

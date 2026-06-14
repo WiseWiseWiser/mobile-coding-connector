@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/xhd2015/ai-critic/script/lib"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 )
 
 var help = `

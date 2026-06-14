@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/xhd2015/ai-critic/script/lib"
+	cf "github.com/xhd2015/ai-critic/server/cloudflare"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
-	cf "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
 )
 
 const defaultConfigFile = ".config.local.json"

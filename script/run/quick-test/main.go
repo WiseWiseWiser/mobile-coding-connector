@@ -7,9 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/xhd2015/ai-critic/script/lib"
+	serverenv "github.com/xhd2015/ai-critic/server/env"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
-	serverenv "github.com/xhd2015/lifelog-private/ai-critic/server/env"
 )
 
 var help = `

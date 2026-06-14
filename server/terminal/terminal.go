@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -18,8 +19,8 @@ import (
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
+	"github.com/xhd2015/ai-critic/server/encrypt"
 )
 
 var upgrader = websocket.Upgrader{
@@ -121,6 +122,7 @@ func (m *sessionManager) create(name, cwd string) (*session, error) {
 	m.mu.Lock()
 	m.counter++
 	id := fmt.Sprintf("session-%d", m.counter)
+	log.Printf("[terminal] creating session %s (name=%q, cwd=%s)", id, name, cwd)
 	m.mu.Unlock()
 
 	// Load terminal config for shell, flags, and extra paths

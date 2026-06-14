@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
+	"github.com/xhd2015/ai-critic/script/lib"
 )
 
 func main() {

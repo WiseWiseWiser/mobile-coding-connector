@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"strconv"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
+	"github.com/xhd2015/ai-critic/server/config"
 )
 
 // StreamLogs streams the server log via tail -fn100

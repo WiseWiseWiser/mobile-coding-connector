@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/logs"
+	"github.com/xhd2015/ai-critic/server/logs"
 )
 
 var (

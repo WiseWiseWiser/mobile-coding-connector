@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/proxyselect"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	gitrunner "github.com/xhd2015/agent-pro/agent/git_runner"
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
+	"github.com/xhd2015/ai-critic/server/projects"
+	"github.com/xhd2015/ai-critic/server/proxy/proxyselect"
 )
 
 // registerGitOpsAPI registers git operation endpoints.

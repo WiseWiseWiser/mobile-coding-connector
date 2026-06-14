@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
-	serverenv "github.com/xhd2015/lifelog-private/ai-critic/server/env"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
+	"github.com/xhd2015/ai-critic/server"
+	"github.com/xhd2015/ai-critic/server/auth"
+	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/domains"
+	"github.com/xhd2015/ai-critic/server/encrypt"
+	serverenv "github.com/xhd2015/ai-critic/server/env"
+	"github.com/xhd2015/ai-critic/server/quicktest"
 
 	"github.com/xhd2015/less-gen/flags"
 )

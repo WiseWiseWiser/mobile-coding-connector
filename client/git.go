@@ -21,6 +21,9 @@ type GitCloneRequest struct {
 	// the server materializes it, points GIT_SSH_COMMAND at it for the
 	// clone, and removes the file when the clone finishes.
 	PrivateKey string `json:"private_key"`
+	// Token is an HTTPS git auth token. If non-empty, the server exposes
+	// it to git through a temporary GIT_ASKPASS helper.
+	Token string `json:"token"`
 	// HTTPSProxy is the value to export as https_proxy / HTTPS_PROXY for
 	// the remote git process.
 	HTTPSProxy string `json:"https_proxy"`
@@ -37,6 +40,7 @@ type GitCloneRequest struct {
 type GitRepoOpRequest struct {
 	Dir        string `json:"dir"`
 	PrivateKey string `json:"private_key"`
+	Token      string `json:"token"`
 	HTTPSProxy string `json:"https_proxy"`
 }
 

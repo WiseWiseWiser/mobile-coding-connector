@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/xhd2015/ai-critic/server/terminal"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
 )
 
 var rebuildHelp = `

@@ -7,11 +7,11 @@ import (
 	"regexp"
 	"time"
 
-	cfutils "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/domains/pick"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward"
+	cfutils "github.com/xhd2015/ai-critic/server/cloudflare"
+	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
+	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/domains/pick"
+	"github.com/xhd2015/ai-critic/server/proxy/portforward"
 )
 
 // --- Quick Tunnel Provider ---
@@ -97,9 +97,9 @@ type TunnelProvider struct {
 var _ portforward.Provider = (*TunnelProvider)(nil)
 
 func NewTunnelProvider(cfg config.CloudflareTunnelConfig) *TunnelProvider {
-	// Configure the extension tunnel group
 	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 	tg.SetConfig(cfg)
+	unified_tunnel.NotifyExtensionConfigured()
 
 	return &TunnelProvider{cfg: cfg}
 }

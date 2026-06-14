@@ -10,14 +10,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/commit_msg"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/ai"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/env"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	"github.com/xhd2015/agent-pro/agent/commit_msg"
+	gitrunner "github.com/xhd2015/agent-pro/agent/git_runner"
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
+	"github.com/xhd2015/ai-critic/server/ai"
+	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/env"
+	"github.com/xhd2015/ai-critic/server/github"
+	"github.com/xhd2015/ai-critic/server/projects"
 )
 
 // initialDir stores the initial directory set via --dir flag

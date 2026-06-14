@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	cf "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/jsonfile"
+	cf "github.com/xhd2015/ai-critic/server/cloudflare"
+	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
+	"github.com/xhd2015/ai-critic/server/jsonfile"
 )
 
 // ExposedURL represents a single exposed URL configuration

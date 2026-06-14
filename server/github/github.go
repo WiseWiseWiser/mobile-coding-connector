@@ -14,12 +14,12 @@ import (
 
 	gossh "golang.org/x/crypto/ssh"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/proxyselect"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
+	gitrunner "github.com/xhd2015/agent-pro/agent/git_runner"
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
+	"github.com/xhd2015/ai-critic/server/encrypt"
+	"github.com/xhd2015/ai-critic/server/projects"
+	"github.com/xhd2015/ai-critic/server/proxy/proxyselect"
 )
 
 // OAuthConfig holds the GitHub OAuth configuration

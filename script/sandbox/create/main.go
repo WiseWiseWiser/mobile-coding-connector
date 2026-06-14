@@ -7,8 +7,9 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/xhd2015/agent-pro/pkgs/containers/podman"
+	"github.com/xhd2015/ai-critic/script/lib"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
 )
 
 var help = `
@@ -41,7 +42,7 @@ func main() {
 
 func run() error {
 	// Step 0: Ensure podman is available and the machine is running
-	if err := lib.EnsurePodman(); err != nil {
+	if err := podman.EnsurePodman(); err != nil {
 		return err
 	}
 
@@ -61,7 +62,7 @@ func run() error {
 		}
 		// Container exists but is stopped — start it
 		fmt.Printf("Container %q exists (status: %s). Starting...\n", lib.ContainerName, status)
-		if err := lib.RunVerbose("podman", "start", lib.ContainerName); err != nil {
+		if err := podman.Run("podman", "start", lib.ContainerName); err != nil {
 			return fmt.Errorf("failed to start container: %v", err)
 		}
 		return execShell()
@@ -75,7 +76,7 @@ func run() error {
 		lib.ContainerImage,
 		"sleep", "infinity",
 	}
-	if err := lib.RunVerbose("podman", createArgs...); err != nil {
+	if err := podman.Run("podman", createArgs...); err != nil {
 		return fmt.Errorf("failed to create container: %v", err)
 	}
 

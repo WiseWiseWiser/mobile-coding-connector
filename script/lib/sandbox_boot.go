@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/xhd2015/agent-pro/pkgs/containers/podman"
 	"github.com/xhd2015/less-gen/flags"
 )
 
@@ -42,7 +43,7 @@ func ParseSandboxCLI(args []string, help string, containerName string) (*Sandbox
 	}
 
 	if recreate {
-		if _, err := InspectContainerStatus(containerName); err == nil {
+		if _, err := podman.InspectStatus(containerName); err == nil {
 			if !forceRecreate && IsStdinTTY() {
 				fmt.Printf("Container %q exists. Destroy and recreate? [y/N] ", containerName)
 				reader := bufio.NewReader(os.Stdin)
@@ -53,7 +54,7 @@ func ParseSandboxCLI(args []string, help string, containerName string) (*Sandbox
 				}
 			}
 			fmt.Println("Removing existing container...")
-			_ = RunVerbose("podman", "rm", "-f", containerName)
+			_ = podman.Run("podman", "rm", "-f", containerName)
 		}
 	}
 

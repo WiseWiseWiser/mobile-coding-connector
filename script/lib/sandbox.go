@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/agent-pro/pkgs/containers/podman"
+	"github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/xgo/support/cmd"
 )
 
@@ -25,7 +24,7 @@ type SandboxOptions struct {
 
 // RunSandbox builds the frontend and server, then runs them in a podman container.
 func RunSandbox(opts SandboxOptions) error {
-	if err := EnsurePodman(); err != nil {
+	if err := podman.EnsurePodman(); err != nil {
 		return err
 	}
 
@@ -34,7 +33,7 @@ func RunSandbox(opts SandboxOptions) error {
 		return err
 	}
 
-	vmArch, vmErr := PodmanArch()
+	vmArch, vmErr := podman.PodmanArch()
 	if vmErr == nil && vmArch != goarch {
 		return fmt.Errorf(
 			"target arch %q differs from podman VM arch %q.\n"+
@@ -81,7 +80,7 @@ func RunSandbox(opts SandboxOptions) error {
 	containerPort := opts.ContainerPort
 	if opts.DevMode {
 		var viteCmd *exec.Cmd
-		if !CheckPort(ViteDevPort) {
+		if !podman.CheckPort(ViteDevPort) {
 			fmt.Println("\n=== Starting Vite dev server ===")
 			var err error
 			viteCmd, err = startViteDevServer(resolveDefaultProjectDir())
@@ -108,7 +107,7 @@ func RunSandbox(opts SandboxOptions) error {
 // "auto" detects the podman VM's architecture, otherwise validates the specified value.
 func ResolveArch(archFlag string) (string, error) {
 	if archFlag == "auto" {
-		return PodmanArch()
+		return podman.PodmanArch()
 	}
 	switch archFlag {
 	case "amd64", "arm64":
@@ -220,21 +219,21 @@ func containerCreateArgs(containerName, goarch string, containerPort int, files 
 
 func runFreshContainer(containerName, goarch, binaryPath string, containerPort int, files *sandboxFiles, devMode bool) error {
 	fmt.Println("Removing old container (if any)...")
-	_ = RunVerbose("podman", "rm", "-f", containerName)
+	_ = podman.Run("podman", "rm", "-f", containerName)
 
 	platform := fmt.Sprintf("linux/%s", goarch)
 	fmt.Printf("Creating container (platform: %s)...\n", platform)
-	if err := RunVerbose("podman", containerCreateArgs(containerName, goarch, containerPort, files, false)...); err != nil {
+	if err := podman.Run("podman", containerCreateArgs(containerName, goarch, containerPort, files, false)...); err != nil {
 		return fmt.Errorf("failed to create container: %v", err)
 	}
 
 	fmt.Println("Copying binary into container...")
-	if err := RunVerbose("podman", "cp", binaryPath, containerName+":/usr/local/bin/ai-critic"); err != nil {
+	if err := podman.Run("podman", "cp", binaryPath, containerName+":/usr/local/bin/ai-critic"); err != nil {
 		return fmt.Errorf("failed to copy binary into container: %v", err)
 	}
 
 	fmt.Printf("\nStarting container (platform: %s)...\nServer will be available at http://localhost:%d\n\n", platform, containerPort)
-	if err := RunVerbose("podman", "start", containerName); err != nil {
+	if err := podman.Run("podman", "start", containerName); err != nil {
 		return fmt.Errorf("failed to start container: %v", err)
 	}
 
@@ -298,8 +297,8 @@ func bootContainerCreateArgs(containerName, goarch string, containerPort int, fi
 }
 
 func runBootContainer(containerName, goarch, binaryPath string, containerPort int, files *sandboxFiles, devMode bool) error {
-	devHash := configHash(bootContainerConfig(goarch, containerPort, files, true))
-	nonDevHash := configHash(bootContainerConfig(goarch, containerPort, files, false))
+	devHash := podman.ConfigHash(bootContainerConfig(goarch, containerPort, files, true))
+	nonDevHash := podman.ConfigHash(bootContainerConfig(goarch, containerPort, files, false))
 
 	wantHash := nonDevHash
 	if devMode {
@@ -307,14 +306,14 @@ func runBootContainer(containerName, goarch, binaryPath string, containerPort in
 	}
 
 	needsCreate := false
-	status, err := InspectContainerStatus(containerName)
+	status, err := podman.InspectStatus(containerName)
 	if err != nil {
 		needsCreate = true
 	} else {
-		gotHash := inspectContainerLabel(containerName, bootConfigLabel)
+		gotHash := podman.InspectLabel(containerName, bootConfigLabel)
 		if gotHash != devHash && gotHash != nonDevHash {
 			fmt.Printf("Container %q config changed (got %s), recreating...\n", containerName, gotHash)
-			_ = RunVerbose("podman", "rm", "-f", containerName)
+			_ = podman.Run("podman", "rm", "-f", containerName)
 			needsCreate = true
 		} else {
 			fmt.Printf("Reusing existing container %q (status: %s)\n", containerName, status)
@@ -323,18 +322,18 @@ func runBootContainer(containerName, goarch, binaryPath string, containerPort in
 
 	if needsCreate {
 		fmt.Printf("Creating container...\n")
-		if err := RunVerbose("podman", bootContainerCreateArgs(containerName, goarch, containerPort, files, devMode, wantHash)...); err != nil {
+		if err := podman.Run("podman", bootContainerCreateArgs(containerName, goarch, containerPort, files, devMode, wantHash)...); err != nil {
 			return fmt.Errorf("failed to create container: %v", err)
 		}
 	}
 
-	if s, _ := InspectContainerStatus(containerName); s == "running" {
+	if s, _ := podman.InspectStatus(containerName); s == "running" {
 		fmt.Println("Stopping container for binary update...")
-		_ = RunVerbose("podman", "stop", containerName)
+		_ = podman.Run("podman", "stop", containerName)
 	}
 
 	fmt.Println("Copying binary into container...")
-	if err := RunVerbose("podman", "cp", binaryPath, containerName+":/usr/local/bin/ai-critic"); err != nil {
+	if err := podman.Run("podman", "cp", binaryPath, containerName+":/usr/local/bin/ai-critic"); err != nil {
 		return fmt.Errorf("failed to copy binary into container: %v", err)
 	}
 
@@ -344,60 +343,24 @@ func runBootContainer(containerName, goarch, binaryPath string, containerPort in
 	}
 	fmt.Println()
 
-	if err := RunVerbose("podman", "start", containerName); err != nil {
+	if err := podman.Run("podman", "start", containerName); err != nil {
 		return fmt.Errorf("failed to start container: %v", err)
 	}
 
 	return followContainerLogs(containerName)
 }
 
-// InspectContainerStatus returns the podman status of the named container,
-// or an error if the container does not exist.
-func InspectContainerStatus(containerName string) (string, error) {
-	var buf strings.Builder
-	c := exec.Command("podman", "inspect", "--format", "{{.State.Status}}", containerName)
-	c.Stdout = &buf
-	c.Stderr = &buf
-	if err := c.Run(); err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(buf.String()), nil
-}
-
 func followContainerLogs(containerName string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigChan
+	stopSignal := podman.OnSignal(func() {
 		fmt.Println("\nShutting down container...")
 		cancel()
-	}()
+	})
+	defer stopSignal()
 
-	logsCmd := exec.CommandContext(ctx, "podman", "logs", "-f", containerName)
-	logsCmd.Stdout = os.Stdout
-	logsCmd.Stderr = os.Stderr
-	if err := logsCmd.Start(); err != nil {
-		return fmt.Errorf("failed to follow container logs: %v", err)
-	}
-
-	done := make(chan error, 1)
-	go func() {
-		done <- logsCmd.Wait()
-	}()
-
-	select {
-	case <-ctx.Done():
-		_ = exec.Command("podman", "stop", containerName).Run()
-	case err := <-done:
-		if err != nil && ctx.Err() == nil {
-			return fmt.Errorf("container exited with error: %v", err)
-		}
-	}
-
-	return nil
+	return podman.FollowLogs(ctx, containerName)
 }
 
 func repoSubDir(subDir string) (string, error) {

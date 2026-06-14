@@ -44,10 +44,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/gitutil"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/ndjsonstream"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/proxyselect"
+	gitrunner "github.com/xhd2015/agent-pro/agent/git_runner"
+	"github.com/xhd2015/ai-critic/server/gitutil"
+	"github.com/xhd2015/ai-critic/server/ndjsonstream"
+	"github.com/xhd2015/ai-critic/server/proxy/proxyselect"
 )
 
 // CloneRequest is the JSON body accepted by POST /api/remote-agent/git/clone.
@@ -61,6 +61,9 @@ type CloneRequest struct {
 	// the server writes it to a temporary file, points GIT_SSH_COMMAND at
 	// it for the clone, and removes the file when the clone finishes.
 	PrivateKey string `json:"private_key"`
+	// Token is an HTTPS git auth token. If non-empty, the server exposes
+	// it to git through a temporary GIT_ASKPASS helper.
+	Token string `json:"token"`
 	// HTTPSProxy is the value to export as https_proxy / HTTPS_PROXY for
 	// the git process. Optional.
 	HTTPSProxy string `json:"https_proxy"`
@@ -76,6 +79,7 @@ type CloneRequest struct {
 type RepoOpRequest struct {
 	Dir        string `json:"dir"`
 	PrivateKey string `json:"private_key"`
+	Token      string `json:"token"`
 	HTTPSProxy string `json:"https_proxy"`
 }
 
@@ -119,14 +123,19 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	repo, err := resolveCloneSource(req.Repo)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	// If the caller supplied an SSH private key but an HTTPS repo URL,
 	// rewrite the URL to its SSH form so the key is actually used.
-	repo := req.Repo
 	var rewriteNote string
 	if req.PrivateKey != "" && !gitutil.IsSSH(repo) {
 		sshURL := gitutil.ToSSH(repo, req.SSHUser)
 		if sshURL != repo {
-			rewriteNote = fmt.Sprintf("rewrote HTTPS repo URL to SSH (using key): %s -> %s", repo, sshURL)
+			rewriteNote = fmt.Sprintf("rewrote HTTPS repo URL to SSH (using key): %s -> %s", redactURLSecrets(repo), redactURLSecrets(sshURL))
 			repo = sshURL
 		}
 	}
@@ -139,9 +148,9 @@ func handleClone(w http.ResponseWriter, r *http.Request) {
 		proxy.Note,
 	)
 
-	runStreaming(w, r, req.PrivateKey, note, func(keyPath string) (*exec.Cmd, error) {
+	runStreaming(w, r, req.PrivateKey, req.Token, note, func(auth gitAuthFiles) (*exec.Cmd, error) {
 		gc := gitrunner.Clone(repo, targetDir)
-		return buildGitExecCmd(applyCommonOpts(gc, keyPath, proxy.URL))
+		return buildGitExecCmd(applyCommonOpts(gc, auth, proxy.URL))
 	})
 }
 
@@ -161,35 +170,35 @@ func joinNotes(notes ...string) string {
 }
 
 func handleFetch(w http.ResponseWriter, r *http.Request) {
-	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(keyPath string) (*exec.Cmd, error)) {
+	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(auth gitAuthFiles) (*exec.Cmd, error)) {
 		proxy := proxyselect.ForRepoDir(req.HTTPSProxy, dir)
-		return proxy.Note, func(keyPath string) (*exec.Cmd, error) {
+		return proxy.Note, func(auth gitAuthFiles) (*exec.Cmd, error) {
 			gc := gitrunner.Fetch().Dir(dir)
-			return buildGitExecCmd(applyCommonOpts(gc, keyPath, proxy.URL))
+			return buildGitExecCmd(applyCommonOpts(gc, auth, proxy.URL))
 		}
 	})
 }
 
 func handlePull(w http.ResponseWriter, r *http.Request) {
-	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(keyPath string) (*exec.Cmd, error)) {
+	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(auth gitAuthFiles) (*exec.Cmd, error)) {
 		proxy := proxyselect.ForRepoDir(req.HTTPSProxy, dir)
-		return proxy.Note, func(keyPath string) (*exec.Cmd, error) {
+		return proxy.Note, func(auth gitAuthFiles) (*exec.Cmd, error) {
 			gc := gitrunner.PullFFOnly().Dir(dir)
-			return buildGitExecCmd(applyCommonOpts(gc, keyPath, proxy.URL))
+			return buildGitExecCmd(applyCommonOpts(gc, auth, proxy.URL))
 		}
 	})
 }
 
 func handlePush(w http.ResponseWriter, r *http.Request) {
-	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(keyPath string) (*exec.Cmd, error)) {
+	handleRepoOp(w, r, func(dir string, req RepoOpRequest) (string, func(auth gitAuthFiles) (*exec.Cmd, error)) {
 		proxy := proxyselect.ForRepoDir(req.HTTPSProxy, dir)
-		return proxy.Note, func(keyPath string) (*exec.Cmd, error) {
+		return proxy.Note, func(auth gitAuthFiles) (*exec.Cmd, error) {
 			branch, err := gitrunner.GetCurrentBranch(dir)
 			if err != nil {
 				return nil, fmt.Errorf("resolve current branch: %w", err)
 			}
 			gc := gitrunner.Push(branch).Dir(dir)
-			return buildGitExecCmd(applyCommonOpts(gc, keyPath, proxy.URL))
+			return buildGitExecCmd(applyCommonOpts(gc, auth, proxy.URL))
 		}
 	})
 }
@@ -200,7 +209,7 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
 // is emitted on the stream before the command starts (used e.g. to
 // announce an auto-selected proxy), along with the actual command
 // factory.
-func handleRepoOp(w http.ResponseWriter, r *http.Request, makeCmdBuilder func(dir string, req RepoOpRequest) (note string, makeCmd func(keyPath string) (*exec.Cmd, error))) {
+func handleRepoOp(w http.ResponseWriter, r *http.Request, makeCmdBuilder func(dir string, req RepoOpRequest) (note string, makeCmd func(auth gitAuthFiles) (*exec.Cmd, error))) {
 	if r.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -243,7 +252,12 @@ func handleRepoOp(w http.ResponseWriter, r *http.Request, makeCmdBuilder func(di
 	}
 
 	note, makeCmd := makeCmdBuilder(dir, req)
-	runStreaming(w, r, req.PrivateKey, note, makeCmd)
+	runStreaming(w, r, req.PrivateKey, req.Token, note, makeCmd)
+}
+
+type gitAuthFiles struct {
+	PrivateKeyPath string
+	AskPassPath    string
 }
 
 // runStreaming materializes the optional private key, opens the NDJSON
@@ -254,13 +268,20 @@ func handleRepoOp(w http.ResponseWriter, r *http.Request, makeCmdBuilder func(di
 // The command process is killed when the HTTP client disconnects. All
 // heartbeat and cleanup plumbing is handled here so individual handlers
 // stay short.
-func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, note string, makeCmd func(keyPath string) (*exec.Cmd, error)) {
+func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, token string, note string, makeCmd func(auth gitAuthFiles) (*exec.Cmd, error)) {
 	keyPath, cleanupKey, err := writePrivateKey(privateKey)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("write private key: %v", err))
 		return
 	}
 	defer cleanupKey()
+
+	askPassPath, cleanupAskPass, err := writeTokenAskPass(token)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("write git token helper: %v", err))
+		return
+	}
+	defer cleanupAskPass()
 
 	// Switch response to NDJSON streaming BEFORE we start writing events.
 	stream := ndjsonstream.NewWriter(w)
@@ -285,7 +306,7 @@ func runStreaming(w http.ResponseWriter, r *http.Request, privateKey string, not
 		heartbeatDone.Wait()
 	}()
 
-	cmd, err := makeCmd(keyPath)
+	cmd, err := makeCmd(gitAuthFiles{PrivateKeyPath: keyPath, AskPassPath: askPassPath})
 	if err != nil {
 		stream.SendError(err.Error())
 		return
@@ -364,6 +385,11 @@ func buildCloneDebugNote(req CloneRequest, targetDir string, effectiveRepo strin
 		keyStatus = fmt.Sprintf("provided (%d bytes)", len(req.PrivateKey))
 	}
 
+	tokenStatus := "not provided"
+	if req.Token != "" {
+		tokenStatus = "provided"
+	}
+
 	transport := "https/http"
 	if gitutil.IsSSH(effectiveRepo) {
 		transport = "ssh"
@@ -378,11 +404,12 @@ func buildCloneDebugNote(req CloneRequest, targetDir string, effectiveRepo strin
 	}
 
 	return strings.Join([]string{
-		fmt.Sprintf("clone debug: requested repo=%s", req.Repo),
-		fmt.Sprintf("clone debug: effective repo=%s", effectiveRepo),
+		fmt.Sprintf("clone debug: requested repo=%s", redactURLSecrets(req.Repo)),
+		fmt.Sprintf("clone debug: effective repo=%s", redactURLSecrets(effectiveRepo)),
 		fmt.Sprintf("clone debug: target dir=%s", targetDir),
 		fmt.Sprintf("clone debug: ssh user=%s", sshUser),
 		fmt.Sprintf("clone debug: private key=%s", keyStatus),
+		fmt.Sprintf("clone debug: token=%s", tokenStatus),
 		fmt.Sprintf("clone debug: transport=%s", transport),
 		fmt.Sprintf("clone debug: proxy=%s", proxyStatus),
 	}, "\n")
@@ -394,7 +421,7 @@ func describeCommand(cmd *exec.Cmd) string {
 	}
 	var lines []string
 	if len(cmd.Args) > 0 {
-		lines = append(lines, "clone debug: exec argv="+strings.Join(cmd.Args, " "))
+		lines = append(lines, "clone debug: exec argv="+redactURLSecrets(strings.Join(cmd.Args, " ")))
 	}
 	var envStatus []string
 	if v, ok := lookupEnv(cmd.Env, "GIT_SSH_COMMAND"); ok {
@@ -466,14 +493,17 @@ func buildGitExecCmd(gc *gitrunner.Command) (*exec.Cmd, error) {
 	return gc.Exec(), nil
 }
 
-// applyCommonOpts wires the optional SSH key and proxy settings onto a
-// gitrunner command. Both knobs are shared by clone/fetch/pull.
-func applyCommonOpts(gc *gitrunner.Command, keyPath string, httpsProxy string) *gitrunner.Command {
-	if keyPath != "" || httpsProxy != "" {
+// applyCommonOpts wires the optional SSH key, HTTPS token, and proxy settings
+// onto a gitrunner command. These knobs are shared by clone/fetch/pull/push.
+func applyCommonOpts(gc *gitrunner.Command, auth gitAuthFiles, httpsProxy string) *gitrunner.Command {
+	if auth.PrivateKeyPath != "" || httpsProxy != "" {
 		gc = gc.WithSSHConfig(&gitrunner.SSHKeyConfig{
-			KeyPath:  keyPath,
+			KeyPath:  auth.PrivateKeyPath,
 			ProxyURL: httpsProxy,
 		})
+	}
+	if auth.AskPassPath != "" {
+		gc = gc.WithEnv("GIT_ASKPASS", auth.AskPassPath)
 	}
 	if httpsProxy != "" {
 		gc = gc.WithEnv("https_proxy", httpsProxy).WithEnv("HTTPS_PROXY", httpsProxy)
@@ -498,8 +528,52 @@ func resolveCloneTargetDir(repo string, dir string) (string, error) {
 	return filepath.Join(home, base), nil
 }
 
+// resolveCloneSource expands remote-local source paths such as ~/repo before
+// passing them to git. Git URLs and scp-like SSH forms are left unchanged.
+func resolveCloneSource(repo string) (string, error) {
+	s := strings.TrimSpace(repo)
+	if s == "" {
+		return repo, nil
+	}
+	if strings.Contains(s, "://") || isScpLikeGitURL(s) {
+		return repo, nil
+	}
+	if strings.HasPrefix(s, "~") {
+		return expandHomePath(s)
+	}
+	if filepath.IsAbs(s) || strings.HasPrefix(s, ".") || strings.Contains(s, string(os.PathSeparator)) {
+		return absPath(s)
+	}
+	return repo, nil
+}
+
+func isScpLikeGitURL(repo string) bool {
+	colon := strings.Index(repo, ":")
+	if colon < 0 {
+		return false
+	}
+	return !strings.Contains(repo[:colon], "/")
+}
+
+func expandHomePath(p string) (string, error) {
+	if p != "~" && !strings.HasPrefix(p, "~/") {
+		return "", fmt.Errorf("unsupported home path %q; use '~' or '~/<path>'", p)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+	if p == "~" {
+		return home, nil
+	}
+	return filepath.Join(home, strings.TrimPrefix(p, "~/")), nil
+}
+
 // absPath converts a possibly-relative path to an absolute one.
 func absPath(p string) (string, error) {
+	if strings.HasPrefix(p, "~") {
+		return expandHomePath(p)
+	}
 	if filepath.IsAbs(p) {
 		return p, nil
 	}
@@ -564,6 +638,51 @@ func writePrivateKey(contents string) (string, func(), error) {
 
 	cleanup := func() { _ = os.Remove(path) }
 	return path, cleanup, nil
+}
+
+func writeTokenAskPass(token string) (string, func(), error) {
+	if token == "" {
+		return "", func() {}, nil
+	}
+
+	dir := filepath.Join(os.TempDir(), "remote-agent-git")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", func() {}, err
+	}
+	suffix, err := randomSuffix()
+	if err != nil {
+		return "", func() {}, err
+	}
+	tokenPath := filepath.Join(dir, "op-token-"+suffix)
+	askPassPath := filepath.Join(dir, "op-askpass-"+suffix)
+
+	if err := os.WriteFile(tokenPath, []byte(token), 0600); err != nil {
+		return "", func() {}, err
+	}
+
+	script := strings.Join([]string{
+		"#!/bin/sh",
+		"token=$(cat " + shellSingleQuote(tokenPath) + ") || exit 1",
+		`case "$1" in`,
+		`  *Username*|*username*) printf '%s\n' 'x-access-token' ;;`,
+		`  *) printf '%s\n' "$token" ;;`,
+		`esac`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(askPassPath, []byte(script), 0700); err != nil {
+		_ = os.Remove(tokenPath)
+		return "", func() {}, err
+	}
+
+	cleanup := func() {
+		_ = os.Remove(askPassPath)
+		_ = os.Remove(tokenPath)
+	}
+	return askPassPath, cleanup, nil
+}
+
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
 }
 
 func randomSuffix() (string, error) {

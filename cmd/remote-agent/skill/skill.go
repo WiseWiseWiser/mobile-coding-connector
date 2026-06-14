@@ -15,9 +15,11 @@ const help = `Usage: remote-agent skill <command> [args...]
 Manage the embedded remote-agent skill definition.
 
 Commands:
-  install [<dir>]      Install SKILL.md to a directory, or use --cursor/--codex
+  show                  Print the content of SKILL.md
+  install [<dir>]       Install SKILL.md to a directory, or use --cursor/--codex
 
 Examples:
+  remote-agent skill show
   remote-agent skill install --codex
   remote-agent skill install --cursor
   remote-agent skill install ./tmp/remote-agent-skill
@@ -38,7 +40,10 @@ func Handle(args []string) error {
 	}
 
 	switch args[0] {
-	case "install", "create-skill":
+	case "show":
+		fmt.Print(skillTemplate)
+		return nil
+	case "install":
 		return handleInstall(args[1:])
 	default:
 		return fmt.Errorf("unknown skill command: %s", args[0])

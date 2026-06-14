@@ -8,6 +8,7 @@ dist
 .DS_Store
 
 .opencode
+.agents
 .env
 .env.local
 
@@ -32,3 +33,4 @@ dist
 /maintest
 /test-working-dir
 /remote-agent
+script/fuzzy-test/fuzzy-test-output.log

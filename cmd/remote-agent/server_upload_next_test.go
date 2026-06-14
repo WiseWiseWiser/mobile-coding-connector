@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/client"
+	"github.com/xhd2015/ai-critic/client"
 )
 
 func TestNextBinaryTargetFromRemoteEntriesUsesHighestExistingVersion(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/xhd2015/ai-critic/client"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/client"
 )
 
 const serviceHelp = `Usage: remote-agent service <subcommand> [args...]
@@ -24,6 +24,15 @@ Subcommands:
 
   restart <service-name-or-id>
       Restart one service.
+
+  rename <service-name-or-id> <new-name>
+      Rename one service without restarting it.
+
+  update <service-name-or-id> [--field value...]
+      Update one service definition without restarting it.
+
+  upgrade <service-name-or-id> <local-binary> [--target <remote-path>]
+      Upload a replacement binary, then stop, replace, and start one service.
 
   logs [--lines N] <service-name-or-id>
       Stream one service's log file.
@@ -49,6 +58,37 @@ Options:
   -h, --help          Show this help message.
 `
 
+const serviceRenameHelp = `Usage: remote-agent service rename <service-name-or-id> <new-name>
+
+Rename one managed service. The saved definition is updated, but the running
+process is not restarted.
+`
+
+const serviceUpdateHelp = `Usage: remote-agent service update <service-name-or-id> [options...]
+
+Update one managed service definition. Saved values do not affect the running
+process until the service is restarted.
+
+Options:
+  --name NAME                 Set service name.
+  --command COMMAND           Set shell command.
+  --project-dir DIR           Set project scope.
+  --working-dir DIR           Set working directory.
+  --upgrade-target PATH       Set remembered service upgrade target.
+  --env KEY=VALUE             Set or replace an environment variable.
+                              Can be repeated.
+  --unset-env KEY             Remove an environment variable.
+                              Can be repeated.
+  --clear-env                 Remove all environment variables.
+  --port N                    Set port-forward port.
+  --port-label LABEL          Set port-forward label.
+  --port-provider PROVIDER    Set port-forward provider.
+  --port-base-domain DOMAIN   Set port-forward base domain.
+  --port-subdomain NAME       Set port-forward subdomain.
+  --clear-port-forward        Remove port-forward configuration.
+  -h, --help                  Show this help message.
+`
+
 func runService(resolve func() (*client.Client, error), args []string) error {
 	if len(args) == 0 {
 		fmt.Print(serviceHelp)
@@ -64,6 +104,12 @@ func runService(resolve func() (*client.Client, error), args []string) error {
 		return runServiceAction(resolve, "stop", args[1:])
 	case "restart":
 		return runServiceAction(resolve, "restart", args[1:])
+	case "rename":
+		return runServiceRename(resolve, args[1:])
+	case "update":
+		return runServiceUpdate(resolve, args[1:])
+	case "upgrade":
+		return runServiceUpgrade(resolve, args[1:])
 	case "logs":
 		return runServiceLogs(resolve, args[1:])
 	case "-h", "--help":
@@ -263,6 +309,9 @@ func printService(service client.ServiceStatus) {
 	fmt.Printf("%s %s\n", label("Command"), displayOrDash(service.Command))
 	fmt.Printf("%s %s\n", label("Desired"), boolWord(service.DesiredRunning))
 	fmt.Printf("%s %s\n", label("Log Path"), displayOrDash(service.LogPath))
+	if service.UpgradeTarget != "" {
+		fmt.Printf("%s %s\n", label("Upgrade"), service.UpgradeTarget)
+	}
 
 	if service.PortForward != nil {
 		fmt.Printf("%s %s\n", label("Port"), formatPortForward(service.PortForward))

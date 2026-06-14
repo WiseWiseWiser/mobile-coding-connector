@@ -13,7 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 	"golang.org/x/term"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/client"
+	"github.com/xhd2015/ai-critic/client"
 )
 
 const execHelp = `Usage: remote-agent exec <BINARY> [ARGS...]

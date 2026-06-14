@@ -10,9 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/xhd2015/agent-pro/pkgs/containers/podman"
+	"github.com/xhd2015/ai-critic/script/lib"
+	envpkg "github.com/xhd2015/ai-critic/server/env"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
-	envpkg "github.com/xhd2015/lifelog-private/ai-critic/server/env"
 )
 
 const help = `Usage: go run ./script/debug-server-and-frontend [options] [script]
@@ -29,6 +30,9 @@ Options:
   --restart-exec    Use exec restart when port is in use (preserves PID, faster but riskier)
 
 If script is omitted, a default script is used to open the root page and print the title.
+
+Example:
+  go run ./script/debug-server-and-frontend [options] 'await navigate('/'); console.log('Page title:', await page.title());'
 `
 
 const defaultDebugScript = "await navigate('/'); console.log('Page title:', await page.title());"
@@ -191,7 +195,7 @@ func waitForPort(ctx context.Context, port int, timeout time.Duration) error {
 			return ctx.Err()
 		default:
 		}
-		if lib.CheckPort(port) {
+		if podman.CheckPort(port) {
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)

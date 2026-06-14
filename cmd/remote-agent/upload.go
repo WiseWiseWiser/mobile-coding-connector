@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/client"
+	"github.com/xhd2015/ai-critic/client"
 )
 
 func runUpload(cli *client.Client, args []string) error {

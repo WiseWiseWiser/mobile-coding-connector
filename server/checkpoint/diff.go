@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
+	gitrunner "github.com/xhd2015/agent-pro/agent/git_runner"
 )
 
 // FileDiff represents the unified diff for a single file.

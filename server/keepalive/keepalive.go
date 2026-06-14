@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/config"
 )
 
 // RegisterAPI registers the keep-alive proxy and status endpoints.

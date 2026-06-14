@@ -160,6 +160,7 @@ export function usePureTerminal(options: PureTerminalOptions = {}): PureTerminal
         if (name) params.set('name', name);
         const queryString = params.toString();
         const wsUrl = `${protocol}//${window.location.host}/api/terminal${queryString ? '?' + queryString : ''}`;
+        console.log('[terminal] usePureTerminal opening WebSocket', { sessionId, name, cwd, isReconnecting: !!sessionId });
         const ws = new WebSocket(wsUrl);
         ws.binaryType = 'arraybuffer';
         wsRef.current = ws;
@@ -200,6 +201,7 @@ export function usePureTerminal(options: PureTerminalOptions = {}): PureTerminal
                 try {
                     const msg = JSON.parse(text);
                     if (msg.type === 'session_id' && msg.session_id) {
+                        console.log('[terminal] usePureTerminal received session_id:', msg.session_id);
                         optionsRef.current.onSessionId?.(msg.session_id);
                         return;
                     }

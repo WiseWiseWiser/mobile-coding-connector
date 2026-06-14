@@ -14,7 +14,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/script/lib"
+	"github.com/xhd2015/ai-critic/script/lib"
 )
 
 const outputName = "ai-critic-server-linux-amd64"

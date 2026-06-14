@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xhd2015/ai-critic/client"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/client"
 )
 
 const serverHelp = `Usage: remote-agent server <subcommand> [args...]

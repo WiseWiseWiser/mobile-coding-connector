@@ -22,42 +22,43 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
+	"github.com/xhd2015/ai-critic/server/actions"
+	"github.com/xhd2015/ai-critic/server/agents"
+	opencode_exposed "github.com/xhd2015/ai-critic/server/agents/opencode/exposed_opencode"
+	"github.com/xhd2015/ai-critic/server/agents/web/cursorweb"
+	customagentapi "github.com/xhd2015/ai-critic/server/api"
+	"github.com/xhd2015/ai-critic/server/auth"
+	"github.com/xhd2015/ai-critic/server/checkpoint"
+	cloudflareSettings "github.com/xhd2015/ai-critic/server/cloudflare"
+	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
+	serverconfig "github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/domains"
+	"github.com/xhd2015/ai-critic/server/encrypt"
+	serverexec "github.com/xhd2015/ai-critic/server/exec"
+	"github.com/xhd2015/ai-critic/server/exposedurls"
+	"github.com/xhd2015/ai-critic/server/fakellm"
+	"github.com/xhd2015/ai-critic/server/features"
+	"github.com/xhd2015/ai-critic/server/fileupload"
+	servergit "github.com/xhd2015/ai-critic/server/git"
+	"github.com/xhd2015/ai-critic/server/github"
+	"github.com/xhd2015/ai-critic/server/keepalive"
+	"github.com/xhd2015/ai-critic/server/logs"
+	"github.com/xhd2015/ai-critic/server/projects"
+	"github.com/xhd2015/ai-critic/server/proxy/portforward"
+	pfcloudflare "github.com/xhd2015/ai-critic/server/proxy/portforward/providers/cloudflare"
+	pflocaltunnel "github.com/xhd2015/ai-critic/server/proxy/portforward/providers/localtunnel"
+	"github.com/xhd2015/ai-critic/server/proxy/proxyconfig"
+	"github.com/xhd2015/ai-critic/server/proxy/wsproxy"
+	"github.com/xhd2015/ai-critic/server/quicktest"
+	"github.com/xhd2015/ai-critic/server/services"
+	"github.com/xhd2015/ai-critic/server/settings"
+	"github.com/xhd2015/ai-critic/server/sshservers"
+	"github.com/xhd2015/ai-critic/server/subprocess"
+	"github.com/xhd2015/ai-critic/server/terminal"
+	"github.com/xhd2015/ai-critic/server/tools"
 	"github.com/xhd2015/kool/pkgs/web"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/actions"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents"
-	opencode_exposed "github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/exposed_opencode"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/web/cursorweb"
-	customagentapi "github.com/xhd2015/lifelog-private/ai-critic/server/api"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/auth"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/checkpoint"
-	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
-	serverconfig "github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/encrypt"
-	serverexec "github.com/xhd2015/lifelog-private/ai-critic/server/exec"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/exposedurls"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/fakellm"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/features"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/fileupload"
-	servergit "github.com/xhd2015/lifelog-private/ai-critic/server/git"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/github"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/keepalive"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/logs"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/projects"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward"
-	pfcloudflare "github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward/providers/cloudflare"
-	pflocaltunnel "github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward/providers/localtunnel"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/proxyconfig"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/services"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/settings"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sshservers"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/subprocess"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/terminal"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tools"
 )
 
 var distFS embed.FS
@@ -162,7 +163,7 @@ func Serve(port int, dev bool) error {
 	mux := http.NewServeMux()
 
 	// Wrap with auth middleware - skip login, auth check, setup, ping, public key and path-info endpoints
-	handler := auth.Middleware(mux, []string{"/api/login", "/api/auth/check", "/api/auth/setup", "/ping", "/api/encrypt/public-key", "/api/tools/path-info"})
+	handler := auth.Middleware(mux, []string{"/api/login", "/api/auth/check", "/api/auth/status", "/api/auth/setup", "/ping", "/api/encrypt/public-key", "/api/tools/path-info"})
 
 	// Wrap with quick-test mode handler if enabled
 	if quicktest.Enabled() {
@@ -456,6 +457,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 	}
 
 	portforward.RegisterAPI(mux)
+
+	// WS proxy API (Xray + Cloudflare Tunnel for iPhone access)
+	wsproxy.RegisterAPI(mux)
 
 	// GitHub API
 	github.RegisterAPI(mux)

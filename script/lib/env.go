@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/env"
+	"github.com/xhd2015/ai-critic/server/env"
 )
 
 const (

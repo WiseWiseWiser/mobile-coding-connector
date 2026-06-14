@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
 )
 
 // Tool categories for UI grouping.

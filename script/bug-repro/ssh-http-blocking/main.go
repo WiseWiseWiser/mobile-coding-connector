@@ -10,9 +10,9 @@ import (
 	"os/exec"
 	"time"
 
-	cloudflareSettings "github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/gitrunner"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/sse"
+	gitrunner "github.com/xhd2015/agent-pro/agent/git_runner"
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
+	cloudflareSettings "github.com/xhd2015/ai-critic/server/cloudflare"
 )
 
 const (

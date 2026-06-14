@@ -14,12 +14,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare/unified_tunnel"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/domains"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/jsonfile"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/quicktest"
+	"github.com/xhd2015/ai-critic/server/cloudflare"
+	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
+	"github.com/xhd2015/ai-critic/server/cmdjson"
+	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/domains"
+	"github.com/xhd2015/ai-critic/server/jsonfile"
+	"github.com/xhd2015/ai-critic/server/quicktest"
 )
 
 // PortProtectionConfig holds the list of protected ports
@@ -1155,13 +1156,17 @@ func handleDiagnostics(w http.ResponseWriter, _ *http.Request) {
 	// 3. Check if authenticated (has tunnel list access OR has cert.pem)
 	if IsCommandAvailable("cloudflared") {
 		// First try tunnel list
-		out, err := exec.Command("cloudflared", "tunnel", "list", "--output", "json").CombinedOutput()
+		result, err := cmdjson.Run[[]unified_tunnel.TunnelInfo](exec.Command("cloudflared", "tunnel", "list", "--output", "json"))
 		if err == nil {
+			description := "Authenticated and can list tunnels."
+			if warning := result.Warning(); warning != "" {
+				description += " Warning: " + warning
+			}
 			checks = append(checks, diagnosticCheck{
 				ID:          "authenticated",
 				Label:       "Cloudflare authenticated",
 				Status:      "ok",
-				Description: "Authenticated and can list tunnels.",
+				Description: description,
 			})
 		} else {
 			// Tunnel list failed, check for cert.pem as fallback
@@ -1178,7 +1183,7 @@ func handleDiagnostics(w http.ResponseWriter, _ *http.Request) {
 					})
 				} else {
 					// No cert.pem, not authenticated
-					errStr := strings.TrimSpace(string(out))
+					errStr := err.Error()
 					if strings.Contains(errStr, "login") || strings.Contains(errStr, "auth") || strings.Contains(errStr, "certificate") {
 						checks = append(checks, diagnosticCheck{
 							ID:          "authenticated",
@@ -1203,7 +1208,7 @@ func handleDiagnostics(w http.ResponseWriter, _ *http.Request) {
 				}
 			} else {
 				// Can't determine home dir, not authenticated
-				errStr := strings.TrimSpace(string(out))
+				errStr := err.Error()
 				if strings.Contains(errStr, "login") || strings.Contains(errStr, "auth") || strings.Contains(errStr, "certificate") {
 					checks = append(checks, diagnosticCheck{
 						ID:          "authenticated",

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/run"
-	"github.com/xhd2015/lifelog-private/ai-critic/server"
+	"github.com/xhd2015/ai-critic/run"
+	"github.com/xhd2015/ai-critic/server"
 )
 
 //go:embed ai-critic-react/dist

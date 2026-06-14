@@ -1,25 +1,14 @@
 package custom
 
 import (
-	"encoding/json"
-	"os"
 	"path/filepath"
-	"slices"
-	"time"
+
+	opencode_sessions "github.com/xhd2015/agent-pro/agent/opencode/ai_critic/sessions"
 )
 
 const SessionsDirName = "sessions"
 
-type SessionData struct {
-	ID         string `json:"id"`
-	AgentID    string `json:"agent_id"`
-	AgentName  string `json:"agent_name"`
-	ProjectDir string `json:"project_dir"`
-	Port       int    `json:"port"`
-	CreatedAt  string `json:"created_at"`
-	Status     string `json:"status"` // "starting", "running", "stopped", "error"
-	Error      string `json:"error,omitempty"`
-}
+type SessionData = opencode_sessions.SessionData
 
 func SessionsDir(agentID string) string {
 	agentDir := AgentDir(agentID)
@@ -46,92 +35,37 @@ func SessionDataPath(agentID, sessionID string) string {
 }
 
 func SaveSession(session *SessionData) error {
-	sessionDir := SessionDir(session.AgentID, session.ID)
-	if sessionDir == "" {
-		return nil
-	}
-	if err := os.MkdirAll(sessionDir, 0755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(session, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(SessionDataPath(session.AgentID, session.ID), data, 0644)
+	return opencode_sessions.Save(SessionsDir(session.AgentID), session)
 }
 
 func LoadSession(agentID, sessionID string) (*SessionData, error) {
-	dataPath := SessionDataPath(agentID, sessionID)
-	if dataPath == "" {
+	dir := SessionsDir(agentID)
+	if dir == "" {
 		return nil, nil
 	}
-	data, err := os.ReadFile(dataPath)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var session SessionData
-	if err := json.Unmarshal(data, &session); err != nil {
-		return nil, err
-	}
-	return &session, nil
+	return opencode_sessions.Load(dir, sessionID)
 }
 
 func ListSessions(agentID string) ([]SessionData, error) {
-	sessionsDir := SessionsDir(agentID)
-	if sessionsDir == "" {
+	dir := SessionsDir(agentID)
+	if dir == "" {
 		return nil, nil
 	}
-	entries, err := os.ReadDir(sessionsDir)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	var sessions []SessionData
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		session, err := LoadSession(agentID, entry.Name())
-		if err != nil || session == nil {
-			continue
-		}
-		sessions = append(sessions, *session)
-	}
-
-	slices.SortFunc(sessions, func(a, b SessionData) int {
-		ta, _ := time.Parse(time.RFC3339, a.CreatedAt)
-		tb, _ := time.Parse(time.RFC3339, b.CreatedAt)
-		if tb.Before(ta) {
-			return -1
-		}
-		if ta.Before(tb) {
-			return 1
-		}
-		return 0
-	})
-	return sessions, nil
+	return opencode_sessions.List(dir)
 }
 
 func UpdateSessionStatus(agentID, sessionID, status, errMsg string) error {
-	session, err := LoadSession(agentID, sessionID)
-	if err != nil || session == nil {
-		return err
+	dir := SessionsDir(agentID)
+	if dir == "" {
+		return nil
 	}
-	session.Status = status
-	session.Error = errMsg
-	return SaveSession(session)
+	return opencode_sessions.UpdateStatus(dir, sessionID, status, errMsg)
 }
 
 func DeleteSession(agentID, sessionID string) error {
-	sessionDir := SessionDir(agentID, sessionID)
-	if sessionDir == "" {
+	dir := SessionsDir(agentID)
+	if dir == "" {
 		return nil
 	}
-	return os.RemoveAll(sessionDir)
+	return opencode_sessions.Delete(dir, sessionID)
 }

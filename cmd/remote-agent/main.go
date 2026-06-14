@@ -5,9 +5,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/xhd2015/ai-critic/client"
+	remoteagentskill "github.com/xhd2015/ai-critic/cmd/remote-agent/skill"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/client"
-	remoteagentskill "github.com/xhd2015/lifelog-private/ai-critic/cmd/remote-agent/skill"
 )
 
 const help = `Usage: remote-agent [--server URL] [--token TOKEN] <command> [args...]
@@ -48,6 +48,11 @@ Commands:
       through a PTY so commands can prompt for user input. Every argument
       after 'exec' is forwarded verbatim to the remote binary.
 
+  request <api-path> [json-body]
+      Call an arbitrary API endpoint on the remote server. Uses GET when
+      json-body is omitted, POST with application/json when supplied or
+      piped on stdin.
+
   bash [cwd]
       Start an interactive shell on the remote server using the same
       terminal WebSocket API as the frontend terminal page. The server-side
@@ -66,15 +71,15 @@ Commands:
 
   git <subcommand> [args...]
       Git utilities that run on the remote server. Subcommands:
-        clone [--private-key <key-file>] [--https-proxy <proxy-url>] <repo> [dir]
-            Clone <repo> on the remote machine. If [dir] is omitted, the
+        clone [--private-key <key-file>] [--git-token <token>] [--https-proxy <proxy-url>] <repo-or-remote-dir> [dir]
+            Clone <repo-or-remote-dir> on the remote machine. If [dir] is omitted, the
             repository is cloned into ~/<repo_base_name>. If the target
             already exists, the command errors out.
-        -C <dir> fetch [--private-key <key-file>] [--https-proxy <proxy-url>]
+        -C <dir> fetch [--private-key <key-file>] [--git-token <token>] [--https-proxy <proxy-url>]
             Run 'git fetch' inside <dir> on the remote machine.
-        -C <dir> pull [--private-key <key-file>] [--https-proxy <proxy-url>]
+        -C <dir> pull [--private-key <key-file>] [--git-token <token>] [--https-proxy <proxy-url>]
             Run 'git pull --ff-only' inside <dir> on the remote machine.
-        -C <dir> push [--private-key <key-file>] [--https-proxy <proxy-url>]
+        -C <dir> push [--private-key <key-file>] [--git-token <token>] [--https-proxy <proxy-url>]
             Run 'git push origin HEAD:<current-branch>' inside <dir> on
             the remote machine.
 
@@ -113,6 +118,12 @@ Commands:
             List all managed services.
         stop|start|restart|logs <service-name-or-id>
             Control one service or stream its logs.
+        rename <service-name-or-id> <new-name>
+            Rename one service without restarting it.
+        update <service-name-or-id> [--field value...]
+            Update one service definition without restarting it.
+        upgrade <service-name-or-id> <local-binary> [--target <remote-path>]
+            Upload a binary first, then stop, replace, and start the service.
 
   server <subcommand> [args...]
       Execute server-management actions exposed by the remote server UI.
@@ -126,8 +137,14 @@ Commands:
         status
             Show the same keep-alive and machine status as the Manage Server page.
 
-  agent <subcommand> [args...]
-      Manage remote custom agents and their saved sessions. Subcommands:
+   auth <subcommand> [args...]
+       Check authentication status against the configured server.
+       Subcommands:
+         status
+             Verify the server is reachable and the token is valid.
+
+   agent <subcommand> [args...]
+       Manage remote custom agents and their saved sessions. Subcommands:
         list
             List custom agents.
         show <agent-id>
@@ -141,10 +158,28 @@ Commands:
         run <agent-id> [--project <dir>] [--resume <session-id|latest>]
             Start a new session or resume an existing saved session.
 
-  skill <subcommand> [args...]
-      Manage the embedded remote-agent skill definition. Subcommands:
-        install [<dir>] [--cursor|--codex]
-            Install the packaged SKILL.md for Cursor or Codex.
+   skill <subcommand> [args...]
+       Manage the embedded remote-agent skill definition. Subcommands:
+         show
+             Print the content of SKILL.md.
+         install [<dir>] [--cursor|--codex]
+             Install the packaged SKILL.md for Cursor or Codex.
+
+   ws-proxy <subcommand> [args...]
+       Manage the WebSocket-based mobile proxy (Xray + Cloudflare Tunnel).
+       Subcommands:
+         start [--tmp] [--upstream-proxy URL]
+             Start the proxy. With --tmp, uses temporary Quick Tunnel.
+         stop
+             Stop the proxy.
+         status
+             Show proxy status.
+         config
+             Show current configuration.
+         config set --upstream-proxy URL [--port PORT] [--path PATH]
+             Update configuration.
+         vmess-link [--export FILE]
+             Get the vmess:// link, manual config, and QR code for Shadowrocket import.
 
 Examples:
   remote-agent config
@@ -154,6 +189,8 @@ Examples:
   remote-agent local reap --filter ai-critic --signal
   remote-agent exec ls -la /tmp
   remote-agent exec sh -c 'echo hi; sleep 1'
+  remote-agent request /api/services
+  remote-agent request /api/services/start?id=svc-123 '{}'
   remote-agent bash
   remote-agent bash ~/work/repo
   remote-agent terminal list
@@ -162,6 +199,7 @@ Examples:
   remote-agent terminal close Debug
   remote-agent git clone https://github.com/foo/bar.git
   remote-agent git clone --private-key ~/.ssh/id_rsa git@host:foo/bar.git /tmp/bar
+  remote-agent git clone https://github.com/foo/private-bar.git ~/bar --git-token ghp_example
   remote-agent git -C ~/bar fetch --private-key ~/.ssh/id_rsa
   remote-agent git -C ~/bar pull --private-key ~/.ssh/id_rsa
   remote-agent git -C ~/bar push --private-key ~/.ssh/id_rsa
@@ -173,15 +211,20 @@ Examples:
   remote-agent settings git-users add --name "Jane Doe" --email jane@example.com
   remote-agent service list
   remote-agent service restart web
+  remote-agent service rename web api
+  remote-agent service update api --command './server --port 8080'
+  remote-agent service upgrade web ./ai-critic-server-linux-amd64
   remote-agent service logs svc-123
   remote-agent server build-next
   remote-agent server upload-next ./ai-critic-server-linux-amd64
   remote-agent server restart
-  remote-agent server status
-  remote-agent agent list
+   remote-agent server status
+   remote-agent auth status
+   remote-agent agent list
   remote-agent agent add build-review --template build --name "Build Review"
   remote-agent agent sessions build-review
   remote-agent agent run build-review --project ~/work/repo
+  remote-agent skill show
   remote-agent skill install --codex
 `
 
@@ -230,6 +273,10 @@ func run(args []string) error {
 		return runExec(func() (*client.Client, error) {
 			return resolveClient(server, token, tokenSpecified)
 		}, rest)
+	case "request":
+		return runRequest(func() (*client.Client, error) {
+			return resolveClient(server, token, tokenSpecified)
+		}, rest)
 	case "bash":
 		return runBash(func() (*client.Client, error) {
 			return resolveClient(server, token, tokenSpecified)
@@ -262,12 +309,20 @@ func run(args []string) error {
 		return runServer(func() (*client.Client, error) {
 			return resolveClient(server, token, tokenSpecified)
 		}, rest)
+	case "auth":
+		return runAuth(func() (*client.Client, error) {
+			return resolveClient(server, token, tokenSpecified)
+		}, rest)
 	case "agent":
 		return runAgent(func() (*client.Client, error) {
 			return resolveClient(server, token, tokenSpecified)
 		}, rest)
 	case "skill":
 		return remoteagentskill.Handle(rest)
+	case "ws-proxy":
+		return runWSProxy(func() (*client.Client, error) {
+			return resolveClient(server, token, tokenSpecified)
+		}, rest)
 	default:
 		return fmt.Errorf("unknown command: %s", cmd)
 	}

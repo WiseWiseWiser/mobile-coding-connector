@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 
+	"github.com/xhd2015/agent-pro/pkgs/containers/podman"
 	"github.com/xhd2015/xgo/support/cmd"
 )
 
@@ -46,7 +46,7 @@ func buildCross(opts BuildServerOptions) error {
 
 	// Clear GOFLAGS to avoid inheriting host-specific flags like -linkmode=external
 	// which conflict with CGO_ENABLED=0 cross-compilation.
-	env := FilterEnv(os.Environ(), "GOFLAGS")
+	env := podman.FilterEnv(os.Environ(), "GOFLAGS")
 	if opts.GOOS != "" {
 		env = append(env, "GOOS="+opts.GOOS)
 	}
@@ -76,20 +76,4 @@ func BuildFrontend() error {
 	return nil
 }
 
-// FilterEnv returns env with the specified keys removed.
-func FilterEnv(env []string, keys ...string) []string {
-	result := make([]string, 0, len(env))
-	for _, e := range env {
-		skip := false
-		for _, key := range keys {
-			if strings.HasPrefix(e, key+"=") {
-				skip = true
-				break
-			}
-		}
-		if !skip {
-			result = append(result, e)
-		}
-	}
-	return result
-}
+

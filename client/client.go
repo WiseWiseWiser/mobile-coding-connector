@@ -55,6 +55,35 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	return c.httpClient().Do(req)
 }
 
+// AuthStatusResult is returned by AuthStatus.
+type AuthStatusResult struct {
+	Initialized bool   `json:"initialized"`
+	OK          bool   `json:"ok"`
+	Status      string `json:"status"`
+}
+
+// AuthStatus calls GET /api/auth/status and returns a structured result.
+// The returned error is non-nil only for network/protocol errors, not
+// for auth failures (which are reflected in the result).
+func (c *Client) AuthStatus() (*AuthStatusResult, error) {
+	req, err := c.NewRequest(http.MethodGet, "/api/auth/status", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result AuthStatusResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode auth status response: %w", err)
+	}
+	result.OK = result.Status == "ok"
+	return &result, nil
+}
+
 // CheckAuth verifies the server + token are valid by calling /api/auth/check.
 func (c *Client) CheckAuth() error {
 	req, err := c.NewRequest(http.MethodGet, "/api/auth/check", nil)

@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/custom"
+	"github.com/xhd2015/ai-critic/server/agents/custom"
 )
 
 func RegisterCustomAgentsAPI(mux *http.ServeMux) {

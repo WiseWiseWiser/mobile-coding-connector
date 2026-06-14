@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -13,10 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/cloudflare"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/proxy/portforward"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
+	"github.com/xhd2015/ai-critic/server/cloudflare"
+	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/proxy/portforward"
 )
 
 const (
@@ -48,8 +49,11 @@ type ServiceDefinition struct {
 	WorkingDir  string              `json:"workingDir,omitempty"`
 	ExtraEnv    map[string]string   `json:"extraEnv,omitempty"`
 	PortForward *ServicePortForward `json:"portForward,omitempty"`
-	CreatedAt   string              `json:"createdAt"`
-	UpdatedAt   string              `json:"updatedAt"`
+	// UpgradeTarget remembers the remote binary path used by remote-agent
+	// service upgrade. It does not affect the running command itself.
+	UpgradeTarget string `json:"upgradeTarget,omitempty"`
+	CreatedAt     string `json:"createdAt"`
+	UpdatedAt     string `json:"updatedAt"`
 }
 
 type ServicePortForwardStatus struct {
@@ -80,6 +84,28 @@ type ServiceStatus struct {
 	LastExitError  string                    `json:"lastExitError,omitempty"`
 	DesiredRunning bool                      `json:"desiredRunning"`
 	PortForward    *ServicePortForwardStatus `json:"portForward,omitempty"`
+	UpgradeTarget  string                    `json:"upgradeTarget,omitempty"`
+}
+
+type ServiceUpgradeRequest struct {
+	ID        string `json:"id"`
+	TmpPath   string `json:"tmpPath"`
+	LocalBase string `json:"localBase"`
+	Target    string `json:"target,omitempty"`
+}
+
+type ServiceUpgradeResult struct {
+	Status           string         `json:"status"`
+	TmpPath          string         `json:"tmpPath"`
+	TargetPath       string         `json:"targetPath"`
+	RememberedTarget string         `json:"rememberedTarget,omitempty"`
+	Service          *ServiceStatus `json:"service,omitempty"`
+}
+
+type serviceUpgradeTargetSelection struct {
+	Input      string
+	Path       string
+	Remembered string
 }
 
 type serviceProcess struct {
@@ -131,6 +157,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/services/start", handleStartService)
 	mux.HandleFunc("/api/services/stop", handleStopService)
 	mux.HandleFunc("/api/services/restart", handleRestartService)
+	mux.HandleFunc("/api/services/upgrade", handleUpgradeService)
 }
 
 func StartHealthCheck() {
@@ -164,6 +191,7 @@ func (m *Manager) loadDefinitionsLocked() {
 		defs[i].ProjectDir = normalizeProjectDir(defs[i].ProjectDir)
 		defs[i].WorkingDir = normalizeWorkingDir(defs[i].WorkingDir)
 		defs[i].ExtraEnv = normalizeExtraEnv(defs[i].ExtraEnv)
+		defs[i].UpgradeTarget = strings.TrimSpace(defs[i].UpgradeTarget)
 	}
 	m.definitions = defs
 }
@@ -313,15 +341,25 @@ func (m *Manager) List(projectDir string) []ServiceStatus {
 			LastExitError:  lastExitError,
 			DesiredRunning: desired,
 			PortForward:    pfStatus,
+			UpgradeTarget:  def.UpgradeTarget,
 		})
 	}
 	return result
 }
 
 func (m *Manager) CreateOrUpdate(def ServiceDefinition) (*ServiceStatus, error) {
+	return m.createOrUpdate(def, true)
+}
+
+func (m *Manager) CreateOrUpdateNoRestart(def ServiceDefinition) (*ServiceStatus, error) {
+	return m.createOrUpdate(def, false)
+}
+
+func (m *Manager) createOrUpdate(def ServiceDefinition, restartChanged bool) (*ServiceStatus, error) {
 	def.ProjectDir = normalizeProjectDir(def.ProjectDir)
 	def.WorkingDir = normalizeWorkingDir(def.WorkingDir)
 	def.ExtraEnv = normalizeExtraEnv(def.ExtraEnv)
+	def.UpgradeTarget = strings.TrimSpace(def.UpgradeTarget)
 	if err := validateDefinition(def); err != nil {
 		return nil, err
 	}
@@ -343,6 +381,9 @@ func (m *Manager) CreateOrUpdate(def ServiceDefinition) (*ServiceStatus, error) 
 			}
 			existingCopy := m.definitions[i]
 			existing = &existingCopy
+			if def.UpgradeTarget == "" {
+				def.UpgradeTarget = m.definitions[i].UpgradeTarget
+			}
 			def.CreatedAt = m.definitions[i].CreatedAt
 			def.UpdatedAt = now
 			m.definitions[i] = def
@@ -360,7 +401,7 @@ func (m *Manager) CreateOrUpdate(def ServiceDefinition) (*ServiceStatus, error) 
 	}
 
 	proc := m.processes[def.ID]
-	if proc != nil {
+	if proc != nil && restartChanged {
 		proc.def = def
 		shouldRestart = proc.desired && (existing == nil || definitionChanged(*existing, def))
 	}
@@ -436,6 +477,114 @@ func (m *Manager) Restart(id string) error {
 		return err
 	}
 	return m.start(id, true)
+}
+
+func (m *Manager) Upgrade(req ServiceUpgradeRequest) (*ServiceUpgradeResult, error) {
+	id := strings.TrimSpace(req.ID)
+	tmpPath := strings.TrimSpace(req.TmpPath)
+	localBase := normalizeUpgradeLocalBase(req.LocalBase)
+	if id == "" {
+		return nil, fmt.Errorf("service id is required")
+	}
+	if tmpPath == "" {
+		return nil, fmt.Errorf("temporary upload path is required")
+	}
+	if localBase == "" {
+		return nil, fmt.Errorf("local binary basename is required")
+	}
+
+	target, err := m.selectServiceUpgradeTarget(id, localBase, req.Target)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := m.stop(id, true, true); err != nil {
+		return nil, err
+	}
+	if err := moveServiceUpgradeFile(tmpPath, target.Path); err != nil {
+		return nil, err
+	}
+	status, err := m.Start(id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ServiceUpgradeResult{
+		Status:           "ok",
+		TmpPath:          tmpPath,
+		TargetPath:       target.Path,
+		RememberedTarget: target.Remembered,
+		Service:          status,
+	}, nil
+}
+
+func (m *Manager) selectServiceUpgradeTarget(id string, localBase string, targetFlag string) (*serviceUpgradeTargetSelection, error) {
+	id = strings.TrimSpace(id)
+	localBase = normalizeUpgradeLocalBase(localBase)
+	targetFlag = strings.TrimSpace(targetFlag)
+	if id == "" {
+		return nil, fmt.Errorf("service id is required")
+	}
+	if localBase == "" {
+		return nil, fmt.Errorf("local binary basename is required")
+	}
+
+	var remembered string
+
+	m.mu.Lock()
+	idx := -1
+	for i := range m.definitions {
+		if m.definitions[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("service not found")
+	}
+
+	remembered = strings.TrimSpace(m.definitions[idx].UpgradeTarget)
+	m.mu.Unlock()
+
+	input := targetFlag
+	if input == "" {
+		input = remembered
+	}
+	if input == "" {
+		input = localBase
+	}
+
+	targetPath, err := resolveServiceUpgradeTargetPath(input, localBase)
+	if err != nil {
+		return nil, err
+	}
+	if targetFlag != "" {
+		m.mu.Lock()
+		idx := -1
+		for i := range m.definitions {
+			if m.definitions[i].ID == id {
+				idx = i
+				break
+			}
+		}
+		if idx == -1 {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("service not found")
+		}
+		m.definitions[idx].UpgradeTarget = targetFlag
+		remembered = targetFlag
+		if err := m.saveDefinitionsLocked(); err != nil {
+			m.mu.Unlock()
+			return nil, err
+		}
+		m.mu.Unlock()
+	}
+	return &serviceUpgradeTargetSelection{
+		Input:      input,
+		Path:       targetPath,
+		Remembered: remembered,
+	}, nil
 }
 
 func (m *Manager) start(id string, force bool) error {
@@ -1120,6 +1269,119 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+func normalizeUpgradeLocalBase(localBase string) string {
+	localBase = strings.TrimSpace(localBase)
+	if localBase == "" {
+		return ""
+	}
+	base := filepath.Base(localBase)
+	if base == "" || base == "." || base == string(filepath.Separator) {
+		return ""
+	}
+	return base
+}
+
+func resolveServiceUpgradeTargetPath(targetInput string, localBase string) (string, error) {
+	localBase = normalizeUpgradeLocalBase(localBase)
+	if localBase == "" {
+		return "", fmt.Errorf("local binary basename is required")
+	}
+
+	targetInput = strings.TrimSpace(targetInput)
+	if targetInput == "" {
+		targetInput = localBase
+	}
+	if targetInput == "~" {
+		targetInput = "~/" + localBase
+	} else if strings.HasSuffix(targetInput, "/") {
+		targetInput += localBase
+	}
+
+	if strings.HasPrefix(targetInput, "~") && targetInput != "~" && !strings.HasPrefix(targetInput, "~/") {
+		return "", fmt.Errorf("unsupported upgrade target path %q: only ~ or ~/... are supported", targetInput)
+	}
+	if filepath.IsAbs(targetInput) {
+		return filepath.Clean(targetInput), nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+	home = strings.TrimRight(strings.TrimSpace(home), string(filepath.Separator))
+	if home == "" {
+		return "", fmt.Errorf("home dir is empty")
+	}
+	if strings.HasPrefix(targetInput, "~/") {
+		return filepath.Clean(filepath.Join(home, strings.TrimPrefix(targetInput, "~/"))), nil
+	}
+	return filepath.Clean(filepath.Join(home, targetInput)), nil
+}
+
+func moveServiceUpgradeFile(tmpPath string, targetPath string) error {
+	tmpPath = strings.TrimSpace(tmpPath)
+	targetPath = strings.TrimSpace(targetPath)
+	if tmpPath == "" {
+		return fmt.Errorf("temporary upload path is required")
+	}
+	if targetPath == "" {
+		return fmt.Errorf("target path is required")
+	}
+	info, err := os.Stat(tmpPath)
+	if err != nil {
+		return fmt.Errorf("stat temporary upload path: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("temporary upload path is a directory: %s", tmpPath)
+	}
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		return fmt.Errorf("create target directory: %w", err)
+	}
+	if err := os.Rename(tmpPath, targetPath); err == nil {
+		return os.Chmod(targetPath, 0755)
+	} else if copyErr := copyServiceUpgradeFileIntoPlace(tmpPath, targetPath); copyErr != nil {
+		return fmt.Errorf("move %s to %s: rename: %v; copy fallback: %w", tmpPath, targetPath, err, copyErr)
+	}
+	if err := os.Remove(tmpPath); err != nil {
+		return fmt.Errorf("remove temporary upload path after copy: %w", err)
+	}
+	return nil
+}
+
+func copyServiceUpgradeFileIntoPlace(src string, dst string) error {
+	dir := filepath.Dir(dst)
+	base := filepath.Base(dst)
+	tmpDst := filepath.Join(dir, fmt.Sprintf(".%s.remote-agent-upgrade-%d", base, time.Now().UnixNano()))
+	defer os.Remove(tmpDst)
+
+	if err := copyServiceUpgradeFile(src, tmpDst); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpDst, 0755); err != nil {
+		return err
+	}
+	return os.Rename(tmpDst, dst)
+}
+
+func copyServiceUpgradeFile(src string, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
+}
+
 func handleServices(w http.ResponseWriter, r *http.Request) {
 	manager := GetDefaultManager()
 
@@ -1135,7 +1397,8 @@ func handleServices(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		saved, err := manager.CreateOrUpdate(req)
+		restartChanged := serviceSaveShouldRestart(r)
+		saved, err := manager.createOrUpdate(req, restartChanged)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -1161,6 +1424,18 @@ func handleServices(w http.ResponseWriter, r *http.Request) {
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func serviceSaveShouldRestart(r *http.Request) bool {
+	value := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("restart")))
+	switch value {
+	case "", "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return true
 	}
 }
 
@@ -1217,4 +1492,23 @@ func handleRestartService(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func handleUpgradeService(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req ServiceUpgradeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	result, err := GetDefaultManager().Upgrade(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
 }

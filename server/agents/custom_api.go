@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/custom"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/agents/opencode/common_opencode"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_exec"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/tool_resolve"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_exec"
+	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
+	"github.com/xhd2015/ai-critic/server/agents/custom"
+	"github.com/xhd2015/ai-critic/server/agents/opencode/common_opencode"
 )
 
 type LaunchCustomAgentResult struct {

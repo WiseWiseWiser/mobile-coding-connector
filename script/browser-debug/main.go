@@ -17,8 +17,8 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	"github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/less-gen/flags"
-	"github.com/xhd2015/lifelog-private/ai-critic/server/config"
 )
 
 const debugPort = "9222"

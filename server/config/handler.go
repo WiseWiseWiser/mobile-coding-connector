@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/xhd2015/lifelog-private/ai-critic/server/env"
+	"github.com/xhd2015/ai-critic/server/env"
 )
 
 // ConfigResponse represents the server configuration exposed to the frontend

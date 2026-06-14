@@ -1,7 +1,6 @@
 package unified_tunnel
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/xhd2015/ai-critic/server/cmdjson"
 	"gopkg.in/yaml.v3"
 )
 
@@ -136,15 +136,15 @@ func EnsureTunnelExists(tunnelRef string) (tunnelID string, credFile string, err
 // FindOrCreateTunnel finds an existing tunnel (preferring the given name) or creates one.
 // Returns the tunnel name to use.
 func FindOrCreateTunnel(preferredName string) (string, error) {
-	out, err := exec.Command("cloudflared", "tunnel", "list", "--output", "json").CombinedOutput()
+	result, err := cmdjson.Run[[]TunnelInfo](exec.Command("cloudflared", "tunnel", "list", "--output", "json"))
 	if err == nil {
-		var tunnels []TunnelInfo
-		if err := json.Unmarshal(out, &tunnels); err == nil {
-			// Look for a tunnel with the preferred name
-			for _, t := range tunnels {
-				if t.Name == preferredName {
-					return t.Name, nil
-				}
+		if warning := result.Warning(); warning != "" {
+			fmt.Fprintf(os.Stderr, "[cloudflare] cloudflared tunnel list warning: %s\n", warning)
+		}
+		// Look for a tunnel with the preferred name.
+		for _, t := range result.Data {
+			if t.Name == preferredName {
+				return t.Name, nil
 			}
 		}
 	}

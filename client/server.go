@@ -90,6 +90,8 @@ type ServerStreamEvent struct {
 	ProjectName string `json:"project_name,omitempty"`
 	Directory   string `json:"directory,omitempty"`
 	Status      string `json:"status,omitempty"`
+	PublicURL   string `json:"public_url,omitempty"`
+	VMessLink   string `json:"vmess_link,omitempty"`
 }
 
 type BuildNextResult struct {
@@ -453,4 +455,48 @@ func (c *Client) getJSON(path string, out any) error {
 		return fmt.Errorf("decode %s response: %w", path, err)
 	}
 	return nil
+}
+
+func (c *Client) StreamSSE(path string, body any, handler func(ServerStreamEvent)) error {
+	var resultErr error
+	err := c.postSSEJSON(path, body, handler, func(ev ServerStreamEvent) error {
+		if ev.Type == "error" {
+			resultErr = errors.New(defaultStreamError(ev.Message, "stream failed"))
+			return resultErr
+		}
+		return nil
+	})
+	if resultErr != nil {
+		return resultErr
+	}
+	return err
+}
+
+type SSEStreamResult struct {
+	Done map[string]interface{}
+}
+
+func (c *Client) StreamSSEWithDone(path string, body any, handler func(ServerStreamEvent)) (*SSEStreamResult, error) {
+	var result SSEStreamResult
+	var resultErr error
+	err := c.postSSEJSON(path, body, handler, func(ev ServerStreamEvent) error {
+		if ev.Type == "error" {
+			resultErr = errors.New(defaultStreamError(ev.Message, "stream failed"))
+			return resultErr
+		}
+		if ev.Type == "done" {
+			var done map[string]interface{}
+			raw, _ := json.Marshal(ev)
+			json.Unmarshal(raw, &done)
+			result.Done = done
+		}
+		return nil
+	})
+	if resultErr != nil {
+		return nil, resultErr
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
 }

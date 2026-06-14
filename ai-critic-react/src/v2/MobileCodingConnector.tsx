@@ -272,7 +272,7 @@ function MobileCodingConnectorInner() {
             {/* Main Content */}
             <div className="mcc-content">
                 <div className="mcc-content-inner">
-                    {/* Terminal - rendered persistently but hidden when not active */}
+                    {/* Terminal - rendered persistently so sessions survive tab switches */}
                     <div 
                         className="mcc-terminal-wrapper" 
                         style={{ 
@@ -289,19 +289,23 @@ function MobileCodingConnectorInner() {
                             defaultCwd={resolvedProjectDir}
                         />
                     </div>
-                    {/* Other tab content */}
-                    <div 
-                        className="mcc-tab-content"
-                        style={{ 
-                            display: activeTab === NavTabs.Terminal ? 'none' : 'flex',
-                            flexDirection: 'column',
-                            flex: 1,
-                            minHeight: 0,
-                            overflow: 'auto'
-                        }}
-                    >
-                        <Outlet context={outletContext} />
-                    </div>
+                    {/* Other tab content — not rendered when terminal tab is active
+                        to prevent a duplicate terminal (TerminalPage via Outlet would
+                        create its own WebSocket alongside TerminalManager). */}
+                    {activeTab !== NavTabs.Terminal && (
+                        <div 
+                            className="mcc-tab-content"
+                            style={{ 
+                                display: 'flex',
+                                flexDirection: 'column',
+                                flex: 1,
+                                minHeight: 0,
+                                overflow: 'auto'
+                            }}
+                        >
+                            <Outlet context={outletContext} />
+                        </div>
+                    )}
                 </div>
             </div>
 
