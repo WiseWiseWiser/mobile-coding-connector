@@ -844,6 +844,7 @@
 }
 
 .mcc-codex-model-input,
+.mcc-codex-reasoning-input,
 .mcc-codex-select {
     flex: 0 0 auto;
     height: 30px;
@@ -856,10 +857,16 @@
 }
 
 .mcc-codex-model-input {
-    flex: 1 1 220px;
+    flex: 1 1 190px;
     min-width: 128px;
     max-width: 300px;
     padding: 0 9px;
+}
+
+.mcc-codex-reasoning-input {
+    flex: 0 0 112px;
+    min-width: 96px;
+    padding: 0 8px;
 }
 
 .mcc-codex-select {
@@ -867,6 +874,7 @@
 }
 
 .mcc-codex-model-input:focus,
+.mcc-codex-reasoning-input:focus,
 .mcc-codex-select:focus {
     border-color: #60a5fa;
 }
@@ -1471,6 +1479,11 @@
     .mcc-codex-model-input {
         flex-basis: 150px;
         max-width: 190px;
+    }
+
+    .mcc-codex-reasoning-input {
+        flex-basis: 92px;
+        min-width: 84px;
     }
 
     .mcc-codex-session-title-chip {

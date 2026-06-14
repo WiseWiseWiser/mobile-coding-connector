@@ -8,6 +8,7 @@ import {
     fetchCodexModels,
     loadCodexApprovalPolicy,
     loadCodexDefaultModel,
+    loadCodexDefaultReasoningEffort,
     loadCodexSandbox,
     type CodexModel,
 } from './codexSettings';
@@ -109,6 +110,7 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
     const [busy, setBusy] = useState(false);
     const [input, setInput] = useState('');
     const [model, setModel] = useState('');
+    const [reasoningEffort, setReasoningEffort] = useState('');
     const [models, setModels] = useState<CodexModel[]>([]);
     const [sandbox] = useState(loadCodexSandbox);
     const [approvalPolicy] = useState(loadCodexApprovalPolicy);
@@ -133,12 +135,14 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
     const inputRef = useRef<HTMLTextAreaElement | null>(null);
     const sessionTitleRef = useRef<HTMLDivElement | null>(null);
     const modelRef = useRef('');
+    const reasoningEffortRef = useRef('');
     const sessionIDRef = useRef('');
     const queuedPromptsRef = useRef<QueuedCodexPrompt[]>([]);
     const handleServerMessageRef = useRef<(msg: CodexServerMessage) => void>(() => {});
     const activeAssistantIDRef = useRef<string | null>(null);
     const historyLoadSeqRef = useRef(0);
     const sessionStorageKey = `mcc.codex.session.${projectDir}`;
+    const sessionReasoningStorageKey = `mcc.codex.session-reasoning.${projectDir}`;
     const messagesContainerRef = useAutoScroll([messages, rawEvents]);
 
     const appendMessage = useCallback((message: Omit<CodexChatMessage, 'id'>) => {
@@ -348,6 +352,7 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
             prompt,
             project_dir: projectDir,
             model: modelRef.current.trim() || undefined,
+            reasoning_effort: reasoningEffortRef.current.trim() || undefined,
             sandbox,
             approval_policy: approvalPolicy,
             session_id: newSession ? undefined : sessionIDRef.current || undefined,
@@ -392,6 +397,11 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
                 sessionIDRef.current = msg.session_id;
                 setSessionID(msg.session_id);
                 window.localStorage.setItem(sessionStorageKey, msg.session_id);
+                const savedReasoningEffort = loadSessionReasoningEffort(sessionReasoningStorageKey, msg.session_id);
+                if (savedReasoningEffort) {
+                    reasoningEffortRef.current = savedReasoningEffort;
+                    setReasoningEffort(savedReasoningEffort);
+                }
             }
             if (msg.running) {
                 setBusy(true);
@@ -406,6 +416,7 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
                 sessionIDRef.current = msg.session_id;
                 setSessionID(msg.session_id);
                 window.localStorage.setItem(sessionStorageKey, msg.session_id);
+                saveSessionReasoningEffort(sessionReasoningStorageKey, msg.session_id, reasoningEffortRef.current);
                 void refreshSessions();
             }
             return;
@@ -451,7 +462,7 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
         default:
             appendMessage({ kind: 'event', title: msg.type, text: stringifyEvent(msg) });
         }
-    }, [appendMessage, handleCodexEvent, refreshSessions, resetAssistantStream, runNextQueuedPrompt, sessionStorageKey]);
+    }, [appendMessage, handleCodexEvent, refreshSessions, resetAssistantStream, runNextQueuedPrompt, sessionReasoningStorageKey, sessionStorageKey]);
 
     useEffect(() => {
         handleServerMessageRef.current = handleServerMessage;
@@ -533,6 +544,10 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
     }, [model]);
 
     useEffect(() => {
+        reasoningEffortRef.current = reasoningEffort;
+    }, [reasoningEffort]);
+
+    useEffect(() => {
         sessionIDRef.current = sessionID;
     }, [sessionID]);
 
@@ -544,6 +559,11 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
                 setModel((current) => {
                     const nextModel = current || loadCodexDefaultModel() || data.currentModel || nextModels[0]?.id || '';
                     modelRef.current = nextModel;
+                    const nextModelInfo = findCodexModel(nextModels, nextModel);
+                    const sessionReasoningEffort = sessionIDRef.current ? loadSessionReasoningEffort(sessionReasoningStorageKey, sessionIDRef.current) : '';
+                    const nextReasoningEffort = sessionReasoningEffort || loadCodexDefaultReasoningEffort() || data.currentReasoningLevel || nextModelInfo?.defaultReasoningLevel || nextModelInfo?.reasoningLevels?.[0] || '';
+                    reasoningEffortRef.current = nextReasoningEffort;
+                    setReasoningEffort(nextReasoningEffort);
                     return nextModel;
                 });
             })
@@ -551,7 +571,7 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
                 setModels([]);
             });
         void refreshSessions();
-    }, [refreshSessions]);
+    }, [refreshSessions, sessionReasoningStorageKey]);
 
     useEffect(() => {
         connect();
@@ -678,7 +698,10 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
         historyLoadSeqRef.current += 1;
         sessionIDRef.current = '';
         queuedPromptsRef.current = [];
+        const nextReasoningEffort = loadCodexDefaultReasoningEffort() || defaultReasoningEffortForModel(models, modelRef.current);
+        reasoningEffortRef.current = nextReasoningEffort;
         setSessionID('');
+        setReasoningEffort(nextReasoningEffort);
         setQueuedPrompts([]);
         setSessionsOpen(false);
         setSessionTitleOpen(false);
@@ -715,6 +738,12 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
             modelRef.current = session.model;
             setModel(session.model);
         }
+        const nextReasoningEffort = loadSessionReasoningEffort(sessionReasoningStorageKey, session.id)
+            || defaultReasoningEffortForModel(models, session.model || modelRef.current)
+            || loadCodexDefaultReasoningEffort()
+            || reasoningEffortRef.current;
+        reasoningEffortRef.current = nextReasoningEffort;
+        setReasoningEffort(nextReasoningEffort);
         setSessionsOpen(false);
         resetAssistantStream();
         setMessages([{
@@ -772,6 +801,8 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
     };
 
     const activeSessionTitle = sessionID ? currentSessionTitle(sessions, sessionID) : '';
+    const selectedModel = findCodexModel(models, model);
+    const reasoningLevels = selectedModel?.reasoningLevels || [];
     const canSendPrompt = connectionState === 'connected';
     const sendButtonDisabled = !canSendPrompt || !input.trim();
     const sendButtonLabel = connectionState === 'connecting' ? 'Connecting' : busy ? 'Queue' : 'Send';
@@ -824,8 +855,15 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
                         className="mcc-codex-model-input"
                         value={model}
                         onChange={event => {
-                            modelRef.current = event.target.value;
-                            setModel(event.target.value);
+                            const nextModel = event.target.value;
+                            const nextReasoningEffort = defaultReasoningEffortForModel(models, nextModel);
+                            modelRef.current = nextModel;
+                            reasoningEffortRef.current = nextReasoningEffort;
+                            setModel(nextModel);
+                            setReasoningEffort(nextReasoningEffort);
+                            if (sessionIDRef.current) {
+                                saveSessionReasoningEffort(sessionReasoningStorageKey, sessionIDRef.current, nextReasoningEffort);
+                            }
                         }}
                         disabled={busy}
                         title="Model"
@@ -833,6 +871,25 @@ export function CodexCliChat({ projectName, projectDir, onBack, onSettings }: Co
                         {models.length === 0 && <option value="">Default model</option>}
                         {models.map(item => (
                             <option key={item.id} value={item.id}>{item.name}</option>
+                        ))}
+                    </select>
+                    <select
+                        className="mcc-codex-reasoning-input"
+                        value={reasoningEffort}
+                        onChange={event => {
+                            const nextReasoningEffort = event.target.value;
+                            reasoningEffortRef.current = nextReasoningEffort;
+                            setReasoningEffort(nextReasoningEffort);
+                            if (sessionIDRef.current) {
+                                saveSessionReasoningEffort(sessionReasoningStorageKey, sessionIDRef.current, nextReasoningEffort);
+                            }
+                        }}
+                        disabled={busy || reasoningLevels.length === 0}
+                        title="Reasoning effort"
+                    >
+                        {reasoningLevels.length === 0 && <option value="">Reasoning</option>}
+                        {reasoningLevels.map(level => (
+                            <option key={level} value={level}>{formatReasoningEffort(level)}</option>
                         ))}
                     </select>
                     <button
@@ -1704,6 +1761,48 @@ function shortSessionID(sessionID: string): string {
 
 function currentSessionTitle(sessions: CodexSession[], sessionID: string): string {
     return sessions.find(session => session.id === sessionID)?.title || shortSessionID(sessionID);
+}
+
+function findCodexModel(models: CodexModel[], modelID: string): CodexModel | undefined {
+    return models.find(item => item.id === modelID);
+}
+
+function defaultReasoningEffortForModel(models: CodexModel[], modelID: string): string {
+    const model = findCodexModel(models, modelID);
+    return model?.defaultReasoningLevel || model?.reasoningLevels?.[0] || '';
+}
+
+function loadSessionReasoningEffort(storageKey: string, sessionID: string): string {
+    if (!sessionID) return '';
+    try {
+        const raw = window.localStorage.getItem(storageKey);
+        const data = raw ? JSON.parse(raw) : {};
+        return typeof data?.[sessionID] === 'string' ? data[sessionID] : '';
+    } catch {
+        return '';
+    }
+}
+
+function saveSessionReasoningEffort(storageKey: string, sessionID: string, reasoningEffort: string) {
+    if (!sessionID) return;
+    try {
+        const raw = window.localStorage.getItem(storageKey);
+        const data = raw ? JSON.parse(raw) : {};
+        if (reasoningEffort) {
+            data[sessionID] = reasoningEffort;
+        } else {
+            delete data[sessionID];
+        }
+        window.localStorage.setItem(storageKey, JSON.stringify(data));
+    } catch {
+        // Ignore storage failures; the active run still receives the selected effort.
+    }
+}
+
+function formatReasoningEffort(value: string): string {
+    if (!value) return 'Reasoning';
+    if (value === 'xhigh') return 'XHigh';
+    return `${value[0]?.toUpperCase() || ''}${value.slice(1)}`;
 }
 
 function formatSessionTime(value?: string): string {

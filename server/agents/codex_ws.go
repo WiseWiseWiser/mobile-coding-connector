@@ -25,14 +25,15 @@ var codexWSUpgrader = websocket.Upgrader{
 }
 
 type codexWSClientMessage struct {
-	Type           string `json:"type"`
-	Prompt         string `json:"prompt,omitempty"`
-	ProjectDir     string `json:"project_dir,omitempty"`
-	Model          string `json:"model,omitempty"`
-	Sandbox        string `json:"sandbox,omitempty"`
-	ApprovalPolicy string `json:"approval_policy,omitempty"`
-	SessionID      string `json:"session_id,omitempty"`
-	NewSession     bool   `json:"new_session,omitempty"`
+	Type            string `json:"type"`
+	Prompt          string `json:"prompt,omitempty"`
+	ProjectDir      string `json:"project_dir,omitempty"`
+	Model           string `json:"model,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	Sandbox         string `json:"sandbox,omitempty"`
+	ApprovalPolicy  string `json:"approval_policy,omitempty"`
+	SessionID       string `json:"session_id,omitempty"`
+	NewSession      bool   `json:"new_session,omitempty"`
 }
 
 type codexWSConnection struct {
@@ -66,8 +67,9 @@ type codexActiveRun struct {
 var codexRuns = &codexRunRegistry{bySession: make(map[string]*codexActiveRun)}
 
 type codexModelResponse struct {
-	Models       []codexModel `json:"models"`
-	CurrentModel string       `json:"current_model,omitempty"`
+	Models                []codexModel `json:"models"`
+	CurrentModel          string       `json:"current_model,omitempty"`
+	CurrentReasoningLevel string       `json:"current_reasoning_level,omitempty"`
 }
 
 type codexModel struct {
@@ -208,8 +210,9 @@ func handleCodexModels(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(codexModelResponse{
-		Models:       models,
-		CurrentModel: readCodexCurrentModel(),
+		Models:                models,
+		CurrentModel:          readCodexCurrentModel(),
+		CurrentReasoningLevel: readCodexCurrentReasoningLevel(),
 	})
 }
 
@@ -663,6 +666,19 @@ func readCodexCurrentModel() string {
 	return string(match[1])
 }
 
+func readCodexCurrentReasoningLevel() string {
+	data, err := os.ReadFile(filepath.Join(codexHomeDir(), "config.toml"))
+	if err != nil {
+		return ""
+	}
+	re := regexp.MustCompile(`(?m)^\s*model_reasoning_effort\s*=\s*"([^"]+)"`)
+	match := re.FindSubmatch(data)
+	if len(match) < 2 {
+		return ""
+	}
+	return string(match[1])
+}
+
 func (r *codexActiveRun) runCodex(ctx context.Context, cmdPath, projectDir, prompt, sessionID string, msg codexWSClientMessage) {
 	defer func() {
 		r.markDone()
@@ -758,6 +774,7 @@ func (r *codexActiveRun) runCodex(ctx context.Context, cmdPath, projectDir, prom
 
 func buildCodexExecArgs(projectDir, sessionID string, msg codexWSClientMessage) []string {
 	model := strings.TrimSpace(msg.Model)
+	reasoningEffort := strings.TrimSpace(msg.ReasoningEffort)
 
 	if sessionID != "" {
 		args := []string{
@@ -769,6 +786,9 @@ func buildCodexExecArgs(projectDir, sessionID string, msg codexWSClientMessage) 
 		}
 		if model != "" {
 			args = append(args, "--model", model)
+		}
+		if reasoningEffort != "" {
+			args = append(args, "-c", fmt.Sprintf("model_reasoning_effort=%q", reasoningEffort))
 		}
 		args = append(args, sessionID, "-")
 		return args
@@ -792,6 +812,9 @@ func buildCodexExecArgs(projectDir, sessionID string, msg codexWSClientMessage) 
 	}
 	if model != "" {
 		args = append(args, "--model", model)
+	}
+	if reasoningEffort != "" {
+		args = append(args, "-c", fmt.Sprintf("model_reasoning_effort=%q", reasoningEffort))
 	}
 	args = append(args, "-")
 	return args

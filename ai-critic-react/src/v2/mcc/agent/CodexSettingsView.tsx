@@ -6,9 +6,11 @@ import {
     fetchCodexModels,
     loadCodexApprovalPolicy,
     loadCodexDefaultModel,
+    loadCodexDefaultReasoningEffort,
     loadCodexSandbox,
     saveCodexApprovalPolicy,
     saveCodexDefaultModel,
+    saveCodexDefaultReasoningEffort,
     saveCodexSandbox,
     type CodexModel,
 } from './codexSettings';
@@ -22,6 +24,7 @@ export interface CodexSettingsViewProps {
 export function CodexSettingsView({ projectName, onBack }: CodexSettingsViewProps) {
     const [models, setModels] = useState<CodexModel[]>([]);
     const [model, setModel] = useState(loadCodexDefaultModel);
+    const [reasoningEffort, setReasoningEffort] = useState(loadCodexDefaultReasoningEffort);
     const [sandbox, setSandbox] = useState(loadCodexSandbox);
     const [approvalPolicy, setApprovalPolicy] = useState(loadCodexApprovalPolicy);
     const [loading, setLoading] = useState(true);
@@ -31,7 +34,12 @@ export function CodexSettingsView({ projectName, onBack }: CodexSettingsViewProp
         fetchCodexModels()
             .then(data => {
                 setModels(data.models);
-                setModel(current => current || data.currentModel || data.models[0]?.id || '');
+                setModel(current => {
+                    const nextModel = current || data.currentModel || data.models[0]?.id || '';
+                    const modelInfo = findCodexModel(data.models, nextModel);
+                    setReasoningEffort(currentEffort => currentEffort || data.currentReasoningLevel || modelInfo?.defaultReasoningLevel || modelInfo?.reasoningLevels?.[0] || '');
+                    return nextModel;
+                });
             })
             .catch(err => setError(err instanceof Error ? err.message : String(err)))
             .finally(() => setLoading(false));
@@ -40,6 +48,14 @@ export function CodexSettingsView({ projectName, onBack }: CodexSettingsViewProp
     const handleModelChange = (value: string) => {
         setModel(value);
         saveCodexDefaultModel(value);
+        const nextEffort = defaultReasoningEffortForModel(models, value);
+        setReasoningEffort(nextEffort);
+        saveCodexDefaultReasoningEffort(nextEffort);
+    };
+
+    const handleReasoningEffortChange = (value: string) => {
+        setReasoningEffort(value);
+        saveCodexDefaultReasoningEffort(value);
     };
 
     const handleSandboxChange = (value: string) => {
@@ -51,6 +67,9 @@ export function CodexSettingsView({ projectName, onBack }: CodexSettingsViewProp
         setApprovalPolicy(value);
         saveCodexApprovalPolicy(value);
     };
+
+    const selectedModel = findCodexModel(models, model);
+    const reasoningLevels = selectedModel?.reasoningLevels || [];
 
     return (
         <div className="mcc-agent-view mcc-codex-settings-view">
@@ -69,6 +88,22 @@ export function CodexSettingsView({ projectName, onBack }: CodexSettingsViewProp
                                 <option value="">Codex default</option>
                                 {models.map(item => (
                                     <option key={item.id} value={item.id}>{item.name}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="mcc-codex-setting-row">
+                            <span>
+                                <strong>Reasoning effort</strong>
+                                <small>Controls how much reasoning Codex uses with the selected model.</small>
+                            </span>
+                            <select
+                                value={reasoningEffort}
+                                onChange={event => handleReasoningEffortChange(event.target.value)}
+                                disabled={reasoningLevels.length === 0}
+                            >
+                                {reasoningLevels.length === 0 && <option value="">Model default</option>}
+                                {reasoningLevels.map(level => (
+                                    <option key={level} value={level}>{formatReasoningEffort(level)}</option>
                                 ))}
                             </select>
                         </label>
@@ -98,6 +133,7 @@ export function CodexSettingsView({ projectName, onBack }: CodexSettingsViewProp
                             className="mcc-btn-secondary"
                             onClick={() => {
                                 handleModelChange('');
+                                handleReasoningEffortChange('');
                                 handleSandboxChange(CODEX_DEFAULT_SANDBOX);
                                 handleApprovalPolicyChange(CODEX_DEFAULT_APPROVAL_POLICY);
                             }}
@@ -109,4 +145,19 @@ export function CodexSettingsView({ projectName, onBack }: CodexSettingsViewProp
             </div>
         </div>
     );
+}
+
+function findCodexModel(models: CodexModel[], modelID: string): CodexModel | undefined {
+    return models.find(item => item.id === modelID);
+}
+
+function defaultReasoningEffortForModel(models: CodexModel[], modelID: string): string {
+    const model = findCodexModel(models, modelID);
+    return model?.defaultReasoningLevel || model?.reasoningLevels?.[0] || '';
+}
+
+function formatReasoningEffort(value: string): string {
+    if (!value) return 'Model default';
+    if (value === 'xhigh') return 'Extra high';
+    return `${value[0]?.toUpperCase() || ''}${value.slice(1)}`;
 }
