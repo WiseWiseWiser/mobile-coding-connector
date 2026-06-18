@@ -25,11 +25,14 @@ const (
 // In the zip, ".ai-critic/" files are stored under "ai-critic/" (without the dot).
 const (
 	zipPrefixAICritic        = "ai-critic/"
-	diskPrefixAICritic       = config.DataDir + "/"
 	zipPrefixCloudflare      = "cloudflare/"
 	zipPrefixOpencode        = "opencode/"
 	zipPrefixOpencodePlugins = "opencode/plugins/"
 	zipPrefixOpencodeMain    = "opencode/opencode.jsonc"
+)
+
+var (
+	diskPrefixAICritic = config.DataDir + "/"
 )
 
 // ImportFilePreview describes a single file in the import preview.

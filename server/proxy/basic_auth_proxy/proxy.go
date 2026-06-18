@@ -120,6 +120,9 @@ func Start(proxyPort, backendPort int) error {
 			return fmt.Errorf("failed to create proxy command: %w", err)
 		}
 
+		cmd.Cmd.Stdout = nil
+		cmd.Cmd.Stderr = nil
+
 		if err := cmd.Cmd.Start(); err != nil {
 			return fmt.Errorf("failed to start proxy: %w", err)
 		}

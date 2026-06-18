@@ -204,14 +204,17 @@ func forceStopProcessOnPort(port int) error {
 
 // AutoStartWebServer adds the tunnel mapping for opencode web server if configured.
 func AutoStartWebServer() {
-	fmt.Printf("[opencode] AutoStartWebServer: BEGIN\n")
-
 	settings, err := LoadSettings()
 	if err != nil {
 		fmt.Printf("[opencode] AutoStartWebServer: failed to load settings: %v\n", err)
 		return
 	}
 
+	if !settings.WebServer.Enabled {
+		return
+	}
+
+	fmt.Printf("[opencode] AutoStartWebServer: BEGIN\n")
 	fmt.Printf("[opencode] AutoStartWebServer: loaded settings - DefaultDomain=%q, WebServer.Enabled=%v, WebServer.Port=%d\n",
 		settings.DefaultDomain, settings.WebServer.Enabled, settings.WebServer.Port)
 
@@ -229,6 +232,8 @@ func AutoStartWebServer() {
 	fmt.Printf("[opencode] AutoStartWebServer: loaded settings - DefaultDomain=%q, WebServer.Enabled=%v, WebServer.Port=%d, AuthProxyEnabled=%v\n",
 		settings.DefaultDomain, settings.WebServer.Enabled, settings.WebServer.Port, settings.WebServer.AuthProxyEnabled)
 	fmt.Printf("[opencode] AutoStartWebServer: web server running on port %d? %v\n", port, isRunning)
+
+	fmt.Printf("[opencode] AutoStartWebServer: attempting to start web server for domain %s...\n", settings.DefaultDomain)
 
 	// Check if we need to restart with auth proxy
 	if settings.WebServer.AuthProxyEnabled {
@@ -304,7 +309,6 @@ func AutoStartWebServer() {
 	}
 
 	go func() {
-		fmt.Printf("[opencode] AutoStartWebServer: attempting to start web server for domain %s...\n", settings.DefaultDomain)
 		resp, err := StartWebServer()
 		if err != nil {
 			fmt.Printf("[opencode] AutoStartWebServer: StartWebServer returned error: %v\n", err)

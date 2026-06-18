@@ -1,13 +1,20 @@
 package config
 
 import (
-	"fmt"
+	"os"
 	"path/filepath"
 )
 
+func resolveDataDir() string {
+	if dir := os.Getenv("AI_CRITIC_HOME"); dir != "" {
+		return dir
+	}
+	return ".ai-critic"
+}
+
 // DataDir is the base directory for all ai-critic data files, relative to the
 // working directory (or under $HOME for per-user configs like agents.json).
-const DataDir = ".ai-critic"
+var DataDir = resolveDataDir()
 
 // Network ports.
 const (
@@ -22,7 +29,7 @@ const (
 )
 
 // File paths relative to DataDir.
-const (
+var (
 	CredentialsFile                = DataDir + "/server-credentials"
 	EncKeyFile                     = DataDir + "/enc-key"
 	EncKeyPubFile                  = DataDir + "/enc-key.pub"
@@ -42,7 +49,7 @@ const (
 )
 
 // Process management directory and paths
-const (
+var (
 	ProcsDir = DataDir + "/procs"
 )
 
@@ -80,8 +87,4 @@ func BasicAuthProxyLockPath() string {
 
 func BasicAuthProxyRegistryPath() string {
 	return filepath.Join(BasicAuthProxyDir(), "registry.json")
-}
-
-func init() {
-	fmt.Println("[config] Process management paths initialized")
 }

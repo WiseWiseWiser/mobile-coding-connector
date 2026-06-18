@@ -705,6 +705,9 @@ func handleOpencodeSettings(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if req.WebServer.Enabled {
+			go opencode_exposed.AutoStartWebServer()
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 

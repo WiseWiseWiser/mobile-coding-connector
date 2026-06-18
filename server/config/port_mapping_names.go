@@ -7,7 +7,7 @@ import (
 )
 
 // PortMappingNamesFile is the path to the port mapping names JSON file
-const PortMappingNamesFile = DataDir + "/port-mapping-names.json"
+var PortMappingNamesFile = DataDir + "/port-mapping-names.json"
 
 // PortMappingNameEntry represents a single port's last used domain mapping
 // The key is the port number (as string in JSON), and value is the full domain name

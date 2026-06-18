@@ -28,7 +28,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -44,7 +43,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const (
+var (
 	// CloudflareTunnelGenConfig is the auto-generated cloudflare tunnel config file
 	CloudflareTunnelGenConfig = config.DataDir + "/cloudflare-tunnel-gen.yml"
 	// CloudflareExtraMappingFile is the user-defined extra mappings file
@@ -569,11 +568,11 @@ func (utm *UnifiedTunnelManager) startProcessLocked() error {
 	fmt.Printf("[unified-tunnel] startProcessLocked: executing: cloudflared tunnel --config %s run %s\n", cfgPath, tunnelRef)
 
 	if logFile != nil {
-		cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
-		cmd.Stderr = io.MultiWriter(os.Stderr, logFile)
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
 	} else {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		cmd.Stdout = nil
+		cmd.Stderr = nil
 	}
 
 	// Run in its own process group
