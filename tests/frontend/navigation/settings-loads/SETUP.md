@@ -1,3 +1,12 @@
+# Scenario
+
+**Feature**: Settings page loads
+
+```
+# user navigates to /home/settings
+Playwright -> BASE_URL/home/settings -> SettingsView h2
+```
+
 ## Preconditions
 
 1. Quick-test server is running and healthy.

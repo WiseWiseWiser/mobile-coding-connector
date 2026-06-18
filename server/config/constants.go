@@ -46,6 +46,7 @@ var (
 	SSHServerFile                  = DataDir + "/ssh-servers.json"
 	OpencodeInternalServerRegistry = DataDir + "/opencode-internal-server.json"
 	OpencodeInternalServerLock     = DataDir + "/opencode-internal-server.lock"
+	FileTransferDir                = DataDir + "/file-transfer"
 )
 
 // Process management directory and paths

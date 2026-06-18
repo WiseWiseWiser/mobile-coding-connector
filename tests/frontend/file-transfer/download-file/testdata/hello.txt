@@ -1,0 +1,1 @@
+Hello from seeded hello.txt for download doctest.

@@ -1,3 +1,12 @@
+# Scenario
+
+**Feature**: root path redirects to home
+
+```
+# user navigates to /
+Playwright -> BASE_URL/ -> redirect -> /home
+```
+
 ## Preconditions
 
 1. Quick-test server is running and healthy.

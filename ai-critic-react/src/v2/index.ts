@@ -16,6 +16,7 @@ export { GitSettings, GitSettingsContent } from './mcc/home/settings/GitSettings
 export { CloneRepoView } from './mcc/home/settings/CloneRepoView';
 export { UploadFileView } from './mcc/home/UploadFileView';
 export { DownloadFileView } from './mcc/home/DownloadFileView';
+export { FileTransferView } from './mcc/home/FileTransferView';
 export { ManageServerView } from './mcc/home/ManageServerView';
 export { AddFromFilesystemView } from './mcc/home/AddFromFilesystemView';
 export { TerminalView } from './mcc/terminal/TerminalView';

@@ -41,6 +41,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/exposedurls"
 	"github.com/xhd2015/ai-critic/server/fakellm"
 	"github.com/xhd2015/ai-critic/server/features"
+	"github.com/xhd2015/ai-critic/server/filetransfer"
 	"github.com/xhd2015/ai-critic/server/fileupload"
 	servergit "github.com/xhd2015/ai-critic/server/git"
 	"github.com/xhd2015/ai-critic/server/github"
@@ -496,6 +497,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// File upload API
 	fileupload.RegisterAPI(mux)
+
+	// File transfer inbox API
+	filetransfer.RegisterAPI(mux)
 
 	// Exec API (runs arbitrary subprocesses for the remote-agent CLI)
 	serverexec.RegisterAPI(mux)

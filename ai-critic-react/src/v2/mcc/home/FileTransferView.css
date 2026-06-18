@@ -1,0 +1,170 @@
+/* File Transfer — dark theme (uses mcc/theme.css variables) */
+
+.file-transfer-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 0 16px 24px;
+}
+
+.file-transfer-upload {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px 16px;
+    border: 2px dashed var(--mcc-border-input);
+    border-radius: var(--mcc-radius-xl);
+    background: var(--mcc-bg-card);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.file-transfer-upload--drag-over {
+    border-color: var(--mcc-accent-blue);
+    background: var(--mcc-accent-blue-bg);
+}
+
+.file-transfer-file-input {
+    display: none;
+}
+
+.file-transfer-upload-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border: 1px solid var(--mcc-accent-blue-border);
+    border-radius: var(--mcc-radius-lg);
+    background: var(--mcc-accent-blue-bg);
+    color: var(--mcc-accent-blue);
+    font-size: var(--mcc-font-size-lg);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.file-transfer-upload-btn:hover:not(:disabled) {
+    background: rgba(96, 165, 250, 0.2);
+    border-color: var(--mcc-accent-blue);
+}
+
+.file-transfer-upload-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.file-transfer-upload-hint {
+    margin: 0;
+    font-size: var(--mcc-font-size-md);
+    color: var(--mcc-text-muted);
+}
+
+.file-transfer-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--mcc-text-secondary);
+    font-size: var(--mcc-font-size-lg);
+    background: var(--mcc-bg-card);
+    border: 1px solid var(--mcc-border-default);
+    border-radius: var(--mcc-radius-xl);
+}
+
+.file-transfer-loading,
+.file-transfer-progress {
+    padding: 16px;
+    text-align: center;
+    color: var(--mcc-text-secondary);
+    font-size: var(--mcc-font-size-lg);
+}
+
+.file-transfer-error {
+    padding: 12px 14px;
+    border-radius: var(--mcc-radius-lg);
+    background: var(--mcc-status-error-bg);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: var(--mcc-status-error-text);
+    font-size: var(--mcc-font-size-lg);
+}
+
+.file-transfer-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.file-transfer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--mcc-border-default);
+    border-radius: var(--mcc-radius-xl);
+    background: var(--mcc-bg-card);
+    transition: background 0.15s ease;
+}
+
+.file-transfer-row:hover {
+    background: var(--mcc-bg-card-elevated);
+}
+
+.file-transfer-row-main {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    flex: 1;
+}
+
+.file-transfer-row-name {
+    font-weight: 500;
+    font-size: var(--mcc-font-size-lg);
+    color: var(--mcc-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-transfer-row-meta {
+    font-size: var(--mcc-font-size-sm);
+    color: var(--mcc-text-secondary);
+}
+
+.file-transfer-row-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.file-transfer-action-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--mcc-border-input);
+    border-radius: var(--mcc-radius-md);
+    background: var(--mcc-bg-input);
+    color: var(--mcc-text-primary);
+    font-size: var(--mcc-font-size-md);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.file-transfer-action-btn:hover {
+    background: var(--mcc-bg-card-elevated);
+    border-color: var(--mcc-accent-blue);
+    color: var(--mcc-accent-blue);
+}
+
+.file-transfer-action-btn--remove {
+    color: var(--mcc-accent-red);
+    border-color: rgba(239, 68, 68, 0.3);
+    background: var(--mcc-accent-red-bg);
+}
+
+.file-transfer-action-btn--remove:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: var(--mcc-accent-red);
+    color: var(--mcc-accent-red);
+}

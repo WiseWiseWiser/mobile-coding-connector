@@ -1,3 +1,12 @@
+# Scenario
+
+**Feature**: home workspace list page loads
+
+```
+# user navigates to /home
+Playwright -> BASE_URL/home -> WorkspaceListView (.mcc-workspace-list)
+```
+
 ## Preconditions
 
 1. Quick-test server is running and healthy.

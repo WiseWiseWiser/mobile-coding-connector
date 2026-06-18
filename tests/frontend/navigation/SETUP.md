@@ -1,3 +1,12 @@
+# Scenario
+
+**Feature**: frontend route navigation smoke tests
+
+```
+# browser opens a /home route against quick-test + Vite
+leaf script.js -> Playwright -> BASE_URL + route -> DOM checks
+```
+
 ## Preconditions
 
 1. Quick-test server and Vite dev server are started by the root `Run` function.

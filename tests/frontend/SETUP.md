@@ -1,3 +1,18 @@
+# Scenario
+
+**Feature**: frontend smoke and file-transfer tests via Playwright + quick-test
+
+```
+# doctest starts isolated quick-test + Vite, then runs Playwright script
+doctest Run -> quick-test server + Vite -> BASE_URL
+
+# leaf script.js drives browser; JSON line becomes ScriptResult for Assert
+leaf script.js -> Playwright -> ScriptResult -> Assert
+
+# file-transfer leaves may reset/seed {AI_CRITIC_HOME}/file-transfer/ before script
+Run -> file-transfer dir (reset/seed) -> FileTransferView + /api/file-transfer
+```
+
 ## Preconditions
 
 1. The repository root is discoverable (contains `go.mod`).
@@ -36,6 +51,8 @@ that prints a single JSON line to stdout for machine-readable assertions.
 | 3 | `ServerPort` | int | 0 → 3580 + hash offset | Quick-test server listen port |
 | 4 | `TimeoutSecs` | int | 90–120 | Server readiness and script execution budget |
 | 5 | `Headless` | bool | true (default) | Headless shell mode via Playwright; set `false` in leaf `Setup` for visible debugging |
+| 6 | `FileTransferReset` | bool | true/false | When true, remove and recreate empty `{AI_CRITIC_HOME}/file-transfer/` before the script |
+| 7 | `FileTransferSeeds` | []FileTransferSeed | name + source path | Files copied into `file-transfer/` after server is healthy |
 
 ```go
 import (
@@ -59,11 +76,18 @@ import (
 
 const defaultQuickTestPort = 3580
 
+type FileTransferSeed struct {
+	Name       string
+	SourcePath string
+}
+
 type Request struct {
-	ScriptPath  string
-	ServerPort  int
-	TimeoutSecs int
-	Headless    *bool // nil/true → headless shell; false → visible playwright-debug (opt-in)
+	ScriptPath         string
+	ServerPort         int
+	TimeoutSecs        int
+	Headless           *bool // nil/true → headless shell; false → visible playwright-debug (opt-in)
+	FileTransferReset  bool
+	FileTransferSeeds  []FileTransferSeed
 }
 
 type Response struct {
@@ -73,6 +97,7 @@ type Response struct {
 	ScriptOutput   string
 	ScriptResult   map[string]any
 	BaseURL        string
+	ConfigHome     string
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
@@ -178,7 +203,14 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return resp, fmt.Errorf("quick-test server not ready on %s within %ds", baseURL, req.TimeoutSecs)
 	}
 
-	preamble := fmt.Sprintf("const BASE_URL = %q;\n", baseURL)
+	if result != nil {
+		resp.ConfigHome = result.ConfigHome
+	}
+	if err := prepareFileTransfer(req, resp.ConfigHome, caseDir); err != nil {
+		return resp, fmt.Errorf("prepare file-transfer dir: %w", err)
+	}
+
+	preamble := fmt.Sprintf("const BASE_URL = %q;\nconst CASE_DIR = %q;\n", baseURL, caseDir)
 	fullScript := preamble + string(scriptBytes)
 
 	headlessVal := headless
@@ -284,6 +316,72 @@ func runPlaywrightScript(ctx context.Context, headless bool, script string, stdo
 	cmd.Env = append(os.Environ(), "CI=true")
 	err := cmd.Run()
 	return exitCodeFromCmd(cmd, err), err
+}
+
+func fileTransferDir(configHome string) string {
+	return filepath.Join(configHome, "file-transfer")
+}
+
+func prepareFileTransfer(req *Request, configHome, caseDir string) error {
+	if configHome == "" {
+		return nil
+	}
+	if !req.FileTransferReset && len(req.FileTransferSeeds) == 0 {
+		return nil
+	}
+
+	dir := fileTransferDir(configHome)
+	if req.FileTransferReset {
+		if err := os.RemoveAll(dir); err != nil {
+			return fmt.Errorf("reset file-transfer dir: %w", err)
+		}
+	}
+	if req.FileTransferReset || len(req.FileTransferSeeds) > 0 {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create file-transfer dir: %w", err)
+		}
+	}
+	for _, seed := range req.FileTransferSeeds {
+		src := seed.SourcePath
+		if !filepath.IsAbs(src) {
+			src = filepath.Join(caseDir, src)
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return fmt.Errorf("read seed %q: %w", seed.SourcePath, err)
+		}
+		dst := filepath.Join(dir, seed.Name)
+		if err := os.WriteFile(dst, data, 0o644); err != nil {
+			return fmt.Errorf("write seed %q: %w", seed.Name, err)
+		}
+	}
+	return nil
+}
+
+func fetchFileTransferNames(baseURL string) ([]string, error) {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(baseURL + "/api/file-transfer")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GET /api/file-transfer status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var payload struct {
+		Files []struct {
+			Name string `json:"name"`
+		} `json:"files"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(payload.Files))
+	for _, f := range payload.Files {
+		names = append(names, f.Name)
+	}
+	return names, nil
 }
 
 func parseLastJSONLine(output string) map[string]any {

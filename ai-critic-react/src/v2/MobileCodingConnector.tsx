@@ -18,6 +18,7 @@ import { BeakerIcon } from '../pure-view/icons/BeakerIcon';
 import { ProjectDetailIcon } from '../pure-view/icons/ProjectDetailIcon';
 import { LayoutIcon } from '../pure-view/icons/LayoutIcon';
 import { ServerIcon } from '../pure-view/icons/ServerIcon';
+import { UploadIcon } from '../pure-view/icons/UploadIcon';
 import { NavButton } from '../pure-view/buttons/NavButton';
 import { ProjectDropdown } from './mcc/ProjectDropdown';
 import { TerminalManager } from './mcc/terminal/TerminalManager';
@@ -250,6 +251,10 @@ function MobileCodingConnectorInner() {
                     <button className="mcc-drawer-item" onClick={() => handleMenuNavigate(buildPath(NavTabs.Home, 'manage-server'))}>
                         <ServerIcon />
                         <span>Manage Server</span>
+                    </button>
+                    <button className="mcc-drawer-item" onClick={() => handleMenuNavigate(buildPath(NavTabs.Home, 'file-transfer'))}>
+                        <UploadIcon />
+                        <span>File Transfer</span>
                     </button>
                     <button className="mcc-drawer-item" onClick={() => handleMenuNavigate(buildPath(NavTabs.Home, 'settings/logs'))}>
                         <LogsIcon />

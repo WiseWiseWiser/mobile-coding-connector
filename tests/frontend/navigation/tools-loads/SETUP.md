@@ -1,3 +1,12 @@
+# Scenario
+
+**Feature**: Server Tools page loads
+
+```
+# user navigates to /home/tools
+Playwright -> BASE_URL/home/tools -> Server Tools heading or Foundation category
+```
+
 ## Preconditions
 
 1. Quick-test server is running and healthy.

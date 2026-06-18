@@ -1,0 +1,2 @@
+Hello from file-transfer doctest fixture.
+This file is uploaded via the File Transfer UI.
