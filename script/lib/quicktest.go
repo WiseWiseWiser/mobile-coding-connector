@@ -10,32 +10,39 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/xhd2015/agent-pro/pkgs/containers/podman"
 	"github.com/xhd2015/xgo/support/cmd"
 )
 
+var viteStartMu sync.Mutex
+
 type QuickTestOptions struct {
 	Port         int  // Server port (default: QuickTestPort)
 	NoVite       bool // If true, don't start vite and use static frontend
 	FrontendPort int  // If > 0, proxy to this port (default: ViteDevPort if !NoVite)
 	Keep         bool // If true, add --keep flag
-	Local        bool // If true, run server from current dir to use local .ai-critic
+	Local        bool // If true, run server from current dir using ./.ai-critic (manual dev only)
 	ProjectDir   string
 	RestartExec  bool // If true, use exec restart when port is in use (faster but riskier)
+	ConfigHome   string
 
 	Stdout io.Writer
 	Stderr io.Writer
 	Stdin  io.Reader
 
-	restarted bool
+	restarted         bool
+	reuseVite         bool
+	managedConfigHome bool
 }
 
 type QuickTestResult struct {
-	ServerCmd *exec.Cmd
-	ViteCmd   *exec.Cmd
-	Restarted bool
+	ServerCmd  *exec.Cmd
+	ViteCmd    *exec.Cmd
+	Restarted  bool
+	ConfigHome string
 }
 
 func (o *QuickTestOptions) GetPort() int {
@@ -98,13 +105,20 @@ func QuickTestPrepare(opts *QuickTestOptions) error {
 	}
 
 	if !opts.NoVite {
-		fmt.Printf("Checking for existing vite on port %d...\n", ViteDevPort)
-		killedVitePid, err := podman.KillPortPid(ViteDevPort)
-		if err != nil {
-			return err
-		}
-		if killedVitePid > 0 {
-			fmt.Printf("Killed previous vite (PID: %d)\n", killedVitePid)
+		frontendPort := opts.GetFrontendPort()
+		fmt.Printf("Checking for existing vite on port %d...\n", frontendPort)
+		if isHTTPReady(fmt.Sprintf("http://localhost:%d", frontendPort)) {
+			fmt.Printf("Vite dev server already running on port %d, reusing\n", frontendPort)
+			opts.reuseVite = true
+		} else if podman.CheckPort(frontendPort) {
+			killedVitePid, err := podman.KillPortPid(frontendPort)
+			if err != nil {
+				return err
+			}
+			if killedVitePid > 0 {
+				fmt.Printf("Killed stale vite (PID: %d)\n", killedVitePid)
+				time.Sleep(500 * time.Millisecond)
+			}
 		}
 	}
 
@@ -188,14 +202,19 @@ func QuickTestStart(ctx context.Context, opts *QuickTestOptions) (*QuickTestResu
 	projectDir := opts.GetProjectDir()
 	frontendPort := opts.GetFrontendPort()
 
-	runDir := ""
+	credFile, err := opts.ensureConfigHome()
+	if err != nil {
+		return nil, err
+	}
+
+	runDir := opts.ConfigHome
 	if opts.Local {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get current directory: %v", err)
 		}
 		runDir = cwd
-	} else {
+	} else if runDir == "" {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get home directory: %v", err)
@@ -205,32 +224,46 @@ func QuickTestStart(ctx context.Context, opts *QuickTestOptions) (*QuickTestResu
 
 	var viteCmd *exec.Cmd
 	if !opts.NoVite && frontendPort > 0 {
-		fmt.Println("Starting Vite dev server...")
-		viteCmd = exec.CommandContext(ctx, "npm", "run", "dev")
-		viteCmd.Dir = filepath.Join(projectDir, "ai-critic-react")
-		if opts.Stdout != nil {
-			viteCmd.Stdout = opts.Stdout
+		viteURL := fmt.Sprintf("http://localhost:%d", frontendPort)
+		if opts.reuseVite || isHTTPReady(viteURL) {
+			fmt.Printf("Reusing existing Vite dev server on port %d\n", frontendPort)
 		} else {
-			viteCmd.Stdout = os.Stdout
-		}
-		if opts.Stderr != nil {
-			viteCmd.Stderr = opts.Stderr
-		} else {
-			viteCmd.Stderr = os.Stderr
-		}
+			viteStartMu.Lock()
+			if isHTTPReady(viteURL) {
+				fmt.Printf("Reusing Vite dev server started by another test on port %d\n", frontendPort)
+				viteStartMu.Unlock()
+			} else {
+				fmt.Println("Starting Vite dev server...")
+				viteCmd = exec.CommandContext(ctx, "npm", "run", "dev")
+				viteCmd.Dir = filepath.Join(projectDir, "ai-critic-react")
+				if opts.Stdout != nil {
+					viteCmd.Stdout = opts.Stdout
+				} else {
+					viteCmd.Stdout = os.Stdout
+				}
+				if opts.Stderr != nil {
+					viteCmd.Stderr = opts.Stderr
+				} else {
+					viteCmd.Stderr = os.Stderr
+				}
 
-		if err := viteCmd.Start(); err != nil {
-			return nil, fmt.Errorf("failed to start vite: %v", err)
-		}
+				if err := viteCmd.Start(); err != nil {
+					viteStartMu.Unlock()
+					return nil, fmt.Errorf("failed to start vite: %v", err)
+				}
 
-		fmt.Printf("Waiting for Vite dev server on port %d...\n", frontendPort)
-		if err := waitForHTTP(ctx, fmt.Sprintf("http://localhost:%d", frontendPort), 30*time.Second); err != nil {
-			if viteCmd.Process != nil {
-				viteCmd.Process.Kill()
+				fmt.Printf("Waiting for Vite dev server on port %d...\n", frontendPort)
+				if err := waitForHTTP(ctx, viteURL, 30*time.Second); err != nil {
+					if viteCmd.Process != nil {
+						viteCmd.Process.Kill()
+					}
+					viteStartMu.Unlock()
+					return nil, fmt.Errorf("vite failed to start: %v", err)
+				}
+				fmt.Println("Vite dev server is ready!")
+				viteStartMu.Unlock()
 			}
-			return nil, fmt.Errorf("vite failed to start: %v", err)
 		}
-		fmt.Println("Vite dev server is ready!")
 	}
 
 	args := []string{"--quick-test", fmt.Sprintf("--port=%d", port)}
@@ -242,6 +275,88 @@ func QuickTestStart(ctx context.Context, opts *QuickTestOptions) (*QuickTestResu
 	}
 	if opts.Keep {
 		args = append(args, "--keep")
+	}
+	if credFile != "" {
+		args = append(args, "--credentials-file", credFile)
+	}
+
+	fmt.Printf("Executing: /tmp/ai-critic-quick %s\n", argsToString(args))
+	if opts.ConfigHome != "" {
+		fmt.Printf("Quick-test config home: %s\n", opts.ConfigHome)
+	}
+
+	serverCmd := exec.Command("/tmp/ai-critic-quick", args...)
+	serverCmd.Dir = runDir
+
+	if opts.Stdout != nil {
+		serverCmd.Stdout = opts.Stdout
+	} else {
+		serverCmd.Stdout = os.Stdout
+	}
+	if opts.Stderr != nil {
+		serverCmd.Stderr = opts.Stderr
+	} else {
+		serverCmd.Stderr = os.Stderr
+	}
+	if opts.Stdin != nil {
+		serverCmd.Stdin = opts.Stdin
+	} else {
+		serverCmd.Stdin = os.Stdin
+	}
+	serverCmd.Env = appendQuickTestServerEnv(os.Environ(), opts.ConfigHome)
+
+	if err := serverCmd.Start(); err != nil {
+		if viteCmd != nil && viteCmd.Process != nil {
+			viteCmd.Process.Kill()
+		}
+		QuickTestCleanup(opts)
+		return nil, fmt.Errorf("failed to start server: %v", err)
+	}
+
+	return &QuickTestResult{
+		ServerCmd:  serverCmd,
+		ViteCmd:    viteCmd,
+		ConfigHome: opts.ConfigHome,
+	}, nil
+}
+
+func QuickTestCommand(opts *QuickTestOptions) (*exec.Cmd, error) {
+	port := opts.GetPort()
+	projectDir := opts.GetProjectDir()
+	frontendPort := opts.GetFrontendPort()
+
+	credFile, err := opts.ensureConfigHome()
+	if err != nil {
+		return nil, err
+	}
+
+	runDir := opts.ConfigHome
+	if opts.Local {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current directory: %v", err)
+		}
+		runDir = cwd
+	} else if runDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %v", err)
+		}
+		runDir = homeDir
+	}
+
+	args := []string{"--quick-test", fmt.Sprintf("--port=%d", port)}
+	if projectDir != "" {
+		args = append(args, "--project-dir", projectDir)
+	}
+	if frontendPort > 0 {
+		args = append(args, "--dev", "--frontend-port", fmt.Sprintf("%d", frontendPort))
+	}
+	if opts.Keep {
+		args = append(args, "--keep")
+	}
+	if credFile != "" {
+		args = append(args, "--credentials-file", credFile)
 	}
 
 	fmt.Printf("Executing: /tmp/ai-critic-quick %s\n", argsToString(args))
@@ -264,63 +379,19 @@ func QuickTestStart(ctx context.Context, opts *QuickTestOptions) (*QuickTestResu
 	} else {
 		serverCmd.Stdin = os.Stdin
 	}
-
-	if err := serverCmd.Start(); err != nil {
-		if viteCmd != nil && viteCmd.Process != nil {
-			viteCmd.Process.Kill()
-		}
-		return nil, fmt.Errorf("failed to start server: %v", err)
-	}
-
-	return &QuickTestResult{
-		ServerCmd: serverCmd,
-		ViteCmd:   viteCmd,
-	}, nil
-}
-
-func QuickTestCommand(opts *QuickTestOptions) (*exec.Cmd, error) {
-	port := opts.GetPort()
-	projectDir := opts.GetProjectDir()
-	frontendPort := opts.GetFrontendPort()
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %v", err)
-	}
-
-	args := []string{"--quick-test", fmt.Sprintf("--port=%d", port)}
-	if projectDir != "" {
-		args = append(args, "--project-dir", projectDir)
-	}
-	if frontendPort > 0 {
-		args = append(args, "--dev", "--frontend-port", fmt.Sprintf("%d", frontendPort))
-	}
-	if opts.Keep {
-		args = append(args, "--keep")
-	}
-
-	fmt.Printf("Executing: /tmp/ai-critic-quick %s\n", argsToString(args))
-
-	serverCmd := exec.Command("/tmp/ai-critic-quick", args...)
-	serverCmd.Dir = homeDir
-
-	if opts.Stdout != nil {
-		serverCmd.Stdout = opts.Stdout
-	} else {
-		serverCmd.Stdout = os.Stdout
-	}
-	if opts.Stderr != nil {
-		serverCmd.Stderr = opts.Stderr
-	} else {
-		serverCmd.Stderr = os.Stderr
-	}
-	if opts.Stdin != nil {
-		serverCmd.Stdin = opts.Stdin
-	} else {
-		serverCmd.Stdin = os.Stdin
-	}
+	serverCmd.Env = appendQuickTestServerEnv(os.Environ(), opts.ConfigHome)
 
 	return serverCmd, nil
+}
+
+func isHTTPReady(url string) bool {
+	client := &http.Client{Timeout: 1 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return true
 }
 
 func waitForHTTP(ctx context.Context, url string, timeout time.Duration) error {

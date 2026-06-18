@@ -2,7 +2,9 @@
 
 A temporary directory is used as the server config home. The server reads all
 configuration from this directory via the `AI_CRITIC_HOME` environment variable,
-instead of the default `.ai-critic` directory.
+instead of the default `~/.ai-critic` directory. Test credentials use username
+`test` (convention only) and password/token `testpassword` written to
+`server-credentials`.
 
 ## Steps
 
@@ -59,6 +61,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/xhd2015/ai-critic/script/lib"
 )
 
 type OpenCodeSettings struct {
@@ -172,39 +176,38 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	t.Logf("starting server on port %d", serverPort)
 	args := []string{"--port", strconv.Itoa(serverPort)}
 
-	configHome := os.Getenv("AI_CRITIC_HOME")
+	configHome := os.Getenv(lib.EnvAI_CRITIC_HOME)
 	if configHome == "" {
 		var err error
-		configHome, err = os.MkdirTemp("", "ai-critic-test-*")
+		configHome, err = lib.CreateTestConfigHome()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create temp config home: %v", err)
 		}
-		os.Setenv("AI_CRITIC_HOME", configHome)
+		os.Setenv(lib.EnvAI_CRITIC_HOME, configHome)
 		t.Cleanup(func() {
-			os.Unsetenv("AI_CRITIC_HOME")
+			os.Unsetenv(lib.EnvAI_CRITIC_HOME)
 			os.RemoveAll(configHome)
 		})
 	}
 
-	testAuthToken := "test-credential-token-for-doctest"
-	credFile := filepath.Join(configHome, "server-credentials")
-	if err := os.WriteFile(credFile, []byte(testAuthToken+"\n"), 0600); err != nil {
+	testAuthToken := lib.TestPassword
+	credFile, err := lib.WriteTestCredentials(configHome)
+	if err != nil {
 		return nil, fmt.Errorf("failed to write test credentials file: %v", err)
 	}
 	args = append(args, "--credentials-file", credFile)
 
 	cmd := exec.Command(binPath, args...)
 	cmd.Dir = configHome
-	env := make([]string, 0, len(os.Environ())+2)
+	env := make([]string, 0, len(os.Environ())+1)
 	for _, e := range os.Environ() {
 		if strings.HasPrefix(e, "PATH=") {
 			env = append(env, "PATH="+binDir+":"+e[5:])
-		} else if !strings.HasPrefix(e, "AI_CRITIC_HOME=") {
+		} else {
 			env = append(env, e)
 		}
 	}
-	env = append(env, "AI_CRITIC_HOME="+configHome)
-	cmd.Env = env
+	cmd.Env = lib.AppendTestServerEnv(env, configHome)
 
 	var logBuf bytes.Buffer
 	cmd.Stdout = &logBuf

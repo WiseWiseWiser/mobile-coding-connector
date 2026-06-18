@@ -9,6 +9,7 @@ const (
 	EnvQuickTestDomain       = "QUICK_TEST_DOMAIN"
 	EnvQuickTestPort         = "QUICK_TEST_PORT"
 	EnvDebugPreferSandbox    = "DEBUG_QUICK_TEST_PREFER_SANDBOX"
+	EnvNoOpenBrowser         = "AI_CRITIC_NO_OPEN_BROWSER"
 
 	QuickTestPortUnset = "UNSET"
 )

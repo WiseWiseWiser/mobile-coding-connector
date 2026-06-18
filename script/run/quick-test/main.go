@@ -18,7 +18,7 @@ Usage: go run ./script/run quick-test [options]
 Options:
   -h, --help               Show this help message
   --keep                   Keep server running indefinitely (disable auto-shutdown)
-  --local                  Use current directory's .ai-critic instead of $HOME/.ai-critic
+  --local                  Use current directory's .ai-critic (manual dev; skips isolated temp config home)
   --no-vite                Don't auto-start vite (serve static frontend instead)
   --frontend-port PORT     Proxy frontend to PORT (assumes vite/frontend started externally)
   --port PORT              Port to run on (default: 3580)
@@ -93,6 +93,8 @@ func Handle(args []string) error {
 		fmt.Println("Server will exit after 10 minutes of inactivity.")
 	}
 	fmt.Println("Press Ctrl+C to stop manually.")
+
+	defer lib.QuickTestCleanup(&opts)
 
 	err = result.ServerCmd.Wait()
 

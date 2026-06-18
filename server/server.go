@@ -34,6 +34,7 @@ import (
 	cloudflareSettings "github.com/xhd2015/ai-critic/server/cloudflare"
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
 	serverconfig "github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/env"
 	"github.com/xhd2015/ai-critic/server/domains"
 	"github.com/xhd2015/ai-critic/server/encrypt"
 	serverexec "github.com/xhd2015/ai-critic/server/exec"
@@ -231,10 +232,12 @@ func Serve(port int, dev bool) error {
 		fmt.Printf("Serving directory preview at http://localhost:%d\n", port)
 		printTunnelHints(port)
 
-		go func() {
-			time.Sleep(1 * time.Second)
-			web.OpenBrowser(fmt.Sprintf("http://localhost:%d", port))
-		}()
+		if os.Getenv(env.EnvNoOpenBrowser) != "1" {
+			go func() {
+				time.Sleep(1 * time.Second)
+				web.OpenBrowser(fmt.Sprintf("http://localhost:%d", port))
+			}()
+		}
 	} else {
 		fmt.Printf("Serving quick-test server at http://localhost:%d\n", port)
 	}

@@ -202,7 +202,9 @@ func Run(args []string) error {
 	// Determine port to use
 	port := portFlag
 	if quickTestMode {
-		port = quickTestPort
+		if port <= 0 {
+			port = quickTestPort
+		}
 	} else if port <= 0 {
 		port = config.DefaultServerPort
 	}
