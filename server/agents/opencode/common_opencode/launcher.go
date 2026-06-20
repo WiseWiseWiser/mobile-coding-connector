@@ -2,6 +2,7 @@ package common_opencode
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 
 	"github.com/xhd2015/agent-pro/agent/exec/tool_exec"
@@ -19,8 +20,8 @@ func StartWebProcess(port int, opts *tool_exec.Options, stopChan <-chan struct{}
 	}
 
 	cmd := cmdWrapper.Cmd
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
 		return nil, err
