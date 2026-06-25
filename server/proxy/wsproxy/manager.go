@@ -298,12 +298,18 @@ func (m *Manager) startLocked(tmp bool) error {
 		}
 	}
 
+	m.hydrateFromConfig(cfg)
+
 	mgr := subprocess.GetManager()
 	if mgr.IsRunning(xrayProcID) {
-		return newError(ErrAlreadyRunning, "ws-proxy is already running")
+		publicURL := m.effectivePublicURL(cfg)
+		if m.isClientReady(cfg, publicURL, listenPort) {
+			return newError(ErrAlreadyRunning, "ws-proxy is already running")
+		}
+		fmt.Printf("[ws-proxy] xray process running but tunnel degraded, recovering ingress...\n")
 	}
 
-	if !isXrayAlive(listenPort, cfg.WSPath) {
+	if !isXrayAlive(listenPort, cfg.WSPath) && !mgr.IsRunning(xrayProcID) {
 		if err := ensureXrayBinary(); err != nil {
 			return fmt.Errorf("failed to setup xray: %w", err)
 		}
@@ -385,12 +391,18 @@ func (m *Manager) startLockedStreaming(tmp bool, sw *sse.Writer) error {
 		}
 	}
 
+	m.hydrateFromConfig(cfg)
+
 	mgr := subprocess.GetManager()
 	if mgr.IsRunning(xrayProcID) {
-		return newError(ErrAlreadyRunning, "ws-proxy is already running")
+		publicURL := m.effectivePublicURL(cfg)
+		if m.isClientReady(cfg, publicURL, listenPort) {
+			return newError(ErrAlreadyRunning, "ws-proxy is already running")
+		}
+		sw.SendLog("xray process running but tunnel degraded, recovering ingress...")
 	}
 
-	if !isXrayAlive(listenPort, cfg.WSPath) {
+	if !isXrayAlive(listenPort, cfg.WSPath) && !mgr.IsRunning(xrayProcID) {
 		sw.SendLog(fmt.Sprintf("Ensuring xray binary at %s...", xrayBinaryPath()))
 		if err := ensureXrayBinary(); err != nil {
 			return fmt.Errorf("failed to setup xray: %w", err)
@@ -495,6 +507,7 @@ func (m *Manager) startQuickTunnelStreaming(cfg *Config, sw *sse.Writer) error {
 	m.mu.Lock()
 	m.publicURL = publicURL
 	m.isTmp = true
+	_ = m.persistRuntimeState(cfg)
 	m.mu.Unlock()
 	return nil
 }
@@ -506,45 +519,11 @@ func (m *Manager) startPermanentTunnelStreaming(cfg *Config, sw *sse.Writer) err
 	}
 
 	hostname := fmt.Sprintf("%s-%s.%s", cfg.Subdomain, cfg.InstanceID, domain)
-	localURL := fmt.Sprintf("http://localhost:%d", cfg.ListenPort)
-
-	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
-	tgCfg := tg.GetConfig()
-	if tgCfg == nil {
-		return fmt.Errorf("extension tunnel is not configured")
+	sw.SendLog(fmt.Sprintf("Adding ingress: %s → http://localhost:%d", hostname, cfg.ListenPort))
+	if err := m.addPermanentTunnelMapping(cfg, hostname, cfg.ListenPort); err != nil {
+		return err
 	}
-
-	tunnelRef := tgCfg.TunnelName
-	if tunnelRef == "" {
-		tunnelRef = tgCfg.TunnelID
-	}
-	if tunnelRef == "" {
-		return fmt.Errorf("extension tunnel has no tunnel name or ID")
-	}
-
-	sw.SendLog(fmt.Sprintf("Creating DNS route: %s → %s", hostname, tunnelRef))
-	if err := unified_tunnel.CreateDNSRoute(tunnelRef, hostname); err != nil {
-		sw.SendLog(fmt.Sprintf("Warning: DNS route error: %v", err))
-	}
-
-	sw.SendLog(fmt.Sprintf("Adding ingress: %s → %s", hostname, localURL))
-	mapping := &unified_tunnel.IngressMapping{
-		ID:       mappingID,
-		Hostname: hostname,
-		Service:  localURL,
-		Source:   "wsproxy",
-	}
-	if err := tg.AddMapping(mapping); err != nil {
-		return fmt.Errorf("failed to add tunnel mapping: %w", err)
-	}
-
-	publicURL := fmt.Sprintf("https://%s", hostname)
-	sw.SendLog(fmt.Sprintf("Tunnel established: %s", publicURL))
-
-	m.mu.Lock()
-	m.publicURL = publicURL
-	m.isTmp = false
-	m.mu.Unlock()
+	sw.SendLog(fmt.Sprintf("Tunnel established: %s", m.publicURL))
 	return nil
 }
 
@@ -596,8 +575,11 @@ func (m *Manager) startQuickTunnel(cfg *Config) error {
 		return fmt.Errorf("timeout waiting for cloudflared URL")
 	}
 
+	m.mu.Lock()
 	m.publicURL = publicURL
 	m.isTmp = true
+	_ = m.persistRuntimeState(cfg)
+	m.mu.Unlock()
 	return nil
 }
 
@@ -608,40 +590,7 @@ func (m *Manager) startPermanentTunnel(cfg *Config) error {
 	}
 
 	hostname := fmt.Sprintf("%s-%s.%s", cfg.Subdomain, cfg.InstanceID, domain)
-	localURL := fmt.Sprintf("http://localhost:%d", cfg.ListenPort)
-
-	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
-	tgCfg := tg.GetConfig()
-	if tgCfg == nil {
-		return fmt.Errorf("extension tunnel is not configured (no config)")
-	}
-
-	tunnelRef := tgCfg.TunnelName
-	if tunnelRef == "" {
-		tunnelRef = tgCfg.TunnelID
-	}
-	if tunnelRef == "" {
-		return fmt.Errorf("extension tunnel is not configured (no tunnel name or ID)")
-	}
-
-	if err := unified_tunnel.CreateDNSRoute(tunnelRef, hostname); err != nil {
-		fmt.Printf("[ws-proxy] Warning: DNS route error: %v\n", err)
-	}
-
-	mapping := &unified_tunnel.IngressMapping{
-		ID:       mappingID,
-		Hostname: hostname,
-		Service:  localURL,
-		Source:   "wsproxy",
-	}
-	if err := tg.AddMapping(mapping); err != nil {
-		return fmt.Errorf("failed to add tunnel mapping: %w", err)
-	}
-
-	publicURL := fmt.Sprintf("https://%s", hostname)
-	m.publicURL = publicURL
-	m.isTmp = false
-	return nil
+	return m.addPermanentTunnelMapping(cfg, hostname, cfg.ListenPort)
 }
 
 func (m *Manager) Stop() error {
@@ -667,6 +616,9 @@ func (m *Manager) Stop() error {
 
 	m.publicURL = ""
 	m.isTmp = false
+	if cfg, err := LoadConfig(); err == nil {
+		m.clearPersistedRuntimeState(cfg)
+	}
 	m.setAutoStart(false)
 	return nil
 }
@@ -676,17 +628,14 @@ func (m *Manager) Status() *Status {
 	defer m.mu.Unlock()
 
 	cfg, _ := LoadConfig()
+	m.hydrateFromConfig(cfg)
 	port := resolvePort(cfg)
-
-	mgr := subprocess.GetManager()
-	running := mgr.IsRunning(xrayProcID)
-	if !running && cfg != nil {
-		running = isXrayAlive(port, cfg.WSPath)
-	}
+	publicURL := m.effectivePublicURL(cfg)
+	running := m.isClientReady(cfg, publicURL, port)
 
 	return &Status{
 		Running:   running,
-		PublicURL: m.publicURL,
+		PublicURL: publicURL,
 		Port:      port,
 		IsTmp:     m.isTmp,
 	}
@@ -697,11 +646,14 @@ func (m *Manager) GetVMessLink() string {
 	defer m.mu.Unlock()
 
 	cfg, _ := LoadConfig()
-	if cfg == nil || cfg.UUID == "" || m.publicURL == "" {
+	m.hydrateFromConfig(cfg)
+	port := resolvePort(cfg)
+	publicURL := m.effectivePublicURL(cfg)
+	if !m.isClientReady(cfg, publicURL, port) {
 		return ""
 	}
 
-	host := strings.TrimPrefix(m.publicURL, "https://")
+	host := strings.TrimPrefix(publicURL, "https://")
 	host = strings.TrimPrefix(host, "http://")
 
 	vmess := map[string]interface{}{
@@ -730,11 +682,14 @@ func (m *Manager) GetVMessConfig() (*VMessConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
-	if cfg == nil || cfg.UUID == "" || m.publicURL == "" {
+	m.hydrateFromConfig(cfg)
+	port := resolvePort(cfg)
+	publicURL := m.effectivePublicURL(cfg)
+	if !m.isClientReady(cfg, publicURL, port) {
 		return nil, fmt.Errorf("ws-proxy is not running or not configured")
 	}
 
-	host := strings.TrimPrefix(m.publicURL, "https://")
+	host := strings.TrimPrefix(publicURL, "https://")
 	host = strings.TrimPrefix(host, "http://")
 
 	return &VMessConfig{
@@ -1023,11 +978,19 @@ func AutoStart() {
 			}
 
 			m := GetManager()
+			if err := m.Recover(); err != nil {
+				fmt.Printf("[ws-proxy] Auto-recover failed: %v\n", err)
+			}
+			status := m.Status()
+			if status.Running {
+				fmt.Printf("[ws-proxy] Auto-recovered: %s\n", status.PublicURL)
+				return
+			}
 			if err := m.Start(false); err != nil {
 				fmt.Printf("[ws-proxy] Auto-start failed: %v\n", err)
 				return
 			}
-			status := m.Status()
+			status = m.Status()
 			fmt.Printf("[ws-proxy] Auto-started: %s\n", status.PublicURL)
 		}()
 	})

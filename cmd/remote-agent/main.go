@@ -28,10 +28,18 @@ Commands:
       default one. When 'upload' is invoked without --server, the
       default domain's server and token are used.
 
+  ping
+      Ping the server (GET /ping, expects "pong") and report reachability.
+
   upload <LOCAL_FILE> [REMOTE_PATH]
       Upload a local file to the server using chunked upload.
       If REMOTE_PATH is omitted, the file's basename is used.
       If REMOTE_PATH ends with '/', the basename is appended.
+
+  download <REMOTE_PATH> [LOCAL_PATH]
+      Download a remote file from the server.
+      REMOTE_PATH may use ~/ to refer to the server's home directory.
+      If LOCAL_PATH is omitted, the remote file's basename is used.
 
   local <subcommand> [args...]
       Local-machine utilities. Subcommands:
@@ -180,11 +188,16 @@ Commands:
              Update configuration.
          vmess-link [--export FILE]
              Get the vmess:// link, manual config, and QR code for Shadowrocket import.
+         doctor [--try-url URL]
+             Diagnose ws-proxy health (server + client). Default tests google.com.
 
 Examples:
   remote-agent config
+  remote-agent ping
   remote-agent --server https://host.example.com --token abc upload ./foo.txt /tmp/foo.txt
   remote-agent upload ./foo.txt /tmp/          # uses saved config
+  remote-agent download '~/server.log'
+  remote-agent download /tmp/foo.txt ./foo.txt
   remote-agent local reap                       # list zombies
   remote-agent local reap --filter ai-critic --signal
   remote-agent exec ls -la /tmp
@@ -261,12 +274,22 @@ func run(args []string) error {
 	switch cmd {
 	case "config":
 		return runConfig(rest)
+	case "ping":
+		return runPing(func() (*client.Client, error) {
+			return resolveClient(server, token, tokenSpecified)
+		}, rest)
 	case "upload":
 		cli, err := resolveClient(server, token, tokenSpecified)
 		if err != nil {
 			return err
 		}
 		return runUpload(cli, rest)
+	case "download":
+		cli, err := resolveClient(server, token, tokenSpecified)
+		if err != nil {
+			return err
+		}
+		return runDownload(cli, rest)
 	case "local":
 		return runLocal(rest)
 	case "exec":

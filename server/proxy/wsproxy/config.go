@@ -30,6 +30,8 @@ type Config struct {
 	Subdomain     string `json:"subdomain"`
 	InstanceID    string `json:"instance_id"`
 	AutoStart     bool   `json:"auto_start"`
+	PublicURL     string `json:"public_url,omitempty"`
+	IsTmp         bool   `json:"is_tmp,omitempty"`
 }
 
 var _testConfigDir string
@@ -69,14 +71,15 @@ func LoadConfig() (*Config, error) {
 }
 
 func SaveConfig(cfg *Config) error {
-	if err := os.MkdirAll(config.DataDir, 0755); err != nil {
+	path := configPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
-	return os.WriteFile(configPath(), append(data, '\n'), 0644)
+	return os.WriteFile(path, append(data, '\n'), 0644)
 }
 
 func defaultConfig() *Config {

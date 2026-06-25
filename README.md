@@ -169,3 +169,13 @@ The binary is built to `/tmp/ai-critic`. Run it with:
 ```bash
 nohup /tmp/ai-critic keep-alive &
 ```
+
+# Development
+
+Rebuilt and deploy to remote linux server
+
+```sh
+go run ./script/bundle/for-linux/
+remote-agent server upload-next ai-critic-server-linux-amd64
+remote-agent server restart
+```

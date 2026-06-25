@@ -3,10 +3,13 @@ package wsproxy
 import (
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
 )
 
 func TestGenerateUUID(t *testing.T) {
@@ -65,13 +68,20 @@ func TestExtractPort(t *testing.T) {
 }
 
 func TestVMessLinkEncoding(t *testing.T) {
+	const wsPath = "/ws"
+	port, closeXray := startFakeXray(t, wsPath)
+	defer closeXray()
+	seedTunnelMapping("ws.example.com", port)
+
 	m := &Manager{
 		publicURL: "https://ws.example.com",
 	}
 
 	cfg := &Config{
-		UUID:   "test-uuid-1234",
-		WSPath: "/ws",
+		UUID:       "test-uuid-1234",
+		WSPath:     wsPath,
+		ListenPort: port,
+		PublicURL:  "https://ws.example.com",
 	}
 
 	tmpDir := t.TempDir()
@@ -117,13 +127,20 @@ func TestVMessLinkEncoding(t *testing.T) {
 }
 
 func TestGetVMessConfig(t *testing.T) {
+	const wsPath = "/ws"
+	port, closeXray := startFakeXray(t, wsPath)
+	defer closeXray()
+	seedTunnelMapping("ws.example.com", port)
+
 	m := &Manager{
 		publicURL: "https://ws.example.com",
 	}
 
 	cfg := &Config{
-		UUID:   "test-uuid-1234",
-		WSPath: "/ws",
+		UUID:       "test-uuid-1234",
+		WSPath:     wsPath,
+		ListenPort: port,
+		PublicURL:  "https://ws.example.com",
 	}
 
 	tmpDir := t.TempDir()
@@ -191,5 +208,128 @@ func TestStatusDefaults(t *testing.T) {
 	}
 	if status.PublicURL != "" {
 		t.Error("new manager should have empty URL")
+	}
+}
+
+func seedTunnelMapping(hostname string, port int) {
+	SetTestTunnelMapped(hostname, port, true)
+}
+
+func startFakeXray(t *testing.T, wsPath string) (port int, cleanup func()) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == wsPath {
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	port = ExtractPortFromURL(srv.URL)
+	return port, srv.Close
+}
+
+func TestStatusWithoutTunnelMappingMustNotClaimRunning(t *testing.T) {
+	const wsPath = "/ws"
+	port, closeXray := startFakeXray(t, wsPath)
+	defer closeXray()
+
+	tmpDir := t.TempDir()
+	cfg := &Config{
+		UpstreamProxy: "http://proxy.internal:3128",
+		ListenPort:    port,
+		WSPath:        wsPath,
+		UUID:          "00000000-0000-4000-8000-000000000001",
+		Subdomain:     "ws",
+		InstanceID:    "25b2a55939e4",
+	}
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, configFileName), append(data, '\n'), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	SetTestConfigDir(tmpDir)
+	defer SetTestConfigDir("")
+
+	publicURL := "https://ws-25b2a55939e4.xhd2015.xyz"
+	m := NewTestManager(publicURL, false)
+
+	if !IsXrayAliveForTest(port, wsPath) {
+		t.Fatal("precondition: simulated xray must be alive")
+	}
+
+	status := m.Status()
+	link := m.GetVMessLink()
+	if link != "" {
+		t.Fatal("precondition: vmess link should be withheld without tunnel mapping")
+	}
+
+	if status.Running {
+		t.Fatalf("BUG: Status.Running=true with publicURL=%q but no Cloudflare ingress; clients get ERR_PROXY_CONNECTION_FAILED (public /ws returns 404)", status.PublicURL)
+	}
+	if IsClientReady(status, false, link) {
+		t.Fatalf("client-ready must be false without tunnel mapping; status=%+v link=%q", status, link)
+	}
+}
+
+func TestStatusReconstructsPublicURLAfterRestart(t *testing.T) {
+	const wsPath = "/ws"
+	port, closeXray := startFakeXray(t, wsPath)
+	defer closeXray()
+
+	tmpDir := t.TempDir()
+	cfg := &Config{
+		UpstreamProxy: "http://proxy.internal:3128",
+		ListenPort:    port,
+		WSPath:        wsPath,
+		UUID:          "00000000-0000-4000-8000-000000000001",
+		Subdomain:     "ws",
+		InstanceID:    "25b2a55939e4",
+		AutoStart:     true,
+		PublicURL:     "https://ws-25b2a55939e4.xhd2015.xyz",
+	}
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, configFileName), append(data, '\n'), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	SetTestConfigDir(tmpDir)
+	defer SetTestConfigDir("")
+
+	m := NewTestManager("", false)
+	status := m.Status()
+	wantURL := cfg.PublicURL
+
+	if status.PublicURL != wantURL {
+		t.Fatalf("Status.PublicURL = %q, want %q (restored from persisted config after restart)", status.PublicURL, wantURL)
+	}
+	if status.Running {
+		t.Fatal("running must be false without tunnel ingress even when public URL is restored")
+	}
+	if m.GetVMessLink() != "" {
+		t.Fatal("vmess link must be withheld without tunnel ingress")
+	}
+}
+
+func TestVMessLinkWithheldWithoutTunnelIngress(t *testing.T) {
+	const wsPath = "/ws"
+	port, closeXray := startFakeXray(t, wsPath)
+	defer closeXray()
+
+	tmpDir := t.TempDir()
+	cfg := &Config{
+		UpstreamProxy: "http://proxy.internal:3128",
+		ListenPort:    port,
+		WSPath:        wsPath,
+		UUID:          "00000000-0000-4000-8000-000000000001",
+	}
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, configFileName), append(data, '\n'), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	SetTestConfigDir(tmpDir)
+	defer SetTestConfigDir("")
+
+	m := NewTestManager("https://ws-25b2a55939e4.xhd2015.xyz", false)
+	link := m.GetVMessLink()
+	if link != "" {
+		t.Fatalf("vmess link must be withheld without tunnel ingress; got %q", link)
 	}
 }

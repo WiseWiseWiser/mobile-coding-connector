@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // Client talks to an ai-critic server over HTTP.
@@ -53,6 +54,49 @@ func (c *Client) NewRequest(method, path string, body io.Reader) (*http.Request,
 // Do executes the request with the configured HTTP client.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	return c.httpClient().Do(req)
+}
+
+// PingResult is returned by Ping.
+type PingResult struct {
+	Latency time.Duration `json:"latency_ms"`
+}
+
+// Ping calls GET /ping and expects the plain-text body "pong".
+// Authentication is not required, but a token is sent when configured.
+func (c *Client) Ping() (*PingResult, error) {
+	start := time.Now()
+	req, err := c.NewRequest(http.MethodGet, "/ping", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read ping response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		snippet := strings.TrimSpace(string(body))
+		if len(snippet) > 120 {
+			snippet = snippet[:120] + "..."
+		}
+		if snippet == "" {
+			return nil, fmt.Errorf("unexpected status %s", resp.Status)
+		}
+		return nil, fmt.Errorf("unexpected status %s: %s", resp.Status, snippet)
+	}
+	if strings.TrimSpace(string(body)) != "pong" {
+		snippet := strings.TrimSpace(string(body))
+		if len(snippet) > 80 {
+			snippet = snippet[:80] + "..."
+		}
+		return nil, fmt.Errorf("unexpected response %q (want pong)", snippet)
+	}
+	return &PingResult{Latency: time.Since(start)}, nil
 }
 
 // AuthStatusResult is returned by AuthStatus.

@@ -43,6 +43,10 @@ Subcommands:
   vmess-link [--export FILE]
       Get the vmess:// link, manual config, and QR code for Shadowrocket import.
 
+  doctor [--try-url URL]
+      Diagnose server and client proxy health. Default fetch test uses
+      https://www.google.com through the VMess path.
+
 Examples:
   remote-agent ws-proxy start --tmp
   remote-agent ws-proxy start --tmp --upstream-proxy http://squid.internal:3128
@@ -52,6 +56,8 @@ Examples:
   remote-agent ws-proxy status
   remote-agent ws-proxy config set --upstream-proxy http://squid.internal:3128
   remote-agent ws-proxy vmess-link
+  remote-agent ws-proxy doctor
+  remote-agent ws-proxy doctor --try-url https://example.com
 `
 
 func runWSProxy(getClient func() (*client.Client, error), args []string) error {
@@ -77,6 +83,8 @@ func runWSProxy(getClient func() (*client.Client, error), args []string) error {
 		return wsproxyConfigGet(getClient, rest)
 	case "vmess-link":
 		return wsproxyVMessLink(getClient, rest)
+	case "doctor":
+		return wsproxyDoctor(getClient, rest)
 	default:
 		fmt.Print(wsproxyHelp)
 		return nil

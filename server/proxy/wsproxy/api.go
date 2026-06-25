@@ -2,6 +2,7 @@ package wsproxy
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -14,6 +15,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/ws-proxy/config", handleGetConfig)
 	mux.HandleFunc("PUT /api/ws-proxy/config", handlePutConfig)
 	mux.HandleFunc("GET /api/ws-proxy/vmess-link", handleVMessLink)
+	mux.HandleFunc("GET /api/ws-proxy/doctor", handleDoctor)
 }
 
 func handleStartStream(w http.ResponseWriter, r *http.Request) {
@@ -31,6 +33,9 @@ func handleStartStream(w http.ResponseWriter, r *http.Request) {
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	m := GetManager()
+	if err := m.Recover(); err != nil {
+		fmt.Printf("[ws-proxy] status recover: %v\n", err)
+	}
 	writeJSON(w, m.Status())
 }
 
@@ -138,8 +143,17 @@ func handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, cfg)
 }
 
+func handleDoctor(w http.ResponseWriter, r *http.Request) {
+	tryURL := r.URL.Query().Get("try_url")
+	report := GetManager().Doctor(tryURL)
+	writeJSON(w, report)
+}
+
 func handleVMessLink(w http.ResponseWriter, r *http.Request) {
 	m := GetManager()
+	if err := m.Recover(); err != nil {
+		fmt.Printf("[ws-proxy] vmess-link recover: %v\n", err)
+	}
 	if !m.Status().Running {
 		writeAPIErr(w, newError(ErrNotRunning, "ws-proxy is not running"))
 		return
