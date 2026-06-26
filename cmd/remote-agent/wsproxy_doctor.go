@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/ai-critic/client"
+	"github.com/xhd2015/ai-critic/cmd/remote-agent/streamcmd"
 	"github.com/xhd2015/less-gen/flags"
 )
 
@@ -92,32 +93,99 @@ func wsproxyDoctor(getClient func() (*client.Client, error), args []string) erro
 		return fmt.Errorf("invalid --try-url: %w", err)
 	}
 
-	c, err := getClient()
-	if err != nil {
-		return err
-	}
+	return streamcmd.Run(getClient, streamcmd.Spec{
+		Method: http.MethodGet,
+		Path:   "/api/ws-proxy/doctor/stream",
+		Query:  url.Values{"try_url": {tryURL}},
+		Print:  streamcmd.Sections | streamcmd.Meta | streamcmd.ProgressChecks,
+		After:  func(done map[string]any) error {
+			return finishDoctorAfter(done, tryURL)
+		},
+	})
+}
 
-	serverReport, err := fetchServerDoctor(c, tryURL)
-	if err != nil {
-		return err
-	}
-
+func finishDoctorAfter(done map[string]any, tryURL string) error {
+	serverReport := doctorReportFromDone(done, tryURL)
 	clientChecks := runClientDoctorChecks(serverReport, tryURL)
-	allChecks := append(serverReport.Checks, clientChecks...)
 
-	healthy := true
-	for _, chk := range allChecks {
+	fmt.Println()
+	fmt.Println("Client checks:")
+	if len(clientChecks) == 0 {
+		fmt.Println("  (none)")
+	} else {
+		for _, chk := range clientChecks {
+			_ = streamcmd.PrintProgress(doctorCheckToStreamEvent(chk))
+		}
+	}
+
+	healthy := serverReport.Healthy
+	for _, chk := range clientChecks {
 		if chk.Status == "fail" {
 			healthy = false
 			break
 		}
 	}
 
-	printDoctorReport(tryURL, serverReport.Status, allChecks, healthy)
-	if !healthy {
-		return fmt.Errorf("ws-proxy doctor found failing checks")
+	fmt.Println()
+	if healthy {
+		fmt.Println("Result: healthy")
+		return nil
 	}
-	return nil
+	fmt.Println("Result: unhealthy (see [fail] items above)")
+	return fmt.Errorf("ws-proxy doctor found failing checks")
+}
+
+func doctorReportFromDone(done map[string]any, tryURL string) *doctorReport {
+	report := &doctorReport{TryURL: tryURL, Healthy: true}
+	if done == nil {
+		return report
+	}
+	if h, ok := done["healthy"].(bool); ok {
+		report.Healthy = h
+	}
+	if u, ok := done["try_url"].(string); ok && u != "" {
+		report.TryURL = u
+	}
+	if status, ok := done["status"].(map[string]any); ok {
+		report.Status = status
+	}
+	if vmess, ok := done["vmess"].(map[string]any); ok {
+		report.VMess = vmessFromMap(vmess)
+	}
+	return report
+}
+
+func vmessFromMap(m map[string]any) *doctorVMess {
+	if m == nil {
+		return nil
+	}
+	return &doctorVMess{
+		Host:    stringFromAny(m["host"]),
+		Port:    stringFromAny(m["port"]),
+		UUID:    stringFromAny(m["uuid"]),
+		AlterID: stringFromAny(m["alter_id"]),
+		Network: stringFromAny(m["network"]),
+		Type:    stringFromAny(m["type"]),
+		Path:    stringFromAny(m["path"]),
+		TLS:     stringFromAny(m["tls"]),
+	}
+}
+
+func stringFromAny(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
+func doctorCheckToStreamEvent(chk doctorCheck) client.StreamEvent {
+	return client.StreamEvent{
+		Type:   "progress",
+		ID:     chk.ID,
+		Layer:  chk.Layer,
+		Name:   chk.Name,
+		Status: chk.Status,
+		Detail: chk.Detail,
+		Hint:   chk.Hint,
+	}
 }
 
 func fetchServerDoctor(c *client.Client, tryURL string) (*doctorReport, error) {

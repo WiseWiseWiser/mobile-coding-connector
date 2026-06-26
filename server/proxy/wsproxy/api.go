@@ -16,6 +16,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/ws-proxy/config", handlePutConfig)
 	mux.HandleFunc("GET /api/ws-proxy/vmess-link", handleVMessLink)
 	mux.HandleFunc("GET /api/ws-proxy/doctor", handleDoctor)
+	mux.HandleFunc("GET /api/ws-proxy/doctor/stream", handleDoctorStream)
 }
 
 func handleStartStream(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +148,13 @@ func handleDoctor(w http.ResponseWriter, r *http.Request) {
 	tryURL := r.URL.Query().Get("try_url")
 	report := GetManager().Doctor(tryURL)
 	writeJSON(w, report)
+}
+
+func handleDoctorStream(w http.ResponseWriter, r *http.Request) {
+	tryURL := r.URL.Query().Get("try_url")
+	if err := GetManager().DoctorStream(w, tryURL); err != nil {
+		writeAPIErr(w, toAPIError(err))
+	}
 }
 
 func handleVMessLink(w http.ResponseWriter, r *http.Request) {

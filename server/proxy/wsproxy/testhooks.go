@@ -5,7 +5,23 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
+
+var (
+	_testStubNetworkChecks  bool
+	_testUpstreamFetchDelay time.Duration
+)
+
+// SetTestStubNetworkChecks skips slow external network checks in doctor.
+func SetTestStubNetworkChecks(v bool) {
+	_testStubNetworkChecks = v
+}
+
+// SetTestUpstreamFetchDelay injects delay before the upstream_fetch doctor check.
+func SetTestUpstreamFetchDelay(d time.Duration) {
+	_testUpstreamFetchDelay = d
+}
 
 // SetTestConfigDir redirects ws-proxy config reads/writes for tests.
 func SetTestConfigDir(dir string) {

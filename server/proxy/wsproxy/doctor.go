@@ -2,6 +2,7 @@ package wsproxy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
+	"github.com/xhd2015/ai-critic/server/streaming/progress"
 	"github.com/xhd2015/ai-critic/server/subprocess"
 )
 
@@ -42,6 +44,9 @@ type DoctorReport struct {
 	Checks  []DoctorCheck `json:"checks"`
 }
 
+// DoctorCheckEmitter is invoked immediately when each server doctor check completes.
+type DoctorCheckEmitter func(DoctorCheck)
+
 func (m *Manager) Doctor(tryURL string) *DoctorReport {
 	if strings.TrimSpace(tryURL) == "" {
 		tryURL = defaultDoctorTryURL
@@ -61,7 +66,7 @@ func (m *Manager) Doctor(tryURL string) *DoctorReport {
 
 	report := &DoctorReport{TryURL: tryURL}
 	report.Status = m.Status()
-	report.Checks = append(report.Checks, m.serverDoctorChecks(tryURL)...)
+	report.Checks = append(report.Checks, m.serverDoctorChecks(tryURL, nil)...)
 
 	if report.Status != nil && report.Status.Running {
 		if vmess, err := m.GetVMessConfig(); err == nil {
@@ -79,14 +84,126 @@ func (m *Manager) Doctor(tryURL string) *DoctorReport {
 	return report
 }
 
-func (m *Manager) serverDoctorChecks(tryURL string) []DoctorCheck {
+func (m *Manager) DoctorStream(w http.ResponseWriter, tryURL string) error {
+	pw := progress.NewWriter(w)
+	if pw == nil {
+		return fmt.Errorf("streaming not supported")
+	}
+
+	if strings.TrimSpace(tryURL) == "" {
+		tryURL = defaultDoctorTryURL
+	}
+	if _, err := url.Parse(tryURL); err != nil {
+		chk := DoctorCheck{
+			ID: "try_url", Layer: "server", Name: "try URL",
+			Status: DoctorFail, Detail: err.Error(),
+		}
+		_ = pw.EmitProgress(doctorCheckToItem(chk))
+		_ = pw.EmitDone(map[string]any{
+			"healthy":        false,
+			"try_url":        tryURL,
+			"checks_total":   1,
+			"checks_failed":  1,
+		})
+		return nil
+	}
+
+	_ = m.Recover()
+	status := m.Status()
+
+	_ = pw.EmitMeta(map[string]any{
+		"message": "WS Proxy Doctor",
+		"try_url": tryURL,
+	})
+	if status != nil {
+		_ = pw.EmitMeta(map[string]any{
+			"server_status": map[string]any{
+				"running":    status.Running,
+				"public_url": status.PublicURL,
+				"port":       status.Port,
+				"is_tmp":     status.IsTmp,
+			},
+		})
+	}
+	_ = pw.EmitSection("Server checks")
+
+	checks := m.serverDoctorChecks(tryURL, func(chk DoctorCheck) {
+		_ = pw.EmitProgress(doctorCheckToItem(chk))
+	})
+
+	var vmess *VMessConfig
+	if status != nil && status.Running {
+		if v, err := m.GetVMessConfig(); err == nil {
+			vmess = v
+		}
+	}
+
+	healthy, failed := doctorAggregateHealth(checks)
+	done := map[string]any{
+		"healthy":        healthy,
+		"try_url":        tryURL,
+		"checks_total":   len(checks),
+		"checks_failed":  failed,
+	}
+	if status != nil {
+		if raw, err := json.Marshal(status); err == nil {
+			var statusMap map[string]any
+			if json.Unmarshal(raw, &statusMap) == nil {
+				done["status"] = statusMap
+			}
+		}
+	}
+	if vmess != nil {
+		if raw, err := json.Marshal(vmess); err == nil {
+			var vmessMap map[string]any
+			if json.Unmarshal(raw, &vmessMap) == nil {
+				done["vmess"] = vmessMap
+			}
+		}
+	}
+	return pw.EmitDone(done)
+}
+
+func doctorCheckToItem(chk DoctorCheck) progress.Item {
+	return progress.Item{
+		ID:     chk.ID,
+		Layer:  chk.Layer,
+		Name:   chk.Name,
+		Status: string(chk.Status),
+		Detail: chk.Detail,
+		Hint:   chk.Hint,
+	}
+}
+
+func doctorAggregateHealth(checks []DoctorCheck) (healthy bool, failed int) {
+	healthy = true
+	for _, c := range checks {
+		if c.Status == DoctorFail {
+			healthy = false
+			failed++
+		}
+	}
+	return healthy, failed
+}
+
+func (m *Manager) serverDoctorChecks(tryURL string, emit DoctorCheckEmitter) []DoctorCheck {
 	var checks []DoctorCheck
 
 	add := func(id, name string, status DoctorCheckStatus, detail, hint string) {
-		checks = append(checks, DoctorCheck{
+		chk := DoctorCheck{
 			ID: id, Layer: "server", Name: name,
 			Status: status, Detail: detail, Hint: hint,
-		})
+		}
+		checks = append(checks, chk)
+		if emit != nil {
+			emit(chk)
+		}
+	}
+	appendCheck := func(chk DoctorCheck) {
+		checks = append(checks, chk)
+		if emit != nil {
+			emit(chk)
+		}
 	}
 
 	cfg, err := LoadConfig()
@@ -193,15 +310,15 @@ func (m *Manager) serverDoctorChecks(tryURL string) []DoctorCheck {
 	}
 
 	if publicURL != "" {
-		checks = append(checks, checkPublicWSEndpoint(publicURL, cfg.WSPath))
+		appendCheck(checkPublicWSEndpoint(publicURL, cfg.WSPath))
 	} else {
 		add("public_ws_endpoint", "public WebSocket endpoint", DoctorSkip,
 			"no public URL", "")
 	}
 
 	if cfg.UpstreamProxy != "" {
-		checks = append(checks, checkUpstreamTCP(cfg.UpstreamProxy))
-		checks = append(checks, checkUpstreamFetch(cfg.UpstreamProxy, tryURL))
+		appendCheck(checkUpstreamTCP(cfg.UpstreamProxy))
+		appendCheck(checkUpstreamFetch(cfg.UpstreamProxy, tryURL))
 	} else {
 		add("upstream_tcp", "upstream proxy TCP reachability", DoctorSkip,
 			"upstream proxy not configured", "")
@@ -248,6 +365,14 @@ func serverProxyEnvSummary() string {
 func checkPublicWSEndpoint(publicURL, wsPath string) DoctorCheck {
 	hostname := HostFromPublicURL(publicURL)
 	target := fmt.Sprintf("https://%s%s", hostname, wsPath)
+
+	if _testStubNetworkChecks {
+		return DoctorCheck{
+			ID: "public_ws_endpoint", Layer: "server",
+			Name: "public WebSocket endpoint (direct egress)", Status: DoctorOK,
+			Detail: fmt.Sprintf("%s → HTTP 400 (stubbed)", target),
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -296,6 +421,14 @@ func checkPublicWSEndpoint(publicURL, wsPath string) DoctorCheck {
 }
 
 func checkUpstreamTCP(proxyURL string) DoctorCheck {
+	if _testStubNetworkChecks {
+		return DoctorCheck{
+			ID: "upstream_tcp", Layer: "server",
+			Name: "upstream proxy TCP reachability", Status: DoctorOK,
+			Detail: extractHost(proxyURL) + " (stubbed)",
+		}
+	}
+
 	host := extractHost(proxyURL)
 	port := extractPort(proxyURL)
 	addr := fmt.Sprintf("%s:%d", host, port)
@@ -317,6 +450,18 @@ func checkUpstreamTCP(proxyURL string) DoctorCheck {
 }
 
 func checkUpstreamFetch(proxyURL, tryURL string) DoctorCheck {
+	if _testUpstreamFetchDelay > 0 {
+		time.Sleep(_testUpstreamFetchDelay)
+	}
+
+	if _testStubNetworkChecks {
+		return DoctorCheck{
+			ID: "upstream_fetch", Layer: "server",
+			Name: "upstream proxy fetch test", Status: DoctorOK,
+			Detail: fmt.Sprintf("GET %s via %s → HTTP 200 (stubbed)", tryURL, proxyURL),
+		}
+	}
+
 	proxy, err := url.Parse(proxyURL)
 	if err != nil {
 		return DoctorCheck{
