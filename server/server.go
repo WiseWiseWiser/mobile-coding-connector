@@ -47,6 +47,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/github"
 	"github.com/xhd2015/ai-critic/server/keepalive"
 	"github.com/xhd2015/ai-critic/server/logs"
+	openclawapi "github.com/xhd2015/ai-critic/server/openclaw"
 	"github.com/xhd2015/ai-critic/server/projects"
 	"github.com/xhd2015/ai-critic/server/proxy/portforward"
 	pfcloudflare "github.com/xhd2015/ai-critic/server/proxy/portforward/providers/cloudflare"
@@ -464,6 +465,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// WS proxy API (Xray + Cloudflare Tunnel for iPhone access)
 	wsproxy.RegisterAPI(mux)
+
+	// OpenClaw gateway API (mocked integration scaffold)
+	openclawapi.RegisterAPI(mux)
 
 	// GitHub API
 	github.RegisterAPI(mux)

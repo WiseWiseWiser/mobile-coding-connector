@@ -1,0 +1,156 @@
+{
+  "dns": {
+    "rules": [
+      {
+        "action": "route",
+        "domain": [
+          "ws-test.example.com"
+        ],
+        "server": "bootstrap"
+      },
+      {
+        "action": "reject",
+        "domain_suffix": [
+          ".in-addr.arpa",
+          ".ip6.arpa"
+        ],
+        "query_type": [
+          "PTR"
+        ]
+      },
+      {
+        "action": "route",
+        "query_type": [
+          "A",
+          "AAAA"
+        ],
+        "server": "fakeip"
+      },
+      {
+        "action": "route",
+        "server": "remote"
+      }
+    ],
+    "servers": [
+      {
+        "tag": "local",
+        "type": "local"
+      },
+      {
+        "detour": "direct",
+        "server": "8.8.8.8",
+        "server_port": 53,
+        "tag": "bootstrap",
+        "type": "udp"
+      },
+      {
+        "detour": "direct",
+        "server": "8.8.8.8",
+        "server_port": 53,
+        "tag": "remote",
+        "type": "udp"
+      },
+      {
+        "inet4_range": "198.18.0.0/15",
+        "tag": "fakeip",
+        "type": "fakeip"
+      }
+    ],
+    "strategy": "ipv4_only"
+  },
+  "inbounds": [
+    {
+      "address": [
+        "172.19.0.1/30"
+      ],
+      "auto_route": true,
+      "mtu": 9000,
+      "route_exclude_address": [
+        "192.168.0.0/16",
+        "10.0.0.0/8"
+      ],
+      "stack": "system",
+      "strict_route": true,
+      "tag": "tun-in",
+      "type": "tun"
+    }
+  ],
+  "log": {
+    "level": "info",
+    "output": "sing-box.log"
+  },
+  "outbounds": [
+    {
+      "alter_id": 0,
+      "domain_resolver": "bootstrap",
+      "security": "auto",
+      "server": "ws-test.example.com",
+      "server_port": 443,
+      "tag": "proxy",
+      "tls": {
+        "enabled": true,
+        "server_name": "ws-test.example.com",
+        "utls": {
+          "enabled": false
+        }
+      },
+      "transport": {
+        "headers": {
+          "Host": "ws-test.example.com"
+        },
+        "path": "/ws",
+        "type": "ws"
+      },
+      "type": "vmess",
+      "uuid": "11111111-2222-4333-8444-555555555555"
+    },
+    {
+      "tag": "direct",
+      "type": "direct"
+    }
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "default_domain_resolver": "remote",
+    "final": "proxy",
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "action": "resolve",
+        "server": "remote",
+        "strategy": "ipv4_only"
+      },
+      {
+        "action": "hijack-dns",
+        "mode": "or",
+        "rules": [
+          {
+            "protocol": "dns"
+          },
+          {
+            "port": 53
+          }
+        ],
+        "type": "logical"
+      },
+      {
+        "action": "route",
+        "domain": [
+          "ws-test.example.com"
+        ],
+        "outbound": "direct"
+      },
+      {
+        "action": "route",
+        "ip_cidr": [
+          "192.168.0.0/16",
+          "10.0.0.0/8",
+          "172.16.0.0/12"
+        ],
+        "outbound": "direct"
+      }
+    ]
+  }
+}

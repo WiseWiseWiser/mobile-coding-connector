@@ -3,17 +3,19 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/ai-critic/cmd/remote-agent/wsproxy_singbox"
 )
 
 func TestBuildDoctorXrayClientConfig(t *testing.T) {
-	cfg := buildDoctorXrayClientConfig(&doctorVMess{
+	cfg := wsproxy_singbox.BuildXrayVMessClientConfig(doctorVMessToParams(&doctorVMess{
 		Host:    "ws.example.com",
 		Port:    "443",
 		UUID:    "uuid-1",
 		Network: "ws",
 		Path:    "/ws",
 		TLS:     "tls",
-	}, 18080)
+	}), 18080)
 
 	if !strings.Contains(cfg, `"address": "ws.example.com"`) {
 		t.Fatalf("missing vmess address: %s", cfg)

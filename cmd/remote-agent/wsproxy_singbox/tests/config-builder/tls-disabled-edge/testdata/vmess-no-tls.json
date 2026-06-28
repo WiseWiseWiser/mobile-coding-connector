@@ -1,0 +1,11 @@
+{
+  "vmess_link": "vmess://eyJ2IjoiMiJ9",
+  "host": "ws-plain.example.com",
+  "port": "80",
+  "uuid": "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+  "alter_id": "0",
+  "network": "ws",
+  "type": "none",
+  "path": "/ws-plain",
+  "tls": "none"
+}

@@ -47,6 +47,15 @@ Subcommands:
       Diagnose server and client proxy health. Default fetch test uses
       https://www.google.com through the VMess path.
 
+  sing-box client-config [--output FILE]
+      Generate sing-box TUN config from VMess params.
+
+  sing-box run-tun [--yes] [--no-install] [--config FILE] [--detach]
+      Start sing-box TUN tunnel for ws-proxy.
+
+  vpn [--yes] [--no-install] [--config FILE] [--detach]
+      Alias for sing-box run-tun — start a system-wide TUN mini-VPN.
+
 Examples:
   remote-agent ws-proxy start --tmp
   remote-agent ws-proxy start --tmp --upstream-proxy http://squid.internal:3128
@@ -58,6 +67,9 @@ Examples:
   remote-agent ws-proxy vmess-link
   remote-agent ws-proxy doctor
   remote-agent ws-proxy doctor --try-url https://example.com
+  remote-agent ws-proxy sing-box client-config
+  remote-agent ws-proxy sing-box run-tun --detach
+  remote-agent ws-proxy vpn
 `
 
 func runWSProxy(getClient func() (*client.Client, error), args []string) error {
@@ -85,6 +97,10 @@ func runWSProxy(getClient func() (*client.Client, error), args []string) error {
 		return wsproxyVMessLink(getClient, rest)
 	case "doctor":
 		return wsproxyDoctor(getClient, rest)
+	case "sing-box":
+		return wsproxySingBox(getClient, rest)
+	case "vpn":
+		return wsproxySingBoxRunTun(getClient, rest)
 	default:
 		fmt.Print(wsproxyHelp)
 		return nil

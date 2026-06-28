@@ -7,9 +7,29 @@ import (
 	"github.com/xhd2015/ai-critic/client"
 )
 
+const uploadHelp = `Usage: remote-agent upload <LOCAL_FILE> [REMOTE_PATH]
+
+Upload a local file to the server using chunked upload.
+
+Arguments:
+  LOCAL_FILE    Path to the file on this machine.
+  REMOTE_PATH   Destination path on the server. Optional; defaults to the
+                file's basename. If REMOTE_PATH ends with '/', the basename
+                is appended.
+
+Examples:
+  remote-agent upload ./foo.txt /tmp/foo.txt
+  remote-agent upload ./foo.txt /tmp/          # basename appended
+  remote-agent upload ./foo.txt                # uses saved config + basename
+`
+
 func runUpload(cli *client.Client, args []string) error {
+	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Print(uploadHelp)
+		return nil
+	}
 	if len(args) < 1 {
-		return fmt.Errorf("upload requires <LOCAL_FILE> [REMOTE_PATH]")
+		return fmt.Errorf("upload requires <LOCAL_FILE> [REMOTE_PATH]; see 'remote-agent upload --help'")
 	}
 	if len(args) > 2 {
 		return fmt.Errorf("upload takes at most 2 arguments, got %d", len(args))

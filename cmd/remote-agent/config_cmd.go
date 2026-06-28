@@ -17,9 +17,24 @@ import (
 //go:embed config.html
 var configHTML string
 
+const configHelp = `Usage: remote-agent config
+
+Open a local web page to manage saved server domains and pick a default one.
+
+When other commands run without --server, the default domain's server and token
+are used automatically.
+
+Examples:
+  remote-agent config
+`
+
 func runConfig(args []string) error {
+	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Print(configHelp)
+		return nil
+	}
 	if len(args) > 0 {
-		return fmt.Errorf("config takes no arguments, got %v", args)
+		return fmt.Errorf("config takes no arguments, got %v; see 'remote-agent config --help'", args)
 	}
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

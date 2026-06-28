@@ -18,6 +18,7 @@ import (
 
 	"github.com/xhd2015/ai-critic/client"
 	"github.com/xhd2015/ai-critic/cmd/remote-agent/streamcmd"
+	"github.com/xhd2015/ai-critic/cmd/remote-agent/wsproxy_singbox"
 	"github.com/xhd2015/less-gen/flags"
 )
 
@@ -285,7 +286,8 @@ func clientPublicWSEndpointCheck(host, wsPath string) doctorCheck {
 			Name: "public WebSocket endpoint (this machine)", Status: "fail", Detail: err.Error(),
 		}
 	}
-	resp, err := http.DefaultClient.Do(req)
+	client := doctorDirectHTTPClient(15 * time.Second)
+	resp, err := client.Do(req)
 	if err != nil {
 		return doctorCheck{
 			ID: "public_ws_endpoint", Layer: "client",
@@ -296,7 +298,7 @@ func clientPublicWSEndpointCheck(host, wsPath string) doctorCheck {
 	}
 	defer resp.Body.Close()
 
-	detail := fmt.Sprintf("%s → HTTP %d", target, resp.StatusCode)
+	detail := fmt.Sprintf("%s → HTTP %d (direct egress, ignores HTTP_PROXY)", target, resp.StatusCode)
 	if resp.StatusCode == http.StatusBadRequest {
 		return doctorCheck{
 			ID: "public_ws_endpoint", Layer: "client",
@@ -328,7 +330,7 @@ func clientVMessProxyFetch(vmess *doctorVMess, tryURL string) ([]doctorCheck, er
 	defer os.RemoveAll(tmpDir)
 
 	cfgPath := filepath.Join(tmpDir, "config.json")
-	if err := os.WriteFile(cfgPath, []byte(buildDoctorXrayClientConfig(vmess, inboundPort)), 0600); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(wsproxy_singbox.BuildXrayVMessClientConfig(doctorVMessToParams(vmess), inboundPort)), 0600); err != nil {
 		return nil, err
 	}
 
@@ -411,42 +413,20 @@ func clientVMessProxyFetch(vmess *doctorVMess, tryURL string) ([]doctorCheck, er
 	}, nil
 }
 
-func buildDoctorXrayClientConfig(vmess *doctorVMess, inboundPort int) string {
-	port := vmess.Port
-	if port == "" {
-		port = "443"
+func doctorVMessToParams(vmess *doctorVMess) *wsproxy_singbox.VMessParams {
+	if vmess == nil {
+		return nil
 	}
-	security := "tls"
-	if strings.EqualFold(vmess.TLS, "") || strings.EqualFold(vmess.TLS, "none") {
-		security = "none"
+	return &wsproxy_singbox.VMessParams{
+		Host:    vmess.Host,
+		Port:    vmess.Port,
+		UUID:    vmess.UUID,
+		AlterID: vmess.AlterID,
+		Network: vmess.Network,
+		Type:    vmess.Type,
+		Path:    vmess.Path,
+		TLS:     vmess.TLS,
 	}
-	return fmt.Sprintf(`{
-  "inbounds": [{
-    "listen": "127.0.0.1",
-    "port": %d,
-    "protocol": "http",
-    "settings": {}
-  }],
-  "outbounds": [{
-    "protocol": "vmess",
-    "settings": {
-      "vnext": [{
-        "address": %q,
-        "port": %s,
-        "users": [{"id": %q, "alterId": 0, "security": "auto"}]
-      }]
-    },
-    "streamSettings": {
-      "network": %q,
-      "security": %q,
-      "wsSettings": {
-        "path": %q,
-        "headers": {"Host": %q}
-      },
-      "tlsSettings": {"serverName": %q}
-    }
-  }]
-}`, inboundPort, vmess.Host, port, vmess.UUID, vmess.Network, security, vmess.Path, vmess.Host, vmess.Host)
 }
 
 func findDoctorXrayBinary() (string, error) {
@@ -572,5 +552,14 @@ func doctorStatusTag(status string) string {
 		return "[skip]"
 	default:
 		return "[fail]"
+	}
+}
+
+func doctorDirectHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			Proxy: func(*http.Request) (*url.URL, error) { return nil, nil },
+		},
 	}
 }

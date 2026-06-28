@@ -1,0 +1,11 @@
+{
+  "vmess_link": "vmess://eyJ2IjoiMiJ9",
+  "host": "ws-golden.example.com",
+  "port": "8443",
+  "uuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "alter_id": "0",
+  "network": "ws",
+  "type": "none",
+  "path": "/tunnel/ws",
+  "tls": "tls"
+}
