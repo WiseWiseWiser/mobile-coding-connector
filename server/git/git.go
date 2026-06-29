@@ -11,6 +11,9 @@
 //	POST /api/remote-agent/git/push   — git push origin HEAD:<current-
 //	                                    branch> inside an existing
 //	                                    repository.
+//	POST /api/remote-agent/git/run    — run an allowlisted read-only git
+//	                                    subcommand inside an existing
+//	                                    repository.
 //
 // These paths are namespaced under /api/remote-agent/ to avoid colliding
 // with /api/git/{fetch,pull,push} owned by server/github, which accepts
@@ -83,12 +86,24 @@ type RepoOpRequest struct {
 	HTTPSProxy string `json:"https_proxy"`
 }
 
+// RunRequest is the JSON body accepted by POST /api/remote-agent/git/run.
+// Dir is required and must be an existing git repository. Args holds the
+// git subcommand and its arguments (e.g. ["status"] or ["diff", "--cached"]).
+type RunRequest struct {
+	Dir        string   `json:"dir"`
+	Args       []string `json:"args"`
+	PrivateKey string   `json:"private_key"`
+	Token      string   `json:"token"`
+	HTTPSProxy string   `json:"https_proxy"`
+}
+
 // RegisterAPI registers the /api/remote-agent/git/* endpoints.
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/remote-agent/git/clone", handleClone)
 	mux.HandleFunc("/api/remote-agent/git/fetch", handleFetch)
 	mux.HandleFunc("/api/remote-agent/git/pull", handlePull)
 	mux.HandleFunc("/api/remote-agent/git/push", handlePush)
+	mux.HandleFunc("/api/remote-agent/git/run", handleRun)
 }
 
 func handleClone(w http.ResponseWriter, r *http.Request) {
@@ -203,6 +218,136 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func handleRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req RunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
+		return
+	}
+	if req.Dir == "" {
+		writeJSONError(w, http.StatusBadRequest, "dir is required")
+		return
+	}
+	if len(req.Args) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "args is required")
+		return
+	}
+	if err := validateGitRunArgs(req.Args); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := gitrunner.EnsureAvailable(); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	dir, err := absPath(req.Dir)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	info, statErr := os.Stat(dir)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			writeJSONError(w, http.StatusNotFound, fmt.Sprintf("dir does not exist: %s", dir))
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("stat dir: %v", statErr))
+		return
+	}
+	if !info.IsDir() {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("dir is not a directory: %s", dir))
+		return
+	}
+	if !isRepoRoot(dir) {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("dir is not a git repository: %s", dir))
+		return
+	}
+
+	proxy := proxyselect.ForRepoDir(req.HTTPSProxy, dir)
+	runStreaming(w, r, req.PrivateKey, req.Token, proxy.Note, func(auth gitAuthFiles) (*exec.Cmd, error) {
+		gitArgs := append([]string{"-C", dir}, req.Args...)
+		gc := gitrunner.NewCommand(gitArgs...)
+		return buildGitExecCmd(applyCommonOpts(gc, auth, proxy.URL))
+	})
+}
+
+// validateGitRunArgs enforces the allowlist for POST /api/remote-agent/git/run.
+// Only read-only (or local-only) git subcommands are permitted.
+func validateGitRunArgs(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("git args must not be empty")
+	}
+	switch args[0] {
+	case "status", "diff", "log", "rev-parse", "show":
+		return nil
+	case "branch":
+		return validateGitBranchArgs(args)
+	case "remote":
+		return validateGitRemoteArgs(args)
+	case "config":
+		return validateGitConfigArgs(args)
+	case "stash":
+		return validateGitStashArgs(args)
+	default:
+		return fmt.Errorf("git subcommand %q is not allowed", args[0])
+	}
+}
+
+func validateGitBranchArgs(args []string) error {
+	denied := []string{"-d", "-D", "-m", "--delete", "--move"}
+	for _, arg := range args[1:] {
+		for _, flag := range denied {
+			if arg == flag {
+				return fmt.Errorf("git branch %s is denied", flag)
+			}
+		}
+	}
+	return nil
+}
+
+func validateGitRemoteArgs(args []string) error {
+	if len(args) < 2 {
+		return nil
+	}
+	switch args[1] {
+	case "add", "remove", "set-url", "rename", "prune":
+		return fmt.Errorf("git remote %s is not allowed", args[1])
+	default:
+		return nil
+	}
+}
+
+func validateGitConfigArgs(args []string) error {
+	denied := []string{"--set", "--unset", "--replace-all", "--remove-section"}
+	for _, arg := range args[1:] {
+		for _, flag := range denied {
+			if arg == flag {
+				return fmt.Errorf("git config %s is not allowed", flag)
+			}
+		}
+	}
+	return nil
+}
+
+func validateGitStashArgs(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("git stash subcommand is not allowed")
+	}
+	switch args[1] {
+	case "list", "show":
+		return nil
+	case "push", "pop", "apply", "drop", "clear", "branch", "save", "create":
+		return fmt.Errorf("git stash %s is not allowed", args[1])
+	default:
+		return fmt.Errorf("git stash %q is not allowed", args[1])
+	}
+}
+
 // handleRepoOp decodes a RepoOpRequest, validates that Dir is an existing
 // git repository, and streams the command built by makeCmdBuilder back to
 // the client. makeCmdBuilder returns an optional human-readable note that
@@ -246,7 +391,7 @@ func handleRepoOp(w http.ResponseWriter, r *http.Request, makeCmdBuilder func(di
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("dir is not a directory: %s", dir))
 		return
 	}
-	if !gitrunner.IsRepo(dir) {
+	if !isRepoRoot(dir) {
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("dir is not a git repository: %s", dir))
 		return
 	}
@@ -567,6 +712,18 @@ func expandHomePath(p string) (string, error) {
 		return home, nil
 	}
 	return filepath.Join(home, strings.TrimPrefix(p, "~/")), nil
+}
+
+// isRepoRoot reports whether dir itself contains git metadata (.git file or
+// directory). Unlike git rev-parse, this does not treat ancestor worktrees as
+// a match, so a plain directory nested inside another repo is rejected.
+func isRepoRoot(dir string) bool {
+	gitPath := filepath.Join(dir, ".git")
+	fi, err := os.Stat(gitPath)
+	if err != nil {
+		return false
+	}
+	return fi.IsDir() || fi.Mode().IsRegular()
 }
 
 // absPath converts a possibly-relative path to an absolute one.

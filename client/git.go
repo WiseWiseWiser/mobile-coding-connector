@@ -44,6 +44,16 @@ type GitRepoOpRequest struct {
 	HTTPSProxy string `json:"https_proxy"`
 }
 
+// GitRunRequest is the body of POST /api/remote-agent/git/run.
+// Args holds the git subcommand and its arguments (e.g. ["status"]).
+type GitRunRequest struct {
+	Dir        string   `json:"dir"`
+	Args       []string `json:"args"`
+	PrivateKey string   `json:"private_key"`
+	Token      string   `json:"token"`
+	HTTPSProxy string   `json:"https_proxy"`
+}
+
 // GitClone invokes 'git clone' on the server and streams stdout/stderr
 // back via handler. See streamGit for the return-value contract.
 func (c *Client) GitClone(req GitCloneRequest, handler ExecHandler) (int, error) {
@@ -129,6 +139,30 @@ func (c *Client) GitPushWithKeyFile(req GitRepoOpRequest, keyFile string, handle
 		req.PrivateKey = string(data)
 	}
 	return c.GitPush(req, handler)
+}
+
+// GitRun invokes an allowlisted git subcommand inside req.Dir on the server.
+func (c *Client) GitRun(req GitRunRequest, handler ExecHandler) (int, error) {
+	if req.Dir == "" {
+		return 0, fmt.Errorf("git run: dir must be set")
+	}
+	if len(req.Args) == 0 {
+		return 0, fmt.Errorf("git run: args must be set")
+	}
+	return c.streamGit("/api/remote-agent/git/run", req, handler)
+}
+
+// GitRunWithKeyFile reads a local private-key file and forwards its
+// contents to the server before calling GitRun.
+func (c *Client) GitRunWithKeyFile(req GitRunRequest, keyFile string, handler ExecHandler) (int, error) {
+	if keyFile != "" {
+		data, err := os.ReadFile(keyFile)
+		if err != nil {
+			return 0, fmt.Errorf("read private key file: %w", err)
+		}
+		req.PrivateKey = string(data)
+	}
+	return c.GitRun(req, handler)
 }
 
 // streamGit POSTs body as JSON to path and consumes the NDJSON event

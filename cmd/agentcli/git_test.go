@@ -74,6 +74,12 @@ func TestRunGitSubcommandsForwardGitToken(t *testing.T) {
 			path:     "/api/remote-agent/git/push",
 			gitToken: "push-token",
 		},
+		{
+			name:     "status",
+			args:     []string{"-C", "/remote/repo", "status", "--git-token", "status-token"},
+			path:     "/api/remote-agent/git/run",
+			gitToken: "status-token",
+		},
 	}
 
 	for i, tc := range cases {

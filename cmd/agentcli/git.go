@@ -1,8 +1,10 @@
 package agentcli
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/xhd2015/ai-critic/client"
 	"github.com/xhd2015/less-gen/flags"
@@ -31,12 +33,22 @@ Subcommands:
       Run 'git push origin HEAD:<current-branch>' inside <dir> on the
       remote machine. '-C <dir>' must appear right after 'git'.
 
+  -C <dir> status|diff|log|branch|rev-parse|show|remote|config|stash
+      [--private-key <key-file>] [--git-token <token>] [--https-proxy <proxy-url>]
+      [git-args...]
+      Run an allowlisted read-only git subcommand inside <dir> on the remote
+      machine. '-C <dir>' must appear right after 'git'.
+
 Examples:
   remote-agent git clone https://github.com/foo/bar.git
   remote-agent git clone ~/src/bar ~/bar --git-token ghp_example
   remote-agent git -C ~/bar fetch --private-key ~/.ssh/id_rsa
   remote-agent git -C ~/bar pull --private-key ~/.ssh/id_rsa
   remote-agent git -C ~/bar push --private-key ~/.ssh/id_rsa
+  remote-agent git -C ~/bar status
+  remote-agent git -C ~/bar diff --cached
+  remote-agent git -C ~/bar log --oneline -2
+  remote-agent git -C ~/bar stash list
 `
 
 const gitCloneHelp = `Usage: remote-agent git clone [--private-key <key-file>] [--git-token <token>] [--https-proxy <proxy-url>] [--ssh-user <user>] <repo-or-remote-dir> [dir]
@@ -102,6 +114,20 @@ Options:
   -h, --help           Show this help message.
 `
 
+const gitLocalHelp = `Usage: remote-agent git -C <dir> <subcommand> [--private-key <key-file>] [--git-token <token>] [--https-proxy <proxy-url>] [git-args...]
+
+Run an allowlisted read-only git subcommand inside <dir> on the remote
+machine. <subcommand> is one of: status, diff, log, branch, rev-parse,
+show, remote, config, stash. '-C <dir>' must appear right after 'git'
+and is required.
+
+Options:
+  --private-key FILE   Local path to an SSH private key.
+  --git-token TOKEN    HTTPS git auth token.
+  --https-proxy URL    Value the server exports as https_proxy / HTTPS_PROXY.
+  -h, --help           Show this help message.
+`
+
 const gitPushHelp = `Usage: remote-agent git -C <dir> push [--private-key <key-file>] [--git-token <token>] [--https-proxy <proxy-url>]
 
 Run 'git push origin HEAD:<current-branch>' inside <dir> on the remote
@@ -114,6 +140,18 @@ Options:
   --https-proxy URL    Value the server exports as https_proxy / HTTPS_PROXY.
   -h, --help           Show this help message.
 `
+
+var gitLocalSubcommands = map[string]struct{}{
+	"status":    {},
+	"diff":      {},
+	"log":       {},
+	"branch":    {},
+	"rev-parse": {},
+	"show":      {},
+	"remote":    {},
+	"config":    {},
+	"stash":     {},
+}
 
 // runGit dispatches 'remote-agent git [-C <dir>] <subcommand> [args...]'.
 //
@@ -172,6 +210,12 @@ func runGit(resolve func() (*client.Client, error), args []string) error {
 		fmt.Print(gitHelp)
 		return nil
 	default:
+		if _, ok := gitLocalSubcommands[sub]; ok {
+			if !cDirSet {
+				return fmt.Errorf("'git %s' requires '-C <dir>' between 'git' and '%s'", sub, sub)
+			}
+			return runGitLocal(resolve, cDir, sub, rest)
+		}
 		return fmt.Errorf("unknown git subcommand: %s", sub)
 	}
 }
@@ -218,6 +262,79 @@ func runGitClone(resolve func() (*client.Client, error), args []string) error {
 		Token:      gitToken,
 		HTTPSProxy: httpsProxy,
 		SSHUser:    sshUser,
+	}, privateKey, gitStreamHandler())
+	if err != nil {
+		return err
+	}
+	if exitCode != 0 {
+		os.Exit(normalizeExitCode(exitCode))
+	}
+	return nil
+}
+
+// parseGitLocalFlags extracts remote-agent auth flags from git passthrough
+// args, leaving all other tokens (including git's own flags) untouched.
+func parseGitLocalFlags(args []string) (privateKey, gitToken, httpsProxy string, rest []string, err error) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-h", arg == "--help":
+			fmt.Print(gitLocalHelp)
+			return "", "", "", nil, flags.ErrHelp
+		case arg == "--private-key":
+			if i+1 >= len(args) {
+				return "", "", "", nil, fmt.Errorf("--private-key requires a value")
+			}
+			i++
+			privateKey = args[i]
+		case arg == "--git-token":
+			if i+1 >= len(args) {
+				return "", "", "", nil, fmt.Errorf("--git-token requires a value")
+			}
+			i++
+			gitToken = args[i]
+		case arg == "--https-proxy":
+			if i+1 >= len(args) {
+				return "", "", "", nil, fmt.Errorf("--https-proxy requires a value")
+			}
+			i++
+			httpsProxy = args[i]
+		case strings.HasPrefix(arg, "--private-key="):
+			privateKey = strings.TrimPrefix(arg, "--private-key=")
+		case strings.HasPrefix(arg, "--git-token="):
+			gitToken = strings.TrimPrefix(arg, "--git-token=")
+		case strings.HasPrefix(arg, "--https-proxy="):
+			httpsProxy = strings.TrimPrefix(arg, "--https-proxy=")
+		default:
+			rest = append(rest, arg)
+		}
+	}
+	return privateKey, gitToken, httpsProxy, rest, nil
+}
+
+// runGitLocal handles allowlisted read-only git subcommands via
+// POST /api/remote-agent/git/run.
+func runGitLocal(resolve func() (*client.Client, error), dir string, sub string, args []string) error {
+	privateKey, gitToken, httpsProxy, gitRest, err := parseGitLocalFlags(args)
+	if err != nil {
+		if errors.Is(err, flags.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+
+	gitArgs := append([]string{sub}, gitRest...)
+
+	cli, err := resolve()
+	if err != nil {
+		return err
+	}
+
+	exitCode, err := cli.GitRunWithKeyFile(client.GitRunRequest{
+		Dir:        dir,
+		Args:       gitArgs,
+		Token:      gitToken,
+		HTTPSProxy: httpsProxy,
 	}, privateKey, gitStreamHandler())
 	if err != nil {
 		return err
