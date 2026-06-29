@@ -1087,13 +1087,30 @@ func findListeningPIDs(port int) ([]int, error) {
 	return pids, nil
 }
 
+func processGroupID(pid int) (int, error) {
+	pgid, err := syscall.Getpgid(pid)
+	if err != nil {
+		return 0, err
+	}
+	return pgid, nil
+}
+
 func stopProcessGroup(pid int) error {
 	if pid <= 0 {
 		return nil
 	}
 
-	_ = syscall.Kill(-pid, syscall.SIGTERM)
-	deadline := time.Now().Add(3 * time.Second)
+	pgid, err := processGroupID(pid)
+	if err != nil {
+		// Fall back to signaling the process directly when PGID lookup fails.
+		return signalProcessUntilExit(pid, pid, 3*time.Second, 2*time.Second)
+	}
+	return signalProcessUntilExit(pid, pgid, 3*time.Second, 2*time.Second)
+}
+
+func signalProcessUntilExit(pid, signalTarget int, termTimeout, killTimeout time.Duration) error {
+	_ = syscall.Kill(-signalTarget, syscall.SIGTERM)
+	deadline := time.Now().Add(termTimeout)
 	for time.Now().Before(deadline) {
 		if !processAlive(pid) {
 			return nil
@@ -1101,8 +1118,11 @@ func stopProcessGroup(pid int) error {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
-	deadline = time.Now().Add(2 * time.Second)
+	_ = syscall.Kill(-signalTarget, syscall.SIGKILL)
+	if signalTarget != pid {
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+	}
+	deadline = time.Now().Add(killTimeout)
 	for time.Now().Before(deadline) {
 		if !processAlive(pid) {
 			return nil
