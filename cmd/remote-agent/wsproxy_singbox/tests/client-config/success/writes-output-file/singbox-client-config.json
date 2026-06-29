@@ -44,16 +44,23 @@
         "type": "udp"
       },
       {
+        "inet4_range": "198.18.0.0/15",
+        "tag": "fakeip",
+        "type": "fakeip"
+      },
+      {
+        "detour": "direct",
+        "server": "8.8.8.8",
+        "server_port": 53,
+        "tag": "bootstrap",
+        "type": "udp"
+      },
+      {
         "detour": "direct",
         "server": "8.8.8.8",
         "server_port": 53,
         "tag": "remote",
         "type": "udp"
-      },
-      {
-        "inet4_range": "198.18.0.0/15",
-        "tag": "fakeip",
-        "type": "fakeip"
       }
     ],
     "strategy": "ipv4_only"
@@ -64,10 +71,12 @@
         "172.19.0.1/30"
       ],
       "auto_route": true,
-      "mtu": 9000,
+      "mtu": 1280,
       "route_exclude_address": [
         "192.168.0.0/16",
-        "10.0.0.0/8"
+        "10.0.0.0/8",
+        "8.8.8.8/32",
+        "1.1.1.1/32"
       ],
       "stack": "system",
       "strict_route": true,
@@ -77,11 +86,12 @@
   ],
   "log": {
     "level": "info",
-    "output": "sing-box.log"
+    "output": "/Users/xhd2015/Library/Caches/remote-agent/sing-box.log"
   },
   "outbounds": [
     {
       "alter_id": 0,
+      "bind_interface": "en0",
       "domain_resolver": "bootstrap",
       "security": "auto",
       "server": "ws-test.example.com",
@@ -105,6 +115,7 @@
       "uuid": "11111111-2222-4333-8444-555555555555"
     },
     {
+      "bind_interface": "en0",
       "tag": "direct",
       "type": "direct"
     }
@@ -145,9 +156,11 @@
       {
         "action": "route",
         "ip_cidr": [
+          "127.0.0.0/8",
           "192.168.0.0/16",
           "10.0.0.0/8",
-          "172.16.0.0/12"
+          "172.16.0.0/12",
+          "17.0.0.0/8"
         ],
         "outbound": "direct"
       }

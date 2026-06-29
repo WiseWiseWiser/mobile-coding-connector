@@ -50,7 +50,8 @@ func (pm *ProcessManager) StartServer(binPath string, serverArgs []string) (*exe
 	// Ensure the binary is executable
 	os.Chmod(binPath, 0755)
 
-	cmd := exec.Command(binPath, serverArgs...)
+	port := pm.state.GetServerPort()
+	cmd := exec.Command(binPath, buildManagedServerArgs(port, serverArgs)...)
 	cmd.Dir, _ = os.Getwd()
 
 	// Create a new process group so we can kill all child processes
@@ -81,8 +82,13 @@ func (pm *ProcessManager) StartServer(binPath string, serverArgs []string) (*exe
 // WaitForPort waits for the port to become accessible within the timeout
 func (pm *ProcessManager) WaitForPort(port int, timeout time.Duration, cmd *exec.Cmd) bool {
 	deadline := time.Now().Add(timeout)
+	loggedPortOK := false
 	for time.Now().Before(deadline) {
 		if IsPortReachable(port) {
+			if !loggedPortOK {
+				loggedPortOK = true
+				Logger("[keepalive] phase=port_check_ok t_ms=%d port=%d", keepaliveElapsedMs(), port)
+			}
 			return true
 		}
 		// Check if process already exited

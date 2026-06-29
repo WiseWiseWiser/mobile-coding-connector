@@ -22,12 +22,6 @@ import (
 
 const quickTestPort = 3580
 
-var startSideEffects func()
-
-func SetStartSideEffects(fn func()) {
-	startSideEffects = fn
-}
-
 var help = fmt.Sprintf(`
 Usage: ai-critic [options]
        ai-critic keep-alive [options]            Auto-restart server with health checking
@@ -230,14 +224,7 @@ func Run(args []string) error {
 		}
 	}
 
-	// Skip auto-start operations in quick-test mode
-	if !quickTestMode {
-		if startSideEffects != nil {
-			startSideEffects()
-		} else {
-			server.RunSideEffectTasks()
-		}
-	}
+	// Side effects run after HTTP listener binds inside server.Serve / ServeComponent.
 
 	if component != "" {
 		var html string

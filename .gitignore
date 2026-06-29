@@ -34,3 +34,6 @@ dist
 /test-working-dir
 /remote-agent
 script/fuzzy-test/fuzzy-test-output.log
+
+
+*.log

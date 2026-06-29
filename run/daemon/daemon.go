@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -108,6 +109,12 @@ func (d *Daemon) Run(forever bool, logPath string) error {
 		fmt.Fprintf(os.Stderr, "Failed to setup logger: %v\n", err)
 	}
 	defer CloseLogger()
+
+	// Own process group so test harness / operators can signal the daemon tree
+	// without killing the parent (e.g. doctest teardown uses kill -pgid).
+	if err := syscall.Setpgid(0, 0); err != nil {
+		Logger("Warning: could not set keep-alive process group: %v", err)
+	}
 
 	cwd, _ := os.Getwd()
 	Logger("Keep-alive daemon starting (PID=%d, serverPort=%d, forever=%v, logPath=%q, cwd=%s, serverArgs=%v)",
@@ -259,6 +266,9 @@ func (d *Daemon) runLoop() error {
 			continue
 		}
 
+		startedAt := d.state.GetStartedAt()
+		waitedMs := int(time.Since(startedAt).Milliseconds())
+		Logger("[keepalive] phase=server_ready t_ms=%d pid=%d waited_ms=%d", keepaliveElapsedMs(), pid, waitedMs)
 		Logger("Server is ready (PID=%d, port=%d)", pid, d.port)
 
 		// Health check loop (also checks for binary upgrades and restart signals)
@@ -306,12 +316,34 @@ func (d *Daemon) runLoop() error {
 	}
 }
 
+// buildManagedServerArgs always passes the daemon-managed port to the server child.
+// keep-alive flag parsing may consume --port before serverArgs reach the child.
+func buildManagedServerArgs(port int, serverArgs []string) []string {
+	extra := stripPortFlags(serverArgs)
+	return append([]string{"--port", strconv.Itoa(port)}, extra...)
+}
+
+func stripPortFlags(args []string) []string {
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--port" {
+			if i+1 < len(args) {
+				i++
+			}
+			continue
+		}
+		out = append(out, args[i])
+	}
+	return out
+}
+
 // startServerWithLogging starts the server process with dual logging
 func (d *Daemon) startServerWithLogging(binPath string, serverArgs []string) (*exec.Cmd, error) {
 	// Ensure the binary is executable
 	os.Chmod(binPath, 0755)
 
-	cmd := exec.Command(binPath, serverArgs...)
+	argv := buildManagedServerArgs(d.port, serverArgs)
+	cmd := exec.Command(binPath, argv...)
 	cmd.Dir, _ = os.Getwd()
 
 	// Create a new process group so we can kill all child processes
@@ -329,6 +361,7 @@ func (d *Daemon) startServerWithLogging(binPath string, serverArgs []string) (*e
 
 	pid := cmd.Process.Pid
 	Logger("Server started (PID=%d)", pid)
+	Logger("[keepalive] phase=server_spawn t_ms=%d pid=%d", keepaliveElapsedMs(), pid)
 
 	d.state.SetServerPID(pid)
 	d.state.SetStartedAt(time.Now())
@@ -355,7 +388,7 @@ func (d *Daemon) reconnectToServer(pid string, binPath string) (*exec.Cmd, error
 	}
 
 	// Create a command structure - we won't start it, just use it for state tracking
-	cmd := exec.Command(actualBinPath, d.serverArgs...)
+	cmd := exec.Command(actualBinPath, buildManagedServerArgs(d.port, d.serverArgs)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	// Attach to existing process

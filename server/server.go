@@ -244,10 +244,22 @@ func Serve(port int, dev bool) error {
 		fmt.Printf("Serving quick-test server at http://localhost:%d\n", port)
 	}
 
-	// Start server in a goroutine
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return err
+	}
+	logBootstrapPhase("core_listen", port, "")
+	if !quicktest.Enabled() {
+		RunCoreStartup()
+	}
+	logBootstrapPhase("core_ready", port, "")
+	if !quicktest.Enabled() {
+		go RunExtensionStartup()
+	}
+
 	serverErr := make(chan error, 1)
 	go func() {
-		serverErr <- server.ListenAndServe()
+		serverErr <- server.Serve(listener)
 	}()
 
 	// Wait for either server error or shutdown signal
