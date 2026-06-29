@@ -25,6 +25,12 @@ Subcommands:
 
   git-config unset <project-id-or-name-or-dir>
       Clear the Git commit identity for this project.
+
+  bind-local <remote-dir> <local-path>
+      Save a local git repo path for a remote project (same origin required).
+
+  pull-local <project-id-or-name-or-dir> [--local-path PATH] [--no-truncate-remote] [--dry-run] [--include-file PATH] [--max-size SIZE]
+      Copy dirty remote changes into a local git worktree.
 `
 
 const projectListHelp = `Usage: remote-agent project list [--dirty]
@@ -79,6 +85,10 @@ func runProject(resolve func() (*client.Client, error), args []string) error {
 		return runProjectList(resolve, rest)
 	case "git-config", "gitconfig":
 		return runProjectGitConfig(resolve, rest)
+	case "bind-local":
+		return runProjectBindLocal(resolve, rest)
+	case "pull-local":
+		return runProjectPullLocal(resolve, rest)
 	case "-h", "--help":
 		fmt.Print(projectHelp)
 		return nil

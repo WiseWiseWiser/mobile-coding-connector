@@ -44,6 +44,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/filetransfer"
 	"github.com/xhd2015/ai-critic/server/fileupload"
 	servergit "github.com/xhd2015/ai-critic/server/git"
+	serverprojectpull "github.com/xhd2015/ai-critic/server/projectpull"
 	"github.com/xhd2015/ai-critic/server/github"
 	"github.com/xhd2015/ai-critic/server/keepalive"
 	"github.com/xhd2015/ai-critic/server/logs"
@@ -522,6 +523,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Git API (server-side git operations for the remote-agent CLI)
 	servergit.RegisterAPI(mux)
+
+	// Project pull-local API (packages dirty remote state for remote-agent CLI)
+	serverprojectpull.RegisterAPI(mux)
 
 	// Domains API
 	domains.RegisterAPI(mux)

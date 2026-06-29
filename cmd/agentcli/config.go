@@ -21,6 +21,8 @@ type agentConfig struct {
 	Default string `json:"default,omitempty"`
 	// Domains is the list of configured server endpoints.
 	Domains []domainConfig `json:"domains"`
+	// ProjectBindings maps (server, remote_dir) to a local git checkout path.
+	ProjectBindings []projectBinding `json:"project_bindings,omitempty"`
 
 	// Legacy single-domain fields, kept for backward compatibility when
 	// reading old config files. They are migrated into Domains on load
