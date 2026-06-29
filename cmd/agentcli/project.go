@@ -13,8 +13,9 @@ const projectHelp = `Usage: remote-agent project <subcommand> [args...]
 Inspect and update projects known to the remote server.
 
 Subcommands:
-  list
-      List projects and their configured Git commit identity.
+  list [--dirty]
+      List projects with live Git state (branch, commit, worktree) and
+      configured Git commit identity. With --dirty, show only dirty worktrees.
 
   git-config get|check <project-id-or-name-or-dir>
       Show the Git commit identity configured for one project.
@@ -26,10 +27,15 @@ Subcommands:
       Clear the Git commit identity for this project.
 `
 
-const projectListHelp = `Usage: remote-agent project list
+const projectListHelp = `Usage: remote-agent project list [--dirty]
 
-List all projects known to the remote server, including each project's
-configured Git commit identity.
+List projects known to the remote server, including each project's live Git
+state (branch, commit, worktree) and configured Git commit identity.
+
+Options:
+  --dirty   List only projects whose git worktree is dirty.
+  -h, --help
+      Show this help message.
 `
 
 const projectGitConfigHelp = `Usage: remote-agent project git-config <subcommand> [args...]
@@ -39,7 +45,7 @@ Check or set the Git commit identity saved on a project.
 Subcommands:
   get <project-id-or-name-or-dir>
   check <project-id-or-name-or-dir>
-      Show the configured identity.
+      Show live Git state and the configured identity.
 
   set <project-id-or-name-or-dir> --name NAME --email EMAIL [--identity-id ID]
       Save the identity used when committing from this project. The optional
@@ -82,11 +88,16 @@ func runProject(resolve func() (*client.Client, error), args []string) error {
 }
 
 func runProjectList(resolve func() (*client.Client, error), args []string) error {
+	var dirtyOnly bool
+
+	args, err := flags.
+		Bool("--dirty", &dirtyOnly).
+		Help("-h,--help", projectListHelp).
+		Parse(args)
+	if err != nil {
+		return err
+	}
 	if len(args) > 0 {
-		if args[0] == "-h" || args[0] == "--help" {
-			fmt.Print(projectListHelp)
-			return nil
-		}
 		return fmt.Errorf("project list takes no arguments, got %v", args)
 	}
 
@@ -94,12 +105,16 @@ func runProjectList(resolve func() (*client.Client, error), args []string) error
 	if err != nil {
 		return err
 	}
-	projects, err := cli.ListProjects()
+	projects, err := cli.ListProjects(client.ProjectListOptions{DirtyOnly: dirtyOnly})
 	if err != nil {
 		return err
 	}
 	if len(projects) == 0 {
-		fmt.Println("No projects found.")
+		if dirtyOnly {
+			fmt.Println("No dirty projects found.")
+		} else {
+			fmt.Println("No projects found.")
+		}
 		return nil
 	}
 
@@ -225,7 +240,7 @@ func runProjectGitConfigUnset(resolve func() (*client.Client, error), args []str
 }
 
 func resolveProjectTarget(cli *client.Client, idNameOrDir string) (*client.ProjectInfo, error) {
-	projects, err := cli.ListProjects()
+	projects, err := cli.ListProjects(client.ProjectListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +284,42 @@ func matchProjectTarget(projects []client.ProjectInfo, idNameOrDir string) (*cli
 func printProjectGitConfig(project client.ProjectInfo) {
 	fmt.Printf("Project: %s (%s)\n", displayOrDash(project.Name), displayOrDash(project.ID))
 	fmt.Printf("  Dir:              %s\n", displayOrDash(project.Dir))
+	fmt.Printf("  Git Branch:       %s\n", formatProjectGitBranch(project.GitStatus))
+	fmt.Printf("  Git Commit:       %s\n", formatProjectGitCommit(project.GitStatus))
+	fmt.Printf("  Worktree:         %s\n", formatProjectWorktree(project.GitStatus))
 	fmt.Printf("  Git Identity ID:  %s\n", displayOrDash(project.GitUserConfigID))
 	fmt.Printf("  Git User Name:    %s\n", displayOrDash(project.GitUserName))
 	fmt.Printf("  Git User Email:   %s\n", displayOrDash(project.GitUserEmail))
+}
+
+func projectHasGitRepo(status client.ProjectGitStatus) bool {
+	return status.Commit != ""
+}
+
+func formatProjectGitBranch(status client.ProjectGitStatus) string {
+	if !projectHasGitRepo(status) {
+		return "-"
+	}
+	return displayOrDash(status.Branch)
+}
+
+func formatProjectGitCommit(status client.ProjectGitStatus) string {
+	if !projectHasGitRepo(status) {
+		return "-"
+	}
+	if status.CommitMessage != "" {
+		return status.Commit + "  " + status.CommitMessage
+	}
+	return status.Commit
+}
+
+func formatProjectWorktree(status client.ProjectGitStatus) string {
+	if !projectHasGitRepo(status) {
+		return "-"
+	}
+	if status.IsClean {
+		return "clean"
+	}
+	return fmt.Sprintf("dirty (%d added, %d changed, %d renamed, %d deleted)",
+		status.Added, status.Changed, status.Renamed, status.Deleted)
 }

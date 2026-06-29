@@ -6,8 +6,15 @@ import (
 )
 
 type ProjectGitStatus struct {
-	IsClean     bool `json:"is_clean"`
-	Uncommitted int  `json:"uncommitted"`
+	IsClean       bool   `json:"is_clean"`
+	Branch        string `json:"branch,omitempty"`
+	Commit        string `json:"commit,omitempty"`
+	CommitMessage string `json:"commit_message,omitempty"`
+	Added         int    `json:"added"`
+	Changed       int    `json:"changed"`
+	Renamed       int    `json:"renamed"`
+	Deleted       int    `json:"deleted"`
+	Uncommitted   int    `json:"uncommitted"`
 }
 
 type ProjectInfo struct {
@@ -33,9 +40,18 @@ type ProjectUpdate struct {
 	GitUserEmail    *string `json:"git_user_email,omitempty"`
 }
 
-func (c *Client) ListProjects() ([]ProjectInfo, error) {
+type ProjectListOptions struct {
+	DirtyOnly bool
+}
+
+func (c *Client) ListProjects(opts ProjectListOptions) ([]ProjectInfo, error) {
+	query := url.Values{}
+	query.Set("all", "true")
+	if opts.DirtyOnly {
+		query.Set("dirty", "true")
+	}
 	var out []ProjectInfo
-	if err := c.getJSON("/api/projects?all=true", &out); err != nil {
+	if err := c.getJSON("/api/projects?"+query.Encode(), &out); err != nil {
 		return nil, err
 	}
 	if out == nil {

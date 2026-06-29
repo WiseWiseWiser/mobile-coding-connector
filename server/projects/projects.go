@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	gitrunner "github.com/xhd2015/agent-pro/agent/git_runner"
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/gitops/git"
 )
 
 var projectsFile = config.ProjectsFile
@@ -52,34 +52,37 @@ type Project struct {
 
 // GitStatusInfo holds git status information for a project
 type GitStatusInfo struct {
-	IsClean     bool `json:"is_clean"`
-	Uncommitted int  `json:"uncommitted"`
+	IsClean       bool   `json:"is_clean"`
+	Branch        string `json:"branch,omitempty"`
+	Commit        string `json:"commit,omitempty"`
+	CommitMessage string `json:"commit_message,omitempty"`
+	Added         int    `json:"added"`
+	Changed       int    `json:"changed"`
+	Renamed       int    `json:"renamed"`
+	Deleted       int    `json:"deleted"`
+	Uncommitted   int    `json:"uncommitted"`
 }
 
 func getGitStatus(projectDir string) GitStatusInfo {
-	// Check if it's a git repository
-	if err := gitrunner.RevParse("--git-dir").Dir(projectDir).RunSilent(); err != nil {
+	inspect, err := git.InspectWorktree(projectDir)
+	if err != nil || inspect == nil || !inspect.IsRepo {
 		return GitStatusInfo{IsClean: true, Uncommitted: 0}
 	}
-
-	// Get status with porcelain format
-	output, err := gitrunner.Status("--porcelain=v1").Dir(projectDir).Output()
-	if err != nil {
-		return GitStatusInfo{IsClean: true, Uncommitted: 0}
-	}
-
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	count := 0
-	for _, line := range lines {
-		if len(line) >= 2 {
-			count++
-		}
-	}
-
 	return GitStatusInfo{
-		IsClean:     count == 0,
-		Uncommitted: count,
+		IsClean:       inspect.IsClean,
+		Branch:        inspect.Branch,
+		Commit:        inspect.CommitShort,
+		CommitMessage: inspect.CommitMessage,
+		Added:         inspect.Added,
+		Changed:       inspect.Changed,
+		Renamed:       inspect.Renamed,
+		Deleted:       inspect.Deleted,
+		Uncommitted:   inspect.Uncommitted,
 	}
+}
+
+func gitStatusDirty(status GitStatusInfo) bool {
+	return status.Commit != "" && !status.IsClean
 }
 
 var mu sync.RWMutex
@@ -325,6 +328,7 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 		}
 		parentID := r.URL.Query().Get("parent_id")
 		includeAll := r.URL.Query().Get("all") == "true"
+		dirtyOnly := r.URL.Query().Get("dirty") == "true"
 		type ProjectWithStatus struct {
 			Project
 			DirExists bool          `json:"dir_exists"`
@@ -345,15 +349,18 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		result := make([]ProjectWithStatus, len(filtered))
-		for i, p := range filtered {
+		result := make([]ProjectWithStatus, 0, len(filtered))
+		for _, p := range filtered {
 			_, statErr := os.Stat(p.Dir)
 			gitStatus := getGitStatus(p.Dir)
-			result[i] = ProjectWithStatus{
+			if dirtyOnly && !gitStatusDirty(gitStatus) {
+				continue
+			}
+			result = append(result, ProjectWithStatus{
 				Project:   p,
 				DirExists: statErr == nil,
 				GitStatus: gitStatus,
-			}
+			})
 		}
 		respondJSON(w, http.StatusOK, result)
 	case http.MethodPost:
