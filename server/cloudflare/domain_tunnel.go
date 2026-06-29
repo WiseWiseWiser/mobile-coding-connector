@@ -197,6 +197,11 @@ func EnsureGroupTunnelConfigured(group string, tunnelName string, logFn LogFunc)
 		tunnelID = existingConfig.TunnelID
 		credFile = existingConfig.CredentialsFile
 		logFn(fmt.Sprintf("Reusing existing tunnel for group %s: %s (id=%s)", group, tunnelRef, tunnelID))
+		if killed, err := utm.ReconcileStaleConnectors(); err != nil {
+			logFn(fmt.Sprintf("Warning: stale connector cleanup for group %s: %v", group, err))
+		} else if len(killed) > 0 {
+			logFn(fmt.Sprintf("Removed stale cloudflared connector PIDs for group %s: %v", group, killed))
+		}
 		return tunnelRef, tunnelID, credFile, nil
 	}
 

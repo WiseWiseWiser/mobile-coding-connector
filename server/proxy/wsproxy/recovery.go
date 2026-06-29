@@ -2,6 +2,7 @@ package wsproxy
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
@@ -121,7 +122,30 @@ func (m *Manager) Recover() error {
 	return m.recoverLocked()
 }
 
+func reconcileExtensionTunnelConnectors(context string) {
+	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
+	killed, err := tg.TunnelMgr().ReconcileStaleConnectors()
+	if err != nil {
+		fmt.Printf("[ws-proxy] %s: stale connector cleanup error: %v\n", context, err)
+		return
+	}
+	if len(killed) > 0 {
+		fmt.Printf("[ws-proxy] %s: killed stale cloudflared connector PIDs: %s\n",
+			context, strings.Join(intSliceToString(killed), ", "))
+	}
+}
+
+func intSliceToString(nums []int) []string {
+	out := make([]string, len(nums))
+	for i, n := range nums {
+		out[i] = strconv.Itoa(n)
+	}
+	return out
+}
+
 func (m *Manager) recoverLocked() error {
+	reconcileExtensionTunnelConnectors("Recover")
+
 	cfg, err := LoadConfig()
 	if err != nil {
 		return err
@@ -163,6 +187,8 @@ func (m *Manager) addPermanentTunnelMapping(cfg *Config, hostname string, listen
 }
 
 func (m *Manager) addPermanentTunnelMappingLocked(cfg *Config, hostname string, listenPort int) error {
+	reconcileExtensionTunnelConnectors("start")
+
 	localURL := fmt.Sprintf("http://localhost:%d", listenPort)
 
 	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()

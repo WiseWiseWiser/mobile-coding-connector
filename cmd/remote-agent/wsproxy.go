@@ -56,6 +56,10 @@ Subcommands:
   vpn [--yes] [--no-install] [--config FILE] [--detach]
       Alias for sing-box run-tun — start a system-wide TUN mini-VPN.
 
+  vpn-http-only [--whitelist|--blacklist] [--include PATTERN] [--exclude PATTERN] [--dns-hijack] [--detach]
+      HTTP/HTTPS-only TUN — no HTTP_PROXY env; non-web traffic stays direct.
+      Falls back to direct when ws-proxy is unavailable. Use --dns-hijack on polluted DNS.
+
 Examples:
   remote-agent ws-proxy start --tmp
   remote-agent ws-proxy start --tmp --upstream-proxy http://squid.internal:3128
@@ -70,6 +74,8 @@ Examples:
   remote-agent ws-proxy sing-box client-config
   remote-agent ws-proxy sing-box run-tun --detach
   remote-agent ws-proxy vpn
+  remote-agent ws-proxy vpn-http-only --dns-hijack
+  remote-agent ws-proxy vpn-http-only --whitelist --include '*.internal.corp'
 `
 
 func runWSProxy(getClient func() (*client.Client, error), args []string) error {
@@ -101,6 +107,8 @@ func runWSProxy(getClient func() (*client.Client, error), args []string) error {
 		return wsproxySingBox(getClient, rest)
 	case "vpn":
 		return wsproxySingBoxRunTun(getClient, rest)
+	case "vpn-http-only":
+		return wsproxyHttpOnly(getClient, rest)
 	default:
 		fmt.Print(wsproxyHelp)
 		return nil

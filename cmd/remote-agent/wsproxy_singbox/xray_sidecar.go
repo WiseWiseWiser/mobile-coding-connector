@@ -151,6 +151,13 @@ func buildXraySidecarConfig(vmess *VMessParams, socksPort int) string {
 }
 
 func StartXraySidecar(ctx context.Context, vmess *VMessParams) (*XraySidecar, error) {
+	if currentHooks.StartXraySidecar != nil {
+		return currentHooks.StartXraySidecar(ctx, vmess)
+	}
+	return startXraySidecarReal(ctx, vmess)
+}
+
+func startXraySidecarReal(ctx context.Context, vmess *VMessParams) (*XraySidecar, error) {
 	xrayPath, err := findXrayBinary()
 	if err != nil {
 		return nil, err

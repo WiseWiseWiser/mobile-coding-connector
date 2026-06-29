@@ -120,9 +120,11 @@ import (
 )
 
 const (
-	OpClientConfig = "client-config"
-	OpRunTun       = "run-tun"
-	OpBuildConfig  = "build-config"
+	OpClientConfig       = "client-config"
+	OpRunTun             = "run-tun"
+	OpBuildConfig        = "build-config"
+	OpParsePolicy        = "parse-policy"
+	OpBuildHttpOnlyConfig = "build-http-only-config"
 )
 
 type Request struct {
@@ -146,6 +148,11 @@ type Request struct {
 
 	VMessFixture string
 	BuildVMess   *singbox.VMessParams
+
+	PolicyInput        singbox.PolicyInput
+	HttpOnlySocksPort  int
+	HttpOnlyPolicy     *singbox.DomainPolicy
+	HttpOnlyDNSHijack  bool
 }
 
 type Response struct {
@@ -170,6 +177,8 @@ type Response struct {
 	StartDetachedCalled bool
 	StartDetachedSudo   bool
 	StartDetachedPID    int
+
+	DomainPolicy *singbox.DomainPolicy
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
@@ -235,6 +244,9 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			return defaultMockVMess(), nil
 		},
 		UserCacheDir: func() (string, error) { return cacheDir, nil },
+		StartXraySidecar: func(ctx context.Context, vmess *singbox.VMessParams) (*singbox.XraySidecar, error) {
+			return &singbox.XraySidecar{Port: 11080, ConfigPath: filepath.Join(cacheDir, "mock-xray.json")}, nil
+		},
 	})
 	defer restore()
 
@@ -277,6 +289,34 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			vmess = loadVMessFixture(t, req.VMessFixture)
 		}
 		data, err := singbox.BuildSingBoxTunConfig(vmess, nil)
+		if err != nil {
+			runErr = err
+		} else {
+			resp.ConfigRaw = data
+			_ = json.Unmarshal(data, &resp.ConfigJSON)
+		}
+	case OpParsePolicy:
+		policy, err := singbox.ParseDomainPolicy(req.PolicyInput)
+		if err != nil {
+			runErr = err
+		} else {
+			resp.DomainPolicy = policy
+		}
+	case OpBuildHttpOnlyConfig:
+		vmess := req.BuildVMess
+		if vmess == nil {
+			vmess = loadVMessFixture(t, req.VMessFixture)
+		}
+		port := req.HttpOnlySocksPort
+		if port == 0 {
+			port = 11080
+		}
+		data, err := singbox.BuildSingBoxHttpOnlyTunConfig(vmess, &singbox.HttpOnlyConfigOptions{
+			LocalSocksPort:  port,
+			InitialUseProxy: true,
+			Policy:          req.HttpOnlyPolicy,
+			DNSHijack:       req.HttpOnlyDNSHijack,
+		})
 		if err != nil {
 			runErr = err
 		} else {

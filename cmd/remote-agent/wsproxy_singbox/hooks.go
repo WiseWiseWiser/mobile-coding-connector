@@ -70,8 +70,9 @@ type TestHooks struct {
 	Geteuid       func() int
 	RunSingBox    func(ctx context.Context, sudo bool, configPath string) error
 	StartDetached func(configPath, logPath string, useSudo bool) (pid int, err error)
-	FetchVMess    func(c *client.Client) (*VMessParams, error)
-	UserCacheDir  func() (string, error)
+	FetchVMess       func(c *client.Client) (*VMessParams, error)
+	UserCacheDir     func() (string, error)
+	StartXraySidecar func(ctx context.Context, vmess *VMessParams) (*XraySidecar, error)
 }
 
 var currentHooks = TestHooks{

@@ -97,12 +97,17 @@ func runSingBoxForeground(ctx context.Context, sudo bool, configPath string) err
 		fmt.Println("xray VMess path verified with TUN routes active.")
 	}
 
-	restoreDNS, dnsErr := configurePlatformTunDNS()
-	if dnsErr != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not set system DNS to %s: %v\n", tunDNSAddress, dnsErr)
-		restoreDNS = nil
+	var restoreDNS func()
+	var dnsTouched bool
+	if shouldConfigurePlatformTunDNS() {
+		var dnsErr error
+		restoreDNS, dnsErr = configurePlatformTunDNS()
+		if dnsErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not set system DNS to %s: %v\n", tunDNSAddress, dnsErr)
+			restoreDNS = nil
+		}
+		dnsTouched = restoreDNS != nil
 	}
-	dnsTouched := restoreDNS != nil
 	if networkService != "" && (dnsTouched || proxyTouched) {
 		if err := saveTunSessionSnapshot(networkService, previousDNS, dnsTouched, previousProxy, proxyTouched); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: save tun session snapshot: %v\n", err)

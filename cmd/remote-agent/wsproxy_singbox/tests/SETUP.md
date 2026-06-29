@@ -34,7 +34,7 @@ Hook layer -> mock LookPath/Confirm/BrewInstall/RunSingBox/StartDetached/FetchVM
 import "testing"
 
 func Setup(t *testing.T, req *Request) error {
-	if req.MockVMess == nil && req.Op != OpBuildConfig {
+	if req.MockVMess == nil && req.Op != OpBuildConfig && req.Op != OpBuildHttpOnlyConfig && req.Op != OpParsePolicy {
 		req.MockVMess = defaultMockVMess()
 	}
 	return nil

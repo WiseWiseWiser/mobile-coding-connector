@@ -293,6 +293,7 @@ func (m *Manager) serverDoctorChecks(tryURL string, emit DoctorCheckEmitter) []D
 				ref = tgCfg.TunnelID
 			}
 			add("extension_tunnel", "extension Cloudflare tunnel config", DoctorOK, ref, "")
+			appendCheck(checkStaleTunnelConnectors(tg))
 		}
 
 		if publicURL == "" {
@@ -507,4 +508,34 @@ func checkUpstreamFetch(proxyURL, tryURL string) DoctorCheck {
 		Detail: detail,
 		Hint:   "upstream proxy responded but returned an error status",
 	}
+}
+
+func checkStaleTunnelConnectors(tg *unified_tunnel.TunnelGroup) DoctorCheck {
+	check := DoctorCheck{
+		ID: "stale_tunnel_connectors", Layer: "server",
+		Name: "stale cloudflared tunnel connectors",
+	}
+	if tg == nil {
+		check.Status = DoctorSkip
+		check.Detail = "extension tunnel group unavailable"
+		return check
+	}
+
+	killed, err := tg.TunnelMgr().ReconcileStaleConnectors()
+	if err != nil {
+		check.Status = DoctorFail
+		check.Detail = err.Error()
+		check.Hint = "remove orphan cloudflared processes for the extension tunnel"
+		return check
+	}
+	if len(killed) == 0 {
+		check.Status = DoctorOK
+		check.Detail = "no stale connectors"
+		return check
+	}
+
+	check.Status = DoctorOK
+	check.Detail = fmt.Sprintf("removed stale connector PIDs: %s", strings.TrimSpace(
+		strings.Join(intSliceToString(killed), ", ")))
+	return check
 }

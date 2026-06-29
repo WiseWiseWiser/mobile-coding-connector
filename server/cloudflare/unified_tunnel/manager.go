@@ -73,6 +73,11 @@ type ExtraMappingsConfig struct {
 	Mappings []ExtraMapping `json:"mappings"`
 }
 
+// DefaultRebuildDebounce is how long to wait after the last mapping change
+// before rebuilding and restarting the cloudflared process. Rapid adds/removes
+// within this window are coalesced into a single restart.
+const DefaultRebuildDebounce = 3 * time.Second
+
 // IngressMapping represents a single ingress rule for port forwarding
 type IngressMapping struct {
 	ID       string // unique identifier for this mapping (e.g., "port-8080" or "domain-example.com")
@@ -93,6 +98,8 @@ type UnifiedTunnelManager struct {
 	running                bool
 	paused                 bool                 // when true, health checks are paused globally
 	healthCheckPausedUntil map[string]time.Time // mappingID -> time when health check should resume
+	rebuildTimer           *time.Timer          // debounced rebuild timer
+	rebuildDebounce        time.Duration        // per-instance override; 0 uses DefaultRebuildDebounce
 }
 
 var (
@@ -180,10 +187,10 @@ func (utm *UnifiedTunnelManager) AddMapping(mapping *IngressMapping) error {
 
 	// Add or update the mapping
 	utm.mappings[mapping.ID] = mapping
-	fmt.Printf("[unified-tunnel] AddMapping: mapping added/updated, calling rebuildAndRestartLocked\n")
+	fmt.Printf("[unified-tunnel] AddMapping: mapping added/updated, scheduling debounced rebuild\n")
 
-	// Rebuild config and restart if needed
-	return utm.rebuildAndRestartLocked()
+	utm.scheduleRebuildLocked()
+	return nil
 }
 
 // RemoveMapping removes an ingress mapping and restarts the tunnel if needed
@@ -199,10 +206,10 @@ func (utm *UnifiedTunnelManager) RemoveMapping(id string) error {
 	}
 
 	delete(utm.mappings, id)
-	fmt.Printf("[unified-tunnel] RemoveMapping: mapping removed, calling rebuildAndRestartLocked\n")
+	fmt.Printf("[unified-tunnel] RemoveMapping: mapping removed, scheduling debounced rebuild\n")
 
-	// Rebuild config and restart if needed
-	return utm.rebuildAndRestartLocked()
+	utm.scheduleRebuildLocked()
+	return nil
 }
 
 // ListMappings returns all current server-configured ingress mappings
@@ -326,6 +333,48 @@ func (utm *UnifiedTunnelManager) ensureDataDir() error {
 	return os.MkdirAll(config.DataDir, 0755)
 }
 
+func (utm *UnifiedTunnelManager) effectiveRebuildDebounce() time.Duration {
+	if utm.rebuildDebounce > 0 {
+		return utm.rebuildDebounce
+	}
+	return DefaultRebuildDebounce
+}
+
+// scheduleRebuildLocked coalesces rapid mapping changes into a single rebuild/restart.
+// Must be called with utm.mu held.
+func (utm *UnifiedTunnelManager) scheduleRebuildLocked() {
+	debounce := utm.effectiveRebuildDebounce()
+	if debounce <= 0 {
+		if err := utm.rebuildAndRestartLocked(); err != nil {
+			fmt.Printf("[unified-tunnel] scheduleRebuildLocked: immediate rebuild failed: %v\n", err)
+		}
+		return
+	}
+
+	if utm.rebuildTimer != nil {
+		utm.rebuildTimer.Stop()
+	}
+
+	fmt.Printf("[unified-tunnel] scheduleRebuildLocked: debounced rebuild in %v\n", debounce)
+	utm.rebuildTimer = time.AfterFunc(debounce, func() {
+		utm.mu.Lock()
+		defer utm.mu.Unlock()
+		utm.rebuildTimer = nil
+		if err := utm.rebuildAndRestartLocked(); err != nil {
+			fmt.Printf("[unified-tunnel] scheduleRebuildLocked: debounced rebuild failed: %v\n", err)
+		}
+	})
+}
+
+// cancelRebuildDebounceLocked stops any pending debounced rebuild.
+// Must be called with utm.mu held.
+func (utm *UnifiedTunnelManager) cancelRebuildDebounceLocked() {
+	if utm.rebuildTimer != nil {
+		utm.rebuildTimer.Stop()
+		utm.rebuildTimer = nil
+	}
+}
+
 // rebuildAndRestartLocked rebuilds the config file and restarts the tunnel if changed
 // Must be called with utm.mu held
 // If force is true, restart the tunnel even if config hasn't changed (useful for health check recoveries)
@@ -365,6 +414,8 @@ func (utm *UnifiedTunnelManager) rebuildAndRestartLockedWithForce(force bool) er
 		return nil // no change and process running, skip restart
 	}
 
+	recordRebuildExecutedForTest()
+
 	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: starting restart - BEFORE STOP - running=%v\n", utm.running)
 
 	// Pause health checks during restart
@@ -393,21 +444,25 @@ func (utm *UnifiedTunnelManager) rebuildAndRestartLockedWithForce(force bool) er
 	}
 	fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: process started successfully, AFTER START - running=%v\n", utm.running)
 
-	// Create DNS routes for all mappings after tunnel starts
-	go func() {
-		// Wait for tunnel to stabilize
-		time.Sleep(5 * time.Second)
-		utm.createDNSRoutesForMappings()
-	}()
+	if !postRestartSideEffectsDisabled() {
+		// Create DNS routes for all mappings after tunnel starts
+		go func() {
+			// Wait for tunnel to stabilize
+			time.Sleep(5 * time.Second)
+			utm.createDNSRoutesForMappings()
+		}()
 
-	// Resume health checks after a delay to allow tunnel to stabilize
-	go func() {
-		time.Sleep(15 * time.Second)
-		utm.mu.Lock()
+		// Resume health checks after a delay to allow tunnel to stabilize
+		go func() {
+			time.Sleep(15 * time.Second)
+			utm.mu.Lock()
+			utm.paused = false
+			fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: health checks resumed\n")
+			utm.mu.Unlock()
+		}()
+	} else {
 		utm.paused = false
-		fmt.Printf("[unified-tunnel] rebuildAndRestartLocked: health checks resumed\n")
-		utm.mu.Unlock()
-	}()
+	}
 
 	return nil
 }
@@ -533,6 +588,10 @@ func (utm *UnifiedTunnelManager) hasConfigChanged(cfgPath string, newConfig *Clo
 // startProcessLocked starts the cloudflared tunnel process
 // Must be called with utm.mu held
 func (utm *UnifiedTunnelManager) startProcessLocked() error {
+	if hook := getTestStartProcessHook(); hook != nil {
+		return hook(utm)
+	}
+
 	fmt.Printf("[unified-tunnel] startProcessLocked: starting...\n")
 	if utm.config == nil {
 		return fmt.Errorf("tunnel manager not configured")
@@ -559,9 +618,14 @@ func (utm *UnifiedTunnelManager) startProcessLocked() error {
 		fmt.Printf("[unified-tunnel] startProcessLocked: could not open log file: %v\n", err)
 	}
 
-	// Kill any orphaned cloudflared processes using this config
-	fmt.Printf("[unified-tunnel] startProcessLocked: killing orphaned processes\n")
+	// Kill any orphaned or stale cloudflared connectors for this tunnel.
+	fmt.Printf("[unified-tunnel] startProcessLocked: reconciling stale tunnel connectors\n")
 	utm.killOrphanedProcess(cfgPath)
+	if killed, err := utm.reconcileStaleConnectorsLocked(0); err != nil {
+		fmt.Printf("[unified-tunnel] startProcessLocked: stale connector cleanup error: %v\n", err)
+	} else if len(killed) > 0 {
+		fmt.Printf("[unified-tunnel] startProcessLocked: killed stale connector PIDs: %v\n", killed)
+	}
 
 	// Start cloudflared
 	cmd := exec.Command("cloudflared", "tunnel", "--config", cfgPath, "run", tunnelRef)
@@ -616,6 +680,11 @@ func (utm *UnifiedTunnelManager) startProcessLocked() error {
 // stopProcessLocked stops the running cloudflared process
 // Must be called with utm.mu held
 func (utm *UnifiedTunnelManager) stopProcessLocked() {
+	if hook := getTestStopProcessHook(); hook != nil {
+		hook(utm)
+		return
+	}
+
 	fmt.Printf("[unified-tunnel] stopProcessLocked: starting... cmd=%+v\n", utm.cmd)
 	if utm.cmd == nil || utm.cmd.Process == nil {
 		fmt.Printf("[unified-tunnel] stopProcessLocked: no process to stop\n")
@@ -674,6 +743,32 @@ func (utm *UnifiedTunnelManager) stopProcessLocked() {
 	fmt.Printf("[unified-tunnel] stopProcessLocked: done\n")
 }
 
+// ReconcileStaleConnectors kills cloudflared connectors for this tunnel that use a
+// missing or non-canonical config (for example leftover quick-test processes).
+func (utm *UnifiedTunnelManager) ReconcileStaleConnectors() ([]int, error) {
+	utm.mu.Lock()
+	defer utm.mu.Unlock()
+	keepPID := 0
+	if utm.cmd != nil && utm.cmd.Process != nil {
+		keepPID = utm.cmd.Process.Pid
+	}
+	return utm.reconcileStaleConnectorsLocked(keepPID)
+}
+
+func (utm *UnifiedTunnelManager) reconcileStaleConnectorsLocked(keepPID int) ([]int, error) {
+	if utm.config == nil {
+		return nil, nil
+	}
+	tunnelRef := utm.config.TunnelName
+	if tunnelRef == "" {
+		tunnelRef = utm.config.TunnelID
+	}
+	if tunnelRef == "" {
+		return nil, nil
+	}
+	return ReconcileStaleTunnelConnectors(tunnelRef, utm.config.TunnelID, utm.GetConfigPath(), keepPID)
+}
+
 // killOrphanedProcess kills any cloudflared processes using the given config
 func (utm *UnifiedTunnelManager) killOrphanedProcess(cfgPath string) {
 	out, err := exec.Command("pgrep", "-f", "cloudflared.*"+cfgPath).Output()
@@ -700,6 +795,7 @@ func (utm *UnifiedTunnelManager) killOrphanedProcess(cfgPath string) {
 func (utm *UnifiedTunnelManager) Stop() {
 	utm.mu.Lock()
 	defer utm.mu.Unlock()
+	utm.cancelRebuildDebounceLocked()
 	utm.stopProcessLocked()
 }
 
@@ -993,36 +1089,30 @@ func (utm *UnifiedTunnelManager) RestartMapping(mappingID string) error {
 		return -1
 	}())
 
-	utm.mu.Unlock()
+	utm.cancelRebuildDebounceLocked()
 
 	fmt.Printf("[unified-tunnel] RestartMapping: calling rebuildAndRestartLockedWithForce(force=true)\n")
 	err := utm.rebuildAndRestartLockedWithForce(true)
 
-	// Log state after restart
-	utm.mu.Lock()
 	fmt.Printf("[unified-tunnel] RestartMapping: after restart - running=%v, pid=%d, err=%v\n", utm.running, func() int {
 		if utm.cmd != nil && utm.cmd.Process != nil {
 			return utm.cmd.Process.Pid
 		}
 		return -1
 	}(), err)
-	utm.mu.Unlock()
 
 	// If restart was successful, pause health checks for this mapping for 1 minute
 	// This prevents rapid restart loops due to accumulated failure counts
 	if err == nil {
-		utm.mu.Lock()
 		pauseUntil := time.Now().Add(1 * time.Minute)
 		utm.healthCheckPausedUntil[mappingID] = pauseUntil
 		fmt.Printf("[unified-tunnel] RestartMapping: paused health checks for mapping %s until %v (1 minute cooldown)\n",
 			mappingID, pauseUntil.Format("2006-01-02T15:04:05"))
-		utm.mu.Unlock()
 	}
 
 	// Run cloudflared tunnel info to check status
 	fmt.Printf("[unified-tunnel] RestartMapping: checking tunnel status...\n")
 	tunnelID := ""
-	utm.mu.Lock()
 	if utm.config != nil {
 		tunnelID = utm.config.TunnelID
 		if tunnelID == "" {
@@ -1221,7 +1311,8 @@ func (utm *UnifiedTunnelManager) AddExtraMapping(domain, localURL string) error 
 			if err := utm.SaveExtraMappingsFile(cfg); err != nil {
 				return err
 			}
-			return utm.rebuildAndRestartLocked()
+			utm.scheduleRebuildLocked()
+			return nil
 		}
 	}
 
@@ -1231,7 +1322,8 @@ func (utm *UnifiedTunnelManager) AddExtraMapping(domain, localURL string) error 
 		return err
 	}
 
-	return utm.rebuildAndRestartLocked()
+	utm.scheduleRebuildLocked()
+	return nil
 }
 
 // RemoveExtraMapping removes a mapping from the extra mappings file and triggers a tunnel restart if needed
@@ -1264,5 +1356,6 @@ func (utm *UnifiedTunnelManager) RemoveExtraMapping(domain string) error {
 		return err
 	}
 
-	return utm.rebuildAndRestartLocked()
+	utm.scheduleRebuildLocked()
+	return nil
 }
