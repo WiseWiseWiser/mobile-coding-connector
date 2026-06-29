@@ -22,8 +22,8 @@ SSE events as work completes; CLI prints immediately via `streamcmd.Run`.
 
 Existing references:
 
-- **Progress checks** — `cmd/remote-agent/wsproxy_doctor.go` → `GET /api/ws-proxy/doctor/stream`
-- **Log lines** — `cmd/remote-agent/wsproxy.go` start (legacy `StreamSSEWithDone`; migrate to `streamcmd`)
+- **Progress checks** — `cmd/agentcli/wsproxy_doctor.go` → `GET /api/ws-proxy/doctor/stream`
+- **Log lines** — `cmd/agentcli/wsproxy.go` start (legacy `StreamSSEWithDone`; migrate to `streamcmd`)
 - **Server writer** — `server/streaming/progress/writer.go`, `server/proxy/wsproxy/doctor.go` (`DoctorStream`)
 
 ---
@@ -168,7 +168,7 @@ changing production behavior.
 
 ## Client CLI (minimal — use `streamcmd`)
 
-Package: `cmd/remote-agent/streamcmd`
+Package: `cmd/agentcli/streamcmd`
 
 ### A — declarative `Print` flags (default)
 
@@ -177,7 +177,7 @@ import (
     "net/http"
     "net/url"
 
-    "github.com/xhd2015/ai-critic/cmd/remote-agent/streamcmd"
+    "github.com/xhd2015/ai-critic/cmd/agentcli/streamcmd"
 )
 
 return streamcmd.Run(getClient, streamcmd.Spec{
@@ -229,7 +229,7 @@ After: func(done map[string]any) error {
 
 ### Wire up subcommand
 
-1. Add handler in the appropriate `cmd/remote-agent/<topic>.go` switch.
+1. Add handler in the appropriate `cmd/agentcli/<topic>.go` switch.
 2. Parse flags with `less-gen/flags` before calling `streamcmd.Run`.
 3. Return `error` from `Run`/`After` so `main` exits non-zero on failure.
 
@@ -272,7 +272,7 @@ Add doctests under the appropriate tree (see `REQUIREMENT-DESIGN-streaming-progr
 |-------|------|----------------|
 | Server unit | `server/.../tests/<feature>/` | SSE frame order, `progress` before `done`, content-type |
 | Client unit | `client/tests/streaming/` | `client.Stream` / event decode |
-| CLI unit | `cmd/remote-agent/streamcmd/tests/` | `Print` defaults and `Printer` overrides |
+| CLI unit | `cmd/agentcli/streamcmd/tests/` | `Print` defaults and `Printer` overrides |
 | Integration | `tests/streaming/` | Real `ai-critic-server` + `remote-agent` subprocess; stdout incremental |
 
 Integration harness (`tests/streaming/SETUP.md`):

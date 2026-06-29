@@ -23,7 +23,7 @@ ai-critic-server -> /doctor/stream -> remote-agent ws-proxy doctor -> stdout lin
 
 Primary integration guarantee for the streaming progress feature. Complements
 unit trees under `server/proxy/wsproxy/tests/streaming-doctor/`,
-`client/tests/streaming/`, and `cmd/remote-agent/streamcmd/tests/`.
+`client/tests/streaming/`, and `cmd/agentcli/streamcmd/tests/`.
 
 ```go
 import "testing"

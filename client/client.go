@@ -41,7 +41,11 @@ func (c *Client) httpClient() *http.Client {
 // NewRequest builds an http.Request against the configured server with the
 // Authorization header set when a token is configured.
 func (c *Client) NewRequest(method, path string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequest(method, c.Server+path, body)
+	reqURL := c.Server + path
+	if strings.Contains(reqURL, "://localhost") {
+		reqURL = strings.Replace(reqURL, "://localhost", "://127.0.0.1", 1)
+	}
+	req, err := http.NewRequest(method, reqURL, body)
 	if err != nil {
 		return nil, err
 	}

@@ -26,7 +26,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xhd2015/ai-critic/cmd/remote-agent/wsproxy_singbox"
+	"github.com/xhd2015/ai-critic/cmd/agentcli/wsproxy_singbox"
 )
 
 var globalCleanupOnce sync.Once
