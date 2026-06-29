@@ -55,11 +55,21 @@ type RunTunOptions struct {
 	Yes        bool
 	NoInstall  bool
 	Detach     bool
+	HttpOnly   bool
+	Policy     *DomainPolicy
+	DNSHijack  bool
 }
 
+// RunHttpOnlyOptions is deprecated; use RunTunOptions with HttpOnly set.
+type RunHttpOnlyOptions = RunTunOptions
+
 type BuildConfigOptions struct {
-	BindInterface  string
-	LocalSocksPort int // when > 0, proxy outbound is SOCKS to local xray sidecar
+	BindInterface   string
+	LocalSocksPort  int // when > 0, proxy outbound is SOCKS to local xray sidecar
+	HttpOnly        bool
+	Policy          *DomainPolicy
+	DNSHijack       bool // http-only: optional; full VPN always hijacks DNS
+	InitialUseProxy bool // http-only selector default when ws-proxy is up
 }
 
 type TestHooks struct {

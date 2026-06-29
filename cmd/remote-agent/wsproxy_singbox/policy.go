@@ -30,7 +30,7 @@ type DomainPattern struct {
 	Value    string // exact host, or suffix ".zone" for wildcard
 }
 
-// DomainPolicy is the resolved routing policy for vpn-http-only.
+// DomainPolicy is the resolved routing policy for vpn / vpn --http-only.
 type DomainPolicy struct {
 	Mode    PolicyMode
 	Include []DomainPattern

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hotspot diagnostics for remote-agent ws-proxy / vpn-http-only.
+# Hotspot diagnostics for remote-agent ws-proxy vpn.
 # Run on the network you are testing (e.g. iPhone hotspot), not stable WiFi.
 #
 # Usage:
@@ -213,7 +213,7 @@ else
 fi
 if [[ -n "$SYS_GOOGLE" && -n "$TRUSTED_GOOGLE" && "$SYS_GOOGLE" != "$TRUSTED_GOOGLE" ]]; then
 	if ! is_likely_google_ipv4 "$SYS_GOOGLE" || ! is_likely_google_ipv4 "$TRUSTED_GOOGLE"; then
-		echo "  note: system and 8.8.8.8 disagree with pollution — use vpn-http-only --dns-hijack"
+		echo "  note: system and 8.8.8.8 disagree with pollution — use vpn --http-only --dns-hijack"
 	fi
 fi
 if [[ -n "$TRUSTED_GOOGLE" ]] && ! is_likely_google_ipv4 "$TRUSTED_GOOGLE"; then
@@ -282,13 +282,13 @@ fi
 section "Summary"
 if [[ "$failures" -eq 0 ]]; then
 	echo "  PASS — hotspot path looks healthy from these checks"
-	echo "  If vpn-http-only still fails after TUN comes up, the issue is likely TUN routing timing."
+	echo "  If vpn --http-only still fails after TUN comes up, the issue is likely TUN routing timing."
 	exit 0
 fi
 
 echo "  FAIL — $failures check group(s) failed on this network"
 echo "  Common fixes:"
-echo "    - DNS polluted → remote-agent ws-proxy vpn-http-only --dns-hijack"
+echo "    - DNS polluted → remote-agent ws-proxy vpn --http-only --dns-hijack"
 echo "    - ws-proxy host unknown → bash $0 --host YOUR.ws-subdomain.xhd2015.xyz"
 echo "    - curl timeouts with good DNS → hotspot may be blocking Cloudflare; try again or different network"
 exit 1

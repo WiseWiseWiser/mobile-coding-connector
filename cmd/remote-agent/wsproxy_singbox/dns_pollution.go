@@ -9,7 +9,7 @@ import (
 
 const dnsPollutionProbeHost = "www.google.com"
 
-const dnsHijackRetryHint = "Retry with: remote-agent ws-proxy vpn-http-only --dns-hijack"
+const dnsHijackRetryHint = "Retry with: remote-agent ws-proxy vpn --http-only --dns-hijack"
 
 // DNSPollutionResult summarizes a system vs trusted DNS comparison.
 type DNSPollutionResult struct {
@@ -129,7 +129,7 @@ func MaybeWarnDNSPollution(dnsHijack bool) {
 	}
 	fmt.Fprintf(os.Stderr, "warning: system DNS may be polluted (common on phone hotspot).\n")
 	fmt.Fprintf(os.Stderr, "         %s → %s (system), %s (8.8.8.8)\n", check.Host, check.SystemIP, check.TrustedIP)
-	fmt.Fprintf(os.Stderr, "         HTTPS through vpn-http-only can hang without DNS hijack.\n")
+	fmt.Fprintf(os.Stderr, "         HTTPS through vpn --http-only can hang without --dns-hijack.\n")
 	if check.TrustedIP != "" && !isLikelyGoogleIPv4(check.TrustedIP) {
 		fmt.Fprintf(os.Stderr, "         Note: direct 8.8.8.8 is also polluted on this network; --dns-hijack resolves via ws-proxy.\n")
 	}

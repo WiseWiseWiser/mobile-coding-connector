@@ -17,16 +17,12 @@ Subcommands:
       Fetch VMess params from server and emit a sing-box TUN config.
       Default writes JSON to stdout.
 
-  run-tun [--yes] [--no-install] [--config FILE] [--detach]
-      Start sing-box TUN tunnel.
-      Without --config, fetches VMess params and builds config automatically.
-      With --detach, starts sing-box in background and exits.
+  run-tun [vpn options]
+      Same as ws-proxy vpn — start sing-box TUN tunnel.
 
 Options:
-  --yes          Skip install confirmation prompt (implies yes to Homebrew)
-  --no-install   Fail if sing-box is not on PATH
-  --config FILE  Use existing sing-box config file
-  --detach       Run sing-box in background
+  --http-only, --whitelist, --blacklist, --include, --exclude, --dns-hijack
+  --yes, --no-install, --config FILE, --detach
 
 Examples:
   remote-agent ws-proxy sing-box client-config
@@ -71,24 +67,9 @@ func wsproxySingBoxClientConfig(getClient func() (*client.Client, error), args [
 }
 
 func wsproxySingBoxRunTun(getClient func() (*client.Client, error), args []string) error {
-	var yes bool
-	var noInstall bool
-	var configFile string
-	var detach bool
-	_, err := flags.
-		Bool("--yes", &yes).
-		Bool("--no-install", &noInstall).
-		String("--config", &configFile).
-		Bool("--detach", &detach).
-		Help("-h,--help", singBoxHelp).
-		Parse(args)
+	opts, err := parseVpnFlags(args, singBoxHelp)
 	if err != nil {
 		return err
 	}
-	return singbox.RunTun(getClient, singbox.RunTunOptions{
-		ConfigFile: configFile,
-		Yes:        yes,
-		NoInstall:  noInstall,
-		Detach:     detach,
-	})
+	return singbox.RunTun(getClient, opts)
 }

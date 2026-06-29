@@ -53,12 +53,10 @@ Subcommands:
   sing-box run-tun [--yes] [--no-install] [--config FILE] [--detach]
       Start sing-box TUN tunnel for ws-proxy.
 
-  vpn [--yes] [--no-install] [--config FILE] [--detach]
-      Alias for sing-box run-tun — start a system-wide TUN mini-VPN.
-
-  vpn-http-only [--whitelist|--blacklist] [--include PATTERN] [--exclude PATTERN] [--dns-hijack] [--detach]
-      HTTP/HTTPS-only TUN — no HTTP_PROXY env; non-web traffic stays direct.
-      Falls back to direct when ws-proxy is unavailable. Use --dns-hijack on polluted DNS.
+  vpn [--http-only] [--whitelist|--blacklist] [--include PATTERN] [--exclude PATTERN] [--dns-hijack] [--detach]
+      Start sing-box TUN via ws-proxy. Default: full mini-VPN (all traffic).
+      --http-only: HTTP/HTTPS only with direct fallback when ws-proxy is down.
+      Domain filters work in both modes. Use --dns-hijack on polluted hotspot DNS.
 
 Examples:
   remote-agent ws-proxy start --tmp
@@ -74,8 +72,9 @@ Examples:
   remote-agent ws-proxy sing-box client-config
   remote-agent ws-proxy sing-box run-tun --detach
   remote-agent ws-proxy vpn
-  remote-agent ws-proxy vpn-http-only --dns-hijack
-  remote-agent ws-proxy vpn-http-only --whitelist --include '*.internal.corp'
+  remote-agent ws-proxy vpn --http-only --dns-hijack
+  remote-agent ws-proxy vpn --whitelist --include '*.internal.corp'
+  remote-agent ws-proxy vpn --http-only --blacklist --exclude github.com
 `
 
 func runWSProxy(getClient func() (*client.Client, error), args []string) error {
@@ -106,9 +105,7 @@ func runWSProxy(getClient func() (*client.Client, error), args []string) error {
 	case "sing-box":
 		return wsproxySingBox(getClient, rest)
 	case "vpn":
-		return wsproxySingBoxRunTun(getClient, rest)
-	case "vpn-http-only":
-		return wsproxyHttpOnly(getClient, rest)
+		return wsproxyVpn(getClient, rest)
 	default:
 		fmt.Print(wsproxyHelp)
 		return nil

@@ -226,6 +226,90 @@ func proxyServerAddress(host string, proxyIPs []string) string {
 }
 
 func BuildSingBoxTunConfig(vmess *VMessParams, opts *BuildConfigOptions) ([]byte, error) {
+	if vmess == nil {
+		return nil, fmt.Errorf("vmess params required")
+	}
+	if opts != nil && opts.HttpOnly {
+		return buildSingBoxHttpOnlyTunConfig(vmess, opts)
+	}
+	return buildSingBoxFullTunConfig(vmess, opts)
+}
+
+func buildSingBoxHttpOnlyTunConfig(vmess *VMessParams, opts *BuildConfigOptions) ([]byte, error) {
+	if opts == nil {
+		opts = &BuildConfigOptions{HttpOnly: true}
+	}
+	localSocksPort := opts.LocalSocksPort
+	if localSocksPort <= 0 {
+		return nil, fmt.Errorf("http-only config requires local xray SOCKS port")
+	}
+
+	defaultOutbound := directOutboundTag
+	if opts.InitialUseProxy {
+		defaultOutbound = proxyOutboundTag
+	}
+
+	routeRules := []map[string]any{{"action": "sniff"}}
+	if opts.DNSHijack {
+		routeRules = appendHttpOnlyDNSRouteRules(routeRules)
+	}
+	routeRules = appendBuiltinBypassRules(routeRules, vmess, localSocksPort)
+	routeRules = appendPolicyRouteRules(routeRules, opts.Policy, webSelectorTag, true)
+
+	bindIface := defaultOutboundBindInterface()
+	if bindIface != "" && opts.BindInterface == "" {
+		opts.BindInterface = bindIface
+	}
+	proxyOutbound, directOutbound := buildSocksProxyOutbounds(localSocksPort, opts.BindInterface)
+
+	dnsCfg := buildHttpOnlyDNSConfigLocal()
+	strictRoute := false
+	if opts.DNSHijack {
+		dnsCfg = buildTunDNSConfig(vmess.Host, localSocksPort)
+		strictRoute = true
+	}
+
+	routeCfg := map[string]any{
+		"rules":                 routeRules,
+		"auto_detect_interface": true,
+		"final":                 directOutboundTag,
+	}
+	if opts.DNSHijack {
+		routeCfg["default_domain_resolver"] = "bootstrap"
+	}
+
+	cfg := map[string]any{
+		"log": map[string]any{
+			"level":  "info",
+			"output": singBoxLogPath(),
+		},
+		"dns": dnsCfg,
+		"experimental": map[string]any{
+			"clash_api": map[string]any{
+				"external_controller": clashAPIListen,
+			},
+		},
+		"inbounds": []map[string]any{{
+			"type": "tun", "tag": "tun-in",
+			"address": []string{"172.19.0.1/30"}, "mtu": 1280,
+			"auto_route": true, "strict_route": strictRoute, "stack": "system",
+			"route_exclude_address": tunRouteExcludeAddresses(vmess.Host),
+		}},
+		"outbounds": []map[string]any{
+			{
+				"type": "selector", "tag": webSelectorTag,
+				"outbounds": []string{proxyOutboundTag, directOutboundTag},
+				"default":   defaultOutbound,
+			},
+			proxyOutbound,
+			directOutbound,
+		},
+		"route": routeCfg,
+	}
+	return marshalSingBoxConfig(cfg)
+}
+
+func buildSingBoxFullTunConfig(vmess *VMessParams, opts *BuildConfigOptions) ([]byte, error) {
 	port := 443
 	if vmess.Port != "" {
 		if p, err := strconv.Atoi(vmess.Port); err == nil && p > 0 {
@@ -243,130 +327,99 @@ func BuildSingBoxTunConfig(vmess *VMessParams, opts *BuildConfigOptions) ([]byte
 
 	bindIface := ""
 	localSocksPort := 0
+	var policy *DomainPolicy
 	if opts != nil {
 		bindIface = opts.BindInterface
 		localSocksPort = opts.LocalSocksPort
+		policy = opts.Policy
 	}
 
-	routeRules := []map[string]any{
-		{"action": "sniff"},
-	}
+	routeRules := []map[string]any{{"action": "sniff"}}
 	if localSocksPort == 0 {
 		routeRules = append(routeRules, map[string]any{
-			"action":   "resolve",
-			"server":   "remote",
-			"strategy": "ipv4_only",
-		})
-	}
-	routeRules = append(routeRules,
-		map[string]any{
-			"type": "logical",
-			"mode": "or",
-			"rules": []map[string]any{
-				{"protocol": "dns"},
-				{"port": 53},
-			},
-			"action": "hijack-dns",
-		},
-		map[string]any{
-			"action":   "route",
-			"domain":   []string{vmess.Host},
-			"outbound": "direct",
-		},
-	)
-	if len(proxyIPs) > 0 {
-		routeRules = append(routeRules, map[string]any{
-			"action":   "route",
-			"ip_cidr":  proxyIPs,
-			"outbound": "direct",
+			"action": "resolve", "server": "remote", "strategy": "ipv4_only",
 		})
 	}
 	routeRules = append(routeRules, map[string]any{
-		"action":   "route",
-		"ip_cidr":  lanBypassCIDRs,
-		"outbound": "direct",
+		"type": "logical", "mode": "or",
+		"rules": []map[string]any{{"protocol": "dns"}, {"port": 53}},
+		"action": "hijack-dns",
 	})
+	routeRules = appendBuiltinBypassRules(routeRules, vmess, localSocksPort)
+	routeRules = appendPolicyRouteRules(routeRules, policy, proxyOutboundTag, false)
+
+	finalOutbound := proxyOutboundTag
+	if policy != nil && policy.Mode == PolicyWhitelist {
+		finalOutbound = directOutboundTag
+	}
 
 	var proxyOutbound map[string]any
+	var directOutbound map[string]any
 	if localSocksPort > 0 {
-		proxyOutbound = map[string]any{
-			"type":        "socks",
-			"tag":         "proxy",
-			"server":      "127.0.0.1",
-			"server_port": localSocksPort,
-			"version":     "5",
-			"udp_over_tcp": map[string]any{
-				"enabled": true,
-				"version": 2,
-			},
-		}
+		proxyOutbound, directOutbound = buildSocksProxyOutbounds(localSocksPort, bindIface)
 	} else {
 		proxyServer := proxyServerAddress(vmess.Host, proxyIPs)
 		proxyOutbound = map[string]any{
-			"type":        "vmess",
-			"tag":         "proxy",
-			"server":      proxyServer,
-			"server_port": port,
-			"uuid":        vmess.UUID,
-			"security":    "auto",
-			"alter_id":    alterID,
+			"type": "vmess", "tag": proxyOutboundTag,
+			"server": proxyServer, "server_port": port,
+			"uuid": vmess.UUID, "security": "auto", "alter_id": alterID,
 			"transport": map[string]any{
-				"type": "ws",
-				"path": vmess.Path,
-				"headers": map[string]any{
-					"Host": vmess.Host,
-				},
+				"type": "ws", "path": vmess.Path,
+				"headers": map[string]any{"Host": vmess.Host},
 			},
 			"tls": map[string]any{
-				"enabled":     tlsEnabled,
-				"server_name": vmess.Host,
-				"utls": map[string]any{
-					// uTLS Chrome fingerprint makes Cloudflare return HTTP 404 on the
-					// ws-proxy WebSocket upgrade; standard TLS matches xray and works.
-					"enabled": false,
-				},
+				"enabled": tlsEnabled, "server_name": vmess.Host,
+				"utls": map[string]any{"enabled": false},
 			},
 		}
 		if proxyServer == vmess.Host {
 			proxyOutbound["domain_resolver"] = "bootstrap"
 		}
 	}
-	directOutbound := map[string]any{
-		"type": "direct",
-		"tag":  "direct",
+	if directOutbound == nil {
+		directOutbound = map[string]any{"type": "direct", "tag": directOutboundTag}
 	}
 	if bindIface != "" {
-		// bind_interface on the proxy outbound breaks sing-box native VMess under
-		// TUN; the xray sidecar path dials ws-proxy from userspace without TUN.
 		if localSocksPort == 0 {
 			proxyOutbound["bind_interface"] = bindIface
 		}
-		directOutbound["bind_interface"] = bindIface
+		if _, ok := directOutbound["bind_interface"]; !ok {
+			directOutbound["bind_interface"] = bindIface
+		}
 	}
-	outbounds := []map[string]any{proxyOutbound, directOutbound}
+
+	routeCfg := buildTunRouteConfig(routeRules, localSocksPort)
+	routeCfg["final"] = finalOutbound
 
 	cfg := map[string]any{
-		"log": map[string]any{
-			"level":  "info",
-			"output": singBoxLogPath(),
-		},
+		"log": map[string]any{"level": "info", "output": singBoxLogPath()},
 		"dns": buildTunDNSConfig(vmess.Host, localSocksPort),
-		"inbounds": []map[string]any{
-			{
-				"type":                   "tun",
-				"tag":                    "tun-in",
-				"address":                []string{"172.19.0.1/30"},
-				"mtu":                    1280,
-				"auto_route":             true,
-				"strict_route":           true,
-				"stack":                  "system",
-				"route_exclude_address":  tunRouteExcludeAddresses(vmess.Host),
-			},
-		},
-		"outbounds": outbounds,
-		"route": buildTunRouteConfig(routeRules, localSocksPort),
+		"inbounds": []map[string]any{{
+			"type": "tun", "tag": "tun-in",
+			"address": []string{"172.19.0.1/30"}, "mtu": 1280,
+			"auto_route": true, "strict_route": true, "stack": "system",
+			"route_exclude_address": tunRouteExcludeAddresses(vmess.Host),
+		}},
+		"outbounds": []map[string]any{proxyOutbound, directOutbound},
+		"route":     routeCfg,
 	}
+	return marshalSingBoxConfig(cfg)
+}
 
+func buildSocksProxyOutbounds(localSocksPort int, bindIface string) (map[string]any, map[string]any) {
+	proxyOutbound := map[string]any{
+		"type": "socks", "tag": proxyOutboundTag,
+		"server": "127.0.0.1", "server_port": localSocksPort, "version": "5",
+		"udp_over_tcp": map[string]any{"enabled": true, "version": 2},
+	}
+	directOutbound := map[string]any{"type": "direct", "tag": directOutboundTag}
+	if bindIface != "" {
+		directOutbound["bind_interface"] = bindIface
+	}
+	return proxyOutbound, directOutbound
+}
+
+func marshalSingBoxConfig(cfg map[string]any) ([]byte, error) {
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("marshal sing-box config: %w", err)

@@ -80,6 +80,31 @@ func TestBuildSingBoxHttpOnlyTunConfigDNSHijack(t *testing.T) {
 	}
 }
 
+func TestBuildSingBoxFullVPNBlacklistExclude(t *testing.T) {
+	vmess := &VMessParams{Host: "proxy.example.com", Port: "443", UUID: "u", Path: "/ws", TLS: "tls"}
+	policy, err := ParseDomainPolicy(PolicyInput{Exclude: []string{"github.com"}})
+	if err != nil {
+		t.Fatalf("ParseDomainPolicy: %v", err)
+	}
+	data, err := BuildSingBoxTunConfig(vmess, &BuildConfigOptions{
+		LocalSocksPort: 11080,
+		Policy:         policy,
+	})
+	if err != nil {
+		t.Fatalf("BuildSingBoxTunConfig: %v", err)
+	}
+	var cfg map[string]any
+	_ = json.Unmarshal(data, &cfg)
+	route, _ := cfg["route"].(map[string]any)
+	if route["final"] != proxyOutboundTag {
+		t.Fatalf("final = %v, want %s", route["final"], proxyOutboundTag)
+	}
+	rules := routeRulesFromCfg(cfg)
+	if rulesContainCatchAll(rules) {
+		t.Fatalf("full VPN should not include HTTP catch-all: %v", rules)
+	}
+}
+
 func TestBuildSingBoxHttpOnlyWhitelistOmitsCatchAll(t *testing.T) {
 	vmess := &VMessParams{Host: "proxy.example.com", Port: "443", UUID: "u", Path: "/ws", TLS: "tls"}
 	policy, err := ParseDomainPolicy(PolicyInput{Include: []string{"*.corp.com"}})

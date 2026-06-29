@@ -1,7 +1,7 @@
-// Client-side smoke helper for remote-agent ws-proxy vpn-http-only.
+// Client-side smoke helper for remote-agent ws-proxy vpn --http-only.
 //
 // Assumes ws-proxy is already running on the configured remote server.
-// Prompts you to start vpn-http-only in another terminal (sudo), then runs curl checks.
+// Prompts you to start vpn --http-only in another terminal (sudo), then runs curl checks.
 //
 // Usage:
 //
@@ -75,7 +75,7 @@ func main() {
 		fmt.Println("FAIL:", err)
 		os.Exit(1)
 	}
-	fmt.Println("PASS: vpn-http-only smoke checks completed")
+	fmt.Println("PASS: vpn --http-only smoke checks completed")
 }
 
 func parseArgs(args []string) (options, error) {
@@ -131,16 +131,16 @@ Client-side smoke helper. Requires ws-proxy already running on the remote server
 
 Options:
   --try-url URL        Additional HTTPS URL to curl (no HTTP_PROXY env)
-  --whitelist          Forwarded to suggested vpn-http-only command
-  --blacklist          Forwarded to suggested vpn-http-only command
+  --whitelist          Forwarded to suggested vpn --http-only command
+  --blacklist          Forwarded to suggested vpn --http-only command
   --include PATTERN    Repeatable
   --exclude PATTERN    Repeatable
-  --dns-hijack         Forwarded to suggested vpn-http-only command
+  --dns-hijack         Forwarded to suggested vpn --http-only command
   --skip-doctor        Skip ws-proxy doctor preflight
   --skip-status        Skip ws-proxy status preflight
 
 The script prints a sudo command for another terminal, waits for Enter after
-"TUN ready on", runs curl checks, then waits for you to stop vpn-http-only.
+"TUN ready on", runs curl checks, then waits for you to stop vpn --http-only.
 `)
 }
 
@@ -171,7 +171,7 @@ func runSmoke(ctx context.Context, agent string, opts options) error {
 	fmt.Println("=== [2b/5] DNS pollution check ===")
 	wsproxy_singbox.MaybeWarnDNSPollution(opts.dnsHijack)
 
-	fmt.Println("=== [3/5] start vpn-http-only (manual) ===")
+	fmt.Println("=== [3/5] start vpn --http-only (manual) ===")
 	fmt.Println("Run this in another terminal and enter your sudo password if prompted:")
 	fmt.Println()
 	fmt.Printf("  %s\n", suggestedVPNCommand(agent, opts))
@@ -195,9 +195,9 @@ func runSmoke(ctx context.Context, agent string, opts options) error {
 		fmt.Printf("OK: --try-url %s\n", opts.tryURL)
 	}
 
-	fmt.Println("=== [5/5] stop vpn-http-only (manual) ===")
-	fmt.Println("Press Ctrl+C in the vpn-http-only terminal (or stop sing-box), then continue.")
-	if !waitForEnter("Press Enter after vpn-http-only has stopped...") {
+	fmt.Println("=== [5/5] stop vpn --http-only (manual) ===")
+	fmt.Println("Press Ctrl+C in the vpn terminal (or stop sing-box), then continue.")
+	if !waitForEnter("Press Enter after vpn has stopped...") {
 		return ctx.Err()
 	}
 	emergencyCleanup()
@@ -209,7 +209,7 @@ func suggestedVPNCommand(agent string, opts options) string {
 	if os.Geteuid() != 0 {
 		parts = append(parts, "sudo")
 	}
-	parts = append(parts, shellQuote(agent), "ws-proxy", "vpn-http-only")
+	parts = append(parts, shellQuote(agent), "ws-proxy", "vpn", "--http-only")
 	if opts.dnsHijack {
 		parts = append(parts, "--dns-hijack")
 	}
@@ -298,7 +298,6 @@ func emergencyCleanup() {
 		for _, pattern := range []string{
 			"sing-box run -c",
 			"xray run -c",
-			"remote-agent ws-proxy vpn-http-only",
 			"remote-agent ws-proxy vpn",
 		} {
 			_ = exec.Command("pkill", "-f", pattern).Run()
