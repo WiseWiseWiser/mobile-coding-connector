@@ -20,17 +20,20 @@ ai-critic React app.
   JSON result line to stdout.
 - **File Transfer store** — flat `{AI_CRITIC_HOME}/file-transfer/` directory
   backing the dedicated `/api/file-transfer` endpoints and `FileTransferView`.
-- **FileTransferView** — WeChat-like inbox: list uploaded files, upload
-  (button + drag-and-drop), download, and remove (with confirmation).
+- **Scratch pad** — single `scratch.json` blob (`content`, `updated_at`) served
+  by `GET`/`PUT /api/file-transfer/scratch`; last write wins, no history.
+- **FileTransferView** — WeChat-like inbox: shared scratch textarea (Save/Copy)
+  above the file list; upload (button + drag-and-drop), download, and remove
+  (with confirmation).
 
 **Behaviors**
 
-- Root `Run` starts quick-test, waits for health, optionally seeds the file
-  transfer directory, injects `BASE_URL` and `CASE_DIR` into the script, runs
-  Playwright, and parses `ScriptResult`.
+- Root `Run` starts quick-test, waits for health, optionally resets/seeds the
+  file transfer directory and `scratch.json`, injects `BASE_URL` and `CASE_DIR`
+  into the script, runs Playwright, and parses `ScriptResult`.
 - Navigation leaves verify routes render expected headings and shell UI.
-- File-transfer leaves verify list state, upload, download, and delete against
-  the dedicated API and UI.
+- File-transfer leaves verify scratch pad state, list state, upload, download,
+  and delete against the dedicated API and UI.
 
 ## Version
 
@@ -53,8 +56,12 @@ ai-critic React app.
  |    |
  |    +-- generate-random-uninitialized/ (LEAF)  Generate Random fills credential
  |
- +-- file-transfer/                        (grouping — inbox operations)
+ +-- file-transfer/                        (grouping — inbox + scratch pad)
       |
+      +-- scratch-empty/                  (LEAF)  no scratch.json → empty textarea + API
+      +-- scratch-display/                (LEAF)  seeded scratch.json → textarea on load
+      +-- scratch-save/                   (LEAF)  type + Save → persisted via PUT
+      +-- scratch-copy/                   (LEAF)  seeded content → Copy → clipboard
       +-- list-empty/                     (LEAF)  empty dir → empty-state message
       +-- upload-and-list/                (LEAF)  UI upload → row appears
       +-- download-file/                  (LEAF)  seeded file → browser download
@@ -69,12 +76,16 @@ ai-critic React app.
 | 2 | `navigation/tools-loads` | Navigates to `/home/tools` and verifies the Server Tools page loads |
 | 3 | `navigation/settings-loads` | Navigates to `/home/settings` and verifies the Settings heading is visible |
 | 4 | `navigation/root-redirects-home` | Navigates to `/` and verifies redirect to `/home` |
-| 5 | `navigation/file-transfer-loads` | Navigates to `/home/file-transfer`; heading and upload area visible |
+| 5 | `navigation/file-transfer-loads` | Navigates to `/home/file-transfer`; heading, scratch area, and upload area visible |
 | 6 | `setup/generate-random-uninitialized` | Uninitialized server: Generate Random fills 64-char credential (no error) |
-| 7 | `file-transfer/list-empty` | Empty `file-transfer/` dir shows empty-state message; file count 0 |
-| 8 | `file-transfer/upload-and-list` | Upload `testdata/sample.txt` via UI; row with name and size appears |
-| 9 | `file-transfer/download-file` | Pre-seeded `hello.txt`; Download triggers save as `hello.txt` |
-| 10 | `file-transfer/delete-file` | Pre-seeded `temp.txt`; Remove confirms; row gone and absent from API |
+| 7 | `file-transfer/scratch-empty` | No `scratch.json`; scratch section visible; textarea empty; API `content: ""` |
+| 8 | `file-transfer/scratch-display` | Seeded `scratch.json`; textarea shows seeded text on page load |
+| 9 | `file-transfer/scratch-save` | Type in scratch textarea, click Save; API and textarea retain saved text |
+| 10 | `file-transfer/scratch-copy` | Seeded scratch; Copy button; clipboard matches seeded content |
+| 11 | `file-transfer/list-empty` | Empty `file-transfer/` dir shows empty-state message; file count 0 |
+| 12 | `file-transfer/upload-and-list` | Upload `testdata/sample.txt` via UI; row with name and size appears |
+| 13 | `file-transfer/download-file` | Pre-seeded `hello.txt`; Download triggers save as `hello.txt` |
+| 14 | `file-transfer/delete-file` | Pre-seeded `temp.txt`; Remove confirms; row gone and absent from API |
 
 ## Parameter Coverage
 
@@ -86,6 +97,10 @@ ai-critic React app.
 | root-redirects-home | `/` | — | redirect | 90 |
 | file-transfer-loads | `/home/file-transfer` | any | page load | 90 |
 | generate-random-uninitialized | `/` (Setup) | uninitialized | generate | 120 |
+| scratch-empty | `/home/file-transfer` | no `scratch.json` (reset) | scratch load | 90 |
+| scratch-display | `/home/file-transfer` | seeded `scratch.json` | scratch load | 90 |
+| scratch-save | `/home/file-transfer` | scratch reset | scratch save | 90 |
+| scratch-copy | `/home/file-transfer` | seeded `scratch.json` | scratch copy | 90 |
 | list-empty | `/home/file-transfer` | empty (reset) | list | 90 |
 | upload-and-list | `/home/file-transfer` | empty (reset) | upload + list | 120 |
 | download-file | `/home/file-transfer` | seeded `hello.txt` | download | 90 |
@@ -95,7 +110,7 @@ ai-critic React app.
 
 1. Resolves repo root and starts quick-test server (`lib.QuickTestPrepare` + `lib.QuickTestStart`)
 2. Waits for `/api/quick-test/health` or `/ping`
-3. Optionally resets/seeds `{AI_CRITIC_HOME}/file-transfer/` per `Request.FileTransferReset` and `Request.FileTransferSeeds`
+3. Optionally resets/seeds `{AI_CRITIC_HOME}/file-transfer/` per `Request.FileTransferReset` and `Request.FileTransferSeeds`, and `scratch.json` per `Request.FileTransferScratchReset` and `Request.FileTransferScratchSeed`
 4. Reads leaf `script.js` from the case directory (working directory at runtime)
 5. Injects `const BASE_URL` and `const CASE_DIR` preamble
 6. Executes via headless Playwright (default) or `playwright-debug run` when visible
@@ -121,6 +136,15 @@ Run navigation leaves:
 ```sh
 doctest test ./tests/frontend/navigation/home-loads
 doctest test ./tests/frontend/navigation/file-transfer-loads
+```
+
+Run scratch pad leaves (expect RED until implemented):
+
+```sh
+doctest test ./tests/frontend/file-transfer/scratch-empty
+doctest test ./tests/frontend/file-transfer/scratch-display
+doctest test ./tests/frontend/file-transfer/scratch-save
+doctest test ./tests/frontend/file-transfer/scratch-copy
 ```
 
 Run file-transfer leaves:
@@ -168,14 +192,20 @@ type FileTransferSeed struct {
 	SourcePath string
 }
 
+type ScratchSeed struct {
+	Content string
+}
+
 type Request struct {
-	ScriptPath        string
-	ServerPort        int
-	TimeoutSecs       int
-	Headless          *bool
-	Uninitialized     bool
-	FileTransferReset bool
-	FileTransferSeeds []FileTransferSeed
+	ScriptPath               string
+	ServerPort               int
+	TimeoutSecs              int
+	Headless                 *bool
+	Uninitialized            bool
+	FileTransferReset        bool
+	FileTransferSeeds        []FileTransferSeed
+	FileTransferScratchReset bool
+	FileTransferScratchSeed  *ScratchSeed
 }
 
 type Response struct {
@@ -315,6 +345,9 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if err := prepareFileTransfer(req, resp.ConfigHome, caseDir); err != nil {
 		return resp, fmt.Errorf("prepare file-transfer dir: %w", err)
 	}
+	if err := prepareScratch(req, resp.ConfigHome); err != nil {
+		return resp, fmt.Errorf("prepare scratch.json: %w", err)
+	}
 
 	preamble := fmt.Sprintf("const BASE_URL = %q;\nconst CASE_DIR = %q;\n", baseURL, caseDir)
 	fullScript := preamble + string(scriptBytes)
@@ -426,6 +459,68 @@ func runPlaywrightScript(ctx context.Context, headless bool, script string, stdo
 
 func fileTransferDir(configHome string) string {
 	return filepath.Join(configHome, "file-transfer")
+}
+
+func scratchJSONPath(configHome string) string {
+	return filepath.Join(fileTransferDir(configHome), "scratch.json")
+}
+
+type scratchJSON struct {
+	Content   string `json:"content"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+func prepareScratch(req *Request, configHome string) error {
+	if configHome == "" {
+		return nil
+	}
+	if !req.FileTransferScratchReset && req.FileTransferScratchSeed == nil {
+		return nil
+	}
+
+	dir := fileTransferDir(configHome)
+	if req.FileTransferScratchReset {
+		if err := os.Remove(scratchJSONPath(configHome)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("reset scratch.json: %w", err)
+		}
+	}
+	if req.FileTransferScratchSeed != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create file-transfer dir for scratch seed: %w", err)
+		}
+		payload := scratchJSON{
+			Content:   req.FileTransferScratchSeed.Content,
+			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+		}
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("marshal scratch.json: %w", err)
+		}
+		if err := os.WriteFile(scratchJSONPath(configHome), data, 0o644); err != nil {
+			return fmt.Errorf("write scratch.json: %w", err)
+		}
+	}
+	return nil
+}
+
+func fetchScratchContent(baseURL string) (string, error) {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(baseURL + "/api/file-transfer/scratch")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("GET /api/file-transfer/scratch status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var payload struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", err
+	}
+	return payload.Content, nil
 }
 
 func prepareFileTransfer(req *Request, configHome, caseDir string) error {

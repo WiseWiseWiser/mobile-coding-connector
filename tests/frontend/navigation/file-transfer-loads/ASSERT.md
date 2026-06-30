@@ -5,7 +5,8 @@
 3. `Response.ScriptResult["ok"]` is `true`.
 4. `Response.ScriptResult["url"]` contains `/home/file-transfer`.
 5. `Response.ScriptResult["heading"]` contains `File Transfer`.
-6. `Response.ScriptResult["uploadAreaVisible"]` is `true`.
+6. `Response.ScriptResult["scratchAreaVisible"]` is `true`.
+7. `Response.ScriptResult["uploadAreaVisible"]` is `true`.
 
 ## Side Effects
 
@@ -15,11 +16,11 @@
 ## Errors
 
 - Quick-test server fails to become healthy within the timeout.
-- The File Transfer route is missing or the page heading/upload area does not render.
+- The File Transfer route is missing or the page heading/scratch/upload areas do not render.
 
 ## Exit Code
 
-- `0` — File Transfer page loads with heading and upload area.
+- `0` — File Transfer page loads with heading, scratch area, and upload area.
 - `1` — server, script, or assertion failure.
 
 ```go
@@ -60,11 +61,16 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("expected heading to contain %q, got %q", "File Transfer", heading)
 	}
 
+	scratchVisible, _ := resp.ScriptResult["scratchAreaVisible"].(bool)
+	if !scratchVisible {
+		t.Fatalf("expected scratch area to be visible: %+v", resp.ScriptResult)
+	}
+
 	uploadVisible, _ := resp.ScriptResult["uploadAreaVisible"].(bool)
 	if !uploadVisible {
 		t.Fatalf("expected upload area to be visible: %+v", resp.ScriptResult)
 	}
 
-	t.Logf("file-transfer page loaded: url=%s heading=%s", url, heading)
+	t.Logf("file-transfer page loaded: url=%s heading=%s scratch=%v upload=%v", url, heading, scratchVisible, uploadVisible)
 }
 ```

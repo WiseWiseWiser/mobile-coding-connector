@@ -1,13 +1,13 @@
 # Scenario
 
-**Feature**: File Transfer inbox operations (list, upload, download, delete)
+**Feature**: File Transfer scratch pad and inbox operations
 
 ```
-# quick-test serves FileTransferView backed by /api/file-transfer
-Run -> {AI_CRITIC_HOME}/file-transfer/ (reset/seed) -> FileTransferView
+# quick-test serves FileTransferView backed by /api/file-transfer + scratch API
+Run -> file-transfer/ (reset/seed files + scratch.json) -> FileTransferView
 
-# Playwright exercises inbox actions; Assert checks UI and API side effects
-leaf script.js -> upload/download/remove -> ScriptResult -> Assert
+# Playwright exercises scratch save/copy and inbox actions
+leaf script.js -> scratch/inbox actions -> ScriptResult -> Assert
 ```
 
 ## Preconditions
@@ -18,16 +18,20 @@ leaf script.js -> upload/download/remove -> ScriptResult -> Assert
 
 ## Steps
 
-1. Each child leaf configures `Request.FileTransferReset` and/or `Request.FileTransferSeeds`.
-2. Root `Run` prepares `{AI_CRITIC_HOME}/file-transfer/` after the server is healthy.
+1. Each child leaf configures `Request.FileTransferReset`, `Request.FileTransferSeeds`,
+   `Request.FileTransferScratchReset`, and/or `Request.FileTransferScratchSeed`.
+2. Root `Run` prepares `{AI_CRITIC_HOME}/file-transfer/` and `scratch.json` after the server is healthy.
 3. The leaf `script.js` opens the File Transfer page and performs the operation under test.
-4. The leaf `Assert` verifies `ScriptResult` and, for delete, the API list.
+4. The leaf `Assert` verifies `ScriptResult` and, where needed, scratch or file-list API state.
 
 ## Context
 
 File Transfer storage is global under `{AI_CRITIC_HOME}/file-transfer/` (flat, no
-nested folders in v1). Leaves isolate storage by resetting the directory or
-seeding known files before the browser script runs.
+nested folders in v1). Scratch content lives in `scratch.json` beside uploaded
+files. Leaves isolate storage by resetting the directory or seeding known files
+and scratch content before the browser script runs. Scratch UI selectors:
+`file-transfer-scratch`, `file-transfer-scratch-input`, `file-transfer-scratch-save`,
+`file-transfer-scratch-copy`.
 
 ```go
 import (

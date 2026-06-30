@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import {
     deleteFileTransfer,
     fileTransferDownloadUrl,
+    getScratch,
     listFileTransfer,
+    saveScratch,
     uploadFileTransfer,
 } from '../../../api/fileTransfer';
 import type { FileTransferEntry } from '../../../api/fileTransfer';
@@ -42,6 +44,21 @@ export function FileTransferView() {
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [dragOver, setDragOver] = useState(false);
+    const [scratchContent, setScratchContent] = useState('');
+    const [scratchLoading, setScratchLoading] = useState(true);
+    const [scratchSaving, setScratchSaving] = useState(false);
+
+    const loadScratch = useCallback(async () => {
+        setScratchLoading(true);
+        try {
+            const scratch = await getScratch();
+            setScratchContent(scratch.content);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setScratchLoading(false);
+        }
+    }, []);
 
     const refresh = useCallback(async () => {
         setError(null);
@@ -57,7 +74,30 @@ export function FileTransferView() {
 
     useEffect(() => {
         void refresh();
-    }, [refresh]);
+        void loadScratch();
+    }, [refresh, loadScratch]);
+
+    const handleScratchSave = async () => {
+        setScratchSaving(true);
+        setError(null);
+        try {
+            const saved = await saveScratch(scratchContent);
+            setScratchContent(saved.content);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setScratchSaving(false);
+        }
+    };
+
+    const handleScratchCopy = async () => {
+        setError(null);
+        try {
+            await navigator.clipboard.writeText(scratchContent);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err));
+        }
+    };
 
     const handleUploadFile = async (file: File) => {
         setUploading(true);
@@ -126,6 +166,42 @@ export function FileTransferView() {
             </div>
 
             <div className="file-transfer-body">
+                <section
+                    className="file-transfer-scratch"
+                    data-testid="file-transfer-scratch"
+                >
+                    <h3 className="file-transfer-scratch-heading">Quick Transfer</h3>
+                    <textarea
+                        className="file-transfer-scratch-input"
+                        data-testid="file-transfer-scratch-input"
+                        value={scratchContent}
+                        onChange={(e) => setScratchContent(e.target.value)}
+                        placeholder="Paste text here to share across devices…"
+                        disabled={scratchLoading || scratchSaving}
+                        rows={4}
+                    />
+                    <div className="file-transfer-scratch-actions">
+                        <button
+                            type="button"
+                            className="file-transfer-scratch-btn"
+                            data-testid="file-transfer-scratch-save"
+                            onClick={() => void handleScratchSave()}
+                            disabled={scratchLoading || scratchSaving}
+                        >
+                            {scratchSaving ? 'Saving…' : 'Save'}
+                        </button>
+                        <button
+                            type="button"
+                            className="file-transfer-scratch-btn file-transfer-scratch-btn--secondary"
+                            data-testid="file-transfer-scratch-copy"
+                            onClick={() => void handleScratchCopy()}
+                            disabled={scratchLoading}
+                        >
+                            Copy
+                        </button>
+                    </div>
+                </section>
+
                 <div
                     className={`file-transfer-upload${dragOver ? ' file-transfer-upload--drag-over' : ''}`}
                     data-testid="file-transfer-upload"

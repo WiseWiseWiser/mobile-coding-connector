@@ -4,20 +4,20 @@
 
 ```
 # user opens /home/file-transfer
-Playwright -> BASE_URL/home/file-transfer -> FileTransferView (heading + upload area)
+Playwright -> BASE_URL/home/file-transfer -> FileTransferView (heading + scratch + upload)
 ```
 
 ## Preconditions
 
 1. Quick-test server is running and healthy.
 2. The frontend route `/home/file-transfer` is registered in the v2 router.
-3. `FileTransferView` renders a page heading and an upload area.
+3. `FileTransferView` renders a page heading, scratch pad section, and upload area.
 
 ## Steps
 
 1. Set `Request.ScriptPath` to `script.js`.
 2. The fixture navigates to `BASE_URL + '/home/file-transfer'`.
-3. Wait for the `File Transfer` heading and verify the upload area is visible.
+3. Wait for the `File Transfer` heading and verify the scratch area and upload area are visible.
 
 ## Context
 

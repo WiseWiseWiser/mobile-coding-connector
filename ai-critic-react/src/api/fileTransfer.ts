@@ -57,3 +57,30 @@ export async function deleteFileTransfer(name: string): Promise<void> {
         throw new Error((err as { error?: string }).error || `Delete failed (${resp.status})`);
     }
 }
+
+export interface ScratchEntry {
+    content: string;
+    updated_at: string;
+}
+
+export async function getScratch(): Promise<ScratchEntry> {
+    const resp = await fetch('/api/file-transfer/scratch');
+    if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error || `Failed to load scratch (${resp.status})`);
+    }
+    return resp.json();
+}
+
+export async function saveScratch(content: string): Promise<ScratchEntry> {
+    const resp = await fetch('/api/file-transfer/scratch', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+    });
+    if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error || `Failed to save scratch (${resp.status})`);
+    }
+    return resp.json();
+}

@@ -7,6 +7,92 @@
     padding: 0 16px 24px;
 }
 
+.file-transfer-scratch {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    border: 1px solid var(--mcc-border-default);
+    border-radius: var(--mcc-radius-xl);
+    background: var(--mcc-bg-card);
+}
+
+.file-transfer-scratch-heading {
+    margin: 0;
+    font-size: var(--mcc-font-size-lg);
+    font-weight: 600;
+    color: var(--mcc-text-primary);
+}
+
+.file-transfer-scratch-input {
+    width: 100%;
+    min-height: 96px;
+    padding: 10px 12px;
+    border: 1px solid var(--mcc-border-input);
+    border-radius: var(--mcc-radius-lg);
+    background: var(--mcc-bg-input);
+    color: var(--mcc-text-primary);
+    font-size: var(--mcc-font-size-md);
+    font-family: inherit;
+    line-height: 1.5;
+    resize: vertical;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease;
+}
+
+.file-transfer-scratch-input:focus {
+    outline: none;
+    border-color: var(--mcc-accent-blue);
+}
+
+.file-transfer-scratch-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.file-transfer-scratch-input::placeholder {
+    color: var(--mcc-text-muted);
+}
+
+.file-transfer-scratch-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.file-transfer-scratch-btn {
+    padding: 8px 16px;
+    border: 1px solid var(--mcc-accent-blue-border);
+    border-radius: var(--mcc-radius-md);
+    background: var(--mcc-accent-blue-bg);
+    color: var(--mcc-accent-blue);
+    font-size: var(--mcc-font-size-md);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.file-transfer-scratch-btn:hover:not(:disabled) {
+    background: rgba(96, 165, 250, 0.2);
+    border-color: var(--mcc-accent-blue);
+}
+
+.file-transfer-scratch-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.file-transfer-scratch-btn--secondary {
+    border-color: var(--mcc-border-input);
+    background: var(--mcc-bg-input);
+    color: var(--mcc-text-primary);
+}
+
+.file-transfer-scratch-btn--secondary:hover:not(:disabled) {
+    background: var(--mcc-bg-card-elevated);
+    border-color: var(--mcc-accent-blue);
+    color: var(--mcc-accent-blue);
+}
+
 .file-transfer-upload {
     display: flex;
     flex-direction: column;

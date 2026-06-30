@@ -14,7 +14,11 @@ import (
 	"github.com/xhd2015/ai-critic/server/config"
 )
 
-const maxUploadSize = 128 << 20 // 128 MB
+const (
+	maxUploadSize  = 128 << 20 // 128 MB
+	maxScratchSize = 256 << 10 // 256 KB
+	scratchFile    = "scratch.json"
+)
 
 // FileTransferEntry describes one file in the transfer inbox.
 type FileTransferEntry struct {
@@ -23,11 +27,18 @@ type FileTransferEntry struct {
 	UploadedAt string `json:"uploaded_at"`
 }
 
+// ScratchEntry is the shared scratch pad blob.
+type ScratchEntry struct {
+	Content   string `json:"content"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 // RegisterAPI registers dedicated file-transfer inbox endpoints.
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/file-transfer", handleRoot)
 	mux.HandleFunc("/api/file-transfer/upload", handleUpload)
 	mux.HandleFunc("/api/file-transfer/download", handleDownload)
+	mux.HandleFunc("/api/file-transfer/scratch", handleScratch)
 }
 
 func handleRoot(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +75,7 @@ func handleList(w http.ResponseWriter, r *http.Request) {
 
 	files := make([]FileTransferEntry, 0, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if entry.IsDir() || entry.Name() == scratchFile {
 			continue
 		}
 		info, err := entry.Info()
@@ -259,4 +270,80 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func scratchPath() string {
+	return filepath.Join(config.FileTransferDir, scratchFile)
+}
+
+func readScratch() (ScratchEntry, error) {
+	path := scratchPath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ScratchEntry{Content: "", UpdatedAt: ""}, nil
+		}
+		return ScratchEntry{}, fmt.Errorf("read scratch: %w", err)
+	}
+	var entry ScratchEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		return ScratchEntry{}, fmt.Errorf("parse scratch: %w", err)
+	}
+	return entry, nil
+}
+
+func handleScratch(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		handleScratchGet(w, r)
+	case http.MethodPut:
+		handleScratchPut(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func handleScratchGet(w http.ResponseWriter, r *http.Request) {
+	entry, err := readScratch()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, entry)
+}
+
+func handleScratchPut(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxScratchSize+1024)
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(req.Content) > maxScratchSize {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("content exceeds maximum size of %d bytes", maxScratchSize))
+		return
+	}
+
+	if _, err := ensureDir(); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	updatedAt := time.Now().UTC().Format(time.RFC3339)
+	entry := ScratchEntry{
+		Content:   req.Content,
+		UpdatedAt: updatedAt,
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("marshal scratch: %v", err))
+		return
+	}
+	if err := os.WriteFile(scratchPath(), data, 0o644); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("write scratch: %v", err))
+		return
+	}
+	writeJSON(w, entry)
 }
