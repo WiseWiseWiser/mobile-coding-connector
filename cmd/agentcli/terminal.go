@@ -3,11 +3,11 @@ package agentcli
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"golang.org/x/term"
 
 	"github.com/xhd2015/ai-critic/client"
+	ptyclient "github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap/client"
 	"github.com/xhd2015/less-gen/flags"
 )
 
@@ -77,8 +77,8 @@ func runTerminalList(resolve func() (*client.Client, error), args []string) erro
 	if err != nil {
 		return err
 	}
-
-	sessions, err := cli.ListTerminalSessions()
+	c := ptyClientFrom(cli)
+	sessions, err := c.List()
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func runTerminalList(resolve func() (*client.Client, error), args []string) erro
 			session.ID,
 			displayOrDash(session.Status),
 			boolWord(session.Connected),
-			formatAgentTime(session.CreatedAt),
+			formatAgentTime(session.CreatedAt.Format("2006-01-02T15:04:05Z07:00")),
 			displayOrDash(session.Name),
 		)
 		if session.Cwd != "" {
@@ -119,10 +119,17 @@ func runTerminalNew(resolve func() (*client.Client, error), args []string) error
 		return fmt.Errorf("remote-agent terminal new requires an interactive terminal on stdin/stdout")
 	}
 
-	return runTerminalSession(resolve, terminalConnectOptions{
-		name: firstArgOr(name, "Terminal"),
-		cwd:  firstArg(args),
+	cli, err := resolve()
+	if err != nil {
+		return err
+	}
+	c := ptyClientFrom(cli)
+	_, err = ptyclient.Attach(c, ptyclient.ConnectOptions{
+		Name: firstArgOr(name, "Terminal"),
+		Cwd:  firstArg(args),
+		Wait: true,
 	})
+	return err
 }
 
 func runTerminalClose(resolve func() (*client.Client, error), args []string) error {
@@ -138,12 +145,12 @@ func runTerminalClose(resolve func() (*client.Client, error), args []string) err
 	if err != nil {
 		return err
 	}
-
-	session, err := resolveTerminalTarget(cli, args[0])
+	c := ptyClientFrom(cli)
+	session, err := ptyclient.ResolveTarget(c, args[0])
 	if err != nil {
 		return err
 	}
-	if err := cli.DeleteTerminalSession(session.ID); err != nil {
+	if err := c.Delete(session.ID); err != nil {
 		return err
 	}
 
@@ -167,55 +174,18 @@ func runTerminalAttach(resolve func() (*client.Client, error), args []string) er
 	if err != nil {
 		return err
 	}
-
-	session, err := resolveTerminalTarget(cli, args[0])
+	c := ptyClientFrom(cli)
+	session, err := ptyclient.ResolveTarget(c, args[0])
 	if err != nil {
 		return err
 	}
 
-	return runTerminalSession(resolve, terminalConnectOptions{
-		sessionID:      session.ID,
-		attachSnapshot: true,
+	_, err = ptyclient.Attach(c, ptyclient.ConnectOptions{
+		SessionID:      session.ID,
+		AttachSnapshot: true,
+		Wait:           true,
 	})
-}
-
-func resolveTerminalTarget(cli *client.Client, idOrName string) (*client.TerminalSession, error) {
-	idOrName = strings.TrimSpace(idOrName)
-	if idOrName == "" {
-		return nil, fmt.Errorf("terminal target cannot be empty")
-	}
-
-	sessions, err := cli.ListTerminalSessions()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, session := range sessions {
-		if session.ID == idOrName {
-			session := session
-			return &session, nil
-		}
-	}
-
-	var matches []client.TerminalSession
-	for _, session := range sessions {
-		if session.Name == idOrName {
-			matches = append(matches, session)
-		}
-	}
-
-	switch len(matches) {
-	case 0:
-		return nil, fmt.Errorf("no terminal session found for %q", idOrName)
-	case 1:
-		return &matches[0], nil
-	default:
-		ids := make([]string, 0, len(matches))
-		for _, match := range matches {
-			ids = append(ids, match.ID)
-		}
-		return nil, fmt.Errorf("terminal name %q is ambiguous; matching IDs: %s", idOrName, strings.Join(ids, ", "))
-	}
+	return err
 }
 
 func boolWord(v bool) string {

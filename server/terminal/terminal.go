@@ -1,233 +1,171 @@
 package terminal
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
-
 	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 	"github.com/xhd2015/ai-critic/server/encrypt"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for development
-	},
+// SessionInfo is retained for settings package compatibility.
+type SessionInfo = ptywrap.SessionInfo
+
+// TerminalSessionsResponse is retained for backward compatibility.
+type TerminalSessionsResponse = ptywrap.SessionsResponse
+
+var (
+	adapterOnce sync.Once
+	adapterMgr  *ptywrap.Manager
+)
+
+var wsUpgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// ControlMessage is a JSON message sent from client to control the terminal
-type ControlMessage struct {
-	Type string `json:"type"`
-	Cols int    `json:"cols,omitempty"`
-	Rows int    `json:"rows,omitempty"`
-	Key  string `json:"key,omitempty"` // Encrypted SSH key for SSH connections
+func manager() *ptywrap.Manager {
+	adapterOnce.Do(func() {
+		adapterMgr = ptywrap.NewManager()
+		termCfg, _ := LoadConfig()
+		opts := ptywrap.SpawnOptions{
+			ExtraPaths: tool_resolve.AllExtraPaths(),
+		}
+		if termCfg != nil {
+			opts.Shell = termCfg.Shell
+			opts.ShellFlags = termCfg.ShellFlags
+			opts.PS1 = termCfg.PS1
+			if len(termCfg.ExtraPaths) > 0 {
+				opts.ExtraPaths = append(opts.ExtraPaths, termCfg.ExtraPaths...)
+			}
+		}
+		adapterMgr.Spawn = opts
+	})
+	return adapterMgr
 }
 
-// maxScrollback is the maximum number of bytes kept in the scrollback buffer per session
-const maxScrollback = 256 * 1024 // 256 KB
-
-// SessionInfo is the JSON representation of a session returned to the frontend
-type SessionInfo struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Cwd       string `json:"cwd"`
-	CreatedAt string `json:"created_at"`
-	Status    string `json:"status"`
-	// Connected is true when a WebSocket client is currently attached
-	Connected bool `json:"connected"`
-}
-
-// TerminalSessionsResponse holds paginated terminal sessions response
-type TerminalSessionsResponse struct {
-	Sessions   []SessionInfo `json:"sessions"`
-	Page       int           `json:"page"`
-	PageSize   int           `json:"page_size"`
-	Total      int           `json:"total"`
-	TotalPages int           `json:"total_pages"`
-}
-
-// session holds the state for one persistent terminal session
-type session struct {
-	id        string
-	name      string
-	cwd       string
-	createdAt time.Time
-
-	cmd  *exec.Cmd
-	ptmx *os.File
-	cols int
-	rows int
-
-	mu         sync.Mutex
-	scrollback []byte // ring buffer of recent output
-	conn       *websocket.Conn
-	done       chan struct{} // closed when pty exits
-	exited     bool
-	closeOnce  sync.Once
-	waitOnce   sync.Once
-}
-
-// sessionManager keeps track of all active terminal sessions
-type sessionManager struct {
-	mu       sync.Mutex
-	sessions map[string]*session
-	counter  int
-}
-
-var manager = &sessionManager{
-	sessions: make(map[string]*session),
-}
-
-// RegisterAPI registers the terminal WebSocket endpoint and session management APIs
+// RegisterAPI registers terminal routes backed by ptywrap.
 func RegisterAPI(mux *http.ServeMux) {
-	mux.HandleFunc("/api/terminal", handleTerminalWebSocket)
-	mux.HandleFunc("/api/terminal/sessions", handleSessions)
+	mgr := manager()
+	ptywrap.RegisterAPIWithManager(mux, mgr)
 	mux.HandleFunc("/api/terminal/config", handleConfig)
+	mux.HandleFunc("/api/terminal", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("ssh") == "true" {
+			handleSSHWebSocket(w, r, mgr)
+			return
+		}
+		ptywrap.HandleTerminalWebSocket(w, r, mgr)
+	})
 }
 
-// SSHKeyInfo holds info about an SSH key for terminal connections
-type SSHKeyInfo struct {
-	Name       string
-	PrivateKey string
+type sshControlMessage struct {
+	Type string `json:"type"`
+	Key  string `json:"key,omitempty"`
 }
 
-// ------ Session Manager ------
-
-func (m *sessionManager) create(name, cwd string) (*session, error) {
-	if cwd == "" {
-		var err error
-		cwd, err = os.Getwd()
-		if err != nil {
-			return nil, fmt.Errorf("get cwd: %w", err)
-		}
-	}
-	if info, err := os.Stat(cwd); err != nil || !info.IsDir() {
-		return nil, fmt.Errorf("invalid working directory: %s", cwd)
-	}
-
-	m.mu.Lock()
-	m.counter++
-	id := fmt.Sprintf("session-%d", m.counter)
-	log.Printf("[terminal] creating session %s (name=%q, cwd=%s)", id, name, cwd)
-	m.mu.Unlock()
-
-	// Load terminal config for shell, flags, and extra paths
-	termCfg, _ := LoadConfig()
-
-	shellPath := "bash"
-	shellFlags := []string{"--login", "-i"}
-	if termCfg != nil {
-		if termCfg.Shell != "" {
-			shellPath = termCfg.Shell
-		}
-		if len(termCfg.ShellFlags) > 0 {
-			shellFlags = termCfg.ShellFlags
-		}
-	}
-
-	// Build custom RC patch options
-	patchOpts := rcPatchOptions{
-		ExtraPaths: tool_resolve.AllExtraPaths(),
-	}
-	if termCfg != nil {
-		patchOpts.PS1 = termCfg.PS1
-	}
-
-	// Instead of patching user's RC files, create a dedicated RC file
-	// and tell the shell to use it, so the user's environment stays clean.
-	var extraEnv []string
-	shellBase := filepath.Base(shellPath)
-	switch {
-	case strings.Contains(shellBase, "zsh"):
-		if zdotdir, err := writeCustomZshRC(patchOpts); err == nil {
-			extraEnv = append(extraEnv, "ZDOTDIR="+zdotdir)
-		}
-	default:
-		// bash or other sh-compatible shells: use --rcfile
-		if rcFile, err := writeCustomBashRC(patchOpts); err == nil {
-			// Replace --login with --rcfile so bash reads our custom rc
-			// instead of the standard login sequence
-			shellFlags = replaceLoginWithRCFile(shellFlags, rcFile)
-		}
-	}
-
-	cmd := exec.Command(shellPath, shellFlags...)
-	cmd.Dir = cwd
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
-	cmd.Env = append(cmd.Env, extraEnv...)
-	// Ensure common tool install paths and user-configured paths are in PATH
-	cmd.Env = tool_resolve.AppendExtraPaths(cmd.Env)
-	// Set custom PS1 prompt if configured
-	if termCfg != nil && termCfg.PS1 != "" {
-		cmd.Env = append(cmd.Env, "PS1="+termCfg.PS1)
-	}
-
-	ptmx, err := pty.Start(cmd)
+func handleSSHWebSocket(w http.ResponseWriter, r *http.Request, mgr *ptywrap.Manager) {
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		return nil, fmt.Errorf("start pty: %w", err)
+		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
+		return
 	}
 
-	// Default terminal size
-	pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
+	sshHost := r.URL.Query().Get("host")
+	sshPortStr := r.URL.Query().Get("port")
+	sshUser := r.URL.Query().Get("user")
 
-	s := &session{
-		id:        id,
-		name:      name,
-		cwd:       cwd,
-		createdAt: time.Now(),
-		cmd:       cmd,
-		ptmx:      ptmx,
-		cols:      80,
-		rows:      24,
-		done:      make(chan struct{}),
+	msgType, message, err := conn.ReadMessage()
+	if err != nil {
+		conn.Close()
+		return
+	}
+	if msgType != websocket.TextMessage {
+		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Expected SSH key message"}`))
+		conn.Close()
+		return
+	}
+	var msg sshControlMessage
+	if err := json.Unmarshal(message, &msg); err != nil || msg.Type != "ssh_key" {
+		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Invalid SSH key message"}`))
+		conn.Close()
+		return
 	}
 
-	m.mu.Lock()
-	m.sessions[id] = s
-	m.mu.Unlock()
+	privateKey, err := encrypt.Decrypt(msg.Key)
+	if err != nil {
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"Failed to decrypt SSH key: %s"}`, err.Error())))
+		conn.Close()
+		return
+	}
+	if !strings.Contains(privateKey, "BEGIN OPENSSH PRIVATE KEY") &&
+		!strings.Contains(privateKey, "BEGIN RSA PRIVATE KEY") &&
+		!strings.Contains(privateKey, "BEGIN EC PRIVATE KEY") &&
+		!strings.Contains(privateKey, "BEGIN DSA PRIVATE KEY") {
+		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Invalid SSH key format. Key must be a valid private key."}`))
+		conn.Close()
+		return
+	}
 
-	// Background goroutine: read PTY output, store in scrollback, forward to attached WS
-	go s.readLoop()
+	tmpKeyFile, err := os.CreateTemp("", "ssh-key-*")
+	if err != nil {
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"Failed to create temp key file: %s"}`, err.Error())))
+		conn.Close()
+		return
+	}
+	defer os.Remove(tmpKeyFile.Name())
+	if !strings.HasSuffix(privateKey, "\n") {
+		privateKey += "\n"
+	}
+	if _, err := tmpKeyFile.WriteString(privateKey); err != nil {
+		tmpKeyFile.Close()
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"Failed to write key file: %s"}`, err.Error())))
+		conn.Close()
+		return
+	}
+	tmpKeyFile.Close()
+	if err := os.Chmod(tmpKeyFile.Name(), 0600); err != nil {
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"Failed to set key file permissions: %s"}`, err.Error())))
+		conn.Close()
+		return
+	}
 
-	return s, nil
+	sshPort := 22
+	if sshPortStr != "" {
+		if p, err := strconv.Atoi(sshPortStr); err == nil {
+			sshPort = p
+		}
+	}
+	sshName := fmt.Sprintf("%s@%s", sshUser, sshHost)
+	sessionID, err := createSSHSession(mgr, sshName, sshHost, sshPort, sshUser, tmpKeyFile.Name())
+	if err != nil {
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"%s"}`, err.Error())))
+		conn.Close()
+		return
+	}
+	conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"session_id","session_id":"%s"}`, sessionID)))
+	ptywrap.ServeSessionWebSocket(conn, sessionID, r.URL.Query().Get("attach_mode"), mgr)
 }
 
-// createSSH creates a new SSH terminal session
-func (m *sessionManager) createSSH(name, host string, port int, user, sshKeyPath string) (*session, error) {
-	m.mu.Lock()
-	m.counter++
-	id := fmt.Sprintf("ssh-session-%d", m.counter)
-	m.mu.Unlock()
-
-	// Build SSH command
+func createSSHSession(mgr *ptywrap.Manager, name, host string, port int, user, sshKeyPath string) (string, error) {
 	sshArgs := []string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
 	}
-
 	if port != 0 && port != 22 {
 		sshArgs = append(sshArgs, "-p", fmt.Sprintf("%d", port))
 	}
-
 	if sshKeyPath != "" {
 		sshArgs = append(sshArgs, "-i", sshKeyPath)
 	}
-
 	sshArgs = append(sshArgs, "-t", fmt.Sprintf("%s@%s", user, host))
 
 	cmd := exec.Command("ssh", sshArgs...)
@@ -236,588 +174,8 @@ func (m *sessionManager) createSSH(name, host string, port int, user, sshKeyPath
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("start ssh pty: %w", err)
+		return "", fmt.Errorf("start ssh pty: %w", err)
 	}
-
-	// Default terminal size
 	pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
-
-	s := &session{
-		id:        id,
-		name:      name,
-		cwd:       fmt.Sprintf("%s@%s", user, host),
-		createdAt: time.Now(),
-		cmd:       cmd,
-		ptmx:      ptmx,
-		cols:      80,
-		rows:      24,
-		done:      make(chan struct{}),
-	}
-
-	m.mu.Lock()
-	m.sessions[id] = s
-	m.mu.Unlock()
-
-	// Background goroutine: read PTY output, store in scrollback, forward to attached WS
-	go s.readLoop()
-
-	return s, nil
-}
-
-func (m *sessionManager) get(id string) *session {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.sessions[id]
-}
-
-func (m *sessionManager) list() []SessionInfo {
-	return m.listPaginated(1, 1000).Sessions // default to high limit for backward compatibility
-}
-
-func (m *sessionManager) listPaginated(page, pageSize int) *TerminalSessionsResponse {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// Convert sessions to slice for sorting
-	sessionList := make([]*session, 0, len(m.sessions))
-	for _, s := range m.sessions {
-		sessionList = append(sessionList, s)
-	}
-
-	// Sort by creation time (oldest first) to preserve user's creation order
-	sort.Slice(sessionList, func(i, j int) bool {
-		return sessionList[i].createdAt.Before(sessionList[j].createdAt)
-	})
-
-	total := len(sessionList)
-	totalPages := (total + pageSize - 1) / pageSize
-
-	// Apply pagination
-	start := (page - 1) * pageSize
-	end := start + pageSize
-	if start > total {
-		start = total
-	}
-	if end > total {
-		end = total
-	}
-
-	var pagedSessions []*session
-	if start < total {
-		pagedSessions = sessionList[start:end]
-	}
-
-	// Convert to response format
-	sessions := make([]SessionInfo, 0, len(pagedSessions))
-	for _, s := range pagedSessions {
-		s.mu.Lock()
-		info := SessionInfo{
-			ID:        s.id,
-			Name:      s.name,
-			Cwd:       s.cwd,
-			CreatedAt: s.createdAt.Format(time.RFC3339),
-			Status:    s.status(),
-			Connected: s.conn != nil,
-		}
-		s.mu.Unlock()
-		sessions = append(sessions, info)
-	}
-
-	return &TerminalSessionsResponse{
-		Sessions:   sessions,
-		Page:       page,
-		PageSize:   pageSize,
-		Total:      total,
-		TotalPages: totalPages,
-	}
-}
-
-func (m *sessionManager) remove(id string) {
-	m.mu.Lock()
-	s, ok := m.sessions[id]
-	if ok {
-		delete(m.sessions, id)
-	}
-	m.mu.Unlock()
-
-	if !ok {
-		return
-	}
-	s.close()
-}
-
-// ------ Session ------
-
-func (s *session) readLoop() {
-	defer close(s.done)
-	buf := make([]byte, 4096)
-	for {
-		n, err := s.ptmx.Read(buf)
-		if n > 0 {
-			data := buf[:n]
-			s.mu.Lock()
-			// Append to scrollback, trim if over limit
-			s.scrollback = append(s.scrollback, data...)
-			if len(s.scrollback) > maxScrollback {
-				s.scrollback = s.scrollback[len(s.scrollback)-maxScrollback:]
-			}
-			ws := s.conn
-			s.mu.Unlock()
-
-			if ws != nil {
-				ws.WriteMessage(websocket.BinaryMessage, data)
-			}
-		}
-		if err != nil {
-			s.markExited()
-			s.appendExitMarker()
-			s.wait()
-
-			// Notify an attached client that the session has finished.
-			s.mu.Lock()
-			ws := s.conn
-			s.mu.Unlock()
-			if ws != nil {
-				ws.WriteMessage(websocket.TextMessage, []byte("\r\n[Terminal exited]"))
-			}
-			return
-		}
-	}
-}
-
-// stripTerminalQueries removes terminal query escape sequences from scrollback
-// data to prevent xterm.js from generating responses that leak into the PTY
-// as literal input text on reconnect.
-//
-// Stripped sequences:
-//   - OSC queries: \x1b]N;?\x07 or \x1b]N;?\x1b\\ (e.g. color queries)
-//   - Device Attributes: \x1b[c, \x1b[>c, \x1b[=c
-//   - Device Status Reports: \x1b[5n, \x1b[6n
-//   - DECRQM: \x1b[?N$p
-var terminalQueryRe = regexp.MustCompile(
-	`\x1b\]\d+;[^\x07\x1b]*\?\x07` + // OSC N;...? BEL
-		`|\x1b\]\d+;[^\x07\x1b]*\?\x1b\\` + // OSC N;...? ST
-		`|\x1b\[[>=]?c` + // Device Attributes (DA1, DA2, DA3)
-		`|\x1b\[[56]n` + // Device Status Report
-		`|\x1b\[\?\d+\$p`, // DECRQM (request mode)
-)
-
-func stripTerminalQueries(data []byte) []byte {
-	return terminalQueryRe.ReplaceAll(data, nil)
-}
-
-// isAlternateScreenActive checks if the scrollback data has an alternate screen
-// enter (\x1b[?1049h) that was never exited (\x1b[?1049l), indicating a TUI
-// program (like vim) is still running.
-func isAlternateScreenActive(data []byte) bool {
-	enterSeq := []byte("\x1b[?1049h")
-	exitSeq := []byte("\x1b[?1049l")
-	lastEnter := bytes.LastIndex(data, enterSeq)
-	if lastEnter == -1 {
-		return false
-	}
-	lastExit := bytes.LastIndex(data, exitSeq)
-	return lastExit < lastEnter
-}
-
-// stripAlternateScreenPairs removes the content between matched alternate screen
-// enter (\x1b[?1049h) and exit (\x1b[?1049l) pairs from scrollback.
-// If alternate screen is still active (entered but not exited), leaves it intact.
-func stripAlternateScreenPairs(data []byte) []byte {
-	enterSeq := []byte("\x1b[?1049h")
-	exitSeq := []byte("\x1b[?1049l")
-	for {
-		enterIdx := bytes.Index(data, enterSeq)
-		if enterIdx == -1 {
-			break
-		}
-		exitIdx := bytes.Index(data[enterIdx:], exitSeq)
-		if exitIdx == -1 {
-			// Alternate screen still active — leave the rest intact
-			break
-		}
-		// Remove the matched enter/exit pair and content between them
-		endIdx := enterIdx + exitIdx + len(exitSeq)
-		data = append(data[:enterIdx], data[endIdx:]...)
-	}
-	return data
-}
-
-func (s *session) snapshotInput() ([]byte, int, int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	scrollbackCopy := make([]byte, len(s.scrollback))
-	copy(scrollbackCopy, s.scrollback)
-
-	cols := s.cols
-	rows := s.rows
-	if cols <= 0 {
-		cols = 80
-	}
-	if rows <= 0 {
-		rows = 24
-	}
-	return scrollbackCopy, cols, rows
-}
-
-func (s *session) setSize(cols, rows int) {
-	s.mu.Lock()
-	s.cols = cols
-	s.rows = rows
-	s.mu.Unlock()
-}
-
-func (s *session) attach(conn *websocket.Conn, attachMode string) {
-	s.mu.Lock()
-	// Detach previous connection if any
-	if s.conn != nil {
-		s.conn.Close()
-	}
-	s.conn = conn
-	s.mu.Unlock()
-
-	scrollbackCopy, cols, rows := s.snapshotInput()
-	if len(scrollbackCopy) == 0 {
-		return
-	}
-
-	if attachMode == "screen" {
-		if snapshot, ok := renderScreenSnapshot(scrollbackCopy, cols, rows); ok {
-			conn.WriteMessage(websocket.BinaryMessage, snapshot)
-			return
-		}
-	}
-
-	altScreenActive := isAlternateScreenActive(scrollbackCopy)
-	if !altScreenActive {
-		// No TUI running — send terminal reset to clear any stale alternate screen state
-		// ESC[?1049l = exit alternate screen buffer
-		// ESC[0m = reset all attributes
-		conn.WriteMessage(websocket.BinaryMessage, []byte("\x1b[?1049l\x1b[0m"))
-		// Strip completed alternate screen pairs and terminal queries
-		scrollbackCopy = stripAlternateScreenPairs(scrollbackCopy)
-		scrollbackCopy = stripTerminalQueries(scrollbackCopy)
-	}
-	// If alt screen is active (TUI still running), replay scrollback as-is
-	// so the TUI can redraw itself
-	conn.WriteMessage(websocket.BinaryMessage, scrollbackCopy)
-}
-
-func (s *session) detach(conn *websocket.Conn) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	// Only detach if this is the current connection
-	if s.conn == conn {
-		s.conn = nil
-	}
-}
-
-func (s *session) status() string {
-	if s.exited {
-		return "exited"
-	}
-	return "running"
-}
-
-func (s *session) markExited() {
-	s.mu.Lock()
-	s.exited = true
-	s.mu.Unlock()
-}
-
-func (s *session) appendExitMarker() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	exitMarker := []byte("\r\n[Terminal exited]")
-	if bytes.HasSuffix(s.scrollback, exitMarker) {
-		return
-	}
-	s.scrollback = append(s.scrollback, exitMarker...)
-	if len(s.scrollback) > maxScrollback {
-		s.scrollback = s.scrollback[len(s.scrollback)-maxScrollback:]
-	}
-}
-
-func (s *session) wait() {
-	s.waitOnce.Do(func() {
-		if s.cmd != nil {
-			s.cmd.Wait()
-		}
-	})
-}
-
-func (s *session) close() {
-	s.closeOnce.Do(func() {
-		s.mu.Lock()
-		if s.conn != nil {
-			s.conn.Close()
-			s.conn = nil
-		}
-		s.mu.Unlock()
-
-		if s.ptmx != nil {
-			s.ptmx.Close()
-		}
-		if s.cmd != nil && s.cmd.Process != nil && s.cmd.ProcessState == nil {
-			s.cmd.Process.Kill()
-		}
-		s.wait()
-	})
-}
-
-// replaceLoginWithRCFile replaces --login in shell flags with --rcfile <path>.
-// If --login is not found, --rcfile is prepended.
-func replaceLoginWithRCFile(flags []string, rcFile string) []string {
-	var result []string
-	replaced := false
-	for _, f := range flags {
-		if f == "--login" || f == "-l" {
-			result = append(result, "--rcfile", rcFile)
-			replaced = true
-			continue
-		}
-		result = append(result, f)
-	}
-	if !replaced {
-		result = append([]string{"--rcfile", rcFile}, result...)
-	}
-	return result
-}
-
-// ------ HTTP Handlers ------
-
-func handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
-		return
-	}
-
-	sessionID := r.URL.Query().Get("session_id")
-	cwd := r.URL.Query().Get("cwd")
-	name := r.URL.Query().Get("name")
-	attachMode := r.URL.Query().Get("attach_mode")
-	if name == "" {
-		name = "Terminal"
-	}
-
-	// Check for SSH connection parameters
-	sshMode := r.URL.Query().Get("ssh") == "true"
-	sshHost := r.URL.Query().Get("host")
-	sshPortStr := r.URL.Query().Get("port")
-	sshUser := r.URL.Query().Get("user")
-
-	var s *session
-
-	// Try to reconnect to existing session
-	if sessionID != "" {
-		s = manager.get(sessionID)
-	}
-
-	// For SSH mode, we need to wait for the encrypted key before creating the session
-	if sshMode && s == nil {
-		// Wait for the SSH key message from client
-		msgType, message, err := conn.ReadMessage()
-		if err != nil {
-			conn.Close()
-			return
-		}
-
-		if msgType != websocket.TextMessage {
-			conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Expected SSH key message"}`))
-			conn.Close()
-			return
-		}
-
-		var msg ControlMessage
-		if err := json.Unmarshal(message, &msg); err != nil || msg.Type != "ssh_key" {
-			conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Invalid SSH key message"}`))
-			conn.Close()
-			return
-		}
-
-		// Decrypt the SSH key
-		privateKey, err := encrypt.Decrypt(msg.Key)
-		if err != nil {
-			conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"Failed to decrypt SSH key: %s"}`, err.Error())))
-			conn.Close()
-			return
-		}
-
-		// Validate the key has proper format
-		if !strings.Contains(privateKey, "BEGIN OPENSSH PRIVATE KEY") &&
-			!strings.Contains(privateKey, "BEGIN RSA PRIVATE KEY") &&
-			!strings.Contains(privateKey, "BEGIN EC PRIVATE KEY") &&
-			!strings.Contains(privateKey, "BEGIN DSA PRIVATE KEY") {
-			conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Invalid SSH key format. Key must be a valid private key."}`))
-			conn.Close()
-			return
-		}
-
-		// Write key to temporary file
-		tmpKeyFile, err := os.CreateTemp("", "ssh-key-*")
-		if err != nil {
-			conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"Failed to create temp key file: %s"}`, err.Error())))
-			conn.Close()
-			return
-		}
-		defer os.Remove(tmpKeyFile.Name()) // Clean up key file when done
-
-		// Ensure the key ends with a newline
-		if !strings.HasSuffix(privateKey, "\n") {
-			privateKey += "\n"
-		}
-
-		if _, err := tmpKeyFile.WriteString(privateKey); err != nil {
-			tmpKeyFile.Close()
-			conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"Failed to write key file: %s"}`, err.Error())))
-			conn.Close()
-			return
-		}
-		tmpKeyFile.Close()
-
-		// Set restricted permissions on key file (required by SSH)
-		if err := os.Chmod(tmpKeyFile.Name(), 0600); err != nil {
-			conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"Failed to set key file permissions: %s"}`, err.Error())))
-			conn.Close()
-			return
-		}
-
-		// Create SSH session
-		sshPort := 22
-		if sshPortStr != "" {
-			if p, err := strconv.Atoi(sshPortStr); err == nil {
-				sshPort = p
-			}
-		}
-
-		sshName := fmt.Sprintf("%s@%s", sshUser, sshHost)
-		s, err = manager.createSSH(sshName, sshHost, sshPort, sshUser, tmpKeyFile.Name())
-		if err != nil {
-			conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"%s"}`, err.Error())))
-			conn.Close()
-			return
-		}
-
-		// Send the assigned session ID to the client
-		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"session_id","session_id":"%s"}`, s.id)))
-	}
-
-	// Create a new local shell session if not SSH mode and not reconnecting
-	if s == nil {
-		s, err = manager.create(name, cwd)
-		if err != nil {
-			conn.WriteMessage(websocket.TextMessage, []byte("Error: "+err.Error()))
-			conn.Close()
-			return
-		}
-		// Send the assigned session ID to the client
-		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"session_id","session_id":"%s"}`, s.id)))
-	}
-
-	// Attach this WebSocket to the session
-	s.attach(conn, attachMode)
-
-	// Read from WebSocket and write to PTY.
-	// When the WS closes, this loop exits and we detach.
-	type wsCloseResult struct {
-		closeCode int
-	}
-	wsCloseCh := make(chan wsCloseResult, 1)
-	deleteOnClose := false // Set to true if client requests deletion via message
-	go func() {
-		var closeCode int
-		defer func() {
-			wsCloseCh <- wsCloseResult{closeCode: closeCode}
-		}()
-		for {
-			msgType, message, err := conn.ReadMessage()
-			if err != nil {
-				// Extract close code from WebSocket close error
-				if closeErr, ok := err.(*websocket.CloseError); ok {
-					closeCode = closeErr.Code
-				}
-				return
-			}
-
-			// Check if it's a JSON control message
-			if msgType == websocket.TextMessage {
-				var msg ControlMessage
-				if err := json.Unmarshal(message, &msg); err == nil && msg.Type != "" {
-					switch msg.Type {
-					case "resize":
-						if msg.Cols > 0 && msg.Rows > 0 {
-							pty.Setsize(s.ptmx, &pty.Winsize{
-								Rows: uint16(msg.Rows),
-								Cols: uint16(msg.Cols),
-							})
-							s.setSize(msg.Cols, msg.Rows)
-						}
-						continue
-					case "close_delete":
-						// Legacy: client requests session deletion on close
-						deleteOnClose = true
-						continue
-					}
-				}
-			}
-
-			// Regular input
-			s.ptmx.Write(message)
-		}
-	}()
-
-	// Wait for the session to end or the connection to close
-	select {
-	case <-s.done:
-		// PTY exited; keep the session record so users can inspect or close it explicitly.
-		s.detach(conn)
-		conn.Close()
-	case result := <-wsCloseCh:
-		// Close code 4000 = client requests session deletion (e.g., React StrictMode cleanup).
-		// Also honor the legacy close_delete message for backward compatibility.
-		shouldDelete := result.closeCode == 4000 || deleteOnClose
-		if shouldDelete {
-			manager.remove(s.id)
-		} else {
-			// Session stays alive for reconnection
-			s.detach(conn)
-		}
-	}
-}
-
-func handleSessions(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		// Parse pagination parameters
-		page := 1
-		pageSize := 20 // default page size
-
-		if p := r.URL.Query().Get("page"); p != "" {
-			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
-				page = parsed
-			}
-		}
-		if ps := r.URL.Query().Get("page_size"); ps != "" {
-			if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
-				pageSize = parsed
-			}
-		}
-
-		sessions := manager.listPaginated(page, pageSize)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(sessions)
-	case http.MethodDelete:
-		id := r.URL.Query().Get("id")
-		if id == "" {
-			http.Error(w, "missing id", http.StatusBadRequest)
-			return
-		}
-		manager.remove(id)
-		w.WriteHeader(http.StatusOK)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
+	return mgr.RegisterExternal(name, fmt.Sprintf("%s@%s", user, host), []string{"ssh"}, cmd, ptmx)
 }
