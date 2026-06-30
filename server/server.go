@@ -166,8 +166,8 @@ func EnsureFrontendDevServer(ctx context.Context) (chan struct{}, error) {
 func Serve(port int, dev bool) error {
 	mux := http.NewServeMux()
 
-	// Wrap with auth middleware - skip login, auth check, setup, ping, public key and path-info endpoints
-	handler := auth.Middleware(mux, []string{"/api/login", "/api/auth/check", "/api/auth/status", "/api/auth/setup", "/ping", "/api/encrypt/public-key", "/api/tools/path-info"})
+	// Wrap with auth middleware - skip login, auth check, setup, credential generate, ping, public key and path-info endpoints
+	handler := auth.Middleware(mux, []string{"/api/login", "/api/auth/check", "/api/auth/status", "/api/auth/setup", "/api/auth/credentials/generate", "/ping", "/api/encrypt/public-key", "/api/tools/path-info"})
 
 	// Wrap with quick-test mode handler if enabled
 	if quicktest.Enabled() {
