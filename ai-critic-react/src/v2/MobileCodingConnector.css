@@ -1388,6 +1388,23 @@ a.mcc-tunnel-mapping-hostname:hover {
     gap: 12px;
 }
 
+.mcc-service-card-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mcc-service-enabled-badge--disabled {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: rgba(245, 158, 11, 0.14);
+    color: var(--mcc-warning-color);
+}
+
 .mcc-service-status-badge {
     padding: 4px 10px;
     border-radius: 999px;

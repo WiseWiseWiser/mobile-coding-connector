@@ -185,6 +185,9 @@ function App() {
                             <Route path="acp/cursor/settings" element={<CursorACPSettings />} />
                             <Route path="acp/cursor/:sessionId" element={<CursorACPChat />} />
                             <Route path="acp/cursor/:sessionId/settings" element={<CursorACPSessionSettings />} />
+                            <Route path="service" element={<PortsLayout />}>
+                                <Route index element={<PortListRoute />} />
+                            </Route>
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />
@@ -248,6 +251,9 @@ function App() {
                             <Route path="acp/cursor/settings" element={<CursorACPSettings />} />
                             <Route path="acp/cursor/:sessionId" element={<CursorACPChat />} />
                             <Route path="acp/cursor/:sessionId/settings" element={<CursorACPSessionSettings />} />
+                            <Route path="service" element={<PortsLayout />}>
+                                <Route index element={<PortListRoute />} />
+                            </Route>
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
                             <Route index element={<AgentPickerRoute />} />

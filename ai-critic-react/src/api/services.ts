@@ -28,7 +28,14 @@ export interface ServiceStatus {
     lastExitedAt?: string;
     lastExitError?: string;
     desiredRunning: boolean;
+    enabled?: boolean;
     portForward?: ServicePortForwardStatus;
+}
+
+export interface ServiceActionResponse {
+    status: string;
+    message: string;
+    service: ServiceStatus;
 }
 
 export interface ServiceDefinition {
@@ -80,6 +87,14 @@ async function postServiceAction(path: string, id: string): Promise<void> {
     }
 }
 
+async function postServiceActionWithResponse(path: string, id: string): Promise<ServiceActionResponse> {
+    const resp = await fetch(`${path}?id=${encodeURIComponent(id)}`, { method: 'POST' });
+    if (!resp.ok) {
+        throw new Error(await resp.text());
+    }
+    return await resp.json();
+}
+
 export async function startService(id: string): Promise<void> {
     await postServiceAction('/api/services/start', id);
 }
@@ -90,4 +105,12 @@ export async function stopService(id: string): Promise<void> {
 
 export async function restartService(id: string): Promise<void> {
     await postServiceAction('/api/services/restart', id);
+}
+
+export async function disableService(id: string): Promise<ServiceActionResponse> {
+    return await postServiceActionWithResponse('/api/services/disable', id);
+}
+
+export async function enableService(id: string): Promise<ServiceActionResponse> {
+    return await postServiceActionWithResponse('/api/services/enable', id);
 }

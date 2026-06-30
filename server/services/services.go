@@ -52,8 +52,11 @@ type ServiceDefinition struct {
 	// UpgradeTarget remembers the remote binary path used by remote-agent
 	// service upgrade. It does not affect the running command itself.
 	UpgradeTarget string `json:"upgradeTarget,omitempty"`
-	CreatedAt     string `json:"createdAt"`
-	UpdatedAt     string `json:"updatedAt"`
+	// Enabled controls boot auto-start and daemon reconcile. Defaults to true
+	// when absent. Disable/enable do not immediately stop or start processes.
+	Enabled   *bool  `json:"enabled,omitempty"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 type ServicePortForwardStatus struct {
@@ -83,9 +86,23 @@ type ServiceStatus struct {
 	LastExitedAt   string                    `json:"lastExitedAt,omitempty"`
 	LastExitError  string                    `json:"lastExitError,omitempty"`
 	DesiredRunning bool                      `json:"desiredRunning"`
+	Enabled        bool                      `json:"enabled"`
 	PortForward    *ServicePortForwardStatus `json:"portForward,omitempty"`
 	UpgradeTarget  string                    `json:"upgradeTarget,omitempty"`
 }
+
+type ServiceActionResponse struct {
+	Status  string         `json:"status"`
+	Message string         `json:"message"`
+	Service *ServiceStatus `json:"service"`
+}
+
+const (
+	msgDisableRunning = "The server won't stop immediately unless you manually stop it"
+	msgDisableStopped = "Server is already stopped"
+	msgEnableRunning  = "Server is already running"
+	msgEnableStopped  = "The server won't start immediately until daemon checks at next time"
+)
 
 type ServiceUpgradeRequest struct {
 	ID        string `json:"id"`
@@ -128,6 +145,8 @@ type serviceProcess struct {
 type Manager struct {
 	mu                 sync.Mutex
 	definitions        []ServiceDefinition
+	bootAutostartIDs   []string
+	bootAutostartSet   bool
 	processes          map[string]*serviceProcess
 	healthStop         chan struct{}
 	healthStarted      bool
@@ -157,6 +176,8 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/services/start", handleStartService)
 	mux.HandleFunc("/api/services/stop", handleStopService)
 	mux.HandleFunc("/api/services/restart", handleRestartService)
+	mux.HandleFunc("/api/services/disable", handleDisableService)
+	mux.HandleFunc("/api/services/enable", handleEnableService)
 	mux.HandleFunc("/api/services/upgrade", handleUpgradeService)
 }
 
@@ -194,6 +215,14 @@ func (m *Manager) loadDefinitionsLocked() {
 		defs[i].UpgradeTarget = strings.TrimSpace(defs[i].UpgradeTarget)
 	}
 	m.definitions = defs
+	if !m.bootAutostartSet {
+		for _, def := range defs {
+			if serviceEnabled(def) {
+				m.bootAutostartIDs = append(m.bootAutostartIDs, def.ID)
+			}
+		}
+		m.bootAutostartSet = true
+	}
 }
 
 func (m *Manager) saveDefinitionsLocked() error {
@@ -234,10 +263,28 @@ func (m *Manager) StartHealthCheck() {
 }
 
 func (m *Manager) AutoStartConfiguredServices() {
-	defs := m.getDefinitions("")
-	for _, def := range defs {
-		if _, err := m.Start(def.ID); err != nil {
-			fmt.Printf("[services] failed to autostart %s: %v\n", def.Name, err)
+	// Defer briefly so early API calls (e.g. disable before autostart) can
+	// persist policy changes before the boot snapshot is applied.
+	time.Sleep(2 * time.Second)
+
+	m.mu.Lock()
+	ids := append([]string(nil), m.bootAutostartIDs...)
+	m.mu.Unlock()
+
+	for _, id := range ids {
+		m.mu.Lock()
+		def, ok := m.findDefinitionLocked(id)
+		enabled := ok && serviceEnabled(def)
+		name := ""
+		if ok {
+			name = def.Name
+		}
+		m.mu.Unlock()
+		if !enabled {
+			continue
+		}
+		if _, err := m.Start(id); err != nil {
+			fmt.Printf("[services] failed to autostart %s: %v\n", name, err)
 		}
 	}
 }
@@ -340,6 +387,7 @@ func (m *Manager) List(projectDir string) []ServiceStatus {
 			LastExitedAt:   lastExitedAt,
 			LastExitError:  lastExitError,
 			DesiredRunning: desired,
+			Enabled:        serviceEnabled(def),
 			PortForward:    pfStatus,
 			UpgradeTarget:  def.UpgradeTarget,
 		})
@@ -383,6 +431,9 @@ func (m *Manager) createOrUpdate(def ServiceDefinition, restartChanged bool) (*S
 			existing = &existingCopy
 			if def.UpgradeTarget == "" {
 				def.UpgradeTarget = m.definitions[i].UpgradeTarget
+			}
+			if def.Enabled == nil {
+				def.Enabled = m.definitions[i].Enabled
 			}
 			def.CreatedAt = m.definitions[i].CreatedAt
 			def.UpdatedAt = now
@@ -477,6 +528,120 @@ func (m *Manager) Restart(id string) error {
 		return err
 	}
 	return m.start(id, true)
+}
+
+func (m *Manager) Disable(id string) (*ServiceActionResponse, error) {
+	running, err := m.setServiceEnabled(id, false)
+	if err != nil {
+		return nil, err
+	}
+
+	message := msgDisableStopped
+	if running {
+		message = msgDisableRunning
+	}
+	return m.buildServiceActionResponse(id, message)
+}
+
+func (m *Manager) Enable(id string) (*ServiceActionResponse, error) {
+	m.mu.Lock()
+	def, ok := m.findDefinitionLocked(id)
+	if !ok {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("service not found")
+	}
+
+	running := m.serviceRunningLocked(id)
+	enabled := true
+	def.Enabled = &enabled
+	def.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	for i := range m.definitions {
+		if m.definitions[i].ID == id {
+			m.definitions[i] = def
+			break
+		}
+	}
+	if err := m.saveDefinitionsLocked(); err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+
+	if !running {
+		proc := m.processes[id]
+		if proc == nil {
+			proc = &serviceProcess{
+				def:     def,
+				status:  StatusStopped,
+				logPath: serviceLogPath(id),
+				desired: true,
+			}
+			m.processes[id] = proc
+		} else {
+			proc.def = def
+			proc.desired = true
+		}
+	} else if proc := m.processes[id]; proc != nil {
+		proc.def = def
+	}
+	m.mu.Unlock()
+
+	message := msgEnableStopped
+	if running {
+		message = msgEnableRunning
+	}
+	return m.buildServiceActionResponse(id, message)
+}
+
+func (m *Manager) setServiceEnabled(id string, enabled bool) (running bool, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	def, ok := m.findDefinitionLocked(id)
+	if !ok {
+		return false, fmt.Errorf("service not found")
+	}
+
+	running = m.serviceRunningLocked(id)
+	def.Enabled = &enabled
+	def.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	for i := range m.definitions {
+		if m.definitions[i].ID == id {
+			m.definitions[i] = def
+			break
+		}
+	}
+	if err := m.saveDefinitionsLocked(); err != nil {
+		return running, err
+	}
+	if proc := m.processes[id]; proc != nil {
+		proc.def = def
+	}
+	return running, nil
+}
+
+func (m *Manager) buildServiceActionResponse(id string, message string) (*ServiceActionResponse, error) {
+	m.mu.Lock()
+	projectDir := ""
+	for _, def := range m.definitions {
+		if def.ID == id {
+			projectDir = def.ProjectDir
+			break
+		}
+	}
+	m.mu.Unlock()
+
+	list := m.List(projectDir)
+	for _, item := range list {
+		if item.ID == id {
+			copy := item
+			return &ServiceActionResponse{
+				Status:  "ok",
+				Message: message,
+				Service: &copy,
+			}, nil
+		}
+	}
+	return nil, fmt.Errorf("service %s not found after action", id)
 }
 
 func (m *Manager) Upgrade(req ServiceUpgradeRequest) (*ServiceUpgradeResult, error) {
@@ -869,6 +1034,10 @@ func (m *Manager) reconcileProcesses() {
 		if proc == nil || !proc.desired {
 			continue
 		}
+		def, ok := m.findDefinitionLocked(id)
+		if !ok || !serviceEnabled(def) {
+			continue
+		}
 		if proc.pid > 0 && processAlive(proc.pid) {
 			continue
 		}
@@ -969,6 +1138,21 @@ func (m *Manager) findDefinitionLocked(id string) (ServiceDefinition, bool) {
 		}
 	}
 	return ServiceDefinition{}, false
+}
+
+func serviceEnabled(def ServiceDefinition) bool {
+	if def.Enabled == nil {
+		return true
+	}
+	return *def.Enabled
+}
+
+func (m *Manager) serviceRunningLocked(id string) bool {
+	proc := m.processes[id]
+	if proc == nil {
+		return false
+	}
+	return proc.pid > 0 && processAlive(proc.pid)
 }
 
 func normalizeProvider(provider string) string {
@@ -1512,6 +1696,44 @@ func handleRestartService(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func handleDisableService(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+	result, err := GetDefaultManager().Disable(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
+}
+
+func handleEnableService(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+	result, err := GetDefaultManager().Enable(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 func handleUpgradeService(w http.ResponseWriter, r *http.Request) {

@@ -165,6 +165,56 @@ func TestRunServiceRenameSavesWithoutRestart(t *testing.T) {
 	}
 }
 
+func TestRunServiceDisablePrintsMessage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/services":
+			writeJSON(w, []client.ServiceStatus{{ID: "svc-1", Name: "web", Status: "running", PID: 42}})
+		case "/api/services/disable":
+			writeJSON(w, client.ServiceActionResponse{
+				Status:  "ok",
+				Message: "The server won't stop immediately unless you manually stop it",
+				Service: &client.ServiceStatus{ID: "svc-1", Name: "web", Status: "running", PID: 42, Enabled: false},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	resolve := func() (*client.Client, error) {
+		return client.New(server.URL, ""), nil
+	}
+	if err := runServiceEnableDisable(resolve, "disable", []string{"web"}); err != nil {
+		t.Fatalf("runServiceEnableDisable() error = %v", err)
+	}
+}
+
+func TestRunServiceEnablePrintsMessage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/services":
+			writeJSON(w, []client.ServiceStatus{{ID: "svc-1", Name: "web", Status: "stopped", Enabled: false}})
+		case "/api/services/enable":
+			writeJSON(w, client.ServiceActionResponse{
+				Status:  "ok",
+				Message: "The server won't start immediately until daemon checks at next time",
+				Service: &client.ServiceStatus{ID: "svc-1", Name: "web", Status: "stopped", Enabled: true},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	resolve := func() (*client.Client, error) {
+		return client.New(server.URL, ""), nil
+	}
+	if err := runServiceEnableDisable(resolve, "enable", []string{"web"}); err != nil {
+		t.Fatalf("runServiceEnableDisable() error = %v", err)
+	}
+}
+
 func TestRunServiceUpdatePatchesFieldsWithoutRestart(t *testing.T) {
 	var saved client.ServiceDefinition
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

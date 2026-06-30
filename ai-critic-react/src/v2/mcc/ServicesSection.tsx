@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { fetchOwnedDomains } from '../../api/cloudflare';
 import { fetchHomeDir } from '../../api/files';
 import { consumeSSEStream } from '../../api/sse';
-import { deleteService, fetchServices, restartService, saveService, startService, stopService, type ServiceDefinition, type ServiceStatus } from '../../api/services';
+import { deleteService, disableService, enableService, fetchServices, restartService, saveService, startService, stopService, type ServiceDefinition, type ServiceStatus } from '../../api/services';
 import { streamLogFile } from '../../api/logs';
 import { useProjectDir } from '../../hooks/project/useProjectDir';
 import type { TunnelProvider, ProviderInfo } from '../../hooks/usePortForwards';
@@ -90,6 +90,22 @@ function parseEnvText(value: string): { env?: Record<string, string>; error?: st
     return { env };
 }
 
+function isServiceRunning(service: ServiceStatus): boolean {
+    return service.pid > 0 || service.status === 'running' || service.status === 'starting';
+}
+
+function disableMessage(service: ServiceStatus): string {
+    return isServiceRunning(service)
+        ? "The server won't stop immediately unless you manually stop it"
+        : 'Server is already stopped';
+}
+
+function enableMessage(service: ServiceStatus): string {
+    return isServiceRunning(service)
+        ? 'Server is already running'
+        : "The server won't start immediately until daemon checks at next time";
+}
+
 function toFormState(service: ServiceStatus): ServiceFormState {
     return {
         id: service.id,
@@ -117,6 +133,8 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState<ServiceFormState>(createDefaultForm());
     const [deleteTarget, setDeleteTarget] = useState<ServiceStatus | null>(null);
+    const [disableTarget, setDisableTarget] = useState<ServiceStatus | null>(null);
+    const [enableTarget, setEnableTarget] = useState<ServiceStatus | null>(null);
 
     const providerButtons = useMemo(
         () => availableProviders.filter((provider) => provider.available),
@@ -239,6 +257,8 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                         onStart={() => handleAction(() => startService(service.id))}
                         onStop={() => handleAction(() => stopService(service.id))}
                         onRestart={() => handleAction(() => restartService(service.id))}
+                        onDisable={() => setDisableTarget(service)}
+                        onEnable={() => setEnableTarget(service)}
                         onDelete={() => setDeleteTarget(service)}
                     />
                 ))}
@@ -398,6 +418,43 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                     onClose={() => setDeleteTarget(null)}
                 />
             )}
+
+            {disableTarget && (
+                <ConfirmModal
+                    title="Disable Service"
+                    message={disableMessage(disableTarget)}
+                    info={{
+                        Name: disableTarget.name,
+                        Command: disableTarget.command,
+                    }}
+                    command={`disable service ${disableTarget.id}`}
+                    confirmLabel="Disable"
+                    confirmVariant="danger"
+                    onConfirm={async () => {
+                        await handleAction(() => disableService(disableTarget.id).then(() => undefined));
+                        setDisableTarget(null);
+                    }}
+                    onClose={() => setDisableTarget(null)}
+                />
+            )}
+
+            {enableTarget && (
+                <ConfirmModal
+                    title="Enable Service"
+                    message={enableMessage(enableTarget)}
+                    info={{
+                        Name: enableTarget.name,
+                        Command: enableTarget.command,
+                    }}
+                    command={`enable service ${enableTarget.id}`}
+                    confirmLabel="Enable"
+                    onConfirm={async () => {
+                        await handleAction(() => enableService(enableTarget.id).then(() => undefined));
+                        setEnableTarget(null);
+                    }}
+                    onClose={() => setEnableTarget(null)}
+                />
+            )}
         </section>
     );
 }
@@ -408,10 +465,12 @@ interface ServiceCardProps {
     onStart: () => void;
     onStop: () => void;
     onRestart: () => void;
+    onDisable: () => void;
+    onEnable: () => void;
     onDelete: () => void;
 }
 
-function ServiceCard({ service, onEdit, onStart, onStop, onRestart, onDelete }: ServiceCardProps) {
+function ServiceCard({ service, onEdit, onStart, onStop, onRestart, onDisable, onEnable, onDelete }: ServiceCardProps) {
     const [showLogs, setShowLogs] = useState(false);
     const [logLines, setLogLines] = useState<{ text: string; error?: boolean }[]>([]);
     const [streaming, setStreaming] = useState(false);
@@ -452,13 +511,19 @@ function ServiceCard({ service, onEdit, onStart, onStop, onRestart, onDelete }: 
             service.status === 'error' ? 'Error' : 'Stopped';
 
     const canStop = service.pid > 0 || service.desiredRunning;
+    const isDisabled = service.enabled === false;
 
     return (
         <div className={`mcc-port-card mcc-service-card mcc-service-card--${service.status}`}>
             <div className="mcc-service-card-top">
                 <div className="mcc-service-card-title-row">
                     <span className="mcc-port-label">{service.name}</span>
-                    <span className={`mcc-service-status-badge mcc-service-status-badge--${service.status}`}>{statusLabel}</span>
+                    <div className="mcc-service-card-badges">
+                        {isDisabled && (
+                            <span className="mcc-service-enabled-badge--disabled">Disabled</span>
+                        )}
+                        <span className={`mcc-service-status-badge mcc-service-status-badge--${service.status}`}>{statusLabel}</span>
+                    </div>
                 </div>
                 <div className="mcc-service-command">{service.command}</div>
             </div>
@@ -513,6 +578,12 @@ function ServiceCard({ service, onEdit, onStart, onStop, onRestart, onDelete }: 
                 <button type="button" className="mcc-port-action-btn" onClick={onStart}>Start</button>
                 <button type="button" className="mcc-port-action-btn" onClick={onRestart}>Restart</button>
                 <button type="button" className="mcc-port-action-btn" onClick={onStop} disabled={!canStop}>Stop</button>
+                {!isDisabled && (
+                    <button type="button" className="mcc-port-action-btn" onClick={onDisable}>Disable</button>
+                )}
+                {isDisabled && (
+                    <button type="button" className="mcc-port-action-btn" onClick={onEnable}>Enable</button>
+                )}
                 <button
                     type="button"
                     className={`mcc-port-action-btn mcc-port-logs-btn ${showLogs ? 'active' : ''}`}

@@ -25,6 +25,12 @@ Subcommands:
   restart <service-name-or-id>
       Restart one service.
 
+  disable <service-name-or-id>
+      Disable auto-start and daemon management for one service.
+
+  enable <service-name-or-id>
+      Enable auto-start and daemon management for one service.
+
   rename <service-name-or-id> <new-name>
       Rename one service without restarting it.
 
@@ -104,6 +110,10 @@ func runService(resolve func() (*client.Client, error), args []string) error {
 		return runServiceAction(resolve, "stop", args[1:])
 	case "restart":
 		return runServiceAction(resolve, "restart", args[1:])
+	case "disable":
+		return runServiceEnableDisable(resolve, "disable", args[1:])
+	case "enable":
+		return runServiceEnableDisable(resolve, "enable", args[1:])
 	case "rename":
 		return runServiceRename(resolve, args[1:])
 	case "update":
@@ -156,6 +166,44 @@ func runServiceList(resolve func() (*client.Client, error), args []string) error
 			fmt.Println()
 		}
 		printService(service)
+	}
+	return nil
+}
+
+func runServiceEnableDisable(resolve func() (*client.Client, error), action string, args []string) error {
+	if len(args) != 1 {
+		if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+			fmt.Printf("Usage: remote-agent service %s <service-name-or-id>\n", action)
+			return nil
+		}
+		return fmt.Errorf("service %s requires exactly 1 argument <service-name-or-id>", action)
+	}
+
+	cli, err := resolve()
+	if err != nil {
+		return err
+	}
+
+	service, err := resolveServiceTarget(cli, args[0])
+	if err != nil {
+		return err
+	}
+
+	switch action {
+	case "disable":
+		result, err := cli.DisableService(service.ID)
+		if err != nil {
+			return err
+		}
+		fmt.Print(result.Message)
+	case "enable":
+		result, err := cli.EnableService(service.ID)
+		if err != nil {
+			return err
+		}
+		fmt.Print(result.Message)
+	default:
+		return fmt.Errorf("unsupported service action: %s", action)
 	}
 	return nil
 }

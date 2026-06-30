@@ -40,6 +40,7 @@ type ServiceDefinition struct {
 	ExtraEnv      map[string]string   `json:"extraEnv,omitempty"`
 	PortForward   *ServicePortForward `json:"portForward,omitempty"`
 	UpgradeTarget string              `json:"upgradeTarget,omitempty"`
+	Enabled       *bool               `json:"enabled,omitempty"`
 }
 
 type ServiceStatus struct {
@@ -57,8 +58,15 @@ type ServiceStatus struct {
 	LastExitedAt   string                    `json:"lastExitedAt,omitempty"`
 	LastExitError  string                    `json:"lastExitError,omitempty"`
 	DesiredRunning bool                      `json:"desiredRunning"`
+	Enabled        bool                      `json:"enabled"`
 	PortForward    *ServicePortForwardStatus `json:"portForward,omitempty"`
 	UpgradeTarget  string                    `json:"upgradeTarget,omitempty"`
+}
+
+type ServiceActionResponse struct {
+	Status  string         `json:"status"`
+	Message string         `json:"message"`
+	Service *ServiceStatus `json:"service"`
 }
 
 type LogStreamEvent struct {
@@ -128,6 +136,14 @@ func (c *Client) RestartService(id string) error {
 	return c.postServiceAction("/api/services/restart", id)
 }
 
+func (c *Client) DisableService(id string) (*ServiceActionResponse, error) {
+	return c.postServiceActionWithResponse("/api/services/disable", id)
+}
+
+func (c *Client) EnableService(id string) (*ServiceActionResponse, error) {
+	return c.postServiceActionWithResponse("/api/services/enable", id)
+}
+
 func (c *Client) SaveService(def ServiceDefinition, restart bool) (*ServiceStatus, error) {
 	body, err := json.Marshal(def)
 	if err != nil {
@@ -191,20 +207,30 @@ func (c *Client) UpgradeService(upgrade ServiceUpgradeRequest) (*ServiceUpgradeR
 }
 
 func (c *Client) postServiceAction(path string, id string) error {
+	_, err := c.postServiceActionWithResponse(path, id)
+	return err
+}
+
+func (c *Client) postServiceActionWithResponse(path string, id string) (*ServiceActionResponse, error) {
 	req, err := c.NewRequest(http.MethodPost, path+"?id="+url.QueryEscape(id), nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return readAPIError(resp)
+		return nil, readAPIError(resp)
 	}
-	return nil
+
+	var out ServiceActionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode %s response: %w", path, err)
+	}
+	return &out, nil
 }
 
 func (c *Client) StreamLogFile(path string, lines int, handler func(LogStreamEvent)) error {
