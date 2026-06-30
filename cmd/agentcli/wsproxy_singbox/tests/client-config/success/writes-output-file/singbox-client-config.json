@@ -76,7 +76,8 @@
         "192.168.0.0/16",
         "10.0.0.0/8",
         "8.8.8.8/32",
-        "1.1.1.1/32"
+        "1.1.1.1/32",
+        "198.18.0.31/32"
       ],
       "stack": "system",
       "strict_route": true,
@@ -92,9 +93,8 @@
     {
       "alter_id": 0,
       "bind_interface": "en0",
-      "domain_resolver": "bootstrap",
       "security": "auto",
-      "server": "ws-test.example.com",
+      "server": "198.18.0.31",
       "server_port": 443,
       "tag": "proxy",
       "tls": {
@@ -150,6 +150,13 @@
         "action": "route",
         "domain": [
           "ws-test.example.com"
+        ],
+        "outbound": "direct"
+      },
+      {
+        "action": "route",
+        "ip_cidr": [
+          "198.18.0.31/32"
         ],
         "outbound": "direct"
       },

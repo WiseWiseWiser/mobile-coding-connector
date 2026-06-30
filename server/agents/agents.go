@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +31,7 @@ type AgentID string
 
 const (
 	AgentIDOpenCode    AgentID = "opencode"
+	AgentIDGrok        AgentID = "grok"
 	AgentIDClaudeCode  AgentID = "claude-code"
 	AgentIDCodex       AgentID = "codex"
 	AgentIDCursorAgent AgentID = "cursor-agent"
@@ -52,6 +54,13 @@ var agentDefs = []AgentDef{
 		ID:          AgentIDOpenCode,
 		Name:        "OpenCode",
 		Description: "AI-powered coding assistant with headless server mode",
+		Command:     "opencode",
+		Headless:    true,
+	},
+	{
+		ID:          AgentIDGrok,
+		Name:        "Grok",
+		Description: "xAI Grok coding agent via OpenCode headless server",
 		Command:     "opencode",
 		Headless:    true,
 	},
@@ -349,8 +358,21 @@ func (s *agentSession) waitReady() {
 	s.mu.Unlock()
 }
 
-// preferredModelSubstring is the preferred model to auto-select when available.
-const preferredModelSubstring = "kimi-k2.5"
+const defaultPreferredModelSubstring = "kimi-k2.5"
+
+func usesOpencodeBinary(agentID AgentID) bool {
+	return agentID == AgentIDOpenCode || agentID == AgentIDGrok
+}
+
+// PreferredModelSubstringForAgent returns the model ID substring used when auto-selecting a model.
+func PreferredModelSubstringForAgent(agentID string) string {
+	switch AgentID(agentID) {
+	case AgentIDGrok:
+		return "grok"
+	default:
+		return defaultPreferredModelSubstring
+	}
+}
 
 // applyPreferredModel checks available models and sets the preferred one if found.
 // First tries to apply the saved model from settings, then falls back to preferred model.
@@ -410,10 +432,12 @@ func (s *agentSession) applyPreferredModel() {
 		return
 	}
 
+	preferredSubstring := PreferredModelSubstringForAgent(s.agentID)
+
 	// Find a model matching the preferred substring
 	for _, p := range providers.Providers {
 		for modelID := range p.Models {
-			if !strings.Contains(modelID, preferredModelSubstring) {
+			if !strings.Contains(strings.ToLower(modelID), strings.ToLower(preferredSubstring)) {
 				continue
 			}
 			// Found preferred model, apply it
@@ -560,9 +584,13 @@ func handleListAgents(w http.ResponseWriter, r *http.Request) {
 
 // isAgentInstalled checks if an agent is installed, considering custom binary paths
 func isAgentInstalled(agentID AgentID, defaultCommand string) bool {
+	if doctestIgnoreOpencodeCustomPaths && usesOpencodeBinary(agentID) {
+		_, err := lookCommandOnProcessPATH(defaultCommand)
+		return err == nil
+	}
 	// Check for custom binary path first
 	customPath := GetAgentBinaryPath(agentID)
-	if agentID == AgentIDOpenCode {
+	if usesOpencodeBinary(agentID) {
 		customPath = getOpencodeBinaryPath()
 	}
 	if customPath != "" {
@@ -573,7 +601,12 @@ func isAgentInstalled(agentID AgentID, defaultCommand string) bool {
 	return tool_resolve.IsAvailable(defaultCommand)
 }
 
+var doctestIgnoreOpencodeCustomPaths bool
+
 func getOpencodeBinaryPath() string {
+	if doctestIgnoreOpencodeCustomPaths {
+		return ""
+	}
 	settings, err := opencode_exposed.LoadSettings()
 	if err == nil && settings != nil {
 		if path := strings.TrimSpace(settings.BinaryPath); path != "" {
@@ -586,9 +619,12 @@ func getOpencodeBinaryPath() string {
 
 // getAgentBinaryPath returns the binary path to use for an agent
 func getAgentBinaryPath(agentID AgentID, defaultCommand string) (string, error) {
+	if doctestIgnoreOpencodeCustomPaths && usesOpencodeBinary(agentID) {
+		return lookCommandOnProcessPATH(defaultCommand)
+	}
 	// Check for custom binary path first
 	customPath := GetAgentBinaryPath(agentID)
-	if agentID == AgentIDOpenCode {
+	if usesOpencodeBinary(agentID) {
 		customPath = getOpencodeBinaryPath()
 	}
 	if customPath != "" {
@@ -596,6 +632,25 @@ func getAgentBinaryPath(agentID AgentID, defaultCommand string) (string, error) 
 	}
 	// Fall back to default command
 	return tool_resolve.LookPath(defaultCommand)
+}
+
+func lookCommandOnProcessPATH(name string) (string, error) {
+	if strings.Contains(name, "/") {
+		if info, err := os.Stat(name); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+			return name, nil
+		}
+		return "", fmt.Errorf("%s not found", name)
+	}
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == "" {
+			continue
+		}
+		candidate := filepath.Join(dir, name)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("%s not found in PATH", name)
 }
 
 // handleOpencodeAuth returns the OpenCode authentication status
