@@ -40,6 +40,10 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if !has1 || !has2 {
 		t.Fatalf("main-1=%v main-2=%v under %s", has1, has2, base)
 	}
+	wt1 := findWorktreeDirBySuffix(t, base, "main-1")
+	wt2 := findWorktreeDirBySuffix(t, base, "main-2")
+	assertWorktreeNamedBranch(t, wt1)
+	assertWorktreeNamedBranch(t, wt2)
 	if strings.TrimSpace(gitPorcelain(t, resp.ProjectDir)) != "" {
 		t.Fatalf("remote should be clean after second pull")
 	}

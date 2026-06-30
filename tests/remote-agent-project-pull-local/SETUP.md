@@ -30,6 +30,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/xhd2015/ai-critic/script/lib"
@@ -196,5 +197,69 @@ func seedBindingForServer(t *testing.T, req *Request, remoteDir, localDir string
 		LocalPath: absLocal,
 	}}
 	req.LocalPath = absLocal
+}
+
+// gitBranchShowCurrent runs git branch --show-current in dir.
+func gitBranchShowCurrent(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.Command("git", "-C", dir, "branch", "--show-current")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git branch --show-current in %s: %v\n%s", dir, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// gitSymbolicRefHEAD returns refs/heads/... for HEAD (fails if detached).
+func gitSymbolicRefHEAD(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.Command("git", "-C", dir, "symbolic-ref", "HEAD")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git symbolic-ref HEAD in %s: %v\n%s", dir, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// assertWorktreeNamedBranch checks branch name matches worktree directory basename.
+func assertWorktreeNamedBranch(t *testing.T, worktreePath string) {
+	t.Helper()
+	base := filepath.Base(worktreePath)
+	branch := gitBranchShowCurrent(t, worktreePath)
+	if branch == "" {
+		t.Fatalf("worktree %s is detached (empty branch --show-current)", worktreePath)
+	}
+	if branch != base {
+		t.Fatalf("branch %q want worktree basename %q", branch, base)
+	}
+	ref := gitSymbolicRefHEAD(t, worktreePath)
+	wantRef := "refs/heads/" + branch
+	if ref != wantRef {
+		t.Fatalf("symbolic-ref %q want %q", ref, wantRef)
+	}
+}
+
+// findWorktreeDirBySuffix returns a worktree path whose base name ends with suffix (e.g. main-1).
+func findWorktreeDirBySuffix(t *testing.T, base, suffix string) string {
+	t.Helper()
+	var found string
+	_ = filepath.WalkDir(base, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		if filepath.Base(path) == suffix {
+			if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
+				found = path
+			}
+		}
+		return nil
+	})
+	if found == "" {
+		t.Fatalf("no worktree dir %q under %s", suffix, base)
+	}
+	return found
 }
 ```

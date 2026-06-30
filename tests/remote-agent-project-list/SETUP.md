@@ -23,15 +23,16 @@ leaf Setup -> temp git repo -> projects.json -> remote-agent project list -> std
 
 ## Context
 
-Implements REQUIREMENT-DESIGN-remote-agent-project-list-git-status.md. Proves
-end-to-end wiring from server `getGitStatus` through API to CLI
-`printProjectGitConfig` once implemented.
+Implements REQUIREMENT-DESIGN-remote-agent-project-list-git-status.md and
+Local Dir bindings in `printProjectGitConfig`. Proves end-to-end wiring from
+server `getGitStatus` through API to CLI list/git-config output.
 
 ```go
 import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/xhd2015/ai-critic/script/lib"
@@ -87,5 +88,44 @@ func gitInitialCommit(t *testing.T, dir, message string) {
 	}
 	gitRun(t, dir, "add", "README.md")
 	gitRun(t, dir, "commit", "-m", message)
+}
+
+// mkLocalBindingDir is a temp path stored in project_bindings (need not be a git repo).
+func mkLocalBindingDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "ai-critic-local-binding-*")
+	if err != nil {
+		t.Fatalf("mkdir local binding dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
+}
+
+// seedListBinding registers one binding row for the test server and remote project dir.
+func seedListBinding(t *testing.T, req *Request, remoteDir, localDir string) {
+	t.Helper()
+	absRemote, err := filepath.Abs(remoteDir)
+	if err != nil {
+		t.Fatalf("abs remote: %v", err)
+	}
+	absLocal, err := filepath.Abs(localDir)
+	if err != nil {
+		t.Fatalf("abs local: %v", err)
+	}
+	req.SeedBindings = []ProjectBinding{{
+		RemoteDir: absRemote,
+		LocalPath: absLocal,
+	}}
+	req.LocalPath = absLocal
+}
+
+const localDirDashLine = "Local Dir:        -"
+
+// assertLocalDirDash requires the dash placeholder when no binding matches.
+func assertLocalDirDash(t *testing.T, stdout string) {
+	t.Helper()
+	if !strings.Contains(stdout, localDirDashLine) {
+		t.Fatalf("stdout missing %q;\n%s", localDirDashLine, stdout)
+	}
 }
 ```

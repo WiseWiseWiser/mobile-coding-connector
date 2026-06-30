@@ -36,6 +36,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	out := resp.Stdout
 	checks := []string{
 		"Project: clean-repo-test (clean-001)",
+		localDirDashLine,
 		"Git Branch:       main",
 		"Worktree:         clean",
 	}

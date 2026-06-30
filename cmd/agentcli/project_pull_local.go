@@ -123,7 +123,8 @@ func runProjectPullLocal(resolve func() (*client.Client, error), args []string) 
 	if err := os.MkdirAll(filepath.Dir(worktreePath), 0755); err != nil {
 		return err
 	}
-	if err := cmd.Dir(localPath).Run("git", "worktree", "add", "--detach", worktreePath, plan.Commit); err != nil {
+	branchName := worktreeBranchName(worktreePath)
+	if err := cmd.Dir(localPath).Run("git", "worktree", "add", "-b", branchName, worktreePath, plan.Commit); err != nil {
 		return fmt.Errorf("create local worktree: %w", err)
 	}
 

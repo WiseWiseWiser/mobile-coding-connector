@@ -37,6 +37,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	out := resp.Stdout
 	checks := []string{
 		"Project: detached-head-test (detached-001)",
+		localDirDashLine,
 		"Git Branch:       (detached)",
 		"Worktree:         clean",
 	}

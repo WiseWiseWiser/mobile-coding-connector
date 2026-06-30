@@ -47,6 +47,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if !strings.Contains(out, "Project: dirty-repo-test (dirty-001)") {
 		t.Fatalf("missing project header;\n%s", out)
 	}
+	assertLocalDirDash(t, out)
 	if !strings.Contains(out, "Git Branch:       main") {
 		t.Fatalf("missing branch line;\n%s", out)
 	}

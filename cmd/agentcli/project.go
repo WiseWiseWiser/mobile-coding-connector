@@ -132,7 +132,7 @@ func runProjectList(resolve func() (*client.Client, error), args []string) error
 		if i > 0 {
 			fmt.Println()
 		}
-		printProjectGitConfig(project)
+		printProjectGitConfig(cli.Server, project)
 	}
 	return nil
 }
@@ -177,7 +177,7 @@ func runProjectGitConfigGet(resolve func() (*client.Client, error), args []strin
 	if err != nil {
 		return err
 	}
-	printProjectGitConfig(*project)
+	printProjectGitConfig(cli.Server, *project)
 	return nil
 }
 
@@ -220,7 +220,7 @@ func runProjectGitConfigSet(resolve func() (*client.Client, error), args []strin
 		return err
 	}
 	fmt.Printf("Updated Git commit identity for %s (%s)\n", updated.Name, updated.ID)
-	printProjectGitConfig(*updated)
+	printProjectGitConfig(cli.Server, *updated)
 	return nil
 }
 
@@ -291,9 +291,10 @@ func matchProjectTarget(projects []client.ProjectInfo, idNameOrDir string) (*cli
 	}
 }
 
-func printProjectGitConfig(project client.ProjectInfo) {
+func printProjectGitConfig(server string, project client.ProjectInfo) {
 	fmt.Printf("Project: %s (%s)\n", displayOrDash(project.Name), displayOrDash(project.ID))
 	fmt.Printf("  Dir:              %s\n", displayOrDash(project.Dir))
+	fmt.Printf("  Local Dir:        %s\n", displayOrDash(resolveProjectLocalDir(server, project.Dir)))
 	fmt.Printf("  Git Branch:       %s\n", formatProjectGitBranch(project.GitStatus))
 	fmt.Printf("  Git Commit:       %s\n", formatProjectGitCommit(project.GitStatus))
 	fmt.Printf("  Worktree:         %s\n", formatProjectWorktree(project.GitStatus))

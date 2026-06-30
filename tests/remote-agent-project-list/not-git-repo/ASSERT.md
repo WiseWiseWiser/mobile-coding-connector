@@ -38,6 +38,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if !strings.Contains(out, "Project: not-git-test (not-git-001)") {
 		t.Fatalf("missing project header;\n%s", out)
 	}
+	assertLocalDirDash(t, out)
 	if !strings.Contains(out, resp.ProjectDir) {
 		t.Fatalf("stdout missing registered dir %q;\n%s", resp.ProjectDir, out)
 	}

@@ -68,13 +68,18 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		}
 	}
 
+	if !strings.Contains(out, localDirDashLine) {
+		t.Fatalf("stdout missing %q;\n%s", localDirDashLine, out)
+	}
+	dirIdx := strings.Index(out, "  Dir:")
+	localIdx := strings.Index(out, "Local Dir:")
 	branchIdx := strings.Index(out, "Git Branch:")
 	identityIdx := strings.Index(out, "Git Identity ID:")
-	if branchIdx < 0 || identityIdx < 0 {
-		t.Fatalf("could not locate git status vs identity lines;\n%s", out)
+	if dirIdx < 0 || localIdx < 0 || branchIdx < 0 || identityIdx < 0 {
+		t.Fatalf("could not locate field order markers;\n%s", out)
 	}
-	if branchIdx >= identityIdx {
-		t.Fatalf("git status lines should precede identity lines;\n%s", out)
+	if !(dirIdx < localIdx && localIdx < branchIdx && branchIdx < identityIdx) {
+		t.Fatalf("expected Dir < Local Dir < Git Branch < identity lines;\n%s", out)
 	}
 }
 ```

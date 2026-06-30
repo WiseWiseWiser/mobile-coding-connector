@@ -17,9 +17,15 @@ The harness exercises the remote profile of the shared agent CLI against a real
 - **Temp project directories** — leaf `Setup` creates git repos (or plain dirs)
   and registers them in `projects.json` before the CLI runs.
 - **Test credentials** — `lib.TestPassword` token written to `server-credentials`.
+- **Isolated agent HOME** — temp `HOME` with `~/.ai-critic/remote-agent-config.json`
+  (`project_bindings`) so list output never reads the developer machine config.
+- **Local path bindings** — optional `(server, remote_dir) → local_path` rows resolved
+  when `printProjectGitConfig` renders each project.
 
 **Behaviors**
 
+- `Local Dir:` appears immediately after `Dir:` — bound absolute path or `-` when no match.
+- Binding lookup uses normalized `--server` URL and API `project.Dir` (same as bind-local).
 - Clean repos show branch name, 7-char commit hash + subject, `Worktree: clean`.
 - Dirty repos show per-type counts: added (includes untracked), changed, renamed, deleted.
 - Detached HEAD shows `Git Branch: (detached)` with commit still populated.
@@ -42,8 +48,17 @@ The harness exercises the remote profile of the shared agent CLI against a real
  +-- not-git-repo/                  (LEAF)  plain dir → dashes
  +-- identity-fields-preserved/     (LEAF)  identity lines + new git lines
  +-- list-dirty/
-      +-- shows-dirty-only/         (LEAF)  --dirty omits clean project
-      +-- empty-all-clean/          (LEAF)  --dirty with only clean → no dirty message
+ |    +-- shows-dirty-only/         (LEAF)  --dirty omits clean project
+ |    +-- empty-all-clean/          (LEAF)  --dirty with only clean → no dirty message
+ |
+ +-- local-dir/                      (GROUP)  CLI binding resolution for Local Dir line
+      +-- bound/                     (LEAF)  seeded binding → absolute Local Dir
+      +-- unbound/                   (LEAF)  no binding → Local Dir: -
+      +-- bound-dirty-filter/        (LEAF)  --dirty + binding on dirty project
+      +-- wrong-server/              (LEAF)  binding for other server → -
+      +-- wrong-remote-dir/          (LEAF)  binding for other remote_dir → -
+      +-- git-config-get-bound/      (LEAF)  git-config get shows bound Local Dir
+      +-- git-config-get-unbound/    (LEAF)  git-config get shows Local Dir: -
 ```
 
 ## Test Index
@@ -57,6 +72,13 @@ The harness exercises the remote profile of the shared agent CLI against a real
 | 5 | `identity-fields-preserved` | Saved git identity fields unchanged alongside git status |
 | 6 | `list-dirty/shows-dirty-only` | Two projects; `--dirty` prints only the dirty one |
 | 7 | `list-dirty/empty-all-clean` | One clean project; `--dirty` → `No dirty projects found.` |
+| 8 | `local-dir/bound` | Seeded binding; `Local Dir` shows absolute path after `Dir` |
+| 9 | `local-dir/unbound` | Isolated empty config; `Local Dir: -` |
+| 10 | `local-dir/bound-dirty-filter` | `--dirty` lists bound dirty project with Local Dir |
+| 11 | `local-dir/wrong-server` | Binding server mismatch → dash |
+| 12 | `local-dir/wrong-remote-dir` | Binding remote_dir mismatch → dash |
+| 13 | `local-dir/git-config-get-bound` | `project git-config get` includes bound Local Dir |
+| 14 | `local-dir/git-config-get-unbound` | `project git-config get` with no binding → dash |
 
 ## Parameter Coverage
 
@@ -67,7 +89,11 @@ The harness exercises the remote profile of the shared agent CLI against a real
 | Detached HEAD | detached-head |
 | Not a git repo | not-git-repo |
 | Git identity metadata | identity-fields-preserved |
-| `--dirty` filter | list-dirty/* |
+| `--dirty` filter | list-dirty/*, local-dir/bound-dirty-filter |
+| Local binding present | local-dir/bound, bound-dirty-filter, git-config-get-bound |
+| Local binding absent | local-dir/unbound, git-config-get-unbound, legacy leaves |
+| Binding key mismatch | wrong-server, wrong-remote-dir |
+| Subcommand `project list` vs `git-config get` | local-dir/* |
 
 ## How to Run
 
@@ -106,6 +132,13 @@ type ProjectEntry struct {
 	GitUserEmail    string
 }
 
+// ProjectBinding mirrors remote-agent-config.json project_bindings rows.
+type ProjectBinding struct {
+	Server    string
+	RemoteDir string
+	LocalPath string
+}
+
 type Request struct {
 	Args   []string
 	Server string
@@ -113,6 +146,9 @@ type Request struct {
 
 	Project  ProjectEntry
 	Projects []ProjectEntry
+
+	SeedBindings []ProjectBinding
+	LocalPath    string
 }
 
 type Response struct {
@@ -122,7 +158,9 @@ type Response struct {
 	Combined   string
 	ServerPort int
 	ConfigHome string
+	AgentHome  string
 	ProjectDir string
+	LocalPath  string
 }
 
 type projectsFileRow struct {
@@ -134,6 +172,23 @@ type projectsFileRow struct {
 	GitUserName     string `json:"git_user_name,omitempty"`
 	GitUserEmail    string `json:"git_user_email,omitempty"`
 	CreatedAt       string `json:"created_at"`
+}
+
+type remoteAgentConfigFile struct {
+	Default         string            `json:"default,omitempty"`
+	Domains         []domainConfigRow `json:"domains"`
+	ProjectBindings []bindingRow      `json:"project_bindings,omitempty"`
+}
+
+type domainConfigRow struct {
+	Server string `json:"server"`
+	Token  string `json:"token,omitempty"`
+}
+
+type bindingRow struct {
+	Server    string `json:"server"`
+	RemoteDir string `json:"remote_dir"`
+	LocalPath string `json:"local_path"`
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
@@ -177,6 +232,17 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	t.Cleanup(func() { os.RemoveAll(configHome) })
 	resp.ConfigHome = configHome
+
+	agentHome, err := os.MkdirTemp("", "remote-agent-list-home-*")
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() { os.RemoveAll(agentHome) })
+	resp.AgentHome = agentHome
+	aiCriticAgent := filepath.Join(agentHome, ".ai-critic")
+	if err := os.MkdirAll(aiCriticAgent, 0755); err != nil {
+		return nil, err
+	}
 
 	credFile, err := lib.WriteTestCredentials(configHome)
 	if err != nil {
@@ -233,13 +299,30 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if serverURL == "" {
 		serverURL = fmt.Sprintf("http://localhost:%d", serverPort)
 	}
+	normalizedServer := strings.TrimRight(strings.TrimSpace(serverURL), "/")
+
+	if req.LocalPath != "" {
+		absLocal, err := filepath.Abs(req.LocalPath)
+		if err != nil {
+			return nil, err
+		}
+		req.LocalPath = absLocal
+		resp.LocalPath = absLocal
+	}
+
+	configPath := filepath.Join(aiCriticAgent, "remote-agent-config.json")
+	if err := writeRemoteAgentConfig(configPath, normalizedServer, req.Token, req.SeedBindings); err != nil {
+		return nil, err
+	}
 
 	argv := []string{"--server", serverURL, "--token", req.Token}
 	argv = append(argv, req.Args...)
 	t.Logf("remote-agent argv: %v", argv)
 
 	agentCmd := exec.Command(agentBin, argv...)
-	agentCmd.Env = os.Environ()
+	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
+	agentEnv = append(agentEnv, "HOME="+agentHome)
+	agentCmd.Env = agentEnv
 
 	var stdout, stderr bytes.Buffer
 	agentCmd.Stdout = &stdout
@@ -289,6 +372,40 @@ func writeProjectsJSON(configHome string, projects []ProjectEntry) error {
 	}
 	path := filepath.Join(configHome, "projects.json")
 	return os.WriteFile(path, data, 0644)
+}
+
+func writeRemoteAgentConfig(path, server, token string, bindings []ProjectBinding) error {
+	cfg := remoteAgentConfigFile{
+		Default: server,
+		Domains: []domainConfigRow{{Server: server, Token: token}},
+	}
+	for _, b := range bindings {
+		srv := strings.TrimRight(strings.TrimSpace(b.Server), "/")
+		if srv == "" {
+			srv = server
+		}
+		cfg.ProjectBindings = append(cfg.ProjectBindings, bindingRow{
+			Server:    srv,
+			RemoteDir: b.RemoteDir,
+			LocalPath: b.LocalPath,
+		})
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0600)
+}
+
+func stripEnvPrefix(env []string, prefix string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 func findModuleRoot() (string, error) {

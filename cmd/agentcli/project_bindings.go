@@ -17,6 +17,26 @@ type projectBinding struct {
 	LocalPath string `json:"local_path"`
 }
 
+func resolveProjectLocalDir(server, remoteDir string) string {
+	cfg, err := loadConfig()
+	if err != nil {
+		return ""
+	}
+	path, ok := findProjectBinding(cfg, server, remoteDir)
+	if !ok {
+		return ""
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return abs
+}
+
+func worktreeBranchName(worktreePath string) string {
+	return filepath.Base(worktreePath)
+}
+
 func findProjectBinding(cfg *agentConfig, server, remoteDir string) (string, bool) {
 	if cfg == nil {
 		return "", false

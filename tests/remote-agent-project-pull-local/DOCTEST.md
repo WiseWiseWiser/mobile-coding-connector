@@ -34,9 +34,10 @@ never touch the developer machine.
 - `bind-local` upserts `(server, remote_dir) → local_path` after same-origin check.
 - `pull-local` refuses clean remotes, missing bindings on non-TTY stdin, origin
   mismatch, and dirty submodules (including before `--dry-run` plan output).
-- Successful pull calls the server package endpoint, creates a detached worktree
-  at the computed slug path, applies `patch.diff` and untracked members from the
-  tarball, and by default truncates the remote repo via the truncate API.
+- Successful pull calls the server package endpoint, creates a **named-branch**
+  worktree at the computed slug path (e.g. branch `main-1` for directory `main-1`,
+  not detached HEAD), applies `patch.diff` and untracked members from the tarball,
+  and by default truncates the remote repo via the truncate API.
 - Per-file and total byte limits reject oversized pulls unless
   `--include-file` or `--max-size` overrides apply.
 - `--no-truncate-remote` leaves remote porcelain intact; `--dry-run` prints a plan
@@ -66,7 +67,8 @@ never touch the developer machine.
       +-- no-binding-non-tty/            (LEAF)   piped stdin, no binding → exit 1
       +-- no-truncate-remote/            (LEAF)   flag keeps remote dirty
       +-- dry-run/                       (LEAF)   plan only, no worktree, remote unchanged
-      +-- worktree-collision/            (LEAF)   two pulls → main-2 when main-1 exists
+      +-- worktree-collision/            (LEAF)   two pulls → main-2 when main-1 exists; both on named branches
+      +-- worktree-on-branch/            (LEAF)   symbolic-ref HEAD; branch matches worktree suffix
       +-- submodule-clean/               (LEAF)   clean submodule, dirty top-level → exit 0
       +-- submodule-dirty/               (LEAF)   dirty submodule path in error
       +-- dry-run-submodule-dirty/       (LEAF)   dry-run blocked before plan
@@ -92,7 +94,8 @@ never touch the developer machine.
 | 6 | `pull-local/no-binding-non-tty` | Non-TTY without binding or `--local-path` |
 | 7 | `pull-local/no-truncate-remote` | Worktree ok; remote stays dirty |
 | 8 | `pull-local/dry-run` | Exit 0 plan; no worktree dir; remote still dirty |
-| 9 | `pull-local/worktree-collision` | Second pull uses `main-2` suffix |
+| 9 | `pull-local/worktree-collision` | Second pull uses `main-2`; each worktree on matching named branch |
+| 18 | `pull-local/worktree-on-branch` | `git symbolic-ref HEAD` succeeds; `branch --show-current` = `main-1` |
 | 10 | `pull-local/submodule-clean` | Dirty top-level with clean submodule succeeds |
 | 11 | `pull-local/submodule-dirty` | Dirty file inside submodule fails |
 | 12 | `pull-local/dry-run-submodule-dirty` | Submodule guard before dry-run plan |
@@ -116,6 +119,7 @@ never touch the developer machine.
 | `--no-truncate-remote` | no-truncate-remote |
 | `--dry-run` | dry-run, dry-run-submodule-dirty |
 | Worktree suffix allocation | worktree-collision |
+| Named branch (not detached) | bound-dirty-success, worktree-collision, worktree-on-branch |
 | Submodule clean vs dirty | submodule-clean, submodule-dirty, dry-run-submodule-dirty |
 | Per-file 1MB cap | oversized-file-rejected, include-file-allows-large |
 | `--include-file` valid vs invalid | include-file-allows-large, include-file-not-dirty |

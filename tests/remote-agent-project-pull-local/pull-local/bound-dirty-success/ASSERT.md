@@ -56,6 +56,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if porcelain := gitPorcelain(t, resp.ProjectDir); strings.TrimSpace(porcelain) != "" {
 		t.Fatalf("remote still dirty:\n%s", porcelain)
 	}
+
+	assertWorktreeNamedBranch(t, wtPath)
 }
 
 func findNewestWorktreeDir(t *testing.T, base string) string {
