@@ -37,3 +37,4 @@ script/fuzzy-test/fuzzy-test-output.log
 
 
 *.log
+/external

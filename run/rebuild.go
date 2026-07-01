@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/xhd2015/ai-critic/server/terminal"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap"
 	"github.com/xhd2015/less-gen/flags"
 )
 
@@ -102,7 +102,7 @@ func outputRebuildScript(repoDir, binPath string, serverArgs []string) error {
 
 	var serverArgsStr string
 	for _, a := range serverArgs {
-		serverArgsStr += " " + terminal.ShellQuote(a)
+		serverArgsStr += " " + ptywrap.ShellQuote(a)
 	}
 
 	script := fmt.Sprintf(`#!/bin/sh
@@ -119,7 +119,7 @@ chmod +x "$BIN_PATH"
 echo "[$(date)] Starting ai-critic server..."
 cd "$BIN_DIR"
 exec "$BIN_PATH"%s
-`, terminal.ShellQuote(repoDir), terminal.ShellQuote(binPath), terminal.ShellQuote(binDir), serverArgsStr)
+`, ptywrap.ShellQuote(repoDir), ptywrap.ShellQuote(binPath), ptywrap.ShellQuote(binDir), serverArgsStr)
 
 	fmt.Print(script)
 	return nil

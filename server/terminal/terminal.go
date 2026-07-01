@@ -55,8 +55,10 @@ func manager() *ptywrap.Manager {
 // RegisterAPI registers terminal routes backed by ptywrap.
 func RegisterAPI(mux *http.ServeMux) {
 	mgr := manager()
-	ptywrap.RegisterAPIWithManager(mux, mgr)
-	mux.HandleFunc("/api/terminal/config", handleConfig)
+	// Register /api/terminal exactly once: layer SSH support on top of the
+	// ptywrap terminal handler. ptywrap.RegisterAPIWithManager would also
+	// register /api/terminal, which conflicts under Go 1.22+ ServeMux; use
+	// RegisterSessionAPI for the sessions sub-routes instead.
 	mux.HandleFunc("/api/terminal", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("ssh") == "true" {
 			handleSSHWebSocket(w, r, mgr)
@@ -64,6 +66,8 @@ func RegisterAPI(mux *http.ServeMux) {
 		}
 		ptywrap.HandleTerminalWebSocket(w, r, mgr)
 	})
+	ptywrap.RegisterSessionAPI(mux, mgr)
+	mux.HandleFunc("/api/terminal/config", handleConfig)
 }
 
 type sshControlMessage struct {

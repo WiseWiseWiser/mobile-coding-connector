@@ -3,6 +3,7 @@ package run
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -10,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap"
 	"github.com/xhd2015/ai-critic/run/daemon"
 	"github.com/xhd2015/ai-critic/server/config"
-	"github.com/xhd2015/ai-critic/server/terminal"
 	"github.com/xhd2015/less-gen/flags"
 )
 
@@ -297,21 +298,39 @@ func sendKeepAliveFixTunnel() error {
 	return nil
 }
 
+// TestExported_OutputKeepAliveScript renders the keep-alive shell script for doctest harness.
+func TestExported_OutputKeepAliveScript(port int, serverArgs []string, binPath string, w io.Writer) error {
+	script, err := renderKeepAliveScript(port, serverArgs, binPath)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write([]byte(script))
+	return err
+}
+
 // outputKeepAliveScript outputs a shell script for keep-alive.
 func outputKeepAliveScript(port int, serverArgs []string) error {
 	binPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve executable path: %w", err)
 	}
+	script, err := renderKeepAliveScript(port, serverArgs, binPath)
+	if err != nil {
+		return err
+	}
+	fmt.Print(script)
+	return nil
+}
 
+func renderKeepAliveScript(port int, serverArgs []string, binPath string) (string, error) {
 	// Build the server command with all original args
 	var cmdParts []string
-	cmdParts = append(cmdParts, terminal.ShellQuote(binPath))
+	cmdParts = append(cmdParts, ptywrap.ShellQuote(binPath))
 	if port != config.DefaultServerPort {
 		cmdParts = append(cmdParts, "--port", fmt.Sprintf("%d", port))
 	}
 	for _, a := range serverArgs {
-		cmdParts = append(cmdParts, terminal.ShellQuote(a))
+		cmdParts = append(cmdParts, ptywrap.ShellQuote(a))
 	}
 	serverCmd := strings.Join(cmdParts, " ")
 
@@ -391,10 +410,9 @@ while true; do
   echo "[$(date)] Server exited with code $EXIT_CODE, restarting in ${RESTART_DELAY}s..."
   sleep "$RESTART_DELAY"
 done
-`, config.ServerLogFile, port, terminal.ShellQuote(binPath), serverCmd, serverCmd)
+`, config.ServerLogFile, port, ptywrap.ShellQuote(binPath), serverCmd, serverCmd)
 
-	fmt.Print(script)
-	return nil
+	return script, nil
 }
 
 // timestamp returns a formatted timestamp string for logging

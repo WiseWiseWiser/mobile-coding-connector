@@ -1,18 +1,12 @@
 package agentcli
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"os"
-	"os/signal"
-	"syscall"
 
-	"github.com/gorilla/websocket"
 	"golang.org/x/term"
 
+	ptyclient "github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap/client"
 	"github.com/xhd2015/ai-critic/client"
 )
 
@@ -78,161 +72,24 @@ func runExec(resolve func() (*client.Client, error), args []string) error {
 	return nil
 }
 
-type execInteractiveServerMessage struct {
-	Type    string `json:"type"`
-	Code    int    `json:"code,omitempty"`
-	Message string `json:"message,omitempty"`
-}
-
 func runExecInteractive(resolve func() (*client.Client, error), args []string) error {
 	cli, err := resolve()
 	if err != nil {
 		return err
 	}
 
-	wsURL, err := execWebSocketURL(cli)
+	c := &ptyclient.Client{
+		BaseURL:   cli.Server,
+		AuthToken: cli.Token,
+	}
+	exitCode, err := ptyclient.RunExec(c, ptyclient.ExecOptions{Argv: args})
 	if err != nil {
 		return err
 	}
-
-	header := http.Header{}
-	if cli.Token != "" {
-		header.Set("Authorization", "Bearer "+cli.Token)
+	if exitCode != 0 {
+		os.Exit(normalizeExitCode(exitCode))
 	}
-
-	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, header)
-	if err != nil {
-		return terminalDialError(err, resp)
-	}
-	defer conn.Close()
-
-	writer := &wsWriter{conn: conn}
-	if err := writer.writeJSON(client.ExecRequest{Argv: args}); err != nil {
-		return err
-	}
-
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		return fmt.Errorf("enable raw mode: %w", err)
-	}
-	restored := false
-	restoreTerminal := func() {
-		if restored {
-			return
-		}
-		restored = true
-		_ = term.Restore(int(os.Stdin.Fd()), oldState)
-	}
-	defer restoreTerminal()
-
-	if err := sendTerminalResize(writer); err != nil {
-		return err
-	}
-
-	sigWinch := make(chan os.Signal, 1)
-	signal.Notify(sigWinch, syscall.SIGWINCH)
-	defer signal.Stop(sigWinch)
-	go func() {
-		for range sigWinch {
-			_ = sendTerminalResize(writer)
-		}
-	}()
-
-	readerCh := make(chan execReadResult, 1)
-	go func() {
-		code, err := readExecInteractiveOutput(conn)
-		readerCh <- execReadResult{exitCode: code, err: err}
-	}()
-
-	stdinErrCh := make(chan error, 1)
-	go func() {
-		stdinErrCh <- forwardTerminalInput(writer)
-	}()
-
-	for {
-		select {
-		case res := <-readerCh:
-			if res.err != nil {
-				return res.err
-			}
-			if res.exitCode != 0 {
-				restoreTerminal()
-				os.Exit(normalizeExitCode(res.exitCode))
-			}
-			return nil
-		case err := <-stdinErrCh:
-			if err == nil || err == io.EOF {
-				continue
-			}
-			_ = conn.Close()
-			res := <-readerCh
-			if res.err != nil {
-				return res.err
-			}
-			return err
-		}
-	}
-}
-
-type execReadResult struct {
-	exitCode int
-	err      error
-}
-
-func execWebSocketURL(cli *client.Client) (string, error) {
-	base, err := url.Parse(cli.Server)
-	if err != nil {
-		return "", fmt.Errorf("invalid server url %q: %w", cli.Server, err)
-	}
-	switch base.Scheme {
-	case "http":
-		base.Scheme = "ws"
-	case "https":
-		base.Scheme = "wss"
-	default:
-		return "", fmt.Errorf("unsupported server scheme %q", base.Scheme)
-	}
-	base.Path = "/api/exec/ws"
-	base.RawQuery = ""
-	return base.String(), nil
-}
-
-func readExecInteractiveOutput(conn *websocket.Conn) (int, error) {
-	for {
-		msgType, data, err := conn.ReadMessage()
-		if err != nil {
-			return 0, normalizeTerminalReadError(err)
-		}
-		switch msgType {
-		case websocket.BinaryMessage:
-			if _, err := os.Stdout.Write(data); err != nil {
-				return 0, err
-			}
-		case websocket.TextMessage:
-			var msg execInteractiveServerMessage
-			if err := json.Unmarshal(data, &msg); err == nil && msg.Type != "" {
-				switch msg.Type {
-				case "exit":
-					return msg.Code, nil
-				case "error":
-					if msg.Message == "" {
-						return 0, fmt.Errorf("remote exec error")
-					}
-					return 0, fmt.Errorf("%s", msg.Message)
-				default:
-					if msg.Message != "" {
-						if _, err := os.Stdout.WriteString(msg.Message); err != nil {
-							return 0, err
-						}
-					}
-					continue
-				}
-			}
-			if _, err := os.Stdout.Write(data); err != nil {
-				return 0, err
-			}
-		}
-	}
+	return nil
 }
 
 // normalizeExitCode clamps an arbitrary integer into the 1..255 range that

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/xhd2015/agent-pro/pkgs/containers/podman"
 	"github.com/xhd2015/ai-critic/script/lib"
 	"github.com/xhd2015/less-gen/flags"
 )
@@ -186,7 +187,7 @@ func waitForPort(ctx context.Context, port int, timeout time.Duration) error {
 			return ctx.Err()
 		default:
 		}
-		if lib.CheckPort(port) {
+		if podman.CheckPort(port) {
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)

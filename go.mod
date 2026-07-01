@@ -8,8 +8,8 @@ require (
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/xhd2015/agent-pro v0.0.38
-	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.33
-	github.com/xhd2015/gitops v0.0.20
+	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.36
+	github.com/xhd2015/gitops v0.0.21
 	github.com/xhd2015/kool v0.0.101
 	github.com/xhd2015/less-gen v0.0.19
 	github.com/xhd2015/skills v0.0.10
