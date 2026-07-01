@@ -89,7 +89,8 @@ export function usePureTerminal(options: PureTerminalOptions = {}): PureTerminal
         cleanupRef.current?.();
         cleanupRef.current = null;
 
-        if (!terminalRef.current) return;
+        const terminalElement = terminalRef.current;
+        if (!terminalElement) return;
 
         let disposed = false;
         let hadUserInput = false;
@@ -114,14 +115,14 @@ export function usePureTerminal(options: PureTerminalOptions = {}): PureTerminal
         });
         const fitAddon = new FitAddon();
         xterm.loadAddon(fitAddon);
-        xterm.open(terminalRef.current);
+        xterm.open(terminalElement);
         fitAddon.fit();
 
         xtermRef.current = xterm;
         fitAddonRef.current = fitAddon;
 
         // ---- Mobile touch scroll support ----
-        const viewport = terminalRef.current.querySelector('.xterm-viewport') as HTMLElement | null;
+        const viewport = terminalElement.querySelector('.xterm-viewport') as HTMLElement | null;
         let touchStartY = 0;
         let touchScrollTop = 0;
         let isTouchScrolling = false;
@@ -173,6 +174,22 @@ export function usePureTerminal(options: PureTerminalOptions = {}): PureTerminal
             if (dimensions) {
                 ws.send(JSON.stringify({ type: 'resize', cols: dimensions.cols, rows: dimensions.rows }));
             }
+        };
+
+        let resizeFrame: number | null = null;
+        const fitAndSendResize = () => {
+            if (disposed) return;
+            fitAddon.fit();
+            sendResize();
+        };
+        const scheduleFitAndSendResize = () => {
+            if (resizeFrame !== null) {
+                window.cancelAnimationFrame(resizeFrame);
+            }
+            resizeFrame = window.requestAnimationFrame(() => {
+                resizeFrame = null;
+                fitAndSendResize();
+            });
         };
 
         ws.onopen = () => {
@@ -258,14 +275,21 @@ export function usePureTerminal(options: PureTerminalOptions = {}): PureTerminal
 
         // ---- Resize handler ----
         const handleResize = () => {
-            fitAddonRef.current?.fit();
-            sendResize();
+            scheduleFitAndSendResize();
         };
         window.addEventListener('resize', handleResize);
 
+        let resizeObserver: ResizeObserver | null = null;
+        if (typeof ResizeObserver !== 'undefined') {
+            resizeObserver = new ResizeObserver(() => {
+                scheduleFitAndSendResize();
+            });
+            resizeObserver.observe(terminalElement);
+        }
+
         // ---- Visibility observer ----
         let intersectionObserver: IntersectionObserver | null = null;
-        if (terminalRef.current) {
+        if (terminalElement) {
             intersectionObserver = new IntersectionObserver(
                 (entries) => {
                     const entry = entries[0];
@@ -279,7 +303,7 @@ export function usePureTerminal(options: PureTerminalOptions = {}): PureTerminal
                 },
                 { threshold: 0.1 }
             );
-            intersectionObserver.observe(terminalRef.current);
+            intersectionObserver.observe(terminalElement);
         }
 
         xterm.focus();
@@ -287,7 +311,12 @@ export function usePureTerminal(options: PureTerminalOptions = {}): PureTerminal
         // Store cleanup
         cleanupRef.current = () => {
             disposed = true;
+            if (resizeFrame !== null) {
+                window.cancelAnimationFrame(resizeFrame);
+                resizeFrame = null;
+            }
             window.removeEventListener('resize', handleResize);
+            resizeObserver?.disconnect();
             intersectionObserver?.disconnect();
             if (viewport) {
                 viewport.removeEventListener('touchstart', handleTouchStart);

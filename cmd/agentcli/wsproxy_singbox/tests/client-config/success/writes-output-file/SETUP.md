@@ -9,7 +9,7 @@ BuildSingBoxTunConfig -> --output FILE
 
 ## Steps
 
-1. Set `OutputFile` to a temp path under the test working directory.
+1. Set `OutputFile` to a temp path so the test does not dirty the worktree.
 
 ```go
 import (
@@ -18,7 +18,7 @@ import (
 )
 
 func Setup(t *testing.T, req *Request) error {
-	req.OutputFile = filepath.Join("singbox-client-config.json")
+	req.OutputFile = filepath.Join(t.TempDir(), "singbox-client-config.json")
 	return nil
 }
 ```

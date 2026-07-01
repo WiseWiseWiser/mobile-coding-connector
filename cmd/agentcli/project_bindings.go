@@ -113,7 +113,6 @@ func normalizeGitOriginURL(raw string) (string, error) {
 	if raw == "" {
 		return "", fmt.Errorf("empty origin url")
 	}
-	raw = strings.TrimSuffix(raw, ".git")
 	raw = strings.TrimSuffix(raw, "/")
 
 	if strings.HasPrefix(raw, "file://") {
@@ -133,6 +132,7 @@ func normalizeGitOriginURL(raw string) (string, error) {
 		}
 		host := strings.ToLower(raw[at+1 : colon])
 		path := strings.TrimPrefix(raw[colon+1:], "/")
+		path = strings.TrimSuffix(path, ".git")
 		return host + "/" + strings.ToLower(path), nil
 	}
 
@@ -143,6 +143,7 @@ func normalizeGitOriginURL(raw string) (string, error) {
 		}
 		host := strings.ToLower(u.Hostname())
 		path := strings.Trim(strings.TrimSuffix(u.Path, "/"), "/")
+		path = strings.TrimSuffix(path, ".git")
 		return host + "/" + strings.ToLower(path), nil
 	}
 

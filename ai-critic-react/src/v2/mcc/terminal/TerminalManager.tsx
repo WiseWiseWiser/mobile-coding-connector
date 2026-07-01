@@ -313,6 +313,22 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
     // Ref for imperative handle
     const activeTabIdRef = useCurrent(activeTabId);
 
+    useEffect(() => {
+        if (!isVisible || !activeTabId) return;
+
+        const fitActiveTerminal = () => {
+            terminalRefsMap.current[activeTabId]?.fit();
+        };
+        const timeouts = [
+            window.setTimeout(fitActiveTerminal, 0),
+            window.setTimeout(fitActiveTerminal, 50),
+            window.setTimeout(fitActiveTerminal, 150),
+        ];
+        return () => {
+            timeouts.forEach(window.clearTimeout);
+        };
+    }, [zenMode, isVisible, activeTabId]);
+
     useImperativeHandle(ref, () => ({
         createTab,
         openTab: (name: string, cwd?: string, initialCommand?: string) => {

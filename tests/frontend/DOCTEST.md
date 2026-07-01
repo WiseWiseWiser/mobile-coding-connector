@@ -18,6 +18,11 @@ ai-critic React app.
 - **Vite dev server** — serves the React frontend for browser navigation.
 - **Playwright** — headless Chromium executes each leaf `script.js`, printing a
   JSON result line to stdout.
+- **Project terminal tab** — `MobileCodingConnector` keeps a persistent
+  `TerminalManager` for `/project/{name}/terminal`, including tabs, active
+  connection state, and zen mode.
+- **Pure terminal WebSocket** — `usePureTerminal` opens `/api/terminal`, sends
+  terminal input, and sends JSON resize messages after terminal fitting.
 - **File Transfer store** — flat `{AI_CRITIC_HOME}/file-transfer/` directory
   backing the dedicated `/api/file-transfer` endpoints and `FileTransferView`.
 - **Scratch pad** — single `scratch.json` blob (`content`, `updated_at`) served
@@ -32,6 +37,9 @@ ai-critic React app.
   file transfer directory and `scratch.json`, injects `BASE_URL` and `CASE_DIR`
   into the script, runs Playwright, and parses `ScriptResult`.
 - Navigation leaves verify routes render expected headings and shell UI.
+- Terminal leaves instrument browser WebSocket sends before navigation, drive the
+  project terminal tab at an iPhone viewport, and verify visible terminal layout
+  changes emit backend resize JSON.
 - File-transfer leaves verify scratch pad state, list state, upload, download,
   and delete against the dedicated API and UI.
 
@@ -57,15 +65,19 @@ ai-critic React app.
  |    +-- generate-random-uninitialized/ (LEAF)  Generate Random fills credential
  |
  +-- file-transfer/                        (grouping — inbox + scratch pad)
+ |    |
+ |    +-- scratch-empty/                  (LEAF)  no scratch.json → empty textarea + API
+ |    +-- scratch-display/                (LEAF)  seeded scratch.json → textarea on load
+ |    +-- scratch-save/                   (LEAF)  type + Save → persisted via PUT
+ |    +-- scratch-copy/                   (LEAF)  seeded content → Copy → clipboard
+ |    +-- list-empty/                     (LEAF)  empty dir → empty-state message
+ |    +-- upload-and-list/                (LEAF)  UI upload → row appears
+ |    +-- download-file/                  (LEAF)  seeded file → browser download
+ |    +-- delete-file/                    (LEAF)  seeded file → remove + API gone
+ |
+ +-- terminal/                             (grouping — project terminal tab)
       |
-      +-- scratch-empty/                  (LEAF)  no scratch.json → empty textarea + API
-      +-- scratch-display/                (LEAF)  seeded scratch.json → textarea on load
-      +-- scratch-save/                   (LEAF)  type + Save → persisted via PUT
-      +-- scratch-copy/                   (LEAF)  seeded content → Copy → clipboard
-      +-- list-empty/                     (LEAF)  empty dir → empty-state message
-      +-- upload-and-list/                (LEAF)  UI upload → row appears
-      +-- download-file/                  (LEAF)  seeded file → browser download
-      +-- delete-file/                    (LEAF)  seeded file → remove + API gone
+      +-- zen-resize-iphone/              (LEAF)  iPhone zen enter/exit sends resize
 ```
 
 ## Test Index
@@ -86,6 +98,7 @@ ai-critic React app.
 | 12 | `file-transfer/upload-and-list` | Upload `testdata/sample.txt` via UI; row with name and size appears |
 | 13 | `file-transfer/download-file` | Pre-seeded `hello.txt`; Download triggers save as `hello.txt` |
 | 14 | `file-transfer/delete-file` | Pre-seeded `temp.txt`; Remove confirms; row gone and absent from API |
+| 15 | `terminal/zen-resize-iphone` | iPhone project terminal zen enter and exit each send positive backend resize JSON |
 
 ## Parameter Coverage
 
@@ -105,6 +118,7 @@ ai-critic React app.
 | upload-and-list | `/home/file-transfer` | empty (reset) | upload + list | 120 |
 | download-file | `/home/file-transfer` | seeded `hello.txt` | download | 90 |
 | delete-file | `/home/file-transfer` | seeded `temp.txt` | delete | 90 |
+| zen-resize-iphone | `/project/{name}/terminal` | project seeded through API | terminal zen enter + exit | 150 |
 
 ## Harness Behaviour (root `Run`)
 
@@ -154,6 +168,12 @@ doctest test ./tests/frontend/file-transfer/list-empty
 doctest test ./tests/frontend/file-transfer/upload-and-list
 doctest test ./tests/frontend/file-transfer/download-file
 doctest test ./tests/frontend/file-transfer/delete-file
+```
+
+Run terminal leaves:
+
+```sh
+doctest test ./tests/frontend/terminal/zen-resize-iphone
 ```
 
 Post-implementation verification:
