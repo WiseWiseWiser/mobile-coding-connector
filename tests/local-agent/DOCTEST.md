@@ -32,6 +32,10 @@ The harness exercises the local profile of the shared agent CLI against a real
 - When the resolved server is not listening, stderr includes an `ai-critic` start hint.
 - When the server listens but auth fails, errors do not include that hint.
 - `local-agent` reads/writes only `local-agent-config.json`, not `remote-agent-config.json`.
+- Auth failures include profile-specific CLI authorization guidance.
+- `local-agent auth import-local` reads the first non-empty local server credential
+  from `~/.ai-critic/server-credentials`, stores it for the resolved local server,
+  preserves unrelated config fields, and never prints the raw token.
 
 ## Version
 
@@ -56,10 +60,15 @@ The harness exercises the local profile of the shared agent CLI against a real
  |    |
  |    +-- prompts-ai-critic/                   (LEAF)  not listening → stderr mentions ai-critic
  |    +-- auth-failure-no-hint/                (LEAF)  listening, bad token → no ai-critic hint
+ |    +-- project-list-auth-guidance/          (LEAF)  project list bad token → local config + credential hint
  |
  +-- config-isolation/
  |    |
  |    +-- separate-config-file/                (LEAF)  remote-agent-config.json untouched
+ |
+ +-- auth-import-local/
+ |    |
+ |    +-- first-non-empty-token/               (LEAF)  local credential imported without printing token
  |
  +-- command-parity/
       |
@@ -77,9 +86,11 @@ The harness exercises the local profile of the shared agent CLI against a real
 | 4 | `default-resolution/saved-token-from-config` | `auth status` uses saved token without `--token` |
 | 5 | `not-running/prompts-ai-critic` | Unreachable server stderr includes start hint |
 | 6 | `not-running/auth-failure-no-hint` | Bad token after reachability passes; no start hint |
-| 7 | `config-isolation/separate-config-file` | `remote-agent-config.json` bytes unchanged |
-| 8 | `command-parity/request-ping` | `request /ping` prints `pong` |
-| 9 | `command-parity/help-branding` | Top-level help documents local branding and `--port` |
+| 7 | `not-running/project-list-auth-guidance` | `project list` bad token prints local auth guidance |
+| 8 | `config-isolation/separate-config-file` | `remote-agent-config.json` bytes unchanged |
+| 9 | `auth-import-local/first-non-empty-token` | `auth import-local` imports first non-empty local server credential |
+| 10 | `command-parity/request-ping` | `request /ping` prints `pong` |
+| 11 | `command-parity/help-branding` | Top-level help documents local branding and `--port` |
 
 ## Parameter Coverage
 
@@ -90,8 +101,9 @@ The harness exercises the local profile of the shared agent CLI against a real
 | Built-in default (hooked) | ping-without-flags |
 | Saved config token | saved-token-from-config |
 | Reachability mock down | prompts-ai-critic |
-| Reachability up + auth fail | auth-failure-no-hint |
+| Reachability up + auth fail | auth-failure-no-hint, project-list-auth-guidance |
 | Config file boundary | separate-config-file |
+| Local credential import | auth-import-local/first-non-empty-token |
 | `request` subcommand | request-ping |
 | Help text | help-branding |
 
@@ -129,10 +141,18 @@ type DomainEntry struct {
 	Token  string `json:"token,omitempty"`
 }
 
+// ProjectBinding mirrors unrelated project_bindings rows preserved by config writes.
+type ProjectBinding struct {
+	Server    string `json:"server"`
+	RemoteDir string `json:"remote_dir"`
+	LocalPath string `json:"local_path"`
+}
+
 // LocalAgentConfigFile is the persisted JSON shape for local-agent.
 type LocalAgentConfigFile struct {
-	Default string        `json:"default,omitempty"`
-	Domains []DomainEntry `json:"domains"`
+	Default         string           `json:"default,omitempty"`
+	Domains         []DomainEntry    `json:"domains"`
+	ProjectBindings []ProjectBinding `json:"project_bindings,omitempty"`
 }
 
 type Request struct {
@@ -165,6 +185,8 @@ type Request struct {
 	SeedLocalConfig   *LocalAgentConfigFile
 	SeedRemoteConfig  []byte
 	WatchRemoteConfig bool
+	WatchLocalConfig  bool
+	ServerCredentialContent string
 
 	// GlobalHelp runs `local-agent -h` (top-level help, no subcommand).
 	GlobalHelp bool
@@ -180,6 +202,7 @@ type Response struct {
 
 	LocalConfigPath    string
 	RemoteConfigPath   string
+	LocalConfigAfter   []byte
 	RemoteConfigBefore []byte
 	RemoteConfigAfter  []byte
 }
@@ -228,6 +251,12 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	if req.SeedRemoteConfig != nil {
 		if err := os.WriteFile(resp.RemoteConfigPath, req.SeedRemoteConfig, 0600); err != nil {
+			return nil, err
+		}
+	}
+	if req.ServerCredentialContent != "" {
+		credPath := filepath.Join(aiCriticDir, "server-credentials")
+		if err := os.WriteFile(credPath, []byte(req.ServerCredentialContent), 0600); err != nil {
 			return nil, err
 		}
 	}
@@ -346,6 +375,9 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	if req.WatchRemoteConfig {
 		resp.RemoteConfigAfter, _ = os.ReadFile(resp.RemoteConfigPath)
+	}
+	if req.WatchLocalConfig {
+		resp.LocalConfigAfter, _ = os.ReadFile(resp.LocalConfigPath)
 	}
 
 	return resp, nil

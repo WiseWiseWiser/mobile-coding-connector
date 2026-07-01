@@ -1,9 +1,14 @@
 package agentcli
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/xhd2015/ai-critic/client"
+	"github.com/xhd2015/ai-critic/cmd/agentcli/testhooks"
 )
 
 const authHelp = `Usage: remote-agent auth <subcommand> [args...]
@@ -14,6 +19,9 @@ Subcommands:
   status
       Check authentication status against the configured server.
       Verifies the server is reachable and the token is valid.
+
+  import-local
+      Local-agent only: import ~/.ai-critic/server-credentials into CLI config.
 `
 
 const authStatusHelp = `Usage: remote-agent auth status
@@ -35,6 +43,8 @@ func runAuth(resolve func() (*client.Client, error), args []string) error {
 	switch sub {
 	case "status":
 		return runAuthStatus(resolve, rest)
+	case "import-local":
+		return runAuthImportLocal(resolve, rest)
 	case "-h", "--help":
 		fmt.Print(authHelp)
 		return nil
@@ -76,4 +86,73 @@ func runAuthStatus(resolve func() (*client.Client, error), args []string) error 
 
 	fmt.Println("Auth: unauthorized (check your token)")
 	return fmt.Errorf("unauthorized")
+}
+
+func runAuthImportLocal(resolve func() (*client.Client, error), args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("auth import-local takes no arguments, got %v", args)
+	}
+	if active.Name != "local-agent" {
+		return fmt.Errorf("auth import-local is local-agent-only and unsupported for %s", active.Name)
+	}
+
+	token, credPath, err := readFirstLocalCredentialLine()
+	if err != nil {
+		return err
+	}
+
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	if cfg == nil {
+		cfg = &agentConfig{}
+	}
+
+	server := fmt.Sprintf("http://localhost:%d", testhooks.EffectiveDefaultPort(active.DefaultPort))
+	upsertDomainToken(cfg, server, token)
+	cfg.Default = server
+	if err := saveConfig(cfg); err != nil {
+		return fmt.Errorf("save local-agent config: %w", err)
+	}
+
+	fmt.Printf("Imported local server credentials from %s for %s.\n", credPath, server)
+	fmt.Printf("Default server set in ~/.ai-critic/%s.\n", active.ConfigFile)
+	return nil
+}
+
+func readFirstLocalCredentialLine() (token string, path string, err error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", "", err
+	}
+	path = filepath.Join(home, ".ai-critic", "server-credentials")
+	f, err := os.Open(path)
+	if err != nil {
+		return "", path, fmt.Errorf("read local server credentials from %s: %w", path, err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			return line, path, nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", path, fmt.Errorf("read local server credentials from %s: %w", path, err)
+	}
+	return "", path, fmt.Errorf("no credential token found in %s", path)
+}
+
+func upsertDomainToken(cfg *agentConfig, server, token string) {
+	for i := range cfg.Domains {
+		if normalizeServerForMatch(cfg.Domains[i].Server) == server {
+			cfg.Domains[i].Server = server
+			cfg.Domains[i].Token = token
+			return
+		}
+	}
+	cfg.Domains = append(cfg.Domains, domainConfig{Server: server, Token: token})
 }

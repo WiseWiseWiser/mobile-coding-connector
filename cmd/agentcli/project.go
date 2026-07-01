@@ -117,7 +117,7 @@ func runProjectList(resolve func() (*client.Client, error), args []string) error
 	}
 	projects, err := cli.ListProjects(client.ProjectListOptions{DirtyOnly: dirtyOnly})
 	if err != nil {
-		return err
+		return withProjectListAuthGuidance(err)
 	}
 	if len(projects) == 0 {
 		if dirtyOnly {
@@ -135,6 +135,21 @@ func runProjectList(resolve func() (*client.Client, error), args []string) error
 		printProjectGitConfig(cli.Server, project)
 	}
 	return nil
+}
+
+func withProjectListAuthGuidance(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := strings.ToLower(err.Error())
+	if !strings.Contains(msg, "unauthorized") && !strings.Contains(msg, "401") && !strings.Contains(msg, "auth") {
+		return err
+	}
+	hint := fmt.Sprintf("\n\nHint: authorize this CLI with '%s config'.", active.Name)
+	if active.Name == "local-agent" {
+		hint += " For a local server token, check ~/.ai-critic/server-credentials or run 'local-agent auth import-local'."
+	}
+	return fmt.Errorf("%w%s", err, hint)
 }
 
 func runProjectGitConfig(resolve func() (*client.Client, error), args []string) error {

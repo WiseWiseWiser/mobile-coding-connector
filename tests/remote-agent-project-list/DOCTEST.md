@@ -32,6 +32,10 @@ The harness exercises the remote profile of the shared agent CLI against a real
 - Non-git directories show `-` for branch, commit, and worktree lines.
 - Git identity fields remain after the new git status lines.
 - `--dirty` requests `GET /api/projects?all=true&dirty=true`; server omits clean and non-git projects.
+- Auth failures from `project list` include a friendly `remote-agent config` hint
+  without local-only credential-file guidance.
+- `remote-agent auth import-local` is rejected as local-agent-only and does not
+  read local server credentials or mutate `remote-agent-config.json`.
 
 ## Version
 
@@ -50,6 +54,12 @@ The harness exercises the remote profile of the shared agent CLI against a real
  +-- list-dirty/
  |    +-- shows-dirty-only/         (LEAF)  --dirty omits clean project
  |    +-- empty-all-clean/          (LEAF)  --dirty with only clean → no dirty message
+ |
+ +-- auth-failure/
+ |    +-- bad-token-guidance/       (LEAF)  project list bad token → remote-agent config hint only
+ |
+ +-- local-only-auth-helper/
+ |    +-- rejected-by-remote/       (LEAF)  auth import-local rejected and config untouched
  |
  +-- local-dir/                      (GROUP)  CLI binding resolution for Local Dir line
       +-- bound/                     (LEAF)  seeded binding → absolute Local Dir
@@ -72,13 +82,15 @@ The harness exercises the remote profile of the shared agent CLI against a real
 | 5 | `identity-fields-preserved` | Saved git identity fields unchanged alongside git status |
 | 6 | `list-dirty/shows-dirty-only` | Two projects; `--dirty` prints only the dirty one |
 | 7 | `list-dirty/empty-all-clean` | One clean project; `--dirty` → `No dirty projects found.` |
-| 8 | `local-dir/bound` | Seeded binding; `Local Dir` shows absolute path after `Dir` |
-| 9 | `local-dir/unbound` | Isolated empty config; `Local Dir: -` |
-| 10 | `local-dir/bound-dirty-filter` | `--dirty` lists bound dirty project with Local Dir |
-| 11 | `local-dir/wrong-server` | Binding server mismatch → dash |
-| 12 | `local-dir/wrong-remote-dir` | Binding remote_dir mismatch → dash |
-| 13 | `local-dir/git-config-get-bound` | `project git-config get` includes bound Local Dir |
-| 14 | `local-dir/git-config-get-unbound` | `project git-config get` with no binding → dash |
+| 8 | `auth-failure/bad-token-guidance` | `project list` bad token prints remote auth guidance |
+| 9 | `local-only-auth-helper/rejected-by-remote` | `auth import-local` rejected for remote-agent |
+| 10 | `local-dir/bound` | Seeded binding; `Local Dir` shows absolute path after `Dir` |
+| 11 | `local-dir/unbound` | Isolated empty config; `Local Dir: -` |
+| 12 | `local-dir/bound-dirty-filter` | `--dirty` lists bound dirty project with Local Dir |
+| 13 | `local-dir/wrong-server` | Binding server mismatch → dash |
+| 14 | `local-dir/wrong-remote-dir` | Binding remote_dir mismatch → dash |
+| 15 | `local-dir/git-config-get-bound` | `project git-config get` includes bound Local Dir |
+| 16 | `local-dir/git-config-get-unbound` | `project git-config get` with no binding → dash |
 
 ## Parameter Coverage
 
@@ -90,6 +102,8 @@ The harness exercises the remote profile of the shared agent CLI against a real
 | Not a git repo | not-git-repo |
 | Git identity metadata | identity-fields-preserved |
 | `--dirty` filter | list-dirty/*, local-dir/bound-dirty-filter |
+| Auth failure messaging | auth-failure/bad-token-guidance |
+| Local-only helper rejection | local-only-auth-helper/rejected-by-remote |
 | Local binding present | local-dir/bound, bound-dirty-filter, git-config-get-bound |
 | Local binding absent | local-dir/unbound, git-config-get-unbound, legacy leaves |
 | Binding key mismatch | wrong-server, wrong-remote-dir |
@@ -149,6 +163,8 @@ type Request struct {
 
 	SeedBindings []ProjectBinding
 	LocalPath    string
+	WatchRemoteConfig bool
+	ServerCredentialContent string
 }
 
 type Response struct {
@@ -161,6 +177,9 @@ type Response struct {
 	AgentHome  string
 	ProjectDir string
 	LocalPath  string
+	RemoteConfigPath string
+	RemoteConfigBefore []byte
+	RemoteConfigAfter  []byte
 }
 
 type projectsFileRow struct {
@@ -314,6 +333,16 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if err := writeRemoteAgentConfig(configPath, normalizedServer, req.Token, req.SeedBindings); err != nil {
 		return nil, err
 	}
+	resp.RemoteConfigPath = configPath
+	if req.ServerCredentialContent != "" {
+		credPath := filepath.Join(aiCriticAgent, "server-credentials")
+		if err := os.WriteFile(credPath, []byte(req.ServerCredentialContent), 0600); err != nil {
+			return nil, err
+		}
+	}
+	if req.WatchRemoteConfig {
+		resp.RemoteConfigBefore, _ = os.ReadFile(resp.RemoteConfigPath)
+	}
 
 	argv := []string{"--server", serverURL, "--token", req.Token}
 	argv = append(argv, req.Args...)
@@ -339,6 +368,9 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	resp.Stdout = stdout.String()
 	resp.Stderr = stderr.String()
 	resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
+	if req.WatchRemoteConfig {
+		resp.RemoteConfigAfter, _ = os.ReadFile(resp.RemoteConfigPath)
+	}
 
 	return resp, nil
 }
