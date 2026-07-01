@@ -28,10 +28,10 @@ github.com/sashabaranov/go-openai v1.41.2 h1:vfPRBZNMpnqu8ELsclWcAvF19lDNgh1t6TV
 github.com/sashabaranov/go-openai v1.41.2/go.mod h1:lj5b/K+zjTSFxVLijLSTDZuP7adOgerWeFyZLUhAKRg=
 github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e h1:MRM5ITcdelLK2j1vwZ3Je0FKVCfqOLp5zO6trqMLYs0=
 github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e/go.mod h1:XV66xRDqSt+GTGFMVlhk3ULuV0y9ZmzeVGR4mloJI3M=
-github.com/xhd2015/agent-pro v0.0.38 h1:pSEdZvMoU1FY2ObIqQvO7NUD4iOpCYf/tUv4ZDayWek=
-github.com/xhd2015/agent-pro v0.0.38/go.mod h1:xNb8XiI3anoYYNSGy8RZUDxvy98Zcpxz4ZYt7rZ0HyM=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.36 h1:Db3NLxtwkrEDNinXXfrpHzUKAWvRjLuoJozg7JXgYFA=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.36/go.mod h1:MXzGoFVLr/LHyeyuCw8yaYfFPeP6NgeTW3x0BRJxNHE=
+github.com/xhd2015/agent-pro v0.0.39 h1:4Hl8VpzoNwSILSbt9cGTtr75AWFvOmN6is7oA7qjQMo=
+github.com/xhd2015/agent-pro v0.0.39/go.mod h1:A6XWBIvdX68RAXz+NwGbttrP25BNcBNOVuYgWsIfRGo=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.37 h1:TGd+ru8VpvwAFPrewlnl6t27BXmGjGPAsNOqq9Gd8uk=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.37/go.mod h1:MXzGoFVLr/LHyeyuCw8yaYfFPeP6NgeTW3x0BRJxNHE=
 github.com/xhd2015/gitops v0.0.21 h1:5r1gUHrdEG3IIOv92j46+jvW+uwlZTTHkRLkQXX8e2o=
 github.com/xhd2015/gitops v0.0.21/go.mod h1:KS8y6tZ3FG+myEaR+H6MvoR099YrP/ADIHZX9ROpZo8=
 github.com/xhd2015/go-coverage v1.0.41 h1:JjUcE93IMz0KHmdCYUKq9JN/EDC/5k0OEhsMAeVvL88=
