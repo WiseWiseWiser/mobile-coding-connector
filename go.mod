@@ -7,9 +7,9 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	github.com/xhd2015/agent-pro v0.0.39
-	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.37
-	github.com/xhd2015/gitops v0.0.21
+	github.com/xhd2015/agent-pro v0.0.40
+	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.38
+	github.com/xhd2015/gitops v0.0.22
 	github.com/xhd2015/kool v0.0.101
 	github.com/xhd2015/less-gen v0.0.19
 	github.com/xhd2015/skills v0.0.10
