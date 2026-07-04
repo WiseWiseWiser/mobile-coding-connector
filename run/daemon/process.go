@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -203,11 +205,18 @@ func IsPortReachable(port int) bool {
 
 // FindPortPID finds the PID using a specific port (for conflict detection)
 func FindPortPID(port int) string {
-	// Try lsof first
-	cmd := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port))
+	// Prefer TCP LISTEN sockets only; plain `lsof -ti :port` can match unrelated PIDs on macOS.
+	cmd := exec.Command("lsof", "-nP", "-iTCP:"+strconv.Itoa(port), "-sTCP:LISTEN", "-t")
 	output, err := cmd.Output()
 	if err == nil && len(output) > 0 {
-		return string(output)
+		return strings.TrimSpace(string(output))
+	}
+
+	// Fallback for platforms without -sTCP:LISTEN support.
+	cmd = exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port))
+	output, err = cmd.Output()
+	if err == nil && len(output) > 0 {
+		return strings.TrimSpace(string(output))
 	}
 
 	// Try netstat as fallback

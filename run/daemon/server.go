@@ -11,8 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/xhd2015/ai-critic/macosapp/grokusage"
 	"github.com/xhd2015/ai-critic/server/config"
 )
+
+var grokUsageService = grokusage.NewService()
 
 var currentCmd atomic.Value
 
@@ -53,6 +56,9 @@ func (s *HTTPServer) Start() {
 	mux.HandleFunc("/api/keep-alive/logs", s.handleLogs)
 	mux.HandleFunc("/api/keep-alive/restart-daemon", s.handleRestartDaemon)
 	mux.HandleFunc("/api/keep-alive/exec-replace", s.handleExecReplace)
+	mux.HandleFunc("/api/grok/usage", s.handleGrokUsage)
+
+	grokUsageService.Start()
 
 	addr := fmt.Sprintf(":%d", config.KeepAlivePort)
 	Logger("Keep-alive management server listening on %s", addr)
@@ -83,6 +89,17 @@ type StatusResponse struct {
 	NextBinary          string `json:"next_binary,omitempty"`
 	NextHealthCheckTime string `json:"next_health_check_time,omitempty"`
 	RestartCount        int    `json:"restart_count"`
+}
+
+func (s *HTTPServer) handleGrokUsage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	grokUsageService.EnsureFetch()
+	resp := grokUsageService.Get()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (s *HTTPServer) handleStatus(w http.ResponseWriter, r *http.Request) {

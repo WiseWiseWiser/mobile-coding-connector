@@ -27,6 +27,7 @@ Keep the ai-critic server running with automatic restart and health checking.
 Options:
   --port PORT         Port to run the server on (default: %d)
   --forever           Skip port-in-use check and start anyway
+  --kill-existing     Kill processes on keep-alive and server ports before starting
   --log FILE          Log keep-alive output to file (default: ai-critic-server-keep-alive.log)
                       Use --log no to disable logging to file
   --script            Output shell script instead of running Go code
@@ -48,12 +49,14 @@ func runKeepAlive(args []string) error {
 	var scriptFlag bool
 	var portFlag int
 	var foreverFlag bool
+	var killExistingFlag bool
 	var logFlag string
 
 	args, err := flags.
 		Bool("--script", &scriptFlag).
 		Int("--port", &portFlag).
 		Bool("--forever", &foreverFlag).
+		Bool("--kill-existing", &killExistingFlag).
 		String("--log", &logFlag).
 		Help("-h,--help", fmt.Sprintf(keepAliveHelp, config.DefaultServerPort)).
 		Parse(args)
@@ -92,7 +95,7 @@ func runKeepAlive(args []string) error {
 		}
 	}
 
-	return daemon.RunKeepAlive(port, foreverFlag, logPath, args)
+	return daemon.RunKeepAlive(port, foreverFlag, logPath, args, killExistingFlag)
 }
 
 func resolveKeepAliveLogPath(logFlag string) string {

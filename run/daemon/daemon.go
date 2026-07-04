@@ -9,9 +9,13 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/xhd2015/ai-critic/server/config"
 )
 
 const keepAliveSkipServerPortCheckEnv = "AI_CRITIC_KEEPALIVE_SKIP_SERVER_PORT_CHECK"
+
+var killExistingFlag bool
 
 // Daemon represents the keep-alive daemon
 type Daemon struct {
@@ -126,6 +130,12 @@ func (d *Daemon) Run(forever bool, logPath string) error {
 		}
 		Logger("Keep-alive daemon exiting (PID=%d)", os.Getpid())
 	}()
+
+	if killExistingFlag {
+		Logger("Kill-existing: terminating listeners on ports %d and %d", config.KeepAlivePort, d.port)
+		KillListenersOnPort(config.KeepAlivePort)
+		KillListenersOnPort(d.port)
+	}
 
 	// Check if port is already in use - another keep-alive is likely running
 	// Skip this check if --forever flag is set
@@ -399,7 +409,8 @@ func (d *Daemon) reconnectToServer(pid string, binPath string) (*exec.Cmd, error
 }
 
 // RunKeepAlive is the main entry point for the keep-alive daemon
-func RunKeepAlive(port int, forever bool, logPath string, serverArgs []string) error {
+func RunKeepAlive(port int, forever bool, logPath string, serverArgs []string, killExisting bool) error {
+	killExistingFlag = killExisting
 	daemon := NewDaemon(port, serverArgs)
 	return daemon.Run(forever, logPath)
 }
