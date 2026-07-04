@@ -1,14 +1,14 @@
 # Scenario
 
-**Feature**: ParseShowUsageOutput from fixture stdout
+**Feature**: tty.ParseShowUsageOutput from fixture scrollback
 
 ```
-fixture stdout -> ParseShowUsageOutput -> UsageInfo or error
+fixture scrollback -> tty.ParseShowUsageOutput -> UsageInfo or error
 ```
 
 ## Preconditions
 
-Fixture files under shared `testdata/`.
+Fixture files under shared `testdata/`. Parser source of truth is `agent/grok/tty`.
 
 ## Steps
 
@@ -16,7 +16,7 @@ Fixture files under shared `testdata/`.
 
 ## Context
 
-Pure parser tests; no daemon or network.
+Pure parser tests; no daemon, network, or PTY fetch.
 
 ```go
 import "testing"

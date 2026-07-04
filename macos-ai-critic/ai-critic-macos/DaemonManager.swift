@@ -68,6 +68,7 @@ final class DaemonManager: ObservableObject {
             .path
         var env = ProcessInfo.processInfo.environment
         env["HOME"] = home
+        augmentPath(&env, home: home)
         for (key, value) in Self.keepAliveEnv(binaryDir: binaryDir) {
             env[key] = value
         }
@@ -86,6 +87,26 @@ final class DaemonManager: ObservableObject {
         return [
             "AI_CRITIC_NO_OPEN_BROWSER": "1",
         ]
+    }
+
+    /// Prepends common developer bin dirs so GUI-launched keep-alive finds grok and other CLIs.
+    private func augmentPath(_ env: inout [String: String], home: String) {
+        let extraBins = [
+            home + "/.grok/bin",
+            home + "/go/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+        ]
+        let current = env["PATH"] ?? ""
+        var seen = Set<String>()
+        var merged: [String] = []
+        for dir in extraBins + current.split(separator: ":").map(String.init) {
+            let trimmed = dir.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, !seen.contains(trimmed) else { continue }
+            seen.insert(trimmed)
+            merged.append(trimmed)
+        }
+        env["PATH"] = merged.joined(separator: ":")
     }
 
     private func resolveAICriticBinary() -> String {

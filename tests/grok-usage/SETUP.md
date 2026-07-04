@@ -1,31 +1,30 @@
 # Scenario
 
-**Feature**: grok usage parse, in-process fetch, API, and refresh overlap
+**Feature**: grok usage parse, library fetch, API, and refresh overlap
 
 ```
-injectable usage.Fetch hook -> parser/service -> GET /api/grok/usage (optional daemon)
+GROK_SHOW_USAGE_COMMAND fake TUI -> tty.FetchUsageWithOptions -> service cache -> GET /api/grok/usage (optional daemon)
 ```
 
 ## Preconditions
 
-1. `macosapp/grokusage` provides parser and `TestExported_NewService`,
-   `TestExported_SetFetcher`, `TestExported_FetchOnce`, `TestExported_TriggerRefresh`.
-2. Service calls `agent/usage.Fetch(ctx, Grok)` by default (no `GROK_SHOW_USAGE_BIN`).
-3. Keep-alive daemon registers `GET /api/grok/usage` for API leaves.
-4. API leaves use `GROK_SHOW_USAGE_COMMAND` fake TUI hook.
+1. `agent/grok/tty` provides `ParseShowUsageOutput` and `FetchUsageWithOptions`.
+2. `macosapp/grokusage` delegates fetch to `tty` and exposes `TestExported_*` hooks.
+3. Mock fake-TUI scripts live in `tests/grok-usage/testdata/` (chmod +x before use).
+4. Keep-alive daemon registers `GET /api/grok/usage` for API leaves.
 5. API leaves acquire keep-alive session lock (port `23312`).
 
 ## Steps
 
 1. Root `Setup` sets defaults and lock for API/refresh paths.
-2. Leaf `Setup` sets `Op`, fixtures, or `FetchMode`.
+2. Leaf `Setup` sets `Op`, fixtures, and mock script names.
 3. Root `Run` dispatches by `Op` to parse, fetch, HTTP, or overlap harness.
 4. Leaf `Assert` checks parsed fields, service status, or API JSON.
 
 ## Context
 
-Implements REQUIREMENT-DESIGN-in-process-usage-fetch.md Part B. Live Grok TTY is
-out of scope (tag `slow` if added later).
+Implements REQUIREMENT-DESIGN-grok-tty-show-usage.md. Live grok PTY fetch is out
+of scope (tag `slow` if added later).
 
 ```go
 import (

@@ -1,8 +1,7 @@
 package grokusage
 
 import (
-	"fmt"
-	"strings"
+	"github.com/xhd2015/agent-pro/agent/grok/tty"
 )
 
 // UsageInfo holds parsed grok show-usage output fields.
@@ -13,21 +12,12 @@ type UsageInfo struct {
 
 // ParseShowUsageOutput extracts Weekly limit and Next reset lines from command stdout.
 func ParseShowUsageOutput(stdout string) (*UsageInfo, error) {
-	var weekly, reset string
-	for _, line := range strings.Split(stdout, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "Weekly limit:") {
-			weekly = strings.TrimSpace(strings.TrimPrefix(line, "Weekly limit:"))
-		}
-		if strings.HasPrefix(line, "Next reset:") {
-			reset = strings.TrimSpace(strings.TrimPrefix(line, "Next reset:"))
-		}
+	info, err := tty.ParseShowUsageOutput(stdout)
+	if err != nil {
+		return nil, err
 	}
-	if weekly == "" {
-		return nil, fmt.Errorf("missing weekly limit")
-	}
-	if reset == "" {
-		return nil, fmt.Errorf("missing next reset")
-	}
-	return &UsageInfo{WeeklyLimit: weekly, NextReset: reset}, nil
+	return &UsageInfo{
+		WeeklyLimit: info.WeeklyLimit,
+		NextReset:   info.NextReset,
+	}, nil
 }

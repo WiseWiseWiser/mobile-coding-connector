@@ -1,18 +1,18 @@
 # Scenario
 
-**Feature**: injected fetch failure → service error status
+**Feature**: mock script failure → service error status
 
 ```
-injectable fetch error -> status error
+GROK_SHOW_USAGE_COMMAND=mock-fail.sh -> tty fetch error -> status error
 ```
 
 ## Preconditions
 
-Fetcher returns a non-nil error (no subprocess exec).
+`mock-fail.sh` fake TUI writes stderr and exits 1 after prompt.
 
 ## Steps
 
-1. `FetchMode=error`.
+1. `MockScript=mock-fail.sh`.
 
 ## Context
 
@@ -22,7 +22,7 @@ REQUIREMENT leaf: `fetch/mock-command-fails`.
 import "testing"
 
 func Setup(t *testing.T, req *Request) error {
-	req.FetchMode = "error"
+	req.MockScript = "mock-fail.sh"
 	return nil
 }
 ```

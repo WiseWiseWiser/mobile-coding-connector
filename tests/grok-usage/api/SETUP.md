@@ -3,12 +3,12 @@
 **Feature**: HTTP API for grok usage on keep-alive daemon
 
 ```
-keep-alive + GROK_SHOW_USAGE_BIN -> GET /api/grok/usage
+keep-alive + GROK_SHOW_USAGE_COMMAND -> tty fetch -> GET /api/grok/usage
 ```
 
 ## Preconditions
 
-Daemon exposes grok usage route; session lock held.
+Daemon exposes grok usage route; `GROK_SHOW_USAGE_COMMAND` passed in daemon env; session lock held.
 
 ## Steps
 

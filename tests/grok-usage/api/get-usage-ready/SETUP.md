@@ -3,17 +3,16 @@
 **Feature**: GET /api/grok/usage returns ready JSON
 
 ```
-daemon in-process fetch (GROK_SHOW_USAGE_COMMAND) -> GET /api/grok/usage -> status ready
+daemon fetch (mock) -> GET /api/grok/usage -> status ready
 ```
 
 ## Preconditions
 
-Fake Grok TUI via `GROK_SHOW_USAGE_COMMAND`.
+`mock-success.sh` path exported as `GROK_SHOW_USAGE_COMMAND` in daemon env.
 
 ## Steps
 
-1. `WaitAPIReadySecs=15`.
-2. Default fake TUI from root `Run` when `ShowUsageCommand` empty.
+1. `MockScript=mock-success.sh`, `WaitAPIReadySecs=15`.
 
 ## Context
 
@@ -23,6 +22,7 @@ REQUIREMENT leaf: `api/get-usage-ready`.
 import "testing"
 
 func Setup(t *testing.T, req *Request) error {
+	req.MockScript = "mock-success.sh"
 	req.WaitAPIReadySecs = 15
 	return nil
 }

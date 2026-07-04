@@ -3,12 +3,12 @@
 **Feature**: grok usage refresh skips overlapping fetches
 
 ```
-slow mock + concurrent TriggerRefresh -> single exec
+slow fake TUI + concurrent TriggerRefresh -> single PTY session
 ```
 
 ## Preconditions
 
-`mock-slow.sh` sleeps 2s and increments counter file.
+`mock-slow.sh` fake TUI sleeps 2s after `/usage show` and increments `GROK_MOCK_COUNTER_FILE`.
 
 ## Steps
 

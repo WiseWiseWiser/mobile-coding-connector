@@ -1,22 +1,25 @@
 # Grok Usage Parser, Service, and API Doctests
 
-Tests for `macosapp/grokusage` parsing, daemon-side in-process grok usage
-fetch/cache, and `GET /api/grok/usage` on the keep-alive management server.
-Service fetch leaves inject a mock `usage.Fetch` hook; API leaves drive the
-daemon via `GROK_SHOW_USAGE_COMMAND` (no `GROK_SHOW_USAGE_BIN` shell wrapper).
+Tests for `macosapp/grokusage` parsing, daemon-side grok usage fetch/cache, and
+`GET /api/grok/usage` on the keep-alive management server. Fetch leaves set
+`GROK_SHOW_USAGE_COMMAND` to fake-TUI scripts under `testdata/` so
+`github.com/xhd2015/agent-pro/agent/grok/tty.FetchUsageWithOptions` runs
+deterministically without a live grok binary.
 
 # DSN (Domain Specific Notion)
 
 **Participants**
 
-- **Parser (`macosapp/grokusage`)** — `ParseShowUsageOutput` extracts
-  `Weekly limit:` and `Next reset:` lines from command stdout.
-- **Grok usage service (daemon)** — calls `agent/usage.Fetch(ctx, Grok)` in-process,
-  caches `GrokUsageResponse`, refreshes every 60s, skips overlapping in-flight fetches.
-- **Injectable fetch hook** — `TestExported_SetFetcher` replaces the default in-process
-  fetch for deterministic service-layer tests (success, error, slow overlap).
-- **Fake Grok TUI (`GROK_SHOW_USAGE_COMMAND`)** — env hook honored by
-  `agent/grok/tty` for daemon API leaves.
+- **TTY library (`agent/grok/tty`)** — `ParseShowUsageOutput` regex-parses
+  scrollback; `FetchUsageWithOptions` PTY-launches `GROK_SHOW_USAGE_COMMAND`
+  (or real grok), submits `/usage show`, and returns `UsageInfo`.
+- **Parser wrapper (`macosapp/grokusage`)** — delegates `ParseShowUsageOutput`
+  to `tty` for API compatibility.
+- **Grok usage service (daemon)** — calls `tty.FetchUsageWithOptions` (no exec of
+  `debug-grok-show-usage`), caches `GrokUsageResponse`, refreshes every 60s,
+  skips overlapping in-flight fetches.
+- **Mock fake-TUI script** — shell fixtures under `testdata/`; mimic grok prompt,
+  read `/usage show`, emit usage lines; fail and slow variants for error/overlap.
 - **Keep-alive daemon** — serves `GET /api/grok/usage` on management port `23312`
   when API leaves run.
 - **HTTP client** — asserts JSON `status`, `weekly_limit`, `next_reset`, `error`,
@@ -24,11 +27,11 @@ daemon via `GROK_SHOW_USAGE_COMMAND` (no `GROK_SHOW_USAGE_BIN` shell wrapper).
 
 **Behaviors**
 
-- Standard and noisy stdout parses to `UsageInfo`; missing fields return error.
-- Injected fetch success → service `status=ready` with parsed limits.
-- Injected fetch error → `status=error` with error message.
-- API returns ready JSON after fake TUI fetch completes via env command hook.
-- Concurrent refresh while fetch in flight does not start a second in-process fetch (count=1).
+- Standard and noisy scrollback parses to `UsageInfo`; missing fields return error.
+- `GROK_SHOW_USAGE_COMMAND=mock-success.sh` → service `status=ready` with parsed limits.
+- `GROK_SHOW_USAGE_COMMAND=mock-fail.sh` (exit 1) → `status=error` with message.
+- API returns ready JSON after library fetch completes.
+- Concurrent refresh while fetch in flight does not start a second PTY session (counter=1).
 
 ## Version
 
@@ -45,7 +48,7 @@ daemon via `GROK_SHOW_USAGE_COMMAND` (no `GROK_SHOW_USAGE_BIN` shell wrapper).
  |    +-- missing-weekly/             (LEAF)   parse error
  |    +-- missing-reset/              (LEAF)   parse error
  |
- +-- fetch/                           (GROUP)  service fetch via injectable hook
+ +-- fetch/                           (GROUP)  service fetch via tty + mock command
  |    +-- mock-command-success/       (LEAF)   status ready
  |    +-- mock-command-fails/          (LEAF)   status error
  |
@@ -64,23 +67,23 @@ daemon via `GROK_SHOW_USAGE_COMMAND` (no `GROK_SHOW_USAGE_BIN` shell wrapper).
 | 2 | `parse/extra-noise` | Parse usage buried in noise |
 | 3 | `parse/missing-weekly` | Missing weekly line → error |
 | 4 | `parse/missing-reset` | Missing reset line → error |
-| 5 | `fetch/mock-command-success` | Injected fetch → service ready |
-| 6 | `fetch/mock-command-fails` | Injected fetch error → service error |
-| 7 | `api/get-usage-ready` | HTTP API returns ready JSON |
+| 5 | `fetch/mock-command-success` | `GROK_SHOW_USAGE_COMMAND` mock → service ready |
+| 6 | `fetch/mock-command-fails` | Mock exit 1 → service error |
+| 7 | `api/get-usage-ready` | HTTP API returns ready JSON after library fetch |
 | 8 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
 
 ## Parameter Coverage
 
-| Leaf | Op | Mock mechanism | Expect error |
-|------|-----|--------------|--------------|
-| standard-output | parse | fixture | false |
-| extra-noise | parse | fixture | false |
-| missing-weekly | parse | fixture | true |
-| missing-reset | parse | fixture | true |
-| mock-command-success | fetch | injectable success snapshot | false |
-| mock-command-fails | fetch | injectable fetch error | false (service error status) |
-| get-usage-ready | api | GROK_SHOW_USAGE_COMMAND fake TUI | false |
-| skips-overlap | refresh | injectable slow fetcher | false |
+| Leaf | Op | Mock command / fixture | Expect error |
+|------|-----|------------------------|--------------|
+| standard-output | parse | show-usage-standard.txt | false |
+| extra-noise | parse | show-usage-noisy.txt | false |
+| missing-weekly | parse | show-usage-missing-weekly.txt | true |
+| missing-reset | parse | show-usage-missing-reset.txt | true |
+| mock-command-success | fetch | GROK_SHOW_USAGE_COMMAND=mock-success.sh | false |
+| mock-command-fails | fetch | GROK_SHOW_USAGE_COMMAND=mock-fail.sh | false (service error status) |
+| get-usage-ready | api | GROK_SHOW_USAGE_COMMAND=mock-success.sh | false |
+| skips-overlap | refresh | GROK_SHOW_USAGE_COMMAND=mock-slow.sh | false |
 
 ## How to Run
 
@@ -91,7 +94,6 @@ doctest test ./tests/grok-usage/...
 
 ```go
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -102,16 +104,17 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 
-	agentusage "github.com/xhd2015/agent-pro/agent/usage"
+	"github.com/xhd2015/agent-pro/agent/grok/tty"
 	"github.com/xhd2015/ai-critic/macosapp/grokusage"
 	"github.com/xhd2015/ai-critic/script/lib"
 	"github.com/xhd2015/ai-critic/server/config"
 )
+
+const envGrokShowUsageCommand = "GROK_SHOW_USAGE_COMMAND"
 
 type Request struct {
 	Op string
@@ -119,11 +122,8 @@ type Request struct {
 	// Parse: fixture filename relative to tests/grok-usage/testdata/
 	FixtureFile string
 
-	// Fetch/Refresh: injectable fetch outcome
-	FetchMode string // success | error | slow
-
-	// API: fake TTY command hook for daemon child env
-	ShowUsageCommand string
+	// Fetch/API/Refresh: mock script basename under testdata/
+	MockScript string
 
 	ExpectParseError bool
 	WaitAPIReadySecs int
@@ -150,8 +150,8 @@ type Response struct {
 	APIBody       string
 	APIParsed     *GrokUsageJSON
 
-	FetchInvocationCount int
-	ConcurrentStarted    int
+	MockInvocationCount int
+	ConcurrentStarted   int
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
@@ -162,11 +162,11 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	case "parse":
 		return runParse(t, req, doctestRoot, resp)
 	case "fetch":
-		return runFetch(t, req, resp)
+		return runFetch(t, req, doctestRoot, resp)
 	case "api":
 		return runAPI(t, req, doctestRoot, resp)
 	case "refresh":
-		return runRefreshOverlap(t, req, resp)
+		return runRefreshOverlap(t, req, doctestRoot, resp)
 	default:
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}
@@ -177,7 +177,7 @@ func runParse(t *testing.T, req *Request, root string, resp *Response) (*Respons
 	if err != nil {
 		return nil, err
 	}
-	info, parseErr := grokusage.ParseShowUsageOutput(string(input))
+	info, parseErr := tty.ParseShowUsageOutput(string(input))
 	if parseErr != nil {
 		resp.ParseErr = parseErr.Error()
 		return resp, nil
@@ -189,9 +189,11 @@ func runParse(t *testing.T, req *Request, root string, resp *Response) (*Respons
 	return resp, nil
 }
 
-func runFetch(t *testing.T, req *Request, resp *Response) (*Response, error) {
-	svc := grokusage.TestExported_NewService()
-	grokusage.TestExported_SetFetcher(svc, fetcherForMode(req.FetchMode, nil))
+func runFetch(t *testing.T, req *Request, root string, resp *Response) (*Response, error) {
+	svc, err := newServiceWithMockCommand(root, req.MockScript)
+	if err != nil {
+		return nil, err
+	}
 	out := svc.TestExported_FetchOnce(t)
 	resp.ServiceStatus = string(out.Status)
 	resp.ServiceError = out.Error
@@ -204,6 +206,10 @@ func runFetch(t *testing.T, req *Request, resp *Response) (*Response, error) {
 func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response, error) {
 	if req.WaitAPIReadySecs <= 0 {
 		req.WaitAPIReadySecs = 12
+	}
+	mockCommand, err := resolveMockScript(root, req.MockScript)
+	if err != nil {
+		return nil, err
 	}
 
 	moduleRoot, err := findModuleRoot()
@@ -236,13 +242,9 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 	)
 	cmd.Dir = configHome
 	env := lib.AppendTestServerEnv(os.Environ(), configHome)
-	showCmd := req.ShowUsageCommand
-	if showCmd == "" {
-		showCmd = fakeGrokTUIDefault()
-	}
 	env = append(env,
 		"AI_CRITIC_TEST_SKIP_EXTENSION=1",
-		"GROK_SHOW_USAGE_COMMAND="+showCmd,
+		envGrokShowUsageCommand+"="+mockCommand,
 	)
 	cmd.Env = env
 	if err := cmd.Start(); err != nil {
@@ -294,10 +296,16 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 	return resp, nil
 }
 
-func runRefreshOverlap(t *testing.T, req *Request, resp *Response) (*Response, error) {
-	var invocations atomic.Int32
-	svc := grokusage.TestExported_NewService()
-	grokusage.TestExported_SetFetcher(svc, fetcherForMode("slow", &invocations))
+func runRefreshOverlap(t *testing.T, req *Request, root string, resp *Response) (*Response, error) {
+	svc, err := newServiceWithMockCommand(root, req.MockScript)
+	if err != nil {
+		return nil, err
+	}
+	counterFile := filepath.Join(os.TempDir(), "grok-mock-counter-"+strconv.Itoa(os.Getpid()))
+	_ = os.Remove(counterFile)
+	t.Cleanup(func() { os.Remove(counterFile) })
+
+	svc.TestExported_SetEnv("GROK_MOCK_COUNTER_FILE", counterFile)
 
 	var wg sync.WaitGroup
 	started := 0
@@ -315,42 +323,12 @@ func runRefreshOverlap(t *testing.T, req *Request, resp *Response) (*Response, e
 	wg.Wait()
 
 	time.Sleep(500 * time.Millisecond)
-	resp.FetchInvocationCount = int(invocations.Load())
+	data, _ := os.ReadFile(counterFile)
+	if len(data) > 0 {
+		resp.MockInvocationCount, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+	}
 	resp.ConcurrentStarted = started
 	return resp, nil
-}
-
-func fetcherForMode(mode string, counter *atomic.Int32) func(context.Context) (*agentusage.Snapshot, error) {
-	switch mode {
-	case "success", "slow", "":
-		return func(ctx context.Context) (*agentusage.Snapshot, error) {
-			if counter != nil {
-				counter.Add(1)
-				time.Sleep(2 * time.Second)
-			}
-			return grokSuccessSnapshot(), nil
-		}
-	case "error":
-		return func(ctx context.Context) (*agentusage.Snapshot, error) {
-			return nil, fmt.Errorf("mock grok usage fetch failed")
-		}
-	default:
-		return func(ctx context.Context) (*agentusage.Snapshot, error) {
-			return nil, fmt.Errorf("unknown fetch mode %q", mode)
-		}
-	}
-}
-
-func grokSuccessSnapshot() *agentusage.Snapshot {
-	return &agentusage.Snapshot{
-		Provider:     agentusage.Grok,
-		UsagePercent: "6%",
-		Reset:        "July 9, 16:55 PT",
-	}
-}
-
-func fakeGrokTUIDefault() string {
-	return `sh -c 'printf "Grok › "; read -r cmd; printf "Weekly limit: 6%%\nNext reset: July 9, 16:55 PT\n› "'`
 }
 
 func grokUsageDoctestRoot() string {
@@ -371,6 +349,28 @@ func grokUsageDoctestRoot() string {
 			return filepath.Join(wd, "tests", "grok-usage")
 		}
 	}
+}
+
+func newServiceWithMockCommand(root, mockScript string) (*grokusage.Service, error) {
+	scriptPath, err := resolveMockScript(root, mockScript)
+	if err != nil {
+		return nil, err
+	}
+	svc := grokusage.TestExported_NewService()
+	svc.TestExported_SetEnv(envGrokShowUsageCommand, scriptPath)
+	return svc, nil
+}
+
+func resolveMockScript(root, name string) (string, error) {
+	path := filepath.Join(root, "testdata", name)
+	if err := os.Chmod(path, 0755); err != nil {
+		return "", err
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	return abs, nil
 }
 
 func buildAICritic(t *testing.T, moduleRoot string) (string, func(), error) {

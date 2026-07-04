@@ -2,15 +2,21 @@ package grokusage
 
 import (
 	"context"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	agentusage "github.com/xhd2015/agent-pro/agent/usage"
-	"github.com/xhd2015/ai-critic/macosapp/debuglog"
+	"github.com/xhd2015/agent-pro/agent/grok/tty"
 )
 
-const refreshInterval = 60 * time.Second
+const (
+	refreshInterval        = 60 * time.Second
+	defaultFetchTimeoutSec = 60
+	envShowUsageTimeout    = "GROK_SHOW_USAGE_TIMEOUT"
+)
 
 // GrokUsageStatus is the fetch/cache state exposed to API clients.
 type GrokUsageStatus string
@@ -30,11 +36,9 @@ type GrokUsageResponse struct {
 	UpdatedAt   string          `json:"updated_at,omitempty"`
 }
 
-type fetchFunc func(context.Context) (*agentusage.Snapshot, error)
-
 // Service fetches and caches grok usage on a background refresh loop.
 type Service struct {
-	fetcher fetchFunc
+	extraEnv map[string]string
 
 	mu       sync.Mutex
 	fetching bool
@@ -44,23 +48,19 @@ type Service struct {
 	stopOnce sync.Once
 }
 
-// NewService creates a grok usage service with in-process fetch.
+// NewService creates a grok usage service backed by agent-pro tty fetch.
 func NewService() *Service {
-	return newService(defaultFetcher)
+	return newService()
 }
 
-func newService(fetcher fetchFunc) *Service {
+func newService() *Service {
 	return &Service{
-		fetcher: fetcher,
+		extraEnv: make(map[string]string),
 		cached: GrokUsageResponse{
 			Status: StatusLoading,
 		},
 		stopCh: make(chan struct{}),
 	}
-}
-
-func defaultFetcher(ctx context.Context) (*agentusage.Snapshot, error) {
-	return agentusage.Fetch(ctx, agentusage.Grok)
 }
 
 // Start begins the 60s background refresh loop.
@@ -109,14 +109,6 @@ func (s *Service) tryFetch() {
 	s.mu.Lock()
 	if s.fetching {
 		s.mu.Unlock()
-		debuglog.Write(debuglog.Entry{
-			Event: "fetch_skip_overlap",
-			Labels: map[string]string{
-				"component": "grokusage",
-				"provider":  "grok",
-				"phase":     "service",
-			},
-		})
 		return
 	}
 	s.fetching = true
@@ -132,18 +124,16 @@ func (s *Service) tryFetch() {
 }
 
 func (s *Service) fetchOnce() {
-	debuglog.Write(debuglog.Entry{
-		Event: "fetch_begin",
-		Labels: map[string]string{
-			"component": "grokusage",
-			"provider":  "grok",
-			"phase":     "service",
-		},
-	})
+	restore := s.applyExtraEnv()
+	defer restore()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	timeout := fetchTimeoutFromEnv()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	snap, err := s.fetcher(ctx)
+
+	info, err := tty.FetchUsageWithOptions(ctx, tty.Options{
+		MaxAttempts: 1,
+	})
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	s.mu.Lock()
@@ -152,53 +142,56 @@ func (s *Service) fetchOnce() {
 	if err != nil {
 		s.cached = GrokUsageResponse{
 			Status:    StatusError,
-			Error:     err.Error(),
+			Error:     strings.TrimSpace(err.Error()),
 			UpdatedAt: now,
 		}
-		debuglog.Write(debuglog.Entry{
-			Event: "cache_update",
-			Labels: map[string]string{
-				"component": "grokusage",
-				"provider":  "grok",
-				"phase":     "service",
-			},
-			Fields: map[string]any{
-				"status": string(StatusError),
-				"error":  err.Error(),
-			},
-		})
 		return
 	}
 
 	s.cached = GrokUsageResponse{
 		Status:      StatusReady,
-		WeeklyLimit: snap.UsagePercent,
-		NextReset:   snap.Reset,
+		WeeklyLimit: info.WeeklyLimit,
+		NextReset:   info.NextReset,
 		UpdatedAt:   now,
 	}
-	debuglog.Write(debuglog.Entry{
-		Event: "cache_update",
-		Labels: map[string]string{
-			"component": "grokusage",
-			"provider":  "grok",
-			"phase":     "service",
-		},
-		Fields: map[string]any{
-			"status":       string(StatusReady),
-			"weekly_limit": s.cached.WeeklyLimit,
-			"next_reset":   s.cached.NextReset,
-		},
-	})
 }
 
-// TestExported_NewService creates a service with the default in-process fetcher.
+func fetchTimeoutFromEnv() time.Duration {
+	timeoutSec := defaultFetchTimeoutSec
+	if v := strings.TrimSpace(os.Getenv(envShowUsageTimeout)); v != "" {
+		if sec, err := strconv.Atoi(v); err == nil && sec > 0 {
+			timeoutSec = sec
+		}
+	}
+	return time.Duration(timeoutSec) * time.Second
+}
+
+func (s *Service) applyExtraEnv() func() {
+	type saved struct {
+		key string
+		val string
+		set bool
+	}
+	var savedVars []saved
+	for key, val := range s.extraEnv {
+		prev, had := os.LookupEnv(key)
+		savedVars = append(savedVars, saved{key: key, val: prev, set: had})
+		_ = os.Setenv(key, val)
+	}
+	return func() {
+		for _, item := range savedVars {
+			if item.set {
+				_ = os.Setenv(item.key, item.val)
+			} else {
+				_ = os.Unsetenv(item.key)
+			}
+		}
+	}
+}
+
+// TestExported_NewService creates a service for doctest harness.
 func TestExported_NewService() *Service {
-	return newService(defaultFetcher)
-}
-
-// TestExported_SetFetcher replaces the default in-process fetch for doctest harness.
-func TestExported_SetFetcher(s *Service, fn fetchFunc) {
-	s.fetcher = fn
+	return newService()
 }
 
 // TestExported_FetchOnce performs a single synchronous fetch for doctest harness.
@@ -206,6 +199,11 @@ func (s *Service) TestExported_FetchOnce(t *testing.T) GrokUsageResponse {
 	t.Helper()
 	s.fetchOnce()
 	return s.Get()
+}
+
+// TestExported_SetEnv sets an extra environment variable for the tty fetch.
+func (s *Service) TestExported_SetEnv(key, val string) {
+	s.extraEnv[key] = val
 }
 
 // TestExported_TriggerRefresh starts an asynchronous refresh (skips if one is in flight).
