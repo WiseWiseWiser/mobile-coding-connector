@@ -13,10 +13,14 @@ BUNDLE_DIR="$MACOS_DIR/$APP_NAME.app"
 CONTENTS="$BUNDLE_DIR/Contents"
 MACOS_BIN="$CONTENTS/MacOS"
 
-echo "==> Building ai-critic CLI"
 cd "$PROJECT_DIR"
+
+echo "==> Building frontend (ai-critic-react/dist)"
+go run ./script/vite/build
+
+echo "==> Building ai-critic CLI"
 mkdir -p "$MACOS_DIR/.build"
-go build -o "$MACOS_DIR/.build/ai-critic" .
+go run ./script/server/build -o "$MACOS_DIR/.build/ai-critic"
 
 echo "==> Building $APP_NAME ($SWIFT_BUILD_CONFIG, bundle: $BUNDLE_ID)"
 cd "$MACOS_DIR"

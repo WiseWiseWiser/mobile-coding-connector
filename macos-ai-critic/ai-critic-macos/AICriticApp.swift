@@ -80,10 +80,40 @@ struct AICriticApp: App {
     }
 
     var body: some Scene {
+        Window("Settings", id: "settings") {
+            SettingsView()
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+
         MenuBarExtra {
-            MenuBarDropdownContent(state: state, autoStart: $autoStart)
+            MenuBarDropdownContent(
+                state: state,
+                autoStart: $autoStart,
+                showSettings: showSettingsWindow
+            )
         } label: {
             Text(state.menuLabel)
+        }
+    }
+
+    private func showSettingsWindow(openWindow: OpenWindowAction) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: "settings")
+        if let window = NSApp.windows.first(where: { $0.title == "Settings" }) {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        Task { @MainActor in
+            for _ in 0..<15 {
+                openWindow(id: "settings")
+                if let window = NSApp.windows.first(where: { $0.title == "Settings" }) {
+                    window.makeKeyAndOrderFront(nil)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
         }
     }
 }
@@ -92,6 +122,9 @@ struct AICriticApp: App {
 private struct MenuBarDropdownContent: View {
     @ObservedObject var state: AppState
     @Binding var autoStart: Bool
+    @AppStorage("defaultBrowser") private var defaultBrowser = BrowserPreference.default.rawValue
+    @Environment(\.openWindow) private var openWindow
+    let showSettings: (OpenWindowAction) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -119,9 +152,13 @@ private struct MenuBarDropdownContent: View {
                 }
             }
 
-            Button("Open in Browser") {
-                if let port = state.daemonStatus?.serverPort {
-                    NSWorkspace.shared.open(URL(string: "http://127.0.0.1:\(port)")!)
+            Button(OpenInBrowserLabelFormatter.format(browser: defaultBrowser)) {
+                if let port = state.daemonStatus?.serverPort,
+                   let url = URL(string: "http://127.0.0.1:\(port)") {
+                    BrowserOpener.open(
+                        url: url,
+                        browser: BrowserPreference.fromStored(defaultBrowser)
+                    )
                 }
             }
             .disabled(state.daemonStatus?.serverPort == nil)
@@ -140,6 +177,11 @@ private struct MenuBarDropdownContent: View {
                 }
 
             Divider()
+
+            Button("Settings…") {
+                showSettings(openWindow)
+            }
+            .accessibilityIdentifier("settings-menu-button")
 
             Button("Quit") {
                 Task { @MainActor in
