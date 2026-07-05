@@ -1,6 +1,6 @@
 ---
 label: slow
-explanation: synthetic fake TUI silent 12s then prints status; ~20s wall time
+explanation: synthetic fake TUI silent 30s; exercises shared ctx deadline during boot
 ---
 
 ## Expected
@@ -28,7 +28,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatal(err)
 	}
 	if resp.ServiceStatus != "ready" {
-		t.Fatalf("status = %q error = %q, want ready (bug: snapshot frame timeout during slow boot)",
+		t.Fatalf("status = %q error = %q, want ready (bug: snapshot/status timeout during slow boot)",
 			resp.ServiceStatus, resp.ServiceError)
 	}
 	if resp.ServiceError != "" {

@@ -1,6 +1,6 @@
 ---
-label: slow
-explanation: spawns real codex CLI up to 5 times with 90s timeout each
+label: slow && real-codex
+explanation: spawns real codex CLI up to 5 times with 90s service timeout each
 ---
 
 ## Expected

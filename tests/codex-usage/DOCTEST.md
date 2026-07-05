@@ -49,10 +49,17 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
  |    +-- mock-command-success/       (LEAF)   status ready
  |    +-- mock-command-fails/          (LEAF)   status error
  |    +-- slow-boot-snapshot/         (LEAF)   synthetic slow TUI boot succeeds
+ |    +-- timeout-slow-prompt/        (LEAF)   short timeout during 30s silent boot
+ |    +-- timeout-no-status-response/ (LEAF)   short timeout when /status never renders
  |    +-- real-codex-inprocess/       (LEAF)   real codex CLI in-process fetch (slow)
  |
  +-- api/                             (GROUP)  HTTP surface
  |    +-- get-usage-ready/            (LEAF)   GET /api/codex/usage JSON ready
+ |    +-- get-usage-timeout/           (LEAF)   GET /api/codex/usage must not timeout-error
+ |
+ +-- tty-watch/                       (GROUP)  real tty-watch CLI timing
+ |    +-- wait-idle-production-status/ (LEAF)  idle + /status\n\r ~16s
+ |    +-- user-script-early-status/    (LEAF)   user 5+5 snapshot script fails
  |
  +-- refresh/                         (GROUP)  cache refresh semantics
       +-- skips-overlap/              (LEAF)   concurrent refresh skipped
@@ -68,9 +75,14 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
 | 4 | `fetch/mock-command-success` | Injected fetch → service ready |
 | 5 | `fetch/mock-command-fails` | Injected fetch error → service error |
 | 6 | `fetch/slow-boot-snapshot` | Synthetic slow TUI → in-process fetch ready |
-| 7 | `fetch/real-codex-inprocess` | Real codex CLI + daemon PATH → fetch ready |
-| 8 | `api/get-usage-ready` | HTTP API returns ready JSON |
-| 9 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
+| 7 | `fetch/timeout-slow-prompt` | 30s silent boot → ready within service ctx (`slow`) |
+| 8 | `fetch/timeout-no-status-response` | Never-respond fake → error (`slow && negative`) |
+| 9 | `fetch/real-codex-inprocess` | Real codex CLI + daemon PATH → fetch ready |
+| 10 | `api/get-usage-ready` | HTTP API returns ready JSON |
+| 11 | `api/get-usage-timeout` | HTTP API returns timeout error (`slow && negative && requires-dist`) |
+| 12 | `tty-watch/wait-idle-production-status` | Real CLI: idle then /status in ~16s (`slow && real-codex`) |
+| 13 | `tty-watch/user-script-early-status` | Manual early script: no fields (`slow && real-codex && negative`) |
+| 14 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
 
 ## Parameter Coverage
 
@@ -82,9 +94,37 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
 | mock-command-success | fetch | injectable success snapshot | false |
 | mock-command-fails | fetch | injectable fetch error | false (service error status) |
 | slow-boot-snapshot | fetch-inprocess | slow CODEX_SHOW_STATUS_COMMAND | false |
+| timeout-slow-prompt | fetch-inprocess | 30s silent + 5s timeout | false |
+| timeout-no-status-response | fetch-inprocess | never-respond → error | false |
 | real-codex-inprocess | fetch-inprocess | real codex CLI (no command hook) | false |
 | get-usage-ready | api | CODEX_SHOW_STATUS_COMMAND fake TUI | false |
+| get-usage-timeout | api | never-respond → error JSON | false |
+| wait-idle-production-status | ttywatch-real | wait idle + /status\n\r | false |
+| user-script-early-status | ttywatch-real | early /status\r → no fields | false |
 | skips-overlap | refresh | injectable slow fetcher | false |
+
+## Run profiles (labels)
+
+| Label | Meaning |
+|-------|---------|
+| `slow` | Long-running (fake TUI boot, ~90s timeout, or real codex) — skip in fast CI |
+| `real-codex` | Requires real `codex` CLI on PATH |
+| `negative` | Expects failure/error (anti-pattern or never-respond fake) |
+| `requires-dist` | API leaf needs `ai-critic-react/dist` for daemon build |
+
+```sh
+# Fast default (no slow / real-codex / negative / requires-dist)
+doctest test ./tests/codex-usage/...
+
+# Slow integration including real codex
+doctest test --label slow ./tests/codex-usage/...
+
+# Real codex only
+doctest test --label real-codex ./tests/codex-usage/...
+
+# Negative contracts
+doctest test --label negative ./tests/codex-usage/...
+```
 
 ## How to Run
 
@@ -111,6 +151,7 @@ import (
 	"testing"
 	"time"
 
+	codextty "github.com/xhd2015/agent-pro/agent/codex/tty"
 	agentusage "github.com/xhd2015/agent-pro/agent/usage"
 	"github.com/xhd2015/ai-critic/macosapp/codexusage"
 	"github.com/xhd2015/ai-critic/script/lib"
@@ -139,6 +180,13 @@ type Request struct {
 
 	ExpectParseError bool
 	WaitAPIReadySecs int
+	WaitAPIError     bool // api: return when cached status=error
+
+	// ttywatch-real: live CLI timing experiment
+	TTYWatchMode   string // user-script | wait-idle-production
+	BootPollCount  int
+	StatusPollCount int
+	MaxWaitSecs    int
 }
 
 type CodexUsageJSON struct {
@@ -173,6 +221,13 @@ type Response struct {
 	FetchFailureCount  int
 	FetchErrors        []string
 	ResolvedCodexPath  string
+
+	TTYWatchTranscript string
+	PromptReadySecs    int
+	StatusReadySecs    int
+	TotalElapsedSecs   int
+	StatusFieldsSeen   bool
+	LastSnapshot       string
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
@@ -190,6 +245,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return runAPI(t, req, doctestRoot, resp)
 	case "refresh":
 		return runRefreshOverlap(t, req, resp)
+	case "ttywatch-real":
+		return runTTYWatchReal(t, req, resp)
 	default:
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}
@@ -369,9 +426,207 @@ func resolveRealCodexCLI(t *testing.T) (string, error) {
 	return "", fmt.Errorf("codex not found via login shell")
 }
 
+func runTTYWatchReal(t *testing.T, req *Request, resp *Response) (*Response, error) {
+	t.Helper()
+	codexPath, err := resolveRealCodexCLI(t)
+	if err != nil {
+		t.Skipf("real codex CLI not available: %v", err)
+	}
+	ttyWatch, err := resolveTTYWatchCLI(t)
+	if err != nil {
+		t.Skipf("tty-watch CLI not available: %v", err)
+	}
+	resp.ResolvedCodexPath = codexPath
+
+	ttyHome := req.TTYWatchHome
+	if ttyHome == "" {
+		ttyHome = filepath.Join(t.TempDir(), ".tty-watch")
+	}
+	sessionID := strings.TrimSpace(req.SessionID)
+	if sessionID == "" {
+		sessionID = "codex-ttywatch-" + strings.ReplaceAll(t.Name(), "/", "-")
+	}
+	maxWait := req.MaxWaitSecs
+	if maxWait <= 0 {
+		maxWait = 30
+	}
+
+	env := append(os.Environ(),
+		"TTY_WATCH_HOME="+ttyHome,
+		"PATH=/usr/bin:/bin:/usr/sbin:/sbin:"+filepath.Dir(codexPath)+":"+filepath.Dir(ttyWatch),
+	)
+	var transcript strings.Builder
+	logf := func(format string, args ...any) {
+		line := fmt.Sprintf(format, args...)
+		transcript.WriteString(line)
+		transcript.WriteString("\n")
+	}
+
+	start := time.Now()
+	elapsed := func() int { return int(time.Since(start).Seconds()) }
+
+	run := func(name string, args ...string) (string, error) {
+		cmd := exec.Command(name, args...)
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		text := strings.TrimSpace(string(out))
+		logf("[%ds] %s %s", elapsed(), name, strings.Join(args, " "))
+		if text != "" {
+			logf("%s", text)
+		}
+		return text, err
+	}
+	snapshot := func(label string) string {
+		out, err := run(ttyWatch, "snapshot", sessionID)
+		if err != nil {
+			logf("snapshot error: %v", err)
+		}
+		logf("[%ds] %s", elapsed(), label)
+		if out != "" {
+			logf("%s", out)
+		}
+		resp.LastSnapshot = out
+		return out
+	}
+	parseSnapshot := func(snap string) bool {
+		info, err := codextty.ParseStatusSnapshot(snap)
+		if err != nil {
+			return false
+		}
+		resp.StatusFieldsSeen = true
+		resp.MonthlyUsage = info.MonthlyUsage
+		resp.CreditsUsed = info.CreditsUsed
+		resp.CreditsTotal = info.CreditsTotal
+		resp.NextReset = info.NextReset
+		return true
+	}
+	promptIdle := func(snap string) bool {
+		if !strings.Contains(snap, "›") && !strings.Contains(snap, "\u203a") {
+			return false
+		}
+		lower := strings.ToLower(snap)
+		return !strings.Contains(lower, "model:") || !strings.Contains(lower, "loading")
+	}
+
+	codexArgs := []string{
+		"run", "--session-id", sessionID, "--detach", codexPath,
+		"--dangerously-bypass-approvals-and-sandbox", "-c", "mcp_servers={}",
+	}
+	if _, err := run(ttyWatch, codexArgs...); err != nil {
+		return resp, fmt.Errorf("tty-watch run: %w", err)
+	}
+	_, _ = run(ttyWatch, "list")
+
+	mode := strings.TrimSpace(req.TTYWatchMode)
+	switch mode {
+	case "user-script":
+		bootPolls := req.BootPollCount
+		if bootPolls <= 0 {
+			bootPolls = 5
+		}
+		statusPolls := req.StatusPollCount
+		if statusPolls <= 0 {
+			statusPolls = 5
+		}
+		for i := 0; i < bootPolls; i++ {
+			snapshot(fmt.Sprintf("boot snapshot %d", i))
+			time.Sleep(time.Second)
+		}
+		logf("[%ds] send /status\\r (user-script)", elapsed())
+		if _, err := run(ttyWatch, "send", sessionID, "/status\r"); err != nil {
+			return resp, fmt.Errorf("tty-watch send: %w", err)
+		}
+		for i := 0; i < statusPolls; i++ {
+			snap := snapshot(fmt.Sprintf("post-status snapshot %d", i))
+			if parseSnapshot(snap) {
+				resp.StatusReadySecs = elapsed()
+				break
+			}
+			time.Sleep(time.Second)
+		}
+
+	case "wait-idle-production", "":
+		deadline := start.Add(time.Duration(maxWait) * time.Second)
+		for i := 0; resp.PromptReadySecs == 0 && time.Now().Before(deadline); i++ {
+			snap := snapshot(fmt.Sprintf("wait-prompt poll %d", i))
+			if promptIdle(snap) {
+				resp.PromptReadySecs = elapsed()
+				logf("[%ds] prompt idle", resp.PromptReadySecs)
+				break
+			}
+			time.Sleep(time.Second)
+		}
+		logf("[%ds] send /status\\n\\r (production)", elapsed())
+		if _, err := run(ttyWatch, "send", sessionID, "/status\n\r"); err != nil {
+			return resp, fmt.Errorf("tty-watch send: %w", err)
+		}
+		time.Sleep(time.Second)
+		for i := 0; !resp.StatusFieldsSeen && time.Now().Before(deadline); i++ {
+			snap := snapshot(fmt.Sprintf("wait-status poll %d", i))
+			if parseSnapshot(snap) {
+				resp.StatusReadySecs = elapsed()
+				logf("[%ds] status fields visible", resp.StatusReadySecs)
+				break
+			}
+			time.Sleep(time.Second)
+		}
+
+	default:
+		return resp, fmt.Errorf("unknown TTYWatchMode %q", mode)
+	}
+
+	resp.TotalElapsedSecs = elapsed()
+	resp.TTYWatchTranscript = transcript.String()
+	_, _ = run(ttyWatch, "kill", sessionID)
+	logf("SUMMARY prompt_ready=%ds status_ready=%ds total=%ds status_seen=%v",
+		resp.PromptReadySecs, resp.StatusReadySecs, resp.TotalElapsedSecs, resp.StatusFieldsSeen)
+	resp.TTYWatchTranscript = transcript.String()
+	return resp, nil
+}
+
+func resolveTTYWatchCLI(t *testing.T) (string, error) {
+	t.Helper()
+	if v := strings.TrimSpace(os.Getenv("CODEX_USAGE_TEST_TTY_WATCH_PATH")); v != "" {
+		if _, err := os.Stat(v); err == nil {
+			return v, nil
+		}
+	}
+	for _, shell := range []struct {
+		bin  string
+		args []string
+	}{
+		{"bash", []string{"-lic", "command -v tty-watch"}},
+		{"zsh", []string{"-lic", "command -v tty-watch"}},
+	} {
+		out, err := exec.Command(shell.bin, shell.args...).Output()
+		if err != nil {
+			continue
+		}
+		path := strings.TrimSpace(string(out))
+		if path != "" {
+			if _, err := os.Stat(path); err == nil {
+				return path, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("tty-watch not found via login shell")
+}
+
 func slowBootFakeCodexTUI() string {
-	// Silent PTY for 12s (Codex cloud-config stall), then prompt + /status fields.
-	return `sh -c 'sleep 12; printf "Codex › "; read -r cmd; printf "Monthly credit limit: 42%% left (resets 08:00 on 1 Aug)\n6,519 of 11,250 credits used\n› "'`
+	return slowBootFakeCodexTUIWithDelay(12)
+}
+
+func slowBootFakeCodexTUIWithDelay(silentSecs int) string {
+	if silentSecs <= 0 {
+		silentSecs = 12
+	}
+	// Silent PTY (Codex cloud-config stall), then prompt + /status fields.
+	return fmt.Sprintf(`sh -c 'sleep %d; printf "Codex › "; read -r cmd; printf "Monthly credit limit: 42%%%% left (resets 08:00 on 1 Aug)\n6,519 of 11,250 credits used\n› "'`, silentSecs)
+}
+
+func neverRespondFakeCodexTUI() string {
+	// Prompt appears quickly; /status input is read but no parseable output is rendered.
+	return `sh -c 'printf "Codex › "; read -r cmd; sleep 120'`
 }
 
 func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response, error) {
@@ -421,11 +676,16 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 	if sid == "" {
 		sid = "codex-status-usage"
 	}
+	timeout := req.FetchTimeoutSecs
+	if timeout <= 0 {
+		timeout = 60
+	}
 	env = append(env,
 		"AI_CRITIC_TEST_SKIP_EXTENSION=1",
 		"TTY_WATCH_HOME="+ttyHome,
 		"CODEX_SHOW_STATUS_COMMAND="+showCmd,
 		"CODEX_SHOW_STATUS_SESSION_ID="+sid,
+		"CODEX_SHOW_STATUS_TIMEOUT="+strconv.Itoa(timeout),
 	)
 	cmd.Env = env
 	if err := cmd.Start(); err != nil {
@@ -456,9 +716,15 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 			resp.APIStatusCode = httpResp.StatusCode
 			resp.APIBody = string(body)
 			var parsed CodexUsageJSON
-			if json.Unmarshal(body, &parsed) == nil && parsed.Status == "ready" {
-				resp.APIParsed = &parsed
-				return resp, nil
+			if json.Unmarshal(body, &parsed) == nil {
+				if parsed.Status == "ready" {
+					resp.APIParsed = &parsed
+					return resp, nil
+				}
+				if req.WaitAPIError && parsed.Status == "error" && parsed.UpdatedAt != "" {
+					resp.APIParsed = &parsed
+					return resp, nil
+				}
 			}
 		}
 		time.Sleep(300 * time.Millisecond)

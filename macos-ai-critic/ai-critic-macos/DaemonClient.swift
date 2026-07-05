@@ -108,12 +108,13 @@ final class DaemonClient {
         return try JSONDecoder().decode(KeepAliveStatus.self, from: data)
     }
 
-    func restartServer() async throws {
-        var request = URLRequest(url: URL(string: baseURL + "/api/keep-alive/restart")!)
+    func restartDaemon() async throws {
+        var request = URLRequest(url: URL(string: baseURL + "/api/keep-alive/restart-daemon")!)
         request.httpMethod = "POST"
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         let (_, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw DaemonClientError.unreachable("restart request failed")
+            throw DaemonClientError.unreachable("restart daemon request failed")
         }
     }
 

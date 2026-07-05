@@ -192,10 +192,16 @@ private struct MenuBarDropdownContent: View {
 
             Divider()
 
-            Button("Restart Server") {
+            Button("Restart Daemon") {
                 Task {
-                    try? await DaemonClient.shared.restartServer()
-                    await state.refresh()
+                    try? await DaemonClient.shared.restartDaemon()
+                    for _ in 0..<10 {
+                        await state.refresh()
+                        if state.daemonStatus?.running == true {
+                            break
+                        }
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                    }
                 }
             }
 

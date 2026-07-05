@@ -78,6 +78,7 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
       +-- grok-error/                 (LEAF)   FormatGrokDropdownLine error msg
       +-- codex-line/                 (LEAF)   FormatCodexDropdownLine ready + relative
       +-- codex-error/                (LEAF)   FormatCodexDropdownLine error msg
+      +-- codex-timeout-error/        (LEAF)   FormatCodexDropdownLine timeout error
 ```
 
 ## Test Index
@@ -107,6 +108,7 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
 | 21 | `dropdown/grok-error` | `Grok: Error: timeout waiting` |
 | 22 | `dropdown/codex-line` | `Codex: Monthly Usage: 58% — 6,519/11,250 (Reset 08:00 on 1 Aug, left 26d)` |
 | 23 | `dropdown/codex-error` | `Codex: Error: fork/exec ...` full message |
+| 24 | `dropdown/codex-timeout-error` | `Codex: Error: timeout waiting for status output` |
 
 ## Parameter Coverage
 
@@ -135,6 +137,7 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
 | grok-error | grok-dropdown | — | — | status=error, error=timeout waiting |
 | codex-line | codex-dropdown | — | 2026-07-06T08:00:00-07:00 | monthly=58%, credits 6,519/11,250 |
 | codex-error | codex-dropdown | — | — | status=error, fork/exec message |
+| codex-timeout-error | codex-dropdown | — | — | status=error, timeout waiting for status output |
 
 ## How to Run
 
