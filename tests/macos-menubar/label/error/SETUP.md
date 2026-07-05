@@ -1,14 +1,14 @@
 # Scenario
 
-**Feature**: error status shows error message
+**Bug**: menu bar must show short fixed grok error label
 
 ```
-FormatGrokLabel("error","","timeout waiting") -> "Grok timeout waiting for usage"
+FormatGrokLabel("error","","timeout waiting") -> "Grok err"
 ```
 
 ## Preconditions
 
-Daemon surfaces fetch timeout in `error` field.
+Daemon surfaces fetch timeout in `error` field; menu bar hides full message.
 
 ## Steps
 
@@ -16,7 +16,7 @@ Daemon surfaces fetch timeout in `error` field.
 
 ## Context
 
-REQUIREMENT leaf: `label/error`. Matches API error string for usage fetch timeout.
+REQUIREMENT leaf: `label/error` (amended). Full message appears in dropdown only.
 
 ```go
 import "testing"

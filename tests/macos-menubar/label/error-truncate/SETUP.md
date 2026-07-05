@@ -1,14 +1,14 @@
 # Scenario
 
-**Feature**: long error message truncated for menu bar
+**Bug**: long grok error must not truncate ugly exec path in menu bar
 
 ```
-FormatGrokLabel("error","","<long>") -> len <= package max
+FormatGrokLabel("error","","<long>") -> "Grok err"
 ```
 
 ## Preconditions
 
-Error longer than `menubar` max label length (expected 40).
+Error longer than menu-bar max; label uses fixed short text.
 
 ## Steps
 
@@ -16,7 +16,7 @@ Error longer than `menubar` max label length (expected 40).
 
 ## Context
 
-REQUIREMENT leaf: `label/error-truncate`.
+REQUIREMENT leaf: `label/error-truncate` (amended).
 
 ```go
 import "testing"

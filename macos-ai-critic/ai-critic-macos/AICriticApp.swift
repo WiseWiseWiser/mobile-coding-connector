@@ -5,22 +5,31 @@ import ServiceManagement
 final class AppState: ObservableObject {
     @Published var menuLabel = "Grok ..."
     @Published var grokUsage: GrokUsageResponse?
+    @Published var codexUsage: CodexUsageResponse?
     @Published var daemonStatus: KeepAliveStatus?
     @Published var statusLine = "Connecting..."
+    @Published var rotatingIndex = 0
+    @AppStorage("menuBarDisplayMode") var menuBarDisplayMode = "rotating"
 
     func refresh() async {
-        do {
-            let usage = try await DaemonClient.shared.grokUsage()
-            grokUsage = usage
-            menuLabel = GrokLabelFormatter.format(
-                status: usage.status,
-                weeklyLimit: usage.weeklyLimit ?? "",
-                errorMsg: usage.error ?? ""
-            )
-        } catch {
-            menuLabel = "Grok ..."
-            grokUsage = nil
-        }
+        async let grokTask: GrokUsageResponse? = {
+            do {
+                return try await DaemonClient.shared.grokUsage()
+            } catch {
+                return nil
+            }
+        }()
+        async let codexTask: CodexUsageResponse? = {
+            do {
+                return try await DaemonClient.shared.codexUsage()
+            } catch {
+                return nil
+            }
+        }()
+
+        grokUsage = await grokTask
+        codexUsage = await codexTask
+        updateMenuLabel()
 
         do {
             let status = try await DaemonClient.shared.keepAliveStatus()
@@ -35,6 +44,24 @@ final class AppState: ObservableObject {
             statusLine = "Daemon unreachable on :23312"
         }
     }
+
+    func updateMenuLabel() {
+        menuLabel = UsageLabelFormatter.formatMenuBarLabel(
+            mode: menuBarDisplayMode,
+            rotatingIndex: rotatingIndex,
+            grokStatus: grokUsage?.status ?? "loading",
+            grokWeekly: grokUsage?.weeklyLimit ?? "",
+            grokError: grokUsage?.error ?? "",
+            codexStatus: codexUsage?.status ?? "loading",
+            codexMonthly: codexUsage?.monthlyUsage ?? "",
+            codexError: codexUsage?.error ?? ""
+        )
+    }
+
+    func advanceRotation() {
+        rotatingIndex = (rotatingIndex + 1) % 2
+        updateMenuLabel()
+    }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -45,6 +72,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await DaemonManager.shared.ensureRunning()
             await state?.refresh()
             startRefreshLoop()
+            startRotationLoop()
         }
     }
 
@@ -60,6 +88,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
                 await state?.refresh()
+            }
+        }
+    }
+
+    @MainActor
+    private func startRotationLoop() {
+        Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                state?.advanceRotation()
             }
         }
     }
@@ -81,7 +119,10 @@ struct AICriticApp: App {
 
     var body: some Scene {
         Window("Settings", id: "settings") {
-            SettingsView()
+            SettingsView(menuBarDisplayMode: $state.menuBarDisplayMode)
+                .onChange(of: state.menuBarDisplayMode) { _ in
+                    state.updateMenuLabel()
+                }
         }
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
@@ -128,16 +169,20 @@ private struct MenuBarDropdownContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let usage = state.grokUsage, usage.status == "ready" {
-                Text("Weekly limit: \(usage.weeklyLimit ?? "-")")
-                Text("Next reset: \(usage.nextReset ?? "-")")
-            } else if let usage = state.grokUsage, usage.status == "error" {
-                Text("Error: \(usage.error ?? "unknown")")
-                    .foregroundStyle(.red)
-            } else {
-                Text("Loading grok usage...")
-                    .foregroundStyle(.secondary)
-            }
+            Text(UsageLabelFormatter.formatGrokDropdownLine(
+                status: state.grokUsage?.status ?? "loading",
+                weekly: state.grokUsage?.weeklyLimit ?? "",
+                reset: state.grokUsage?.nextReset ?? "",
+                errorMsg: state.grokUsage?.error ?? ""
+            ))
+            Text(UsageLabelFormatter.formatCodexDropdownLine(
+                status: state.codexUsage?.status ?? "loading",
+                monthly: state.codexUsage?.monthlyUsage ?? "",
+                creditsUsed: state.codexUsage?.creditsUsed ?? "",
+                creditsTotal: state.codexUsage?.creditsTotal ?? "",
+                reset: state.codexUsage?.nextReset ?? "",
+                errorMsg: state.codexUsage?.error ?? ""
+            ))
 
             Text(state.statusLine)
                 .font(.caption)

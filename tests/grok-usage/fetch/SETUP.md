@@ -1,22 +1,23 @@
 # Scenario
 
-**Feature**: grok usage service fetch via mock binary
+**Feature**: grok usage service fetch via injectable in-process hook
 
 ```
-GROK_SHOW_USAGE_BIN mock -> service FetchOnce -> GrokUsageResponse
+TestExported_SetFetcher(mock) -> service FetchOnce -> GrokUsageResponse
 ```
 
 ## Preconditions
 
-Mock shell scripts in `testdata/`.
+Service exposes `TestExported_SetFetcher` for deterministic snapshots.
 
 ## Steps
 
 1. Set `Op=fetch` in leaves.
+2. Leaf sets `FetchMode` to `success` or `error`.
 
 ## Context
 
-Service-layer tests without full daemon HTTP.
+Service-layer tests without shell `grok-show-status` binary.
 
 ```go
 import "testing"

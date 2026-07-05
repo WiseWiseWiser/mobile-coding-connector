@@ -1,26 +1,28 @@
 # Scenario
 
-**Feature**: menu-bar grok label formatting (Go spec for Swift client)
+**Feature**: menu-bar usage label and dropdown formatting (Go spec for Swift client)
 
 ```
-status + weekly_limit + error -> FormatGrokLabel -> compact label string
+usage fields -> FormatGrokLabel / FormatMenuBarLabel / dropdown formatters -> strings
 ```
 
 ## Preconditions
 
-1. `macosapp/menubar` exports `FormatGrokLabel(status, weeklyLimit, errorMsg string) string`
-   and `TestExported_MaxLabelLen()` for truncation budget.
+1. `macosapp/menubar` exports `FormatGrokLabel`, `FormatMenuBarLabel`,
+   `FormatGrokDropdownLine`, `FormatCodexDropdownLine`, and
+   `TestExported_MaxLabelLen()`.
 2. No subprocess or HTTP — pure function calls.
 
 ## Steps
 
-1. Leaf `Setup` sets `Status`, `WeeklyLimit`, and `ErrorMsg`.
-2. Root `Run` calls `FormatGrokLabel`.
-3. Leaf `Assert` checks exact or bounded label text.
+1. Leaf `Setup` sets `Op` and formatter-specific inputs.
+2. Root `Run` dispatches by `Op` (default `grok-label` for legacy leaves).
+3. Leaf `Assert` checks exact label or dropdown line text.
 
 ## Context
 
-Implements REQUIREMENT-DESIGN-macos-app-and-bar.md Feature 3. Swift UI is manual;
+Implements REQUIREMENT-DESIGN-macos-app-and-bar.md Feature 3 and
+REQUIREMENT-DESIGN-codex-usage.md Part 2 menubar formatters. Swift UI is manual;
 this tree locks the shared formatting contract.
 
 ```go

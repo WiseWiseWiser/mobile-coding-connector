@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/xhd2015/ai-critic/macosapp/debuglog"
 	"github.com/xhd2015/ai-critic/server/config"
 )
 
@@ -113,6 +114,10 @@ func (d *Daemon) Run(forever bool, logPath string) error {
 		fmt.Fprintf(os.Stderr, "Failed to setup logger: %v\n", err)
 	}
 	defer CloseLogger()
+
+	if err := debuglog.Init(); err != nil {
+		Logger("Warning: debug log init failed: %v", err)
+	}
 
 	// Own process group so test harness / operators can signal the daemon tree
 	// without killing the parent (e.g. doctest teardown uses kill -pgid).

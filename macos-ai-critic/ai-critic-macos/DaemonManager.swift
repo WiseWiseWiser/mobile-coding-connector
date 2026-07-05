@@ -63,8 +63,14 @@ final class DaemonManager: ObservableObject {
             "--port", String(serverPort),
         ]
         process.currentDirectoryURL = URL(fileURLWithPath: home)
+        let binaryDir = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/MacOS")
+            .path
         var env = ProcessInfo.processInfo.environment
         env["HOME"] = home
+        for (key, value) in Self.keepAliveEnv(binaryDir: binaryDir) {
+            env[key] = value
+        }
         process.environment = env
         do {
             try process.run()
@@ -73,6 +79,13 @@ final class DaemonManager: ObservableObject {
         } catch {
             print("failed to spawn keep-alive: \(error)")
         }
+    }
+
+    private static func keepAliveEnv(binaryDir: String) -> [String: String] {
+        _ = binaryDir
+        return [
+            "AI_CRITIC_NO_OPEN_BROWSER": "1",
+        ]
     }
 
     private func resolveAICriticBinary() -> String {

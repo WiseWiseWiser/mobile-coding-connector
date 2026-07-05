@@ -1,18 +1,18 @@
 # Scenario
 
-**Feature**: mock script success → service ready
+**Feature**: injected fetch success → service ready
 
 ```
-mock-success.sh -> status ready + limits
+injectable success snapshot -> status ready + usage fields
 ```
 
 ## Preconditions
 
-`mock-success.sh` emits canonical lines.
+Fetcher returns canonical grok usage snapshot (6% weekly, reset).
 
 ## Steps
 
-1. `MockScript=mock-success.sh`.
+1. `FetchMode=success`.
 
 ## Context
 
@@ -22,7 +22,7 @@ REQUIREMENT leaf: `fetch/mock-command-success`.
 import "testing"
 
 func Setup(t *testing.T, req *Request) error {
-	req.MockScript = "mock-success.sh"
+	req.FetchMode = "success"
 	return nil
 }
 ```

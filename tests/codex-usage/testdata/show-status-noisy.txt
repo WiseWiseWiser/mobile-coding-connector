@@ -1,0 +1,10 @@
+[MCP] warning: server not configured
+Tip: use /status for usage details
+scrollback line 1
+scrollback line 2
+Codex session ready.
+Monthly usage: 42%
+Credits used: 3000 of 8000
+noise: ignored field
+Next reset: 09:15 on 15 Sep
+[debug] done
