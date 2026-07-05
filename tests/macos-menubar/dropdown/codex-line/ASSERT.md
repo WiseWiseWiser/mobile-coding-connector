@@ -1,6 +1,6 @@
 ## Expected
 
-1. `DropdownLine` is exactly `Codex: Monthly Usage: 58% — 6,519/11,250 (Reset 08:00 on 1 Aug)`.
+1. `DropdownLine` is exactly `Codex: Monthly Usage: 58% — 6,519/11,250 (Reset 08:00 on 1 Aug, left 26d)`.
 
 ## Errors
 
@@ -13,7 +13,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Codex: Monthly Usage: 58% — 6,519/11,250 (Reset 08:00 on 1 Aug)"
+	want := "Codex: Monthly Usage: 58% — 6,519/11,250 (Reset 08:00 on 1 Aug, left 26d)"
 	if resp.DropdownLine != want {
 		t.Fatalf("dropdown = %q, want %q", resp.DropdownLine, want)
 	}

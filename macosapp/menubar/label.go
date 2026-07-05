@@ -2,6 +2,7 @@ package menubar
 
 import (
 	"fmt"
+	"time"
 	"unicode/utf8"
 )
 
@@ -59,10 +60,10 @@ func FormatMenuBarLabel(
 }
 
 // FormatGrokDropdownLine formats a single-line grok usage row for the menu dropdown.
-func FormatGrokDropdownLine(status, weeklyLimit, reset, errorMsg string) string {
+func FormatGrokDropdownLine(status, weeklyLimit, reset, errorMsg string, now time.Time) string {
 	switch status {
 	case "ready":
-		return fmt.Sprintf("Grok: Weekly Limit: %s (Reset %s)", weeklyLimit, reset)
+		return fmt.Sprintf("Grok: Weekly Limit: %s (Reset %s%s)", weeklyLimit, reset, FormatResetSuffix(reset, now))
 	case "loading":
 		return "Grok: Loading..."
 	case "error":
@@ -73,10 +74,10 @@ func FormatGrokDropdownLine(status, weeklyLimit, reset, errorMsg string) string 
 }
 
 // FormatCodexDropdownLine formats a single-line codex usage row for the menu dropdown.
-func FormatCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, reset, errorMsg string) string {
+func FormatCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, reset, errorMsg string, now time.Time) string {
 	switch status {
 	case "ready":
-		return fmt.Sprintf("Codex: Monthly Usage: %s — %s/%s (Reset %s)", monthlyUsage, creditsUsed, creditsTotal, reset)
+		return fmt.Sprintf("Codex: Monthly Usage: %s — %s/%s (Reset %s%s)", monthlyUsage, creditsUsed, creditsTotal, reset, FormatResetSuffix(reset, now))
 	case "loading":
 		return "Codex: Loading..."
 	case "error":

@@ -26,6 +26,7 @@ func Setup(t *testing.T, req *Request) error {
 	req.GrokStatus = "ready"
 	req.WeeklyLimit = "6%"
 	req.GrokReset = "July 9, 16:55 PT"
+	req.NowRFC3339 = "2026-07-06T16:55:00-07:00"
 	return nil
 }
 ```

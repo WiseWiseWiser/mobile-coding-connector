@@ -173,7 +173,8 @@ private struct MenuBarDropdownContent: View {
                 status: state.grokUsage?.status ?? "loading",
                 weekly: state.grokUsage?.weeklyLimit ?? "",
                 reset: state.grokUsage?.nextReset ?? "",
-                errorMsg: state.grokUsage?.error ?? ""
+                errorMsg: state.grokUsage?.error ?? "",
+                now: Date()
             ))
             Text(UsageLabelFormatter.formatCodexDropdownLine(
                 status: state.codexUsage?.status ?? "loading",
@@ -181,7 +182,8 @@ private struct MenuBarDropdownContent: View {
                 creditsUsed: state.codexUsage?.creditsUsed ?? "",
                 creditsTotal: state.codexUsage?.creditsTotal ?? "",
                 reset: state.codexUsage?.nextReset ?? "",
-                errorMsg: state.codexUsage?.error ?? ""
+                errorMsg: state.codexUsage?.error ?? "",
+                now: Date()
             ))
 
             Text(state.statusLine)

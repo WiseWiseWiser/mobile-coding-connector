@@ -16,7 +16,8 @@ Ready-state dropdown lines per REQUIREMENT-DESIGN-codex-usage.md confirmed decis
 
 ## Context
 
-Dropdown leaves assert exact canonical strings for grok weekly and codex monthly usage.
+Dropdown leaves assert exact canonical strings for grok weekly and codex monthly usage,
+including absolute reset plus relative countdown suffix when parseable.
 
 ```go
 import "testing"

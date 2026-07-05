@@ -10,7 +10,7 @@ require (
 	github.com/xhd2015/agent-pro v0.0.45
 	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.49
 	github.com/xhd2015/gitops v0.0.23
-	github.com/xhd2015/kool v0.0.101
+	github.com/xhd2015/kool v0.0.122
 	github.com/xhd2015/less-gen v0.0.19
 	github.com/xhd2015/skills v0.0.12
 	github.com/xhd2015/xgo v1.1.14

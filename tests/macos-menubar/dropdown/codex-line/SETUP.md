@@ -28,6 +28,7 @@ func Setup(t *testing.T, req *Request) error {
 	req.CodexCreditsUsed = "6,519"
 	req.CodexCreditsTotal = "11,250"
 	req.CodexReset = "08:00 on 1 Aug"
+	req.NowRFC3339 = "2026-07-06T08:00:00-07:00"
 	return nil
 }
 ```
