@@ -71,6 +71,19 @@ func (w *Writer) EmitSection(title string) error {
 	})
 }
 
+// EmitLog sends a type=log frame. Set verbatim true when the client should print
+// message as-is (no CLI prefix); used for server-rendered summary lines.
+func (w *Writer) EmitLog(message string, verbatim bool) error {
+	data := map[string]any{
+		"type":    "log",
+		"message": message,
+	}
+	if verbatim {
+		data["verbatim"] = true
+	}
+	return w.send(data)
+}
+
 // EmitDone sends the terminal type=done frame.
 func (w *Writer) EmitDone(summary map[string]any) error {
 	data := map[string]any{"type": "done"}

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 	"github.com/xhd2015/agent-pro/agent/streaming/sse"
@@ -871,6 +873,109 @@ func checkSingleTool(tool toolDef) ToolInfo {
 		}
 	}
 	return info
+}
+
+const (
+	snapshotPerToolTimeout = 3 * time.Second
+	snapshotTotalTimeout   = 30 * time.Second
+	snapshotMaxConcurrency = 10
+)
+
+// InstalledToolSnapshot is a minimal installed-tool record for backup metadata.
+type InstalledToolSnapshot struct {
+	Name    string
+	Version string
+	Path    string
+}
+
+// SnapshotInstalledTools lists installed binaries from requiredTools with bounded-time version lookups.
+// Per-tool version lookup is capped at 3s; the entire snapshot completes within 30s.
+func SnapshotInstalledTools() []InstalledToolSnapshot {
+	ctx, cancel := context.WithTimeout(context.Background(), snapshotTotalTimeout)
+	defer cancel()
+
+	sem := make(chan struct{}, snapshotMaxConcurrency)
+	var mu sync.Mutex
+	snaps := make([]InstalledToolSnapshot, 0, len(requiredTools))
+	var wg sync.WaitGroup
+
+	for _, tool := range requiredTools {
+		wg.Add(1)
+		go func(t toolDef) {
+			defer wg.Done()
+
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			if snap, ok := snapshotSingleInstalledTool(ctx, t); ok {
+				mu.Lock()
+				snaps = append(snaps, snap)
+				mu.Unlock()
+			}
+		}(tool)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
+
+	return snaps
+}
+
+func snapshotSingleInstalledTool(ctx context.Context, tool toolDef) (InstalledToolSnapshot, bool) {
+	lookupName := tool.name
+	if len(tool.versionCmd) > 0 {
+		lookupName = tool.versionCmd[0]
+	}
+	path, err := tool_resolve.LookPath(lookupName)
+	if err != nil || path == "" {
+		return InstalledToolSnapshot{}, false
+	}
+
+	return InstalledToolSnapshot{
+		Name:    tool.name,
+		Path:    path,
+		Version: toolVersionBounded(ctx, tool),
+	}, true
+}
+
+func toolVersionBounded(ctx context.Context, tool toolDef) string {
+	if len(tool.versionCmd) == 0 {
+		return ""
+	}
+
+	perCtx, cancel := context.WithTimeout(ctx, snapshotPerToolTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(perCtx, tool.versionCmd[0], tool.versionCmd[1:]...)
+	cmd.Env = tool_resolve.AppendExtraPaths(os.Environ())
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	version := strings.TrimSpace(string(out))
+	if idx := strings.Index(version, "\n"); idx > 0 {
+		version = version[:idx]
+	}
+	const maxVersionLen = 60
+	if len(version) > maxVersionLen {
+		version = version[:maxVersionLen] + "..."
+	}
+	return version
 }
 
 // CheckTools checks all required tools and returns their status.

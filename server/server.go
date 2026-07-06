@@ -44,6 +44,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/filetransfer"
 	"github.com/xhd2015/ai-critic/server/fileupload"
 	servergit "github.com/xhd2015/ai-critic/server/git"
+	servermachinebackup "github.com/xhd2015/ai-critic/server/machinebackup"
 	serverprojectpull "github.com/xhd2015/ai-critic/server/projectpull"
 	"github.com/xhd2015/ai-critic/server/github"
 	"github.com/xhd2015/ai-critic/server/keepalive"
@@ -526,6 +527,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Project pull-local API (packages dirty remote state for remote-agent CLI)
 	serverprojectpull.RegisterAPI(mux)
+
+	// Machine backup/restore API (server HOME dot-files for remote-agent CLI)
+	servermachinebackup.RegisterAPI(mux)
 
 	// Domains API
 	domains.RegisterAPI(mux)

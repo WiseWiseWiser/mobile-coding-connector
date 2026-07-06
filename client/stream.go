@@ -14,6 +14,7 @@ import (
 type StreamEvent struct {
 	Type         string
 	Message      string
+	Verbatim     bool
 	ID           string
 	Layer        string
 	Name         string
@@ -56,14 +57,27 @@ func (c *Client) Stream(method, path string, body any) (*StreamResult, error) {
 	return &result, nil
 }
 
+// StreamRawBody sends a non-JSON request body for streaming endpoints.
+type StreamRawBody struct {
+	Reader      io.Reader
+	ContentType string
+}
+
 func (c *Client) consumeStream(method, path string, body any, onEvent func(StreamEvent, map[string]any) error) error {
 	var bodyReader io.Reader
+	contentType := ""
 	if body != nil {
-		payload, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("marshal request: %w", err)
+		if raw, ok := body.(StreamRawBody); ok {
+			bodyReader = raw.Reader
+			contentType = raw.ContentType
+		} else {
+			payload, err := json.Marshal(body)
+			if err != nil {
+				return fmt.Errorf("marshal request: %w", err)
+			}
+			bodyReader = bytes.NewReader(payload)
+			contentType = "application/json"
 		}
-		bodyReader = bytes.NewReader(payload)
 	}
 
 	req, err := c.NewRequest(method, path, bodyReader)
@@ -71,8 +85,8 @@ func (c *Client) consumeStream(method, path string, body any, onEvent func(Strea
 		return err
 	}
 	req.Header.Set("Accept", "text/event-stream")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 
 	resp, err := c.Do(req)
@@ -86,7 +100,8 @@ func (c *Client) consumeStream(method, path string, body any, onEvent func(Strea
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	// Large homes can produce multi-MB SSE data: lines; cap at 32 MiB per frame.
+	scanner.Buffer(make([]byte, 256*1024), 32*1024*1024)
 
 	var sawDone bool
 	for scanner.Scan() {
@@ -124,15 +139,16 @@ func decodeStreamEvent(payload string) (StreamEvent, map[string]any, error) {
 	}
 
 	ev := StreamEvent{
-		Type:    stringField(raw, "type"),
-		Message: stringField(raw, "message"),
-		ID:      stringField(raw, "id"),
-		Layer:   stringField(raw, "layer"),
-		Name:    stringField(raw, "name"),
-		Status:  stringField(raw, "status"),
-		Detail:  stringField(raw, "detail"),
-		Hint:    stringField(raw, "hint"),
-		TryURL:  stringField(raw, "try_url"),
+		Type:     stringField(raw, "type"),
+		Message:  stringField(raw, "message"),
+		Verbatim: boolField(raw, "verbatim"),
+		ID:       stringField(raw, "id"),
+		Layer:    stringField(raw, "layer"),
+		Name:     stringField(raw, "name"),
+		Status:   stringField(raw, "status"),
+		Detail:   stringField(raw, "detail"),
+		Hint:     stringField(raw, "hint"),
+		TryURL:   stringField(raw, "try_url"),
 	}
 
 	switch t := raw["type"]; t {
@@ -166,6 +182,15 @@ func stringField(m map[string]any, key string) string {
 	}
 	s, _ := v.(string)
 	return s
+}
+
+func boolField(m map[string]any, key string) bool {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return false
+	}
+	b, _ := v.(bool)
+	return b
 }
 
 // ConsumeStream invokes onEvent for each frame as it arrives, enabling incremental handlers.

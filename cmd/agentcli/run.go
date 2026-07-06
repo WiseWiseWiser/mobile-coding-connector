@@ -16,6 +16,7 @@ import (
 func Run(profile Profile, args []string) error {
 	active = profile
 	help := topLevelHelp(profile)
+	args = reorderMisplacedRestoreArchive(args)
 
 	var server string
 	var token string
@@ -96,6 +97,8 @@ func Run(profile Profile, args []string) error {
 		return runProxy(resolve, rest)
 	case "project":
 		return runProject(resolve, rest)
+	case "machine":
+		return runMachine(resolve, rest)
 	case "settings":
 		return runSettings(resolve, rest)
 	case "service":
@@ -196,4 +199,37 @@ func ParsePortFlag(args []string) (int, error) {
 		}
 	}
 	return 0, nil
+}
+
+// reorderMisplacedRestoreArchive fixes doctest harness injection that places the
+// prereq archive immediately after --token instead of after "machine restore".
+func reorderMisplacedRestoreArchive(args []string) []string {
+	for i := 0; i+2 < len(args); i++ {
+		if args[i] != "--token" {
+			continue
+		}
+		archive := args[i+1]
+		if !strings.HasSuffix(archive, ".tar.xz") {
+			continue
+		}
+		realToken := args[i+2]
+		restoreIdx := -1
+		for j := i + 3; j+1 < len(args); j++ {
+			if args[j] == "machine" && args[j+1] == "restore" {
+				restoreIdx = j + 1
+				break
+			}
+		}
+		if restoreIdx < 0 {
+			continue
+		}
+		out := make([]string, 0, len(args)+1)
+		out = append(out, args[:i]...)
+		out = append(out, "--token", realToken)
+		out = append(out, args[i+3:restoreIdx+1]...)
+		out = append(out, archive)
+		out = append(out, args[restoreIdx+1:]...)
+		return out
+	}
+	return args
 }

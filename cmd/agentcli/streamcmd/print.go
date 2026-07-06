@@ -12,6 +12,11 @@ func flushStdout() {
 	_ = os.Stdout.Sync()
 }
 
+// FlushStdout flushes stdout after incremental CLI output.
+func FlushStdout() {
+	flushStdout()
+}
+
 func statusTag(status string) string {
 	switch status {
 	case "ok":

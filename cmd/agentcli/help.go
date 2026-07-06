@@ -40,6 +40,9 @@ Commands:
     project              Project metadata and git identity
     settings             Server settings (git users, etc.)
 
+  Machine
+    machine              Backup/restore server HOME dot-files and dot-dirs
+
   Operations
     service              Managed services (start/stop/logs/upgrade)
     server               Server lifecycle (build-next, restart, status)
@@ -92,6 +95,9 @@ Commands:
     git                  Server-side git operations
     project              Project metadata and git identity
     settings             Server settings (git users, etc.)
+
+  Machine
+    machine              Backup/restore server HOME dot-files and dot-dirs
 
   Operations
     service              Managed services (start/stop/logs/upgrade)
