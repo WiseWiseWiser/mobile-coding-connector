@@ -22,7 +22,7 @@ Subcommands:
 
 Options:
   --http-only, --whitelist, --blacklist, --include, --exclude, --dns-hijack
-  --yes, --no-install, --config FILE, --detach
+  --yes, --no-install, --no-setup-sudo, --config FILE, --detach
 
 Examples:
   remote-agent ws-proxy sing-box client-config

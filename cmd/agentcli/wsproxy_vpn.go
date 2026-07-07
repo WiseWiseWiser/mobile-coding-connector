@@ -22,6 +22,7 @@ Options:
   --dns-hijack           Hijack DNS via TUN fakeip (default in full VPN; optional in --http-only)
   --yes                  Skip sing-box install confirmation
   --no-install           Fail if sing-box is not on PATH
+  --no-setup-sudo        Skip NOPASSWD sudoers auto-setup (use sudo cache only)
   --config FILE          Use an existing sing-box config file
   --detach               Run sing-box in background
 
@@ -58,6 +59,7 @@ func parseVpnFlags(args []string, help string) (singbox.RunTunOptions, error) {
 		Bool("--dns-hijack", &opts.DNSHijack).
 		Bool("--yes", &opts.Yes).
 		Bool("--no-install", &opts.NoInstall).
+		Bool("--no-setup-sudo", &opts.NoSetupSudo).
 		String("--config", &opts.ConfigFile).
 		Bool("--detach", &opts.Detach).
 		Bool("--whitelist", &whitelist).

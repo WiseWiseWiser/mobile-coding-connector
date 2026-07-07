@@ -28,6 +28,8 @@ VMess params to a local TUN tunnel via sing-box.
 - Missing sing-box + non-TTY → error with `sing-box not installed` and brew hint.
 - Missing sing-box + TTY → confirm prompt; `--yes` skips confirm; `--no-install` fails fast.
 - euid≠0 → `sudo sing-box run`; euid=0 → direct; non-TTY + needs sudo → error.
+- Default (needSudo): `EnsureSudoSetup` installs NOPASSWD rule via `sudosetup` before launch.
+- `--no-setup-sudo` skips auto-setup; relies on sudo timestamp cache only.
 - `--detach` → `StartDetached`, prints PID + config + log paths, parent exits 0.
 
 ## Version
@@ -52,6 +54,10 @@ VMess params to a local TUN tunnel via sing-box.
  |    |    |    |    +-- sing-box-present-no-sudo/     (LEAF) euid≠0 → sudo run
  |    |    |    |    +-- sing-box-present-as-root/     (LEAF) euid=0 → direct run
  |    |    |    |    +-- non-tty-needs-sudo-errors/    (LEAF) euid≠0, !TTY → error
+ |    |    |    |    +-- sudo-setup/                   (grouping: NOPASSWD auto-setup)
+ |    |    |    |         +-- auto-setup-calls-ensure/       (LEAF) default → EnsureSudoSetup
+ |    |    |    |         +-- auto-setup-skips-when-installed/ (LEAF) already installed → skip install
+ |    |    |    |         +-- no-setup-sudo-skips-auto-setup/ (LEAF) --no-setup-sudo → no EnsureSudoSetup
  |    |    |    +-- missing/                     (grouping: sing-box absent)
  |    |    |         +-- missing-non-tty-errors/       (LEAF) !TTY → install error
  |    |    |         +-- missing-tty-decline/          (LEAF) TTY, user declines
@@ -93,6 +99,9 @@ VMess params to a local TUN tunnel via sing-box.
 | 16 | `config-builder/tun-inbound-defaults` | TUN inbound auto_route/strict_route |
 | 17 | `config-builder/lan-bypass-routes` | LAN CIDR rules route to direct |
 | 18 | `config-builder/tls-disabled-edge` | tls:"none" disables TLS on outbound |
+| 19 | `run-tun/.../present/sudo-setup/auto-setup-calls-ensure` | Default auto-setup calls EnsureSudoSetup before sudo run |
+| 20 | `run-tun/.../present/sudo-setup/auto-setup-skips-when-installed` | EnsureSudoSetup noop when rule already installed |
+| 21 | `run-tun/.../present/sudo-setup/no-setup-sudo-skips-auto-setup` | `--no-setup-sudo` skips EnsureSudoSetup |
 
 ## How to Run
 
@@ -132,9 +141,13 @@ type Request struct {
 
 	OutputFile string
 	ConfigFile string
-	Yes        bool
-	NoInstall  bool
-	Detach     bool
+	Yes          bool
+	NoInstall    bool
+	NoSetupSudo  bool
+	Detach       bool
+
+	SudoSetupInstalled bool
+	SudoSetupErr       error
 
 	MockVMess     *singbox.VMessParams
 	FetchVMessErr error
@@ -177,6 +190,9 @@ type Response struct {
 	StartDetachedCalled bool
 	StartDetachedSudo   bool
 	StartDetachedPID    int
+
+	EnsureSudoSetupCalled bool
+	SudoSetupSkipped      bool
 
 	DomainPolicy *singbox.DomainPolicy
 }
@@ -244,6 +260,17 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			return defaultMockVMess(), nil
 		},
 		UserCacheDir: func() (string, error) { return cacheDir, nil },
+		EnsureSudoSetup: func(singBoxPath string, noSetup bool) error {
+			if noSetup {
+				return nil
+			}
+			resp.EnsureSudoSetupCalled = true
+			if req.SudoSetupInstalled {
+				resp.SudoSetupSkipped = true
+				return nil
+			}
+			return req.SudoSetupErr
+		},
 		StartXraySidecar: func(ctx context.Context, vmess *singbox.VMessParams) (*singbox.XraySidecar, error) {
 			return &singbox.XraySidecar{Port: 11080, ConfigPath: filepath.Join(cacheDir, "mock-xray.json")}, nil
 		},
@@ -278,10 +305,11 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		})
 	case OpRunTun:
 		runErr = singbox.RunTun(getClient, singbox.RunTunOptions{
-			ConfigFile: req.ConfigFile,
-			Yes:        req.Yes,
-			NoInstall:  req.NoInstall,
-			Detach:     req.Detach,
+			ConfigFile:  req.ConfigFile,
+			Yes:         req.Yes,
+			NoInstall:   req.NoInstall,
+			NoSetupSudo: req.NoSetupSudo,
+			Detach:      req.Detach,
 		})
 	case OpBuildConfig:
 		vmess := req.BuildVMess

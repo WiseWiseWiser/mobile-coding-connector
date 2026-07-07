@@ -51,13 +51,14 @@ type ClientConfigOptions struct {
 }
 
 type RunTunOptions struct {
-	ConfigFile string
-	Yes        bool
-	NoInstall  bool
-	Detach     bool
-	HttpOnly   bool
-	Policy     *DomainPolicy
-	DNSHijack  bool
+	ConfigFile  string
+	Yes         bool
+	NoInstall   bool
+	NoSetupSudo bool
+	Detach      bool
+	HttpOnly    bool
+	Policy      *DomainPolicy
+	DNSHijack   bool
 }
 
 // RunHttpOnlyOptions is deprecated; use RunTunOptions with HttpOnly set.
@@ -79,8 +80,9 @@ type TestHooks struct {
 	BrewInstall   func() error
 	Geteuid       func() int
 	RunSingBox    func(ctx context.Context, sudo bool, configPath string) error
-	StartDetached func(configPath, logPath string, useSudo bool) (pid int, err error)
-	FetchVMess       func(c *client.Client) (*VMessParams, error)
+	StartDetached   func(configPath, logPath string, useSudo bool) (pid int, err error)
+	EnsureSudoSetup func(singBoxPath string, noSetup bool) error
+	FetchVMess      func(c *client.Client) (*VMessParams, error)
 	UserCacheDir     func() (string, error)
 	StartXraySidecar func(ctx context.Context, vmess *VMessParams) (*XraySidecar, error)
 }
@@ -126,6 +128,7 @@ var currentHooks = TestHooks{
 	UserCacheDir: func() (string, error) {
 		return os.UserCacheDir()
 	},
+	EnsureSudoSetup: defaultEnsureSudoSetup,
 }
 
 func defaultLookPath(name string) (string, error) {

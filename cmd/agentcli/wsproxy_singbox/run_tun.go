@@ -39,7 +39,8 @@ func RunTun(getClient func() (*client.Client, error), opts RunTunOptions) error 
 		return err
 	}
 
-	if _, err := currentHooks.LookPath("sing-box"); err != nil {
+	singBoxPath, singBoxErr := currentHooks.LookPath("sing-box")
+	if singBoxErr != nil {
 		if opts.NoInstall {
 			return fmt.Errorf("sing-box not installed (--no-install set)")
 		}
@@ -58,10 +59,17 @@ func RunTun(getClient func() (*client.Client, error), opts RunTunOptions) error 
 		if err := currentHooks.BrewInstall(); err != nil {
 			return fmt.Errorf("brew install sing-box failed: %w", err)
 		}
+		singBoxPath, singBoxErr = currentHooks.LookPath("sing-box")
 	}
 
 	euid := currentHooks.Geteuid()
 	needSudo := euid != 0
+
+	if needSudo && !opts.NoSetupSudo && singBoxErr == nil {
+		if err := currentHooks.EnsureSudoSetup(singBoxPath, opts.NoSetupSudo); err != nil {
+			return err
+		}
+	}
 
 	if opts.Detach {
 		if bundle.cleanupConfig != nil {
