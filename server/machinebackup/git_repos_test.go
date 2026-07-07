@@ -99,3 +99,26 @@ func TestRelPathFromHome(t *testing.T) {
 		t.Fatalf("rel = %q, want .wrk-test/main", got)
 	}
 }
+
+func TestFoldRelPathFirstSegmentCase(t *testing.T) {
+	home := t.TempDir()
+	projectsDir := filepath.Join(home, "Projects")
+	if err := os.MkdirAll(projectsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	demoDir := filepath.Join(home, "projects", "demo")
+	if err := os.MkdirAll(demoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(demoDir, "README.md"), []byte("x\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := relPathFromHome(home, filepath.Join(home, "Projects", "demo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "projects/demo" {
+		t.Fatalf("rel = %q, want projects/demo", got)
+	}
+}

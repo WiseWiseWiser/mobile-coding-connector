@@ -96,6 +96,15 @@ func TestIncludeOverrideLogAndBinary(t *testing.T) {
 	}
 }
 
+func TestWildcardExcludeBasePath(t *testing.T) {
+	rules := MergeExclusions(nil, []string{".wrk-test/**"}, nil)
+	for _, rel := range []string{".wrk-test", ".wrk-test/main", ".wrk-test/a/b"} {
+		if !rules.IsExcluded(rel) {
+			t.Fatalf("expected %q excluded by .wrk-test/**", rel)
+		}
+	}
+}
+
 func TestPathPrefixExclusions(t *testing.T) {
 	home := t.TempDir()
 	writeTestFile(t, home, ".codex/.tmp/junk", "tmp\n")

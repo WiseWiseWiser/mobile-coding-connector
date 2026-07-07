@@ -415,7 +415,7 @@ func handleGitCommit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	output, err := gitrunner.Commit(req.Message).Dir(dir).Run()
+	output, err := gitrunner.Commit(req.Message, false).Dir(dir).Run()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to commit: %s", string(output))})
 		return

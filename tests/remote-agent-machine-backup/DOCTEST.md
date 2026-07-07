@@ -78,13 +78,14 @@ create/update actions.
 - `machine restore --show-config` without archive prints effective merged config
   JSON from the server (same CLI merge as backup preview); with archive prints
   `.backup/config.json` from the archive (or effective merged fallback; no CLI merge).
-- `machine backup` discovers git repos under included top-level dot-dirs via
-  `scan_repo`, enriches branch/short-sha/status/worktrees, and prints a `GIT REPOS`
-  section in the dry-run summary (`(none)` when no repos, `(skipped)` with
+- `machine backup` discovers git repos under server `HOME` via `scan_repo`
+  (dot-dir and non-dot paths; backup `--exclude` does not affect git scan),
+  enriches branch/short-sha/status/worktrees, and prints a `GIT REPOS` section in
+  the dry-run summary (`(none)` when no repos, `(skipped)` with
   `--skip-git-dirs-scan`). Per-repo and per-root scan/enrichment failures are
   recorded as `error:` lines in GIT REPOS; backup and dry-run never abort on git
-  meta scan failures. `--git-dirs-scan-max-depth N` caps scan depth (`0` =
-  unlimited). Real backups embed `.backup/git-repo-worktrees.json` when scan runs.
+  meta scan failures. `--git-dirs-scan-max-depth N` caps scan depth from `HOME`
+  (`0` = unlimited). Real backups embed `.backup/git-repo-worktrees.json` when scan runs.
 - `machine restore --show-meta` requires an archive and prints `.backup/*` meta
   except `config.json` and `*.machine.bak` (includes `git-repo-worktrees.json`
   when present in the archive).
@@ -141,6 +142,8 @@ create/update actions.
  |    +-- git-repos-skipped/              (LEAF)   skip scan; no archive JSON
  |    +-- git-repos-max-depth/            (LEAF)   max depth excludes deep repo
  |    +-- git-repos-archive/              (LEAF)   archive git-repo-worktrees.json
+ |    +-- git-repos-non-dot-path/         (LEAF)   HOME scan lists projects/demo
+ |    +-- git-repos-exclude-independent/  (LEAF)   --exclude does not hide git repos
  |
  +-- restore/                             (GROUP)  apply archive to server HOME
       |
@@ -207,6 +210,8 @@ create/update actions.
 | 45 | `backup/git-repos-max-depth` | Deep repo beyond `--git-dirs-scan-max-depth 2` → `(none)` |
 | 46 | `backup/git-repos-archive` | Real backup archive contains valid `git-repo-worktrees.json` |
 | 47 | `restore/show-meta-git-repos` | Prereq backup with git → `--show-meta` prints git JSON section |
+| 49 | `backup/git-repos-non-dot-path` | HOME scan lists `projects/demo` (non-dot path) with branch, sha, clean, commit msg |
+| 50 | `backup/git-repos-exclude-independent` | `--exclude .wrk-test/**` omits dot-dir from plan; GIT REPOS still lists `.wrk-test/main` |
 
 ## Parameter Coverage
 
@@ -238,10 +243,12 @@ create/update actions.
 | Identical vs changed restore target | restore/dry-run-identical, restore/dry-run-changed, restore/apply, restore/meta-restore |
 | `--skip-git-dirs-scan` | backup/git-repos-skipped |
 | `--git-dirs-scan-max-depth` | backup/git-repos-max-depth |
-| Git repo scan / `GIT REPOS` summary | backup/git-repos-summary, backup/git-repos-worktree, backup/git-repos-empty-repo, backup/git-repos-none, backup/git-repos-skipped, backup/git-repos-max-depth |
+| Git repo scan / `GIT REPOS` summary | backup/git-repos-summary, backup/git-repos-worktree, backup/git-repos-empty-repo, backup/git-repos-none, backup/git-repos-skipped, backup/git-repos-max-depth, backup/git-repos-non-dot-path, backup/git-repos-exclude-independent |
+| HOME-wide git scan (non-dot paths) | backup/git-repos-non-dot-path |
+| Git scan independent of `--exclude` | backup/git-repos-exclude-independent |
 | Per-repo git enrichment error (durable) | backup/git-repos-empty-repo |
 | `.backup/git-repo-worktrees.json` | backup/git-repos-archive, backup/git-repos-skipped (absent), restore/show-meta-git-repos |
-| Git fixture seeding (`SeedGitRepos*`) | backup/git-repos-summary, backup/git-repos-worktree, backup/git-repos-empty-repo, backup/git-repos-skipped, backup/git-repos-archive, restore/show-meta-git-repos |
+| Git fixture seeding (`SeedGitRepos*`) | backup/git-repos-summary, backup/git-repos-worktree, backup/git-repos-empty-repo, backup/git-repos-skipped, backup/git-repos-archive, backup/git-repos-non-dot-path, backup/git-repos-exclude-independent, restore/show-meta-git-repos |
 
 ## How to Run
 
@@ -356,6 +363,9 @@ type Request struct {
 	// SeedGitRepos adds a git fixture under .wrk-test/main (included dot-dir).
 	SeedGitRepos bool
 
+	// SeedGitReposNonDot adds a git fixture under projects/demo (non-dot top-level path).
+	SeedGitReposNonDot bool
+
 	// SeedGitReposWorktree also adds a linked worktree + dirty file in worktree.
 	SeedGitReposWorktree bool
 
@@ -439,6 +449,9 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		seedGitReposFixture(t, serverHome)
 	} else if req.SeedGitReposEmpty {
 		seedGitReposEmptyFixture(t, serverHome)
+	}
+	if req.SeedGitReposNonDot {
+		seedGitReposNonDotFixture(t, serverHome)
 	}
 	if req.SeedGitReposMaxDepth {
 		seedGitReposMaxDepthFixture(t, serverHome)

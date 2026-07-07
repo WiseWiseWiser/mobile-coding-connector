@@ -31,8 +31,10 @@ REQUIREMENT-DESIGN-excluded-sizes.md,
 REQUIREMENT-DESIGN-backup-large-dir-summary.md,
 REQUIREMENT-DESIGN-large-dir-detail-deep.md, and
 REQUIREMENT-DESIGN-backup-config-refinements.md, and
-REQUIREMENT-DESIGN-machine-backup-git-repos.md. Git fixture leaves skip when `git`
-is not on PATH (`requireGit`). `SeedExcludedSizes` writes 1024 B /
+REQUIREMENT-DESIGN-machine-backup-git-repos.md, and
+REQUIREMENT-DESIGN-git-repos-home-scan.md. Git fixture leaves skip when `git`
+is not on PATH (`requireGit`). `SeedGitReposNonDot` seeds `projects/demo` via
+`seedGitReposNonDotFixture`. `SeedExcludedSizes` writes 1024 B /
 512 B fixtures for per-rule EXCLUDED stats assertions. `SeedLargeDir` writes
 `.big-test/` (>40 MB) and `.small-test/` for size-sorted DOT DIRS / LARGE SIZE
 coverage. `SeedLargeDirDetailDeep` extends `SeedLargeDir` with `.deep-test/nested-big/`
@@ -434,7 +436,10 @@ func seedKnowledgeHub(t *testing.T, home string) {
 	writeServerFile(t, home, ".knowledge-index/idx/data", "index data\n")
 }
 
-const gitFixtureCommitMsg = "backup git fixture"
+const (
+	gitFixtureCommitMsg    = "backup git fixture"
+	gitNonDotFixtureCommitMsg = "non-dot fixture"
+)
 
 func requireGit(t *testing.T) {
 	t.Helper()
@@ -479,6 +484,25 @@ func gitWorktreeAdd(t *testing.T, mainDir, wtDir, branch string) {
 		t.Fatalf("mkdir worktree parent: %v", err)
 	}
 	gitRun(t, mainDir, "worktree", "add", "-b", branch, wtDir)
+}
+
+func seedGitReposNonDotFixture(t *testing.T, home string) {
+	t.Helper()
+	requireGit(t)
+	demoDir := filepath.Join(home, "projects", "demo")
+	if err := os.MkdirAll(demoDir, 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", demoDir, err)
+	}
+	gitRun(t, demoDir, "init")
+	gitRun(t, demoDir, "config", "user.email", "test@example.com")
+	gitRun(t, demoDir, "config", "user.name", "Test User")
+	gitRun(t, demoDir, "branch", "-M", "main")
+	readme := filepath.Join(demoDir, "README.md")
+	if err := os.WriteFile(readme, []byte("non-dot fixture\n"), 0644); err != nil {
+		t.Fatalf("write README.md: %v", err)
+	}
+	gitRun(t, demoDir, "add", "README.md")
+	gitRun(t, demoDir, "commit", "-m", gitNonDotFixtureCommitMsg)
 }
 
 func seedGitReposFixture(t *testing.T, home string) {

@@ -58,7 +58,7 @@ func RunGenCommitMsg(args []string) error {
 
 	if commit {
 		fmt.Fprintf(os.Stderr, "\nRunning git commit...\n")
-		output, err := gitrunner.Commit(msg).Dir(dir).Run()
+		output, err := gitrunner.Commit(msg, false).Dir(dir).Run()
 		if len(output) > 0 {
 			fmt.Fprint(os.Stderr, string(output))
 		}

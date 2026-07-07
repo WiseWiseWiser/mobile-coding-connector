@@ -381,6 +381,13 @@ func (r ExclusionRules) ruleKeyForPath(rel string) string {
 		}
 	}
 	for _, prefix := range r.prefixes {
+		if strings.HasSuffix(prefix, "/**") {
+			base := strings.TrimSuffix(prefix, "/**")
+			if rel == base || strings.HasPrefix(rel, base+"/") {
+				return prefix
+			}
+			continue
+		}
 		if rel == prefix || strings.HasPrefix(rel, prefix+"/") {
 			return prefix
 		}

@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -18,46 +18,27 @@ const (
 	gitReposVersion  = "1.0"
 )
 
-// ScanGitRepos discovers git repositories under included dot-dir roots.
+// ScanGitRepos discovers git repositories under HOME.
 // When opts.SkipGitDirsScan is true, returns (nil, false, nil).
-func ScanGitRepos(home string, dirStats []DirStat, rules ExclusionRules, opts GitScanOptions) (*GitRepoWorktreesSnapshot, bool, error) {
+func ScanGitRepos(home string, opts GitScanOptions) (*GitRepoWorktreesSnapshot, bool, error) {
 	if opts.SkipGitDirsScan {
 		return nil, true, nil
 	}
-	roots := gitScanRoots(home, dirStats)
-	if len(roots) == 0 {
-		return emptyGitReposSnapshot(), false, nil
-	}
 
 	ctx := context.Background()
-	var scanned []scan_repo.Repo
-	var rootErrors []scan_repo.RootError
-	for _, root := range roots {
-		rootRel, err := relPathFromHome(home, root)
-		if err != nil {
-			return nil, false, fmt.Errorf("rel path for %s: %w", root, err)
-		}
-		ignoreDirs := gitIgnoreDirsForRoot(home, rootRel, rules)
-		result, err := scan_repo.Scan(ctx, scan_repo.Options{
-			Roots:         []string{root},
-			MaxDepth:      opts.GitDirsScanMaxDepth,
-			IgnoreDirs:    ignoreDirs,
-			ListWorktrees: true,
-		})
-		if err != nil {
-			return nil, false, fmt.Errorf("scan git repos under %s: %w", rootRel, err)
-		}
-		scanned = append(scanned, result.Repos...)
-		rootErrors = append(rootErrors, result.RootErrors...)
+	result, err := scan_repo.Scan(ctx, scan_repo.Options{
+		Roots:         []string{home},
+		MaxDepth:      opts.GitDirsScanMaxDepth,
+		ListWorktrees: true,
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("scan git repos under HOME: %w", err)
 	}
 
 	rel := func(abs string) string {
 		return mustRelPathFromHome(home, abs)
 	}
-	snap := reposnapshot.Build(scan_repo.Result{
-		Repos:      scanned,
-		RootErrors: rootErrors,
-	}, rel)
+	snap := reposnapshot.Build(result, rel)
 
 	return gitReposSnapshotFromBuild(snap), false, nil
 }
@@ -100,37 +81,49 @@ func gitReposSnapshotFromBuild(snap reposnapshot.Snapshot) *GitRepoWorktreesSnap
 	}
 }
 
-func gitScanRoots(home string, dirStats []DirStat) []string {
-	roots := make([]string, 0, len(dirStats))
-	for _, st := range dirStats {
-		roots = append(roots, filepath.Join(home, filepath.FromSlash(st.Path)))
-	}
-	sort.Strings(roots)
-	return roots
-}
-
-func gitIgnoreDirsForRoot(home, rootRel string, rules ExclusionRules) []string {
-	rootRel = normalizeRelPath(rootRel)
-	var dirs []string
-	for _, e := range rules.ExcludedList {
-		p := normalizeRelPath(e.Path)
-		if p == "" || specialExclusionRules[p] {
-			continue
-		}
-		if p == rootRel || strings.HasPrefix(p, rootRel+"/") {
-			dirs = append(dirs, filepath.Join(home, filepath.FromSlash(p)))
-		}
-	}
-	sort.Strings(dirs)
-	return dirs
-}
-
 func relPathFromHome(home, absPath string) (string, error) {
 	rel, err := filepath.Rel(home, absPath)
 	if err != nil {
 		return "", err
 	}
-	return normalizeRelPath(rel), nil
+	rel = normalizeRelPath(rel)
+	return foldRelPathFirstSegmentCase(home, rel), nil
+}
+
+// foldRelPathFirstSegmentCase lowercases the first path segment when it refers to
+// the same path on a case-insensitive volume (e.g. Projects/demo vs projects/demo).
+func foldRelPathFirstSegmentCase(home, rel string) string {
+	if rel == "" || strings.HasPrefix(rel, ".") {
+		return rel
+	}
+	parts := strings.Split(rel, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return rel
+	}
+	first := parts[0]
+	if first == strings.ToLower(first) {
+		return rel
+	}
+	lowerFirst := strings.ToLower(first[:1]) + first[1:]
+	orig := filepath.Join(home, filepath.FromSlash(rel))
+	alt := filepath.Join(home, filepath.FromSlash(lowerFirst))
+	if len(parts) > 1 {
+		alt = filepath.Join(alt, filepath.FromSlash(strings.Join(parts[1:], "/")))
+	}
+	if pathsSameFile(orig, alt) {
+		parts[0] = lowerFirst
+		return strings.Join(parts, "/")
+	}
+	return rel
+}
+
+func pathsSameFile(a, b string) bool {
+	ia, errA := os.Stat(a)
+	ib, errB := os.Stat(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return os.SameFile(ia, ib)
 }
 
 func mustRelPathFromHome(home, absPath string) string {

@@ -34,7 +34,7 @@ func BuildPlan(home string, exclude, include []string, gitOpts GitScanOptions) (
 	}
 	dotFilesTotal := totalsFromDotFiles(res.DotFiles)
 	dotDirsTotal := totalsFromDirStats(dirStats)
-	gitRepos, _, err := ScanGitRepos(home, dirStats, rules, gitOpts)
+	gitRepos, _, err := ScanGitRepos(home, gitOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func WriteArchive(w io.Writer, home string, exclude, include []string, gitOpts G
 		return err
 	}
 	dirStats := sortedDirStats(res.DirStats)
-	gitRepos, gitSkipped, err := ScanGitRepos(home, dirStats, rules, gitOpts)
+	gitRepos, gitSkipped, err := ScanGitRepos(home, gitOpts)
 	if err != nil {
 		return err
 	}
