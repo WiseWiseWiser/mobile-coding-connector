@@ -11,13 +11,21 @@ import (
 )
 
 // BackupPlanStream walks home and emits SSE progress then a done plan summary.
-func BackupPlanStream(w http.ResponseWriter, home string, exclude, include []string) error {
+func BackupPlanStream(w http.ResponseWriter, home string, exclude, include []string, largeDirThresholdBytes int64, gitOpts GitScanOptions) error {
 	pw := progress.NewWriter(w)
 	if pw == nil {
 		return fmt.Errorf("streaming not supported")
 	}
 
-	plan, err := BuildPlan(home, exclude, include)
+	rules, err := ResolveExclusionRules(home, exclude, include)
+	if err != nil {
+		if emitErr := pw.EmitError(err.Error()); emitErr != nil {
+			return emitErr
+		}
+		return nil
+	}
+
+	plan, err := BuildPlan(home, exclude, include, gitOpts)
 	if err != nil {
 		if emitErr := pw.EmitError(err.Error()); emitErr != nil {
 			return emitErr
@@ -28,7 +36,11 @@ func BackupPlanStream(w http.ResponseWriter, home string, exclude, include []str
 	if err := pw.EmitSection("DOT FILES"); err != nil {
 		return err
 	}
-	for _, f := range plan.DotFiles {
+	files := plan.AllFiles
+	if len(files) == 0 {
+		files = plan.DotFiles
+	}
+	for _, f := range files {
 		if err := pw.EmitProgress(progress.Item{
 			Layer:  "dot_file",
 			Name:   f.Path,
@@ -55,17 +67,26 @@ func BackupPlanStream(w http.ResponseWriter, home string, exclude, include []str
 	if err := pw.EmitSection("EXCLUDED"); err != nil {
 		return err
 	}
+	if err := pw.EmitProgress(progress.Item{
+		Layer:  "excluded_header",
+		Detail: formatExcludedColumnHeader(),
+	}); err != nil {
+		return err
+	}
 	for _, ex := range plan.Excluded {
 		if err := pw.EmitProgress(progress.Item{
 			Layer:  "excluded",
-			Name:   ex.Path,
-			Detail: ex.Reason,
+			Detail: formatExcludedRuleRow(ex),
 		}); err != nil {
 			return err
 		}
 	}
 
-	if err := emitBackupDryRunSummary(pw, plan); err != nil {
+	if err := emitBackupDryRunSummary(pw, plan, DryRunSummaryOptions{
+		LargeDirThresholdBytes: largeDirThresholdBytes,
+		ExclusionRules:         rules,
+		SkipGitDirsScan:        gitOpts.SkipGitDirsScan,
+	}); err != nil {
 		return err
 	}
 	return pw.EmitDone(backupStreamDone(plan))
@@ -83,6 +104,7 @@ func backupStreamDone(plan *MachineBackupPlan) map[string]any {
 		"grand_total":     plan.GrandTotal,
 		"excluded":        plan.Excluded,
 		"included_count":  len(plan.Included),
+		"git_repos":       plan.GitRepos,
 	}
 }
 
@@ -113,7 +135,10 @@ func restoreStreaming(home string, archive io.Reader, exclude, include []string,
 	if err != nil {
 		return nil, err
 	}
-	rules := MergeExclusions(exclude, include)
+	rules, err := ResolveExclusionRules(home, exclude, include)
+	if err != nil {
+		return nil, err
+	}
 
 	raw, err := io.ReadAll(archive)
 	if err != nil {

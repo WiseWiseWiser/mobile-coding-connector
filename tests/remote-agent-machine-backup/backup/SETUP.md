@@ -9,7 +9,8 @@ remote-agent machine backup [flags] -> JSON plan | tar.xz archive
 
 ## Preconditions
 
-`serverHome` seeded with included dot paths and built-in exclusion trees.
+`serverHome` seeded with included dot paths, built-in exclusion trees, and v1.1
+extended fixtures (ELF/SQLite/JPEG stubs, log files, upload-chunks, path-prefix trees).
 
 ## Steps
 

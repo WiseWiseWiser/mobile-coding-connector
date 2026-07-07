@@ -44,6 +44,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/filetransfer"
 	"github.com/xhd2015/ai-critic/server/fileupload"
 	servergit "github.com/xhd2015/ai-critic/server/git"
+	servermachineanalyse "github.com/xhd2015/ai-critic/server/machineanalyse"
 	servermachinebackup "github.com/xhd2015/ai-critic/server/machinebackup"
 	serverprojectpull "github.com/xhd2015/ai-critic/server/projectpull"
 	"github.com/xhd2015/ai-critic/server/github"
@@ -530,6 +531,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Machine backup/restore API (server HOME dot-files for remote-agent CLI)
 	servermachinebackup.RegisterAPI(mux)
+
+	// Machine analyse-files API (full HOME scan for remote-agent CLI)
+	servermachineanalyse.RegisterAPI(mux)
 
 	// Domains API
 	domains.RegisterAPI(mux)

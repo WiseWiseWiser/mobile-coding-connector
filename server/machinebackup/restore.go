@@ -24,7 +24,10 @@ func planOrApply(home string, archive io.Reader, exclude, include []string, appl
 	if err != nil {
 		return nil, err
 	}
-	rules := MergeExclusions(exclude, include)
+	rules, err := ResolveExclusionRules(home, exclude, include)
+	if err != nil {
+		return nil, err
+	}
 
 	raw, err := io.ReadAll(archive)
 	if err != nil {

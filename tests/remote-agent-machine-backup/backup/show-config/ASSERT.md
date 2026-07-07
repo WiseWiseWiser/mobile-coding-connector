@@ -1,11 +1,11 @@
 ## Expected Output
 
-Stdout is indented JSON with `version` and `exclude_paths` array; no archive written.
+Stdout is indented JSON with `version` `1.1` and `exclude_paths` array; no archive written.
 
 ## Expected
 
 1. Exit code 0.
-2. Stdout parses as exclusion config with `version` `1.0`.
+2. Stdout parses as exclusion config with `version` `1.1`.
 3. `exclude_paths` includes `.cache` with a non-empty `reason`.
 4. No backup archive file is created under `agentHome`.
 
@@ -39,8 +39,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 
 	cfg := parseExclusionConfigJSON(t, []byte(strings.TrimSpace(resp.Stdout)))
-	if cfg.Version != "1.0" {
-		t.Fatalf("version = %q, want 1.0", cfg.Version)
+	if cfg.Version != "1.1" {
+		t.Fatalf("version = %q, want 1.1", cfg.Version)
 	}
 	if len(cfg.ExcludePaths) == 0 {
 		t.Fatal("exclude_paths empty")

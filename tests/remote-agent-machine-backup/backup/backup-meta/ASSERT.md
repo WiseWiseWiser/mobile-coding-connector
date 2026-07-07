@@ -7,7 +7,7 @@ Backup completes; archive lists injected `.backup/` meta members.
 1. Exit code 0.
 2. Archive contains `.backup/config.json`, `.backup/installed.json`, `.backup/ENV`.
 3. Archive contains `.backup/config.json.machine.bak` with seeded pre-backup content.
-4. Archive `.backup/config.json` parses as effective exclusion config (`version` `1.0`).
+4. Archive `.backup/config.json` parses as effective exclusion config (`version` `1.1`).
 5. Archive `.backup/installed.json` parses with `captured_at` and `tools` fields.
 
 ## Side Effects
@@ -59,8 +59,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 
 	cfgRaw := tarXZExtractFile(t, resp.BackupPath, ".backup/config.json")
 	cfg := parseExclusionConfigJSON(t, cfgRaw)
-	if cfg.Version != "1.0" {
-		t.Fatalf("archive config version = %q, want 1.0", cfg.Version)
+	if cfg.Version != "1.1" {
+		t.Fatalf("archive config version = %q, want 1.1", cfg.Version)
 	}
 	if len(cfg.ExcludePaths) == 0 {
 		t.Fatal("archive config exclude_paths empty")

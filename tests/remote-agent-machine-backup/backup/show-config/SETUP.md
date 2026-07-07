@@ -1,15 +1,15 @@
 # Scenario
 
-**Feature**: backup --show-config prints built-in exclusion config JSON
+**Feature**: backup --show-config prints effective merged exclusion config JSON
 
 ```
-# local built-in config lookup (no backup API)
+# server effective config (builtin + persisted backup-config.json)
 remote-agent machine backup --show-config -> JSON version + exclude_paths
 ```
 
 ## Preconditions
 
-Default `serverHome` fixtures; server may start but backup API is not required.
+Default `serverHome` fixtures; server serves GET /api/remote-agent/machine/backup-config.
 
 ## Steps
 

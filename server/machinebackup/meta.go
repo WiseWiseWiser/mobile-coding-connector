@@ -57,7 +57,7 @@ func buildEnvSnapshot() []byte {
 	return []byte(strings.Join(env, "\n") + "\n")
 }
 
-func writeBackupMeta(tw *tar.Writer, home string, rules ExclusionRules) error {
+func writeBackupMeta(tw *tar.Writer, home string, rules ExclusionRules, gitRepos *GitRepoWorktreesSnapshot, gitSkipped bool) error {
 	payloads := map[string][]byte{}
 	cfg, err := json.MarshalIndent(rules.EffectiveExclusionConfig(), "", "  ")
 	if err != nil {
@@ -71,9 +71,21 @@ func writeBackupMeta(tw *tar.Writer, home string, rules ExclusionRules) error {
 	}
 	payloads[metaInstalledName] = installed
 	payloads[metaEnvName] = buildEnvSnapshot()
+	if !gitSkipped && gitRepos != nil {
+		gitData, err := marshalGitReposSnapshot(gitRepos)
+		if err != nil {
+			return fmt.Errorf("marshal git-repo-worktrees.json: %w", err)
+		}
+		payloads[metaGitReposName] = gitData
+	}
+
+	metaFiles := append([]string(nil), backupMetaFiles...)
+	if !gitSkipped && gitRepos != nil {
+		metaFiles = append(metaFiles, metaGitReposName)
+	}
 
 	metaHome := filepath.Join(home, backupMetaDir)
-	for _, name := range backupMetaFiles {
+	for _, name := range metaFiles {
 		existing := filepath.Join(metaHome, name)
 		if data, err := os.ReadFile(existing); err == nil {
 			bakPath := backupMetaDir + "/" + name + machineBakSuffix
@@ -93,7 +105,8 @@ func isBackupMetaSnapshot(rel string) bool {
 	switch rel {
 	case backupMetaDir + "/" + metaConfigName,
 		backupMetaDir + "/" + metaInstalledName,
-		backupMetaDir + "/" + metaEnvName:
+		backupMetaDir + "/" + metaEnvName,
+		backupMetaDir + "/" + metaGitReposName:
 		return true
 	default:
 		return false

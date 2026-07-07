@@ -10,9 +10,13 @@ or MB). Summary phase ends with `dry-run: machine backup plan` and rollups.
 3. Combined output includes at least one size token (` B`, ` KB`, or ` MB`).
 4. Combined output mentions `.bashrc` and `.ai-critic`.
 5. Combined output lists built-in exclusions: `.cache`, `.npm`, `.cargo/registry`.
-6. EXCLUDED section for `.cache` includes a reason token (e.g. `temporary application cache` or `cache`).
-7. Combined output does not claim `.cache/junk` or `.npm/x` are included.
-8. No backup archive file is created under `agentHome`.
+6. EXCLUDED section header uses aggregate totals: `EXCLUDED (N paths, F files, <size>)`.
+7. EXCLUDED section for `.cache` includes a reason token (e.g. `temporary application cache` or `cache`).
+8. EXCLUDED may also list extended rules (e.g. `upload-chunks`, `*.log`, `(binary)`) from v1.1 fixtures.
+9. Combined output does not claim `.cache/junk` or `.npm/x` are included.
+10. Summary `DOT DIRS` rows are sorted by size descending (path tiebreak); test does
+    not assume legacy path-lexicographic order.
+11. No backup archive file is created under `agentHome`.
 
 ## Side Effects
 
@@ -32,12 +36,9 @@ None (no archive write).
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
-
-var backupSizeToken = regexp.MustCompile(`\d+(\.\d+)?\s*(B|KB|MB)\b`)
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if err != nil {
@@ -60,7 +61,9 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		".cache",
 		".npm",
 	)
+	assertExcludedStatsHeader(t, resp.Combined)
 	assertCacheExclusionReason(t, resp.Combined)
+	assertDotDirsSortedBySizeDesc(t, resp.Combined)
 	combinedHasNone(t, resp.Combined, ".cache/junk", ".npm/x", ".cargo/registry/db")
 
 	matches, _ := filepath.Glob(filepath.Join(resp.AgentHome, "machine-backup-*.tar.xz"))

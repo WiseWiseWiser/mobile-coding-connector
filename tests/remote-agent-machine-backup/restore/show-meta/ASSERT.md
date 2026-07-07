@@ -1,7 +1,8 @@
 ## Expected Output
 
 Stdout prints `=== .backup/ENV ===` and `=== .backup/installed.json ===` sections
-with archive content; does not print `config.json` or `*.machine.bak`.
+with archive content; does not print `config.json` or `*.machine.bak`. Git repo
+meta (`git-repo-worktrees.json`) is covered by `restore/show-meta-git-repos`.
 
 ## Expected
 

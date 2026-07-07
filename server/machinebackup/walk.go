@@ -6,12 +6,15 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/file/detect"
 )
 
 type walkResult struct {
-	DotFiles []FileStat
-	DirStats map[string]*DirStat
-	Members  []archiveMember
+	DotFiles      []FileStat
+	DirStats      map[string]*DirStat
+	Members       []archiveMember
+	ExcludedStats excludedStats
 }
 
 func discover(home string, rules ExclusionRules) (*walkResult, error) {
@@ -21,7 +24,8 @@ func discover(home string, rules ExclusionRules) (*walkResult, error) {
 	}
 
 	res := &walkResult{
-		DirStats: make(map[string]*DirStat),
+		DirStats:      make(map[string]*DirStat),
+		ExcludedStats: newExcludedStats(),
 	}
 
 	var dotDirs []string
@@ -34,14 +38,22 @@ func discover(home string, rules ExclusionRules) (*walkResult, error) {
 			continue
 		}
 		rel := normalizeRelPath(name)
-		if rules.IsExcluded(rel) || rules.isTopLevelExcluded(name) {
-			continue
-		}
 
 		full := filepath.Join(home, name)
 		info, err := os.Lstat(full)
 		if err != nil {
 			return nil, fmt.Errorf("lstat %s: %w", full, err)
+		}
+
+		skip, err := shouldSkipPath(home, rel, rules, info.Mode())
+		if err != nil {
+			return nil, err
+		}
+		if skip {
+			if err := recordSkippedPath(home, rel, rules, info, res.ExcludedStats); err != nil {
+				return nil, err
+			}
+			continue
 		}
 
 		switch {
@@ -88,6 +100,95 @@ func discover(home string, rules ExclusionRules) (*walkResult, error) {
 	return res, nil
 }
 
+func skipRuleKey(home, rel string, rules ExclusionRules, mode os.FileMode) (string, error) {
+	if rules.isIncludedOverride(rel) {
+		return "", nil
+	}
+	if key := rules.ruleKeyForPath(rel); key != "" {
+		return key, nil
+	}
+	if mode.IsRegular() && rules.hasLogSuffix(rel) {
+		return logSuffixRule, nil
+	}
+	if mode.IsRegular() {
+		full := filepath.Join(home, filepath.FromSlash(rel))
+		isExec, _, err := detect.IsExecutableBinary(full)
+		if err != nil {
+			return "", fmt.Errorf("detect executable %s: %w", rel, err)
+		}
+		if isExec {
+			return binaryRule, nil
+		}
+	}
+	return "", nil
+}
+
+func shouldSkipPath(home, rel string, rules ExclusionRules, mode os.FileMode) (bool, error) {
+	key, err := skipRuleKey(home, rel, rules, mode)
+	return key != "", err
+}
+
+func recordSkippedPath(home, rel string, rules ExclusionRules, info os.FileInfo, stats excludedStats) error {
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil
+	}
+	if info.IsDir() {
+		return accumulateExcludedTree(home, rel, rules, stats)
+	}
+	if !info.Mode().IsRegular() {
+		return nil
+	}
+	key, err := skipRuleKey(home, rel, rules, info.Mode())
+	if err != nil {
+		return err
+	}
+	if key != "" {
+		stats.add(key, 1, info.Size())
+	}
+	return nil
+}
+
+func accumulateExcludedTree(home, rel string, rules ExclusionRules, stats excludedStats) error {
+	root := filepath.Join(home, filepath.FromSlash(rel))
+	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == root {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		mode := info.Mode()
+		if mode&os.ModeSymlink != 0 {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !mode.IsRegular() {
+			return nil
+		}
+		childRel, err := filepath.Rel(home, path)
+		if err != nil {
+			return fmt.Errorf("rel path %s: %w", path, err)
+		}
+		key, err := skipRuleKey(home, normalizeRelPath(childRel), rules, mode)
+		if err != nil {
+			return err
+		}
+		if key != "" {
+			stats.add(key, 1, info.Size())
+		}
+		return nil
+	})
+}
+
 func walkTree(home, rel string, rules ExclusionRules, res *walkResult, stat *DirStat) error {
 	full := filepath.Join(home, filepath.FromSlash(rel))
 	entries, err := os.ReadDir(full)
@@ -97,13 +198,21 @@ func walkTree(home, rel string, rules ExclusionRules, res *walkResult, stat *Dir
 
 	for _, ent := range entries {
 		childRel := normalizeRelPath(rel + "/" + ent.Name())
-		if rules.IsExcluded(childRel) {
-			continue
-		}
 		childFull := filepath.Join(home, filepath.FromSlash(childRel))
 		info, err := os.Lstat(childFull)
 		if err != nil {
 			return fmt.Errorf("lstat %s: %w", childFull, err)
+		}
+
+		skip, err := shouldSkipPath(home, childRel, rules, info.Mode())
+		if err != nil {
+			return err
+		}
+		if skip {
+			if err := recordSkippedPath(home, childRel, rules, info, res.ExcludedStats); err != nil {
+				return err
+			}
+			continue
 		}
 
 		switch {
@@ -188,6 +297,26 @@ func mergeSectionTotals(parts ...SectionTotals) SectionTotals {
 		t.Bytes += p.Bytes
 	}
 	return t
+}
+
+func allFileStats(home string, res *walkResult) ([]FileStat, error) {
+	out := make([]FileStat, 0, len(res.Members))
+	for _, m := range res.Members {
+		if m.IsSymlink {
+			continue
+		}
+		full := filepath.Join(home, filepath.FromSlash(m.RelPath))
+		info, err := os.Stat(full)
+		if err != nil {
+			return nil, fmt.Errorf("stat %s: %w", m.RelPath, err)
+		}
+		if info.IsDir() {
+			continue
+		}
+		out = append(out, FileStat{Path: m.RelPath, Bytes: info.Size()})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out, nil
 }
 
 func includedPaths(res *walkResult) []string {

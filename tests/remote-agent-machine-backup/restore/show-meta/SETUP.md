@@ -18,7 +18,8 @@ Prereq backup from default `serverHome` fixtures.
 
 ## Context
 
-REQUIREMENT leaf `restore/show-meta`.
+REQUIREMENT leaf `restore/show-meta`. Asserts `installed.json` and `ENV` only;
+`git-repo-worktrees.json` coverage lives in `restore/show-meta-git-repos`.
 
 ```go
 import "testing"

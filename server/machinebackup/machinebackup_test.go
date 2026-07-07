@@ -39,7 +39,7 @@ func TestDiscoverAndExclusions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := BuildPlan(home, nil, nil)
+	plan, err := BuildPlan(home, nil, nil, GitScanOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestCustomExclude(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := BuildPlan(home, []string{".docker"}, nil)
+	plan, err := BuildPlan(home, []string{".docker"}, nil, GitScanOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestTarXZRoundtrip(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := WriteArchive(&buf, home, nil, nil); err != nil {
+	if err := WriteArchive(&buf, home, nil, nil, GitScanOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	magic := []byte{0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00}
@@ -152,7 +152,7 @@ func TestRestoreIdenticalSkip(t *testing.T) {
 	}
 
 	var archive bytes.Buffer
-	if err := WriteArchive(&archive, home, nil, nil); err != nil {
+	if err := WriteArchive(&archive, home, nil, nil, GitScanOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -176,7 +176,7 @@ func TestRestoreApplyUpdatesChangedFile(t *testing.T) {
 	}
 
 	var archive bytes.Buffer
-	if err := WriteArchive(&archive, home, nil, nil); err != nil {
+	if err := WriteArchive(&archive, home, nil, nil, GitScanOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -230,7 +230,7 @@ func TestWalkAccumulatesBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := BuildPlan(home, nil, nil)
+	plan, err := BuildPlan(home, nil, nil, GitScanOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestBackupPlanStreamEmitsProgressThenDone(t *testing.T) {
 	}
 
 	rec := newFlushRecorder()
-	if err := BackupPlanStream(rec, home, nil, nil); err != nil {
+	if err := BackupPlanStream(rec, home, nil, nil, 0, GitScanOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	body := rec.body.String()
@@ -307,7 +307,7 @@ func TestRestorePlanStreamDryRun(t *testing.T) {
 	}
 
 	var archive bytes.Buffer
-	if err := WriteArchive(&archive, home, nil, nil); err != nil {
+	if err := WriteArchive(&archive, home, nil, nil, GitScanOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -348,7 +348,7 @@ func TestIncludeReenablesBuiltinExclude(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := BuildPlan(home, nil, []string{".cache"})
+	plan, err := BuildPlan(home, nil, []string{".cache"}, GitScanOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestWriteArchiveIncludesBackupMeta(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := WriteArchive(&buf, home, nil, nil); err != nil {
+	if err := WriteArchive(&buf, home, nil, nil, GitScanOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	_, entries, err := ReadArchive(bytes.NewReader(buf.Bytes()))
@@ -406,7 +406,7 @@ func TestRestoreSkipsMetaRestoresMachineBak(t *testing.T) {
 	}
 
 	var archive bytes.Buffer
-	if err := WriteArchive(&archive, home, nil, nil); err != nil {
+	if err := WriteArchive(&archive, home, nil, nil, GitScanOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -436,7 +436,7 @@ func TestSymlinkNotFollowed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rules := MergeExclusions(nil, nil)
+	rules := MergeExclusions(nil, nil, nil)
 	res, err := discover(home, rules)
 	if err != nil {
 		t.Fatal(err)

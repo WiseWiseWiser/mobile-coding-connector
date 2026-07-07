@@ -6,15 +6,33 @@ const manifestVersion = 1
 
 // BackupRequest is the JSON body for POST /api/remote-agent/machine/backup.
 type BackupRequest struct {
-	DryRun  bool     `json:"dry_run"`
-	Exclude []string `json:"exclude"`
-	Include []string `json:"include"`
+	DryRun                 bool     `json:"dry_run"`
+	Exclude                []string `json:"exclude"`
+	Include                []string `json:"include"`
+	LargeDirThresholdBytes int64    `json:"large_dir_threshold_bytes,omitempty"`
+	SkipGitDirsScan        bool     `json:"skip_git_dirs_scan,omitempty"`
+	GitDirsScanMaxDepth    int      `json:"git_dirs_scan_max_depth,omitempty"` // 0 = unlimited
 }
 
 // BackupStreamRequest is the JSON body for POST /api/remote-agent/machine/backup/stream.
 type BackupStreamRequest struct {
-	Exclude []string `json:"exclude"`
-	Include []string `json:"include"`
+	Exclude                []string `json:"exclude"`
+	Include                []string `json:"include"`
+	LargeDirThresholdBytes int64    `json:"large_dir_threshold_bytes,omitempty"`
+	SkipGitDirsScan        bool     `json:"skip_git_dirs_scan,omitempty"`
+	GitDirsScanMaxDepth    int      `json:"git_dirs_scan_max_depth,omitempty"` // 0 = unlimited
+}
+
+// GitScanOptions configures git repo discovery during backup.
+type GitScanOptions struct {
+	SkipGitDirsScan     bool
+	GitDirsScanMaxDepth int // 0 = unlimited
+}
+
+// BackupConfigRequest is the JSON body for PUT /api/remote-agent/machine/backup-config.
+type BackupConfigRequest struct {
+	Exclude           []string `json:"exclude"`
+	LargeDirThreshold string   `json:"large_dir_threshold,omitempty"`
 }
 
 // FileStat is one dot-file entry with byte size.
@@ -50,16 +68,46 @@ type Manifest struct {
 	DotFiles  []string  `json:"dot_files"`
 }
 
+// GitRepoWorktreesSnapshot is written to .backup/git-repo-worktrees.json.
+type GitRepoWorktreesSnapshot struct {
+	Version    string         `json:"version"`
+	CapturedAt time.Time      `json:"captured_at"`
+	Repos      []GitRepoEntry `json:"repos"`
+}
+
+// GitRepoEntry is one main repository with optional linked worktrees.
+type GitRepoEntry struct {
+	Path      string             `json:"path"`
+	Branch    string             `json:"branch,omitempty"`
+	CommitSHA string             `json:"commit_sha,omitempty"`
+	CommitMsg string             `json:"commit_msg,omitempty"`
+	Status    string             `json:"status,omitempty"`
+	Error     string             `json:"error,omitempty"`
+	Worktrees []GitWorktreeEntry `json:"worktrees,omitempty"`
+}
+
+// GitWorktreeEntry is one linked worktree checkout.
+type GitWorktreeEntry struct {
+	Path      string `json:"path"`
+	Branch    string `json:"branch,omitempty"`
+	CommitSHA string `json:"commit_sha,omitempty"`
+	CommitMsg string `json:"commit_msg,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
 // MachineBackupPlan is returned when dry_run is true or in a stream done frame.
 type MachineBackupPlan struct {
 	Home          string        `json:"home"`
 	DotFiles      []FileStat    `json:"dot_files"`
+	AllFiles      []FileStat    `json:"all_files"`
 	DotFilesTotal SectionTotals `json:"dot_files_total"`
 	DirStats      []DirStat     `json:"dir_stats"`
 	DotDirsTotal  SectionTotals `json:"dot_dirs_total"`
 	GrandTotal    SectionTotals `json:"grand_total"`
 	Excluded      []ExcludePathEntry `json:"excluded"`
 	Included      []string           `json:"included"`
+	GitRepos      *GitRepoWorktreesSnapshot `json:"git_repos,omitempty"`
 }
 
 // RestoreEntry describes one restore action.

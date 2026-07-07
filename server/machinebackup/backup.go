@@ -14,39 +14,60 @@ import (
 )
 
 // BuildPlan inspects server home and returns a dry-run backup plan.
-func BuildPlan(home string, exclude, include []string) (*MachineBackupPlan, error) {
+func BuildPlan(home string, exclude, include []string, gitOpts GitScanOptions) (*MachineBackupPlan, error) {
 	home, err := resolveHome(home)
 	if err != nil {
 		return nil, err
 	}
-	rules := MergeExclusions(exclude, include)
+	rules, err := ResolveExclusionRules(home, exclude, include)
+	if err != nil {
+		return nil, err
+	}
 	res, err := discover(home, rules)
 	if err != nil {
 		return nil, err
 	}
 	dirStats := sortedDirStats(res.DirStats)
+	allFiles, err := allFileStats(home, res)
+	if err != nil {
+		return nil, err
+	}
 	dotFilesTotal := totalsFromDotFiles(res.DotFiles)
 	dotDirsTotal := totalsFromDirStats(dirStats)
+	gitRepos, _, err := ScanGitRepos(home, dirStats, rules, gitOpts)
+	if err != nil {
+		return nil, err
+	}
 	return &MachineBackupPlan{
 		Home:          home,
 		DotFiles:      res.DotFiles,
+		AllFiles:      allFiles,
 		DotFilesTotal: dotFilesTotal,
 		DirStats:      dirStats,
 		DotDirsTotal:  dotDirsTotal,
 		GrandTotal:    mergeSectionTotals(dotFilesTotal, dotDirsTotal),
-		Excluded:      rules.ExcludedList,
+		Excluded:      populateExcludedList(rules, res.ExcludedStats),
 		Included:      includedPaths(res),
+		GitRepos:      gitRepos,
 	}, nil
 }
 
 // WriteArchive streams a tar.xz archive of server home dot entries.
-func WriteArchive(w io.Writer, home string, exclude, include []string) error {
+func WriteArchive(w io.Writer, home string, exclude, include []string, gitOpts GitScanOptions) error {
 	home, err := resolveHome(home)
 	if err != nil {
 		return err
 	}
-	rules := MergeExclusions(exclude, include)
+	rules, err := ResolveExclusionRules(home, exclude, include)
+	if err != nil {
+		return err
+	}
 	res, err := discover(home, rules)
+	if err != nil {
+		return err
+	}
+	dirStats := sortedDirStats(res.DirStats)
+	gitRepos, gitSkipped, err := ScanGitRepos(home, dirStats, rules, gitOpts)
 	if err != nil {
 		return err
 	}
@@ -56,7 +77,7 @@ func WriteArchive(w io.Writer, home string, exclude, include []string) error {
 		CreatedAt: time.Now().UTC(),
 		Home:      home,
 		Excluded:  rules.ExcludedPaths(),
-		DirStats:  sortedDirStats(res.DirStats),
+		DirStats:  dirStats,
 		DotFiles:  dotFilePaths(res.DotFiles),
 	}
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
@@ -82,7 +103,7 @@ func WriteArchive(w io.Writer, home string, exclude, include []string) error {
 			return err
 		}
 	}
-	return writeBackupMeta(tw, home, rules)
+	return writeBackupMeta(tw, home, rules, gitRepos, gitSkipped)
 }
 
 func writeMember(tw *tar.Writer, home string, member archiveMember) error {
