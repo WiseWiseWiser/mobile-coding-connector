@@ -52,7 +52,7 @@ func TestParseBinVersion(t *testing.T) {
 		{"ai-critic-server", "ai-critic-server", 0},
 		{"ai-critic-server-v1", "ai-critic-server", 1},
 		{"ai-critic-server-v5", "ai-critic-server", 5},
-		{"/path/to/ai-critic-server-v10", "/path/to/ai-critic-server", 10},
+		{"/path/to/ai-critic-server-v10", "ai-critic-server", 10},
 		{"ai-critic-server-linux-amd64", "ai-critic-server-linux-amd64", 0},
 		{"ai-critic-server-linux-amd64-v2", "ai-critic-server-linux-amd64", 2},
 	}

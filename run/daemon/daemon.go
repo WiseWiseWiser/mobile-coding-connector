@@ -27,6 +27,7 @@ type Daemon struct {
 	port           int
 	serverArgs     []string
 	startupTimeout time.Duration
+	detach         bool
 }
 
 // DualLogger writes to both stdout/stderr and a log file
@@ -96,8 +97,9 @@ func (dl *DualLogger) GetStderr() io.Writer {
 }
 
 // NewDaemon creates a new daemon instance
-func NewDaemon(port int, serverArgs []string, startupTimeout time.Duration) *Daemon {
+func NewDaemon(port int, serverArgs []string, startupTimeout time.Duration, detach bool) *Daemon {
 	state := GlobalState
+	state.SetDetach(detach)
 	return &Daemon{
 		state:          state,
 		processManager: NewProcessManager(state),
@@ -106,6 +108,7 @@ func NewDaemon(port int, serverArgs []string, startupTimeout time.Duration) *Dae
 		port:           port,
 		serverArgs:     serverArgs,
 		startupTimeout: startupTimeout,
+		detach:         detach,
 	}
 }
 
@@ -121,6 +124,23 @@ func (d *Daemon) Run(forever bool, logPath string) error {
 		Logger("Warning: debug log init failed: %v", err)
 	}
 
+	wantDetach := resolveEffectiveDetach(d.detach)
+	if wantDetach && !d.detach {
+		Logger("Auto-detach: stdin is not a terminal (e.g. nohup); detaching from controlling terminal")
+	}
+	if wantDetach {
+		ignoreTerminalHangup()
+	}
+
+	// Do not setsid the keep-alive parent: in restricted SMC containers a new
+	// session leader cannot fork/exec the managed server child (EPERM). Detach
+	// only the server child (with Setsid retry/fallback in StartServer).
+	sessionDetached := false
+	if wantDetach {
+		Logger("Keep-alive parent staying in launch session (SIGHUP ignored); server child will detach")
+	}
+	d.detach = wantDetach
+	d.state.SetDetach(wantDetach)
 	// Own process group so test harness / operators can signal the daemon tree
 	// without killing the parent (e.g. doctest teardown uses kill -pgid).
 	if err := syscall.Setpgid(0, 0); err != nil {
@@ -128,8 +148,8 @@ func (d *Daemon) Run(forever bool, logPath string) error {
 	}
 
 	cwd, _ := os.Getwd()
-	Logger("Keep-alive daemon starting (PID=%d, serverPort=%d, startupTimeout=%v, forever=%v, logPath=%q, cwd=%s, serverArgs=%v)",
-		os.Getpid(), d.port, d.startupTimeout, forever, logPath, cwd, d.serverArgs)
+	Logger("Keep-alive daemon starting (PID=%d, serverPort=%d, startupTimeout=%v, forever=%v, childDetach=%v, parentSession=%v, logPath=%q, cwd=%s, serverArgs=%v)",
+		os.Getpid(), d.port, d.startupTimeout, forever, wantDetach, sessionDetached, logPath, cwd, d.serverArgs)
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			LogPanic("keep-alive daemon", recovered)
@@ -291,6 +311,8 @@ func (d *Daemon) runLoop() error {
 		waitedMs := int(time.Since(startedAt).Milliseconds())
 		Logger("[keepalive] phase=server_ready t_ms=%d pid=%d waited_ms=%d", keepaliveElapsedMs(), pid, waitedMs)
 		Logger("Server is ready (PID=%d, port=%d)", pid, d.port)
+		d.state.PauseHealthChecks(PostStartupHealthCheckPause)
+		Logger("Health checks paused for %v after server ready (extension startup)", PostStartupHealthCheckPause)
 
 		// Health check loop (also checks for binary upgrades and restart signals)
 		exitReason := d.healthChecker.Run(d.port, cmd, currentBin, FindNewerBinary)
@@ -358,35 +380,13 @@ func stripPortFlags(args []string) []string {
 	return out
 }
 
-// startServerWithLogging starts the server process with dual logging
+// startServerWithLogging starts the server process via ProcessManager (Setsid retry/fallback).
 func (d *Daemon) startServerWithLogging(binPath string, serverArgs []string) (*exec.Cmd, error) {
-	// Ensure the binary is executable
-	os.Chmod(binPath, 0755)
-
-	argv := buildManagedServerArgs(d.port, serverArgs)
-	cmd := exec.Command(binPath, argv...)
-	cmd.Dir, _ = os.Getwd()
-
-	// Create a new process group so we can kill all child processes
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-	// Tee stdout/stderr to both console and log file
-	cmd.Stdout = GetLogWriter()
-	cmd.Stderr = GetStderrWriter()
-	// Close stdin to prevent interactive prompts from hanging the server
-	cmd.Stdin = nil
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start server: %w", err)
+	cmd, err := d.processManager.StartServer(binPath, serverArgs)
+	if err != nil {
+		return nil, err
 	}
-
-	pid := cmd.Process.Pid
-	Logger("Server started (PID=%d)", pid)
-	Logger("[keepalive] phase=server_spawn t_ms=%d pid=%d", keepaliveElapsedMs(), pid)
-
-	d.state.SetServerPID(pid)
-	d.state.SetStartedAt(time.Now())
-
+	Logger("[keepalive] phase=server_spawn t_ms=%d pid=%d", keepaliveElapsedMs(), cmd.Process.Pid)
 	return cmd, nil
 }
 
@@ -410,7 +410,7 @@ func (d *Daemon) reconnectToServer(pid string, binPath string) (*exec.Cmd, error
 
 	// Create a command structure - we won't start it, just use it for state tracking
 	cmd := exec.Command(actualBinPath, buildManagedServerArgs(d.port, d.serverArgs)...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = serverChildProcAttr(d.detach)
 
 	// Attach to existing process
 	cmd.Process = &os.Process{Pid: pidNum}
@@ -420,8 +420,8 @@ func (d *Daemon) reconnectToServer(pid string, binPath string) (*exec.Cmd, error
 }
 
 // RunKeepAlive is the main entry point for the keep-alive daemon
-func RunKeepAlive(port int, forever bool, logPath string, serverArgs []string, killExisting bool, startupTimeout time.Duration) error {
+func RunKeepAlive(port int, forever bool, logPath string, serverArgs []string, killExisting bool, startupTimeout time.Duration, detach bool) error {
 	killExistingFlag = killExisting
-	daemon := NewDaemon(port, serverArgs, startupTimeout)
+	daemon := NewDaemon(port, serverArgs, startupTimeout, detach)
 	return daemon.Run(forever, logPath)
 }

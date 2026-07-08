@@ -99,11 +99,13 @@ func StartWithSettings(port int, password string, customPath string) (*OpencodeM
 
 		if err := startServer(manager, password, customPath); err != nil {
 			startErr = fmt.Errorf("failed to start opencode server: %w", err)
+			stopManagerLocked()
 			return err
 		}
 
 		if err := common.WaitForSessionReady(port, 10*time.Second); err != nil {
 			startErr = fmt.Errorf("opencode server not ready: %w", err)
+			stopManagerLocked()
 			return err
 		}
 
@@ -151,6 +153,30 @@ func startServer(mgr *OpencodeManager, password string, customPath string) error
 	return nil
 }
 
+func closeStopChan(ch chan struct{}) {
+	if ch == nil {
+		return
+	}
+	select {
+	case <-ch:
+	default:
+		close(ch)
+	}
+}
+
+// stopManagerLocked stops the in-memory manager. Caller must hold managerMutex.
+func stopManagerLocked() {
+	if manager == nil {
+		return
+	}
+	if manager.StopChan != nil {
+		fmt.Printf("[exposed_opencode] Stopping server on port %d\n", manager.Port)
+		closeStopChan(manager.StopChan)
+		manager.StopChan = nil
+	}
+	manager.Cmd = nil
+}
+
 func Stop() {
 	managerMutex.Lock()
 	defer managerMutex.Unlock()
@@ -164,11 +190,7 @@ func Stop() {
 		return nil
 	})
 
-	if manager != nil && manager.StopChan != nil {
-		fmt.Printf("[exposed_opencode] Stopping server on port %d\n", manager.Port)
-		close(manager.StopChan)
-		manager.Cmd = nil
-	}
+	stopManagerLocked()
 }
 
 func GetPort() int {

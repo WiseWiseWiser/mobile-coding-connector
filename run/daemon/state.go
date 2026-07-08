@@ -18,7 +18,8 @@ const (
 	PortCheckTimeout       = 2 * time.Second
 	UpgradeCheckInterval   = 30 * time.Second
 	MaxConsecutiveFailures = 2
-	HealthCheckPauseDelay  = 1 * time.Minute // Pause health check after exec-restart
+	HealthCheckPauseDelay       = 1 * time.Minute  // Pause health check after exec-restart
+	PostStartupHealthCheckPause = 2 * time.Minute  // Pause while extension/tunnel work runs after core ready
 )
 
 // State represents the daemon's mutable state with thread-safe access
@@ -36,6 +37,7 @@ type State struct {
 	daemonShutdown      bool      // background daemon loops should stop or pause
 	healthCheckPaused   bool      // if true, health check is temporarily paused
 	healthCheckResumeAt time.Time // time when health check should resume
+	detach              bool      // Setsid on managed server child when true
 }
 
 // NewState creates a new daemon state instance
@@ -72,6 +74,20 @@ func (s *State) SetDaemonBinPath(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.daemonBinPath = path
+}
+
+// GetDetach reports whether keep-alive should detach from the controlling terminal.
+func (s *State) GetDetach() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.detach
+}
+
+// SetDetach sets whether keep-alive should detach from the controlling terminal.
+func (s *State) SetDetach(detach bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.detach = detach
 }
 
 // GetRestartCount returns the number of times the server has been restarted (thread-safe)

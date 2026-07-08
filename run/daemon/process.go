@@ -52,24 +52,14 @@ func (pm *ProcessManager) StartServer(binPath string, serverArgs []string) (*exe
 	// Ensure the binary is executable
 	os.Chmod(binPath, 0755)
 
-	port := pm.state.GetServerPort()
-	cmd := exec.Command(binPath, buildManagedServerArgs(port, serverArgs)...)
-	cmd.Dir, _ = os.Getwd()
-
-	// Create a new process group so we can kill all child processes
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-	// Tee stdout/stderr to both console and log file
-	if pm.logFile != nil {
-		cmd.Stdout = io.MultiWriter(os.Stdout, pm.logFile)
-		cmd.Stderr = io.MultiWriter(os.Stderr, pm.logFile)
-	} else {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+	detach := pm.state.GetDetach()
+	cmd, err := pm.startServerCommand(binPath, serverArgs, detach)
+	if err != nil && detach {
+		Logger("Warning: detached server start failed (%v); retrying without Setsid", err)
+		cmd, err = pm.startServerCommand(binPath, serverArgs, false)
 	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start server: %w", err)
+	if err != nil {
+		return nil, err
 	}
 
 	pid := cmd.Process.Pid
@@ -78,6 +68,30 @@ func (pm *ProcessManager) StartServer(binPath string, serverArgs []string) (*exe
 	pm.state.SetServerPID(pid)
 	pm.state.SetStartedAt(time.Now())
 
+	return cmd, nil
+}
+
+func (pm *ProcessManager) startServerCommand(binPath string, serverArgs []string, detach bool) (*exec.Cmd, error) {
+	port := pm.state.GetServerPort()
+	cmd := exec.Command(binPath, buildManagedServerArgs(port, serverArgs)...)
+	cmd.Dir, _ = os.Getwd()
+	cmd.SysProcAttr = serverChildProcAttr(detach)
+
+	serverLog, closeServerLog, err := openManagedServerLog()
+	if err != nil {
+		Logger("Warning: could not open server log file: %v", err)
+		serverLog = io.Discard
+		closeServerLog = func() {}
+	}
+	cmd.Stdout = serverLog
+	cmd.Stderr = serverLog
+	cmd.Stdin = nil
+
+	if err := cmd.Start(); err != nil {
+		closeServerLog()
+		return nil, fmt.Errorf("failed to start server: %w", err)
+	}
+	closeServerLog()
 	return cmd, nil
 }
 

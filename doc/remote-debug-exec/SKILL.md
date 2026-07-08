@@ -18,6 +18,52 @@ Two paths to operate a remote ai-critic instance:
 
 Try `remote-agent ping` first. If it fails, use `local-debug-remote-exec.sh`.
 
+**The local script works.** If commands return quickly but logs/ports are missing,
+the usual cause is **wrong target** (misconfigured `REMOTE_EXEC`), not a broken
+wrapper. Do not abandon the script, retry `remote-agent` in parallel, or assume
+the remote shell is down — verify you are on the correct host first.
+
+---
+
+## 0. Verify target before forensics (mandatory)
+
+`REMOTE_EXEC` in `local-debug-remote-exec.sh` is machine-specific and **not**
+validated against `~/.ai-critic/remote-agent-config.json`. A common failure mode:
+the wrapper points at one SMC service while `remote-agent` targets a different
+host (e.g. `consumerloan-codelensadmin-test-ph` vs the ai-critic box behind
+`agent-fast-apex-nest-23aed.xhd2015.xyz`). Commands succeed on the wrong
+container; every `grep` returns empty; investigators blame tooling instead of
+config.
+
+**Run this on every new incident before reading logs:**
+
+```bash
+# 1) Script smoke test — must return quickly with output
+./local-debug-remote-exec.sh echo yes
+
+# 2) Confirm you landed on the ai-critic host (not some other service cwd)
+./local-debug-remote-exec.sh sh -c 'pwd; hostname; ls -la /root/ai-critic-server* 2>/dev/null | head -5'
+
+# 3) Cross-check against remote-agent config
+remote-agent config   # note the server URL / domain
+```
+
+| Check | Healthy signal | Wrong-target signal |
+|-------|----------------|---------------------|
+| `echo yes` | prints `yes` in <5s | hangs, auth prompt, empty |
+| `pwd` | `/root` (typical) | unrelated app dir (e.g. `/consumerloan-codelensadmin`) |
+| `ls /root/ai-critic-server*` | versioned binaries | `no such file` |
+| `ss -tlnp \| grep 23712` | listener on 23712 | no match |
+| `remote-agent ping` | responds (when API up) | timeout — expected during outage; **do not** spam parallel pings |
+
+**If wrong-target:** fix `REMOTE_EXEC` in `local-debug-remote-exec.sh` to reach
+the same machine that serves your `remote-agent` URL, then re-run §0. Do not
+proceed to log forensics until `ai-critic-server*` exists under `/root`.
+
+**If right-target but API down:** stick with `./local-debug-remote-exec.sh` only.
+`remote-agent ping` / `server status` / `exec` will hang or 502 while keep-alive
+is in a restart loop — that is the symptom, not evidence the local script failed.
+
 ---
 
 ## 1. Setup: local remote-exec wrapper
@@ -60,11 +106,22 @@ For pipelines or `&&` chains, use a single `sh -c '…'` argument.
 
 ### Rules learned the hard way
 
-1. **Always `cd /root` first** — default cwd may not be the ai-critic home; data lives under `/root`.
-2. **Run `pwd` on the first debug command** — confirm cwd before reading logs.
-3. **Args pass through to remote** — `./local-debug-remote-exec.sh grep -c pattern file` works; use `sh -c` for `|`, `&&`, or multiple commands.
-4. **Keep commands short** — avoid `tail` on multi-GB files; use `tail -n 50` or `grep` with date filters.
-5. **Logs may be rotated/deleted** — capture excerpts during investigation.
+1. **Verify target first (§0)** — `REMOTE_EXEC` must hit the same host as your
+   `remote-agent` server URL. Empty `grep` on a fast response means wrong box,
+   not broken script.
+2. **The local script is the fallback when API is down** — it is reliable when
+   configured correctly. Do not treat `remote-agent` timeouts as proof the
+   wrapper failed.
+3. **Always `cd /root` first** — default remote cwd is often an unrelated app
+   dir; ai-critic data lives under `/root`.
+4. **Run `pwd` + `ls /root/ai-critic-server*` on the first debug command** —
+   confirm host and paths before reading logs.
+5. **Args pass through to remote** — `./local-debug-remote-exec.sh grep -c pattern file` works; use `sh -c` for `|`, `&&`, or multiple commands.
+6. **Keep commands short** — avoid `tail` on multi-GB files; use `tail -n 50` or `grep` with date filters.
+7. **Logs may be rotated/deleted** — capture excerpts during investigation.
+8. **One path at a time** — when `remote-agent ping` fails, use only
+   `./local-debug-remote-exec.sh`; do not launch parallel `remote-agent` calls
+   that will all hang.
 
 Expected when healthy:
 
@@ -158,18 +215,20 @@ Prefer `remote-agent exec` when the API works — no local wrapper setup.
 ```
 1. curl -sI https://<domain>/service
 
-2. remote-agent ping
+2. ./local-debug-remote-exec.sh sh -c 'pwd; ls /root/ai-critic-server*'  (§0 — confirm target)
+
+3. remote-agent ping
    ├─ YES → remote-agent server status / service logs / server restart
-   └─ NO  → ./local-debug-remote-exec.sh (§1–3)
+   └─ NO  → ./local-debug-remote-exec.sh only (§1–3); do not parallel remote-agent
 
-3. On remote: ss 23712, curl /ping, grep keep-alive log
+4. On remote: ss 23712, curl /ping, grep keep-alive log
 
-4. Recovery:
+5. Recovery:
    a) Deploy fix + keep-alive --startup-timeout 60s
    b) Emergency: kill keep-alive; nohup ./ai-critic-server-vN --port 23712 &
    c) Truncate bloated logs to reduce I/O
 
-5. Verify public URL + local /ping
+6. Verify public URL + local /ping
 ```
 
 ---
@@ -198,3 +257,18 @@ Prefer `remote-agent exec` when the API works — no local wrapper setup.
 **Via remote exec:** port 23712 down; keep-alive kill loop; log showed `connection refused` → `failed to become ready within 10s`; normal startup ~1s, under load exec took 16s+.
 
 **Fix:** `--startup-timeout 60s`, TCP-only startup checks, restart backoff (`tests/keep-alive/slow-core/`).
+
+## 9. Anti-pattern: blaming the wrapper
+
+**Symptom:** investigator runs `./local-debug-remote-exec.sh`; commands return in
+~2s but `grep ai-critic-server-keep-alive.log` is empty; `remote-agent ping`
+hangs for 60s+; many parallel remote-agent calls launched.
+
+**Actual cause:** `REMOTE_EXEC` pointed at the wrong SMC service. Remote cwd was
+`/consumerloan-codelensadmin` (unrelated Node app), not `/root` (ai-critic). The
+wrapper worked; the target was wrong. `remote-agent` hung because the real
+ai-critic server was down — expected during a restart loop.
+
+**Correct response:** run §0, fix `REMOTE_EXEC` to the ai-critic host, then grep
+logs via the local script. Do not retry `remote-agent` until `/ping` recovers or
+you need deploy actions that require HTTP.

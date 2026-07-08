@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/xhd2015/ai-critic/server"
 	"github.com/xhd2015/ai-critic/server/auth"
 	"github.com/xhd2015/ai-critic/server/config"
@@ -19,6 +21,10 @@ import (
 
 	"github.com/xhd2015/less-gen/flags"
 )
+
+func shouldAutoKeepAlive(args []string) bool {
+	return len(args) == 0 && !term.IsTerminal(int(os.Stdin.Fd()))
+}
 
 const quickTestPort = 3580
 
@@ -69,6 +75,12 @@ func Run(args []string) error {
 	if err := serverenv.Load(); err != nil {
 		return err
 	}
+	// nohup ./ai-critic-server-linux-amd64 & has no subcommand and non-tty stdin;
+	// run keep-alive so the managed server survives remote exec session teardown.
+	if shouldAutoKeepAlive(args) {
+		return runKeepAlive(nil)
+	}
+
 	// Handle subcommands before flag parsing
 	if len(args) > 0 {
 		switch args[0] {
@@ -225,6 +237,7 @@ func Run(args []string) error {
 	}
 
 	// Side effects run after HTTP listener binds inside server.Serve / ServeComponent.
+	ignoreJobControlStop()
 
 	if component != "" {
 		var html string

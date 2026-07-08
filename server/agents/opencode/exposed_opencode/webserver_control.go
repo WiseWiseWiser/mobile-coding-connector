@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	common "github.com/xhd2015/ai-critic/server/agents/opencode/common_opencode"
 	"github.com/xhd2015/ai-critic/server/cloudflare"
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/ai-critic/server/proxy/basic_auth_proxy"
@@ -306,6 +307,11 @@ func AutoStartWebServer() {
 			return
 		}
 		fmt.Printf("[opencode] AutoStartWebServer: mapping added successfully\n")
+	}
+
+	if !common.IsBinaryAvailable(settings.BinaryPath) {
+		fmt.Printf("[opencode] AutoStartWebServer: opencode binary not available (path=%q); tunnel mapping kept, server start skipped\n", settings.BinaryPath)
+		return
 	}
 
 	go func() {

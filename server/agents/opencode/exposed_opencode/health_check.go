@@ -3,13 +3,17 @@ package exposed_opencode
 import (
 	"fmt"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	common "github.com/xhd2015/ai-critic/server/agents/opencode/common_opencode"
 )
 
 var (
-	healthCheckStopChan chan struct{}
-	healthCheckRunning  int32 // atomic: 0 = not running, 1 = running
+	healthCheckStopChan      chan struct{}
+	healthCheckRunning       int32 // atomic: 0 = not running, 1 = running
+	healthCheckBinaryWarnOnce sync.Once
 )
 
 // StartHealthCheck starts the health check loop that runs every 10 seconds.
@@ -34,6 +38,13 @@ func StartHealthCheck() {
 				}
 
 				if !settings.WebServer.Enabled {
+					continue
+				}
+
+				if !common.IsBinaryAvailable(settings.BinaryPath) {
+					healthCheckBinaryWarnOnce.Do(func() {
+						fmt.Printf("[opencode] Health check: opencode binary not available (path=%q); skipping restart loop\n", settings.BinaryPath)
+					})
 					continue
 				}
 

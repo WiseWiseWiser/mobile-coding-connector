@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"syscall"
 	"time"
 
 	"github.com/xhd2015/ai-critic/server/config"
@@ -135,7 +136,7 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 
 			Logger("[health-check] Step 1/2: Checking TCP connectivity to port %d...", port)
 			tcpStart := time.Now()
-			if !IsPortReachable(port) {
+			if !hc.checkTCPConnectivity(port) {
 				Logger("[health-check] Step 1/2 FAILED: TCP check failed after %v", time.Since(tcpStart))
 				consecutiveFailures++
 				Logger("[health-check] Consecutive failures: %d/%d", consecutiveFailures, MaxConsecutiveFailures)
@@ -152,16 +153,47 @@ func (hc *HealthChecker) Run(port int, cmd *exec.Cmd, currentBinPath string, fin
 				Logger("[health-check] Health check cycle completed in %v (FAILURE)", time.Since(checkStart))
 			} else {
 				Logger("[health-check] Step 1/2 PASSED: TCP connectivity confirmed in %v", time.Since(tcpStart))
+				if IsProcessStopped(pid) {
+					Logger("[health-check] server process PID=%d is stopped (State T); sending SIGCONT", pid)
+					_ = syscall.Kill(pid, syscall.SIGCONT)
+					time.Sleep(500 * time.Millisecond)
+					if !IsProcessStopped(pid) {
+						Logger("[health-check] server PID=%d resumed after SIGCONT", pid)
+						consecutiveFailures = 0
+						Logger("[health-check] Health check cycle completed successfully in %v (RESUMED)", time.Since(checkStart))
+						continue
+					}
+					Logger("[health-check] CRITICAL: server process PID=%d still stopped after SIGCONT; killing server...", pid)
+					hc.killProcess(cmd)
+					WaitForDone(done, 5*time.Second)
+					Logger("[health-check] Health check loop exiting with reason: %s", ExitReasonPortDead)
+					exitReason = ExitReasonPortDead
+					return exitReason
+				}
 				Logger("[health-check] Step 2/2: Checking HTTP /ping endpoint...")
 				pingStart := time.Now()
 				pingOK := hc.checkPingEndpoint(port)
 				Logger("[health-check] Step 2/2 result: ping check completed in %v (healthy=%v)", time.Since(pingStart), pingOK)
-
-				if consecutiveFailures > 0 {
-					Logger("[health-check] RECOVERY: Port %d health check recovered after previous failures", port)
+				if !pingOK {
+					consecutiveFailures++
+					Logger("[health-check] Consecutive failures: %d/%d (TCP open, /ping unavailable)", consecutiveFailures, MaxConsecutiveFailures)
+					if consecutiveFailures >= MaxConsecutiveFailures {
+						Logger("[health-check] CRITICAL: /ping failed %d times while TCP port %d is open; killing server (PID=%d)...",
+							consecutiveFailures, port, pid)
+						hc.killProcess(cmd)
+						WaitForDone(done, 5*time.Second)
+						Logger("[health-check] Health check loop exiting with reason: %s", ExitReasonPortDead)
+						exitReason = ExitReasonPortDead
+						return exitReason
+					}
+					Logger("[health-check] Health check cycle completed in %v (FAILURE)", time.Since(checkStart))
+				} else {
+					if consecutiveFailures > 0 {
+						Logger("[health-check] RECOVERY: Port %d health check recovered after previous failures", port)
+					}
+					consecutiveFailures = 0
+					Logger("[health-check] Health check cycle completed successfully in %v (PASSED)", time.Since(checkStart))
 				}
-				consecutiveFailures = 0
-				Logger("[health-check] Health check cycle completed successfully in %v (PASSED)", time.Since(checkStart))
 			}
 
 		case tickAt := <-upgradeTicker.C:

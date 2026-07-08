@@ -29,6 +29,9 @@ Options:
   --startup-timeout D Startup wait for TCP listen (default: 60s, min: 10s)
   --forever           Skip port-in-use check and start anyway
   --kill-existing     Kill processes on keep-alive and server ports before starting
+  --detach            Force detach from controlling terminal (setsid). Auto-enabled when
+                      stdin is not a terminal (e.g. nohup). Managed server logs always
+                      go to ai-critic-server.log, not the console tty.
   --log FILE          Log keep-alive output to file (default: ai-critic-server-keep-alive.log)
                       Use --log no to disable logging to file
   --script            Output shell script instead of running Go code
@@ -51,6 +54,7 @@ func runKeepAlive(args []string) error {
 	var portFlag int
 	var foreverFlag bool
 	var killExistingFlag bool
+	var detachFlag bool
 	var logFlag string
 	var startupTimeoutFlag string
 
@@ -60,6 +64,7 @@ func runKeepAlive(args []string) error {
 		String("--startup-timeout", &startupTimeoutFlag).
 		Bool("--forever", &foreverFlag).
 		Bool("--kill-existing", &killExistingFlag).
+		Bool("--detach", &detachFlag).
 		String("--log", &logFlag).
 		Help("-h,--help", fmt.Sprintf(keepAliveHelp, config.DefaultServerPort)).
 		Parse(args)
@@ -103,7 +108,7 @@ func runKeepAlive(args []string) error {
 		return err
 	}
 
-	return daemon.RunKeepAlive(port, foreverFlag, logPath, args, killExistingFlag, startupTimeout)
+	return daemon.RunKeepAlive(port, foreverFlag, logPath, args, killExistingFlag, startupTimeout, detachFlag)
 }
 
 func resolveKeepAliveLogPath(logFlag string) string {
