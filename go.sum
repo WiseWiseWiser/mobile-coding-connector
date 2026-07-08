@@ -32,10 +32,10 @@ github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e h1:MRM5ITcdelLK2j1
 github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e/go.mod h1:XV66xRDqSt+GTGFMVlhk3ULuV0y9ZmzeVGR4mloJI3M=
 github.com/ulikunitz/xz v0.5.12 h1:37Nm15o69RwBkXM0J6A5OlE67RZTfzUxTj8fB3dfcsc=
 github.com/ulikunitz/xz v0.5.12/go.mod h1:nbz6k7qbPmH4IRqmfOplQw/tblSgqTqBwxkY0oWt/14=
-github.com/xhd2015/agent-pro v0.0.49 h1:89xbq7JR0qj1Y4q7DFWTfR07NS5rGaz7sVwKZcMfd8k=
-github.com/xhd2015/agent-pro v0.0.49/go.mod h1:EKjtFg5l36kXQIcuaBz83poBahzQtZ6hi0wDldW5XGA=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.54 h1:9yW3eUdZxSke9DPsqJiLX6f7/LArtUNMBlhA20W5Dd8=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.54/go.mod h1:A4ul60XVmlEMpOQ+9rt8MpGp+DVGFc0dHQyHB19kN2w=
+github.com/xhd2015/agent-pro v0.0.50 h1:xCNd6CNShOVE94EFiN7Ob/562P+JUmM6qcy2MiZGxLw=
+github.com/xhd2015/agent-pro v0.0.50/go.mod h1:ZQNRgBPxOw3yHfiOz/t1B9SasyBnfL41PS0n4785eQ4=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.56 h1:10TAQaHomBmpevDjsfe79edq9Ca1Al7X8pcSCYBgDUw=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.56/go.mod h1:A4ul60XVmlEMpOQ+9rt8MpGp+DVGFc0dHQyHB19kN2w=
 github.com/xhd2015/gitops v0.0.24 h1:IEQbxN7iQTL8Z8jWtVJOBfIwiy+sfgolOQkXt+bQgew=
 github.com/xhd2015/gitops v0.0.24/go.mod h1:KS8y6tZ3FG+myEaR+H6MvoR099YrP/ADIHZX9ROpZo8=
 github.com/xhd2015/go-coverage v1.0.41 h1:JjUcE93IMz0KHmdCYUKq9JN/EDC/5k0OEhsMAeVvL88=
@@ -50,8 +50,8 @@ github.com/xhd2015/less-flags v1.0.0 h1:ay8YG0WSXn59CAwBYUcAsq7l+mUwDEMUqaW/Fy0Z
 github.com/xhd2015/less-flags v1.0.0/go.mod h1:HGGM7JrrfZm/RvmxBQT96jF916m9UQE8vELpejQaoIo=
 github.com/xhd2015/less-gen v0.0.19 h1:JllrPhx3HzN+f2AB6cTvW9aRCpvuODJFx7affpa0zQY=
 github.com/xhd2015/less-gen v0.0.19/go.mod h1:Ym5HW/yfVnf2mgSo48QsuHAKnMTPv/u7oqty+raTnTQ=
-github.com/xhd2015/skills v0.0.12 h1:yMXLytmU96tPW91vIUjwqS5PB4wljx1P3mV2Qbiizoo=
-github.com/xhd2015/skills v0.0.12/go.mod h1:sQO/anTeiydpHF7yRvVbqbdbgmg+QyxpaiaVWnkOPdc=
+github.com/xhd2015/skills v0.0.15 h1:oqx/NAHO5tlkmr2zP4Xf1QmJLcYG3FNyoFS6veb395w=
+github.com/xhd2015/skills v0.0.15/go.mod h1:sQO/anTeiydpHF7yRvVbqbdbgmg+QyxpaiaVWnkOPdc=
 github.com/xhd2015/xgo v1.0.40/go.mod h1:LJxlcYSaXo/9YpsnB3yHh9NHe7BRettYCytaNGWY2BE=
 github.com/xhd2015/xgo v1.1.14 h1:FZ8nYSOGb3SQD6S9gP5dIFbW/9OuoGzr5hXVJC+McQc=
 github.com/xhd2015/xgo v1.1.14/go.mod h1:LJxlcYSaXo/9YpsnB3yHh9NHe7BRettYCytaNGWY2BE=
