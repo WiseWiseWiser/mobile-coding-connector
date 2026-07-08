@@ -73,15 +73,7 @@ func runServiceUpgrade(resolve func() (*client.Client, error), args []string) er
 
 	result, err := cli.UploadFile(localBinary, tmpPath, client.UploadOptions{
 		ChmodExec: true,
-	}, func(p client.UploadProgress) {
-		percent := 100
-		if p.TotalBytes > 0 {
-			percent = int(p.CompletedBytes * 100 / p.TotalBytes)
-		}
-		fmt.Printf("  chunk %d/%d uploaded (%s / %s, %d%%)\n",
-			p.ChunkIndex+1, p.TotalChunks,
-			formatSize(p.CompletedBytes), formatSize(p.TotalBytes), percent)
-	})
+	}, printUploadProgress)
 	if err != nil {
 		return err
 	}

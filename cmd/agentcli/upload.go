@@ -51,16 +51,11 @@ func runUpload(cli *client.Client, args []string) error {
 
 	result, err := cli.UploadFile(localFile, remotePath, client.UploadOptions{
 		ChmodExec: chmodExec,
-	}, func(p client.UploadProgress) {
-		percent := 100
-		if p.TotalBytes > 0 {
-			percent = int(p.CompletedBytes * 100 / p.TotalBytes)
-		}
-		fmt.Printf("  chunk %d/%d uploaded (%s / %s, %d%%)\n",
-			p.ChunkIndex+1, p.TotalChunks,
-			formatSize(p.CompletedBytes), formatSize(p.TotalBytes), percent)
-	})
+	}, printUploadProgress)
 	if err != nil {
+		if hint := uploadFailureHint(err); hint != "" {
+			return fmt.Errorf("%w\n  %s", err, hint)
+		}
 		return err
 	}
 

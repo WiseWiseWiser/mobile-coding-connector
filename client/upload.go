@@ -17,12 +17,30 @@ import (
 // the frontend's CHUNK_SIZE (2 MiB).
 const ChunkSize = 2 * 1024 * 1024
 
+// UploadChunkPhase reports what happened for the current chunk event.
+type UploadChunkPhase string
+
+const (
+	// UploadChunkRetrying means a transient error occurred and the client is
+	// about to retry the same chunk.
+	UploadChunkRetrying UploadChunkPhase = "retrying"
+	// UploadChunkUploaded means the chunk was accepted by the server.
+	UploadChunkUploaded UploadChunkPhase = "uploaded"
+)
+
 // UploadProgress describes progress reported during a chunked upload.
 type UploadProgress struct {
 	ChunkIndex     int
 	TotalChunks    int
 	CompletedBytes int64
 	TotalBytes     int64
+	// Attempt is the 1-based try for the current chunk (final count when Phase=uploaded).
+	Attempt int
+	// MaxAttempts is the configured retry cap for a single chunk.
+	MaxAttempts int
+	Phase       UploadChunkPhase
+	// Err is set when Phase=retrying (the error that triggered the retry).
+	Err error
 }
 
 // UploadResult is returned on a successful upload, reflecting the server's
@@ -100,7 +118,15 @@ func (c *Client) UploadFile(localFile string, remotePath string, opts UploadOpti
 			return nil, fmt.Errorf("failed to read chunk %d: %w", i, readErr)
 		}
 
-		if err := c.uploadChunkWithRetry(uploadID, i, buf[:n], opts); err != nil {
+		attempts, err := c.uploadChunkWithRetry(uploadID, i, buf[:n], opts, func(ev UploadProgress) {
+			ev.TotalChunks = totalChunks
+			ev.TotalBytes = totalSize
+			ev.CompletedBytes = completedBytes
+			if onProgress != nil {
+				onProgress(ev)
+			}
+		})
+		if err != nil {
 			return nil, fmt.Errorf("upload chunk %d failed: %w", i, err)
 		}
 
@@ -111,6 +137,9 @@ func (c *Client) UploadFile(localFile string, remotePath string, opts UploadOpti
 				TotalChunks:    totalChunks,
 				CompletedBytes: completedBytes,
 				TotalBytes:     totalSize,
+				Attempt:        attempts,
+				MaxAttempts:    opts.resolvedChunkRetry().maxAttempts,
+				Phase:          UploadChunkUploaded,
 			})
 		}
 	}

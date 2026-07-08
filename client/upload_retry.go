@@ -123,20 +123,29 @@ func readUploadAPIError(resp *http.Response) error {
 	}
 }
 
-func (c *Client) uploadChunkWithRetry(uploadID string, chunkIndex int, chunk []byte, opts UploadOptions) error {
+func (c *Client) uploadChunkWithRetry(uploadID string, chunkIndex int, chunk []byte, opts UploadOptions, onEvent func(UploadProgress)) (attempts int, err error) {
 	cfg := opts.resolvedChunkRetry()
 	var lastErr error
 	for attempt := 1; attempt <= cfg.maxAttempts; attempt++ { // maxAttempts is always >= 1
 		lastErr = c.uploadChunk(uploadID, chunkIndex, chunk)
 		if lastErr == nil {
-			return nil
+			return attempt, nil
 		}
 		if !IsRetryableUploadError(lastErr) {
-			return lastErr
+			return attempt, lastErr
 		}
 		if attempt < cfg.maxAttempts {
+			if onEvent != nil {
+				onEvent(UploadProgress{
+					ChunkIndex:  chunkIndex,
+					Attempt:     attempt + 1,
+					MaxAttempts: cfg.maxAttempts,
+					Phase:       UploadChunkRetrying,
+					Err:         lastErr,
+				})
+			}
 			time.Sleep(cfg.backoff(attempt))
 		}
 	}
-	return lastErr
+	return cfg.maxAttempts, lastErr
 }
