@@ -3,8 +3,8 @@
 **Feature**: restore apply restores .machine.bak snapshots, skips meta injections
 
 ```
-# seed ~/.backup/config.json, backup, wipe config, restore apply
-.backup/config.json.machine.bak -> ~/.backup/config.json (old content)
+# seed ~/.backup/config.json, backup, wipe config, restore apply via /restore/stream
+CLASSIFYING + APPLYING; .backup/config.json.machine.bak -> ~/.backup/config.json
 ```
 
 ## Preconditions

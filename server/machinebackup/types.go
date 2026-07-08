@@ -21,6 +21,7 @@ type BackupStreamRequest struct {
 	LargeDirThresholdBytes int64    `json:"large_dir_threshold_bytes,omitempty"`
 	SkipGitDirsScan        bool     `json:"skip_git_dirs_scan,omitempty"`
 	GitDirsScanMaxDepth    int      `json:"git_dirs_scan_max_depth,omitempty"` // 0 = unlimited
+	Archive                bool     `json:"archive,omitempty"`                 // pack archive after summary; download via archive_token
 }
 
 // GitScanOptions configures git repo discovery during backup.
@@ -82,6 +83,7 @@ type GitRepoEntry struct {
 	CommitSHA string             `json:"commit_sha,omitempty"`
 	CommitMsg string             `json:"commit_msg,omitempty"`
 	Status    string             `json:"status,omitempty"`
+	OriginURL string             `json:"origin_url,omitempty"`
 	Error     string             `json:"error,omitempty"`
 	Worktrees []GitWorktreeEntry `json:"worktrees,omitempty"`
 }
@@ -93,6 +95,7 @@ type GitWorktreeEntry struct {
 	CommitSHA string `json:"commit_sha,omitempty"`
 	CommitMsg string `json:"commit_msg,omitempty"`
 	Status    string `json:"status,omitempty"`
+	OriginURL string `json:"origin_url,omitempty"`
 	Error     string `json:"error,omitempty"`
 }
 

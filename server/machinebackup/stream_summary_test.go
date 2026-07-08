@@ -40,6 +40,22 @@ func TestFormatBackupDryRunSummary(t *testing.T) {
 	if !strings.Contains(text, "RULE") || !strings.Contains(text, "FILES") {
 		t.Fatalf("missing EXCLUDED table headers: %s", text)
 	}
+	if !strings.Contains(text, "INSTALLED SOFTWARE(.backup/installed.json):") {
+		t.Fatalf("missing INSTALLED SOFTWARE section: %s", text)
+	}
+	if !strings.Contains(text, "ENV(.backup/ENV):") {
+		t.Fatalf("missing ENV section: %s", text)
+	}
+	gitIdx := strings.Index(text, "GIT REPOS")
+	installedIdx := strings.Index(text, "INSTALLED SOFTWARE")
+	envIdx := strings.Index(text, "ENV(.backup/ENV):")
+	totalIdx := strings.Index(text, "TOTAL:")
+	if gitIdx < 0 || installedIdx < 0 || envIdx < 0 || totalIdx < 0 {
+		t.Fatalf("missing meta section markers: %s", text)
+	}
+	if !(gitIdx < installedIdx && installedIdx < envIdx && envIdx < totalIdx) {
+		t.Fatalf("meta sections out of order: git=%d installed=%d env=%d total=%d", gitIdx, installedIdx, envIdx, totalIdx)
+	}
 }
 
 func TestBackupStreamDoneOmitsIncludedPaths(t *testing.T) {

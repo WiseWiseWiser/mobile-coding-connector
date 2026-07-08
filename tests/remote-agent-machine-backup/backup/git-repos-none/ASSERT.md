@@ -1,12 +1,12 @@
 ## Expected Output
 
-Dry-run summary prints `GIT REPOS: (none)` when no repositories are found.
-Stdout ends with a trailing newline.
+Dry-run summary prints `GIT REPOS(.backup/git-repo-worktrees.json): (none)` when
+no repositories are found. Stdout ends with a trailing newline.
 
 ## Expected
 
 1. Exit code 0.
-2. Combined output contains `GIT REPOS: (none)`.
+2. Combined output contains `GIT REPOS(.backup/git-repo-worktrees.json): (none)`.
 3. Combined output does not list repo paths under GIT REPOS.
 4. Stdout ends with `\n`.
 
@@ -41,7 +41,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assert.Output(t, gitReposSummarySection(resp.Combined), `---
 version: 2
 ---
-GIT REPOS: (none)
+GIT REPOS(.backup/git-repo-worktrees.json): (none)
 `)
 
 	section := gitReposSummarySection(resp.Combined)

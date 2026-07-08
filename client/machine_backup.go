@@ -119,6 +119,28 @@ func (c *Client) MachineBackupPlan(exclude, include []string) (*MachineBackupPla
 	return &out, nil
 }
 
+// MachineBackupArchiveByToken downloads a tar.xz archive prepared by backup/stream with archive=true.
+func (c *Client) MachineBackupArchiveByToken(token string) (io.ReadCloser, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil, fmt.Errorf("archive token is required")
+	}
+	path := "/api/remote-agent/machine/backup/archive?token=" + url.QueryEscape(token)
+	httpReq, err := c.NewRequest(http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		return nil, readAPIError(resp)
+	}
+	return resp.Body, nil
+}
+
 // MachineBackupArchive calls backup with dry_run=false and returns the tar.xz body.
 func (c *Client) MachineBackupArchive(exclude, include []string, opts MachineBackupOptions) (io.ReadCloser, error) {
 	data, err := json.Marshal(c.machineBackupBody(exclude, include, false, opts))

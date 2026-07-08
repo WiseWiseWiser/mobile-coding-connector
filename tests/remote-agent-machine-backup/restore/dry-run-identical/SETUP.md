@@ -4,7 +4,7 @@
 
 ```
 # backup then restore --dry-run via /restore/stream with unchanged serverHome
-stream skip (identical) lines + dry-run: machine restore plan summary; no writes
+CLASSIFYING: skip (identical) shortcut; no APPLYING; dry-run: machine restore plan; no writes
 ```
 
 ## Preconditions

@@ -5,34 +5,72 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sort"
 
 	"github.com/xhd2015/ai-critic/server/streaming/progress"
 )
 
+// BackupStreamOptions configures backup SSE streaming.
+type BackupStreamOptions struct {
+	LargeDirThresholdBytes int64
+	GitOpts                GitScanOptions
+	WriteArchive           bool
+}
+
 // BackupPlanStream walks home and emits SSE progress then a done plan summary.
 func BackupPlanStream(w http.ResponseWriter, home string, exclude, include []string, largeDirThresholdBytes int64, gitOpts GitScanOptions) error {
+	return BackupStream(w, home, exclude, include, BackupStreamOptions{
+		LargeDirThresholdBytes: largeDirThresholdBytes,
+		GitOpts:                gitOpts,
+	})
+}
+
+// BackupStream emits backup plan progress and optionally packs an archive after the summary.
+func BackupStream(w http.ResponseWriter, home string, exclude, include []string, opts BackupStreamOptions) error {
 	pw := progress.NewWriter(w)
 	if pw == nil {
 		return fmt.Errorf("streaming not supported")
 	}
 
-	rules, err := ResolveExclusionRules(home, exclude, include)
+	prepared, err := prepareBackup(home, exclude, include, opts.GitOpts)
 	if err != nil {
 		if emitErr := pw.EmitError(err.Error()); emitErr != nil {
 			return emitErr
 		}
 		return nil
 	}
+	plan := prepared.Plan
+	rules := prepared.Rules
 
-	plan, err := BuildPlan(home, exclude, include, gitOpts)
-	if err != nil {
-		if emitErr := pw.EmitError(err.Error()); emitErr != nil {
-			return emitErr
-		}
-		return nil
+	if err := emitBackupPlanProgress(pw, plan); err != nil {
+		return err
 	}
 
+	if err := emitBackupDryRunSummary(pw, plan, DryRunSummaryOptions{
+		LargeDirThresholdBytes: opts.LargeDirThresholdBytes,
+		ExclusionRules:         rules,
+		SkipGitDirsScan:        opts.GitOpts.SkipGitDirsScan,
+	}); err != nil {
+		return err
+	}
+
+	done := backupStreamDone(plan)
+	if opts.WriteArchive {
+		token, archiveBytes, err := packBackupArchive(pw, prepared)
+		if err != nil {
+			if emitErr := pw.EmitError(err.Error()); emitErr != nil {
+				return emitErr
+			}
+			return nil
+		}
+		done["archive_token"] = token
+		done["archive_bytes"] = archiveBytes
+	}
+	return pw.EmitDone(done)
+}
+
+func emitBackupPlanProgress(pw *progress.Writer, plan *MachineBackupPlan) error {
 	if err := pw.EmitSection("DOT FILES"); err != nil {
 		return err
 	}
@@ -81,15 +119,48 @@ func BackupPlanStream(w http.ResponseWriter, home string, exclude, include []str
 			return err
 		}
 	}
+	return nil
+}
 
-	if err := emitBackupDryRunSummary(pw, plan, DryRunSummaryOptions{
-		LargeDirThresholdBytes: largeDirThresholdBytes,
-		ExclusionRules:         rules,
-		SkipGitDirsScan:        gitOpts.SkipGitDirsScan,
-	}); err != nil {
-		return err
+func packBackupArchive(pw *progress.Writer, prepared *backupPrepared) (token string, archiveBytes int64, err error) {
+	if err := pw.EmitSection("PACKING"); err != nil {
+		return "", 0, err
 	}
-	return pw.EmitDone(backupStreamDone(plan))
+	tmp, err := os.CreateTemp("", "machine-backup-*.tar.xz")
+	if err != nil {
+		return "", 0, fmt.Errorf("create temp archive: %w", err)
+	}
+	tmpPath := tmp.Name()
+	cleanup := func() { os.Remove(tmpPath) }
+	defer func() {
+		if err != nil {
+			cleanup()
+		}
+	}()
+
+	onPack := func(name, detail string) error {
+		return pw.EmitProgress(progress.Item{
+			Layer:  "pack",
+			Name:   name,
+			Detail: detail,
+		})
+	}
+	if err := writeArchiveFromWalk(tmp, prepared.Home, prepared.Rules, prepared.Walk, prepared.GitRepos, prepared.GitSkipped, onPack); err != nil {
+		tmp.Close()
+		return "", 0, err
+	}
+	if err := tmp.Close(); err != nil {
+		return "", 0, fmt.Errorf("close temp archive: %w", err)
+	}
+	info, err := os.Stat(tmpPath)
+	if err != nil {
+		return "", 0, fmt.Errorf("stat temp archive: %w", err)
+	}
+	token, err = registerArchiveSession(tmpPath)
+	if err != nil {
+		return "", 0, err
+	}
+	return token, info.Size(), nil
 }
 
 // backupStreamDone is the SSE done payload. It omits the full included path list
@@ -115,8 +186,11 @@ func RestorePlanStream(w http.ResponseWriter, home string, archive io.Reader, ex
 		return fmt.Errorf("streaming not supported")
 	}
 
-	summary, err := restoreStreaming(home, archive, exclude, include, dryRun, func(entry RestoreEntry) error {
-		return pw.EmitProgress(restoreEntryToItem(entry))
+	summary, err := restoreStreaming(home, archive, exclude, include, dryRun, restoreStreamEmit{
+		section: pw.EmitSection,
+		progress: func(entry RestoreEntry) error {
+			return pw.EmitProgress(restoreEntryToItem(entry))
+		},
 	})
 	if err != nil {
 		if emitErr := pw.EmitError(err.Error()); emitErr != nil {
@@ -130,7 +204,12 @@ func RestorePlanStream(w http.ResponseWriter, home string, archive io.Reader, ex
 	return pw.EmitDone(restoreSummaryToDone(summary))
 }
 
-func restoreStreaming(home string, archive io.Reader, exclude, include []string, dryRun bool, emit func(RestoreEntry) error) (*MachineRestoreSummary, error) {
+type restoreStreamEmit struct {
+	section  func(string) error
+	progress func(RestoreEntry) error
+}
+
+func restoreStreaming(home string, archive io.Reader, exclude, include []string, dryRun bool, emit restoreStreamEmit) (*MachineRestoreSummary, error) {
 	home, err := resolveHome(home)
 	if err != nil {
 		return nil, err
@@ -193,26 +272,41 @@ func restoreStreaming(home string, archive io.Reader, exclude, include []string,
 		return pending[i].entry.Path < pending[j].entry.Path
 	})
 
-	streamItems := pending
-	if dryRun && summary.SkipIdentical == summary.TotalEntries && len(streamItems) > 0 {
-		streamItems = streamItems[:1]
+	if emit.section != nil {
+		if err := emit.section("CLASSIFYING"); err != nil {
+			return nil, err
+		}
 	}
 
-	if emit != nil {
-		for _, item := range streamItems {
-			if err := emit(item.entry); err != nil {
+	classifyItems := pending
+	if dryRun && summary.SkipIdentical == summary.TotalEntries && len(classifyItems) > 0 {
+		classifyItems = classifyItems[:1]
+	}
+	if emit.progress != nil {
+		for _, item := range classifyItems {
+			if err := emit.progress(item.entry); err != nil {
 				return nil, err
 			}
 		}
 	}
 
 	if !dryRun {
+		if emit.section != nil {
+			if err := emit.section("APPLYING"); err != nil {
+				return nil, err
+			}
+		}
 		for _, item := range pending {
 			if item.entry.Action == "skip" {
 				continue
 			}
 			if err := applyEntry(home, item.entry.Path, item.ent); err != nil {
 				return nil, err
+			}
+			if emit.progress != nil {
+				if err := emit.progress(item.entry); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}

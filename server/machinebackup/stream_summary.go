@@ -82,6 +82,23 @@ func formatBackupDryRunSummary(plan *MachineBackupPlan, opts DryRunSummaryOption
 		lines = append(lines, formatExcludedRuleRow(ex))
 	}
 	lines = append(lines, formatGitReposSummaryLines(plan.GitRepos, opts.SkipGitDirsScan)...)
+	lines = append(lines, "")
+	lines = append(lines, formatInstalledSoftwareSummaryLines()...)
+	lines = append(lines, "")
+	lines = append(lines, formatEnvSummaryLines()...)
+	if tailscaleLines := formatTailscaleSummaryLinesForHome(plan.Home); len(tailscaleLines) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, tailscaleLines...)
+	}
+	if cloudflaredLines := formatCloudflaredSummaryLinesForHome(plan.Home); len(cloudflaredLines) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, cloudflaredLines...)
+	}
+	if systemdLines := formatSystemdServicesSummaryLinesForHome(plan.Home); len(systemdLines) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, systemdLines...)
+	}
+	lines = append(lines, "")
 	lines = append(lines,
 		fmt.Sprintf("  TOTAL: %d files, %d symlinks, %s",
 			plan.GrandTotal.Files, plan.GrandTotal.Symlinks, formatSize(plan.GrandTotal.Bytes)),

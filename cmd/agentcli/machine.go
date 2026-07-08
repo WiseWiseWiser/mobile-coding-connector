@@ -182,67 +182,79 @@ func runMachineBackup(resolve func() (*client.Client, error), args []string) err
 		return printEffectiveExclusionConfig(resolve, exclude, include, largeDirThresholdFlag)
 	}
 
-	if dryRun {
-		body := map[string]any{"exclude": exclude, "include": include}
-		if exclude == nil {
-			body["exclude"] = []string{}
-		}
-		if include == nil {
-			body["include"] = []string{}
-		}
-		if largeDirThresholdBytes > 0 {
-			body["large_dir_threshold_bytes"] = largeDirThresholdBytes
-		}
-		if skipGitDirsScan {
-			body["skip_git_dirs_scan"] = true
-		}
-		if gitDirsScanMaxDepth > 0 {
-			body["git_dirs_scan_max_depth"] = gitDirsScanMaxDepth
-		}
-		return streamcmd.Run(resolve, streamcmd.Spec{
-			Method: http.MethodPost,
-			Path:   "/api/remote-agent/machine/backup/stream",
-			Body:   body,
-			Print:  streamcmd.Sections | streamcmd.Logs,
-			Printer: streamcmd.Printer{
-				Progress: printMachineBackupProgress,
-				Log:      printMachineStreamLog,
-			},
-		})
-	}
-
-	cli, err := resolve()
-	if err != nil {
-		return err
-	}
-
-	if strings.TrimSpace(outputPath) == "" {
+	if strings.TrimSpace(outputPath) == "" && !dryRun {
 		outputPath = fmt.Sprintf("machine-backup-%s.tar.xz", time.Now().UTC().Format("20060102-150405"))
 	}
+
+	streamBody := machineBackupStreamBody(exclude, include, largeDirThresholdBytes, skipGitDirsScan, gitDirsScanMaxDepth, !dryRun)
+	spec := streamcmd.Spec{
+		Method: http.MethodPost,
+		Path:   "/api/remote-agent/machine/backup/stream",
+		Body:   streamBody,
+		Print:  streamcmd.Sections | streamcmd.Logs,
+		Printer: streamcmd.Printer{
+			Progress: printMachineBackupProgress,
+			Log:      printMachineStreamLog,
+		},
+	}
+	if dryRun {
+		return streamcmd.Run(resolve, spec)
+	}
+
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil && filepath.Dir(outputPath) != "." {
 		return fmt.Errorf("create output directory: %w", err)
 	}
+	spec.After = func(done map[string]any) error {
+		token, _ := done["archive_token"].(string)
+		if strings.TrimSpace(token) == "" {
+			return fmt.Errorf("backup stream missing archive_token")
+		}
+		cli, err := resolve()
+		if err != nil {
+			return err
+		}
+		body, err := cli.MachineBackupArchiveByToken(token)
+		if err != nil {
+			return err
+		}
+		defer body.Close()
 
-	body, err := cli.MachineBackupArchive(exclude, include, client.MachineBackupOptions{
-		SkipGitDirsScan:     skipGitDirsScan,
-		GitDirsScanMaxDepth: gitDirsScanMaxDepth,
-	})
-	if err != nil {
-		return err
-	}
-	defer body.Close()
+		out, err := os.Create(outputPath)
+		if err != nil {
+			return fmt.Errorf("create archive %s: %w", outputPath, err)
+		}
+		defer out.Close()
 
-	out, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("create archive %s: %w", outputPath, err)
+		if _, err := io.Copy(out, body); err != nil {
+			return fmt.Errorf("write archive %s: %w", outputPath, err)
+		}
+		fmt.Println(outputPath)
+		return nil
 	}
-	defer out.Close()
+	return streamcmd.Run(resolve, spec)
+}
 
-	if _, err := io.Copy(out, body); err != nil {
-		return fmt.Errorf("write archive %s: %w", outputPath, err)
+func machineBackupStreamBody(exclude, include []string, largeDirThresholdBytes int64, skipGitDirsScan bool, gitDirsScanMaxDepth int, archive bool) map[string]any {
+	body := map[string]any{"exclude": exclude, "include": include}
+	if exclude == nil {
+		body["exclude"] = []string{}
 	}
-	fmt.Println(outputPath)
-	return nil
+	if include == nil {
+		body["include"] = []string{}
+	}
+	if largeDirThresholdBytes > 0 {
+		body["large_dir_threshold_bytes"] = largeDirThresholdBytes
+	}
+	if skipGitDirsScan {
+		body["skip_git_dirs_scan"] = true
+	}
+	if gitDirsScanMaxDepth > 0 {
+		body["git_dirs_scan_max_depth"] = gitDirsScanMaxDepth
+	}
+	if archive {
+		body["archive"] = true
+	}
+	return body
 }
 
 func runMachineRestore(resolve func() (*client.Client, error), args []string) error {
@@ -291,41 +303,30 @@ func runMachineRestore(resolve func() (*client.Client, error), args []string) er
 	}
 	defer f.Close()
 
+	query := url.Values{}
 	if dryRun {
-		query := url.Values{"dry_run": {"true"}}
-		for _, ex := range exclude {
-			query.Add("exclude", ex)
-		}
-		for _, inc := range include {
-			query.Add("include", inc)
-		}
-		return streamcmd.Run(resolve, streamcmd.Spec{
-			Method: http.MethodPost,
-			Path:   "/api/remote-agent/machine/restore/stream",
-			Query:  query,
-			Body: client.StreamRawBody{
-				Reader:      f,
-				ContentType: "application/x-xz",
-			},
-			Print: streamcmd.Logs,
-			Printer: streamcmd.Printer{
-				Progress: printMachineRestoreProgress,
-				Log:      printMachineStreamLog,
-			},
-		})
+		query.Set("dry_run", "true")
 	}
-
-	cli, err := resolve()
-	if err != nil {
-		return err
+	for _, ex := range exclude {
+		query.Add("exclude", ex)
 	}
-
-	plan, err := cli.MachineRestoreApply(f, exclude, include)
-	if err != nil {
-		return err
+	for _, inc := range include {
+		query.Add("include", inc)
 	}
-	printMachineRestorePlan(plan, false)
-	return nil
+	return streamcmd.Run(resolve, streamcmd.Spec{
+		Method: http.MethodPost,
+		Path:   "/api/remote-agent/machine/restore/stream",
+		Query:  query,
+		Body: client.StreamRawBody{
+			Reader:      f,
+			ContentType: "application/x-xz",
+		},
+		Print: streamcmd.Sections | streamcmd.Logs,
+		Printer: streamcmd.Printer{
+			Progress: printMachineRestoreProgress,
+			Log:      printMachineStreamLog,
+		},
+	})
 }
 
 func printEffectiveExclusionConfig(resolve func() (*client.Client, error), exclude, include []string, largeDirThreshold string) error {
@@ -398,7 +399,7 @@ func printArchiveMeta(archivePath string) error {
 
 func printMachineBackupProgress(ev client.StreamEvent) error {
 	switch ev.Layer {
-	case "dot_file":
+	case "dot_file", "pack":
 		fmt.Printf("  %-40s %s\n", ev.Name, ev.Detail)
 	case "dir":
 		fmt.Printf("  %-16s %s\n", ev.Name, ev.Detail)

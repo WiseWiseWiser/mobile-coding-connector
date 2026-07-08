@@ -13,8 +13,19 @@ import (
 	"github.com/ulikunitz/xz"
 )
 
-// BuildPlan inspects server home and returns a dry-run backup plan.
-func BuildPlan(home string, exclude, include []string, gitOpts GitScanOptions) (*MachineBackupPlan, error) {
+type backupPrepared struct {
+	Home       string
+	Rules      ExclusionRules
+	Walk       *walkResult
+	Plan       *MachineBackupPlan
+	GitRepos   *GitRepoWorktreesSnapshot
+	GitSkipped bool
+}
+
+// ArchivePackProgress is invoked while writing each archive member.
+type ArchivePackProgress func(name, detail string) error
+
+func prepareBackup(home string, exclude, include []string, gitOpts GitScanOptions) (*backupPrepared, error) {
 	home, err := resolveHome(home)
 	if err != nil {
 		return nil, err
@@ -34,11 +45,11 @@ func BuildPlan(home string, exclude, include []string, gitOpts GitScanOptions) (
 	}
 	dotFilesTotal := totalsFromDotFiles(res.DotFiles)
 	dotDirsTotal := totalsFromDirStats(dirStats)
-	gitRepos, _, err := ScanGitRepos(home, gitOpts)
+	gitRepos, gitSkipped, err := ScanGitRepos(home, gitOpts)
 	if err != nil {
 		return nil, err
 	}
-	return &MachineBackupPlan{
+	plan := &MachineBackupPlan{
 		Home:          home,
 		DotFiles:      res.DotFiles,
 		AllFiles:      allFiles,
@@ -49,29 +60,37 @@ func BuildPlan(home string, exclude, include []string, gitOpts GitScanOptions) (
 		Excluded:      populateExcludedList(rules, res.ExcludedStats),
 		Included:      includedPaths(res),
 		GitRepos:      gitRepos,
+	}
+	return &backupPrepared{
+		Home:       home,
+		Rules:      rules,
+		Walk:       res,
+		Plan:       plan,
+		GitRepos:   gitRepos,
+		GitSkipped: gitSkipped,
 	}, nil
+}
+
+// BuildPlan inspects server home and returns a dry-run backup plan.
+func BuildPlan(home string, exclude, include []string, gitOpts GitScanOptions) (*MachineBackupPlan, error) {
+	prepared, err := prepareBackup(home, exclude, include, gitOpts)
+	if err != nil {
+		return nil, err
+	}
+	return prepared.Plan, nil
 }
 
 // WriteArchive streams a tar.xz archive of server home dot entries.
 func WriteArchive(w io.Writer, home string, exclude, include []string, gitOpts GitScanOptions) error {
-	home, err := resolveHome(home)
+	prepared, err := prepareBackup(home, exclude, include, gitOpts)
 	if err != nil {
 		return err
 	}
-	rules, err := ResolveExclusionRules(home, exclude, include)
-	if err != nil {
-		return err
-	}
-	res, err := discover(home, rules)
-	if err != nil {
-		return err
-	}
-	dirStats := sortedDirStats(res.DirStats)
-	gitRepos, gitSkipped, err := ScanGitRepos(home, gitOpts)
-	if err != nil {
-		return err
-	}
+	return writeArchiveFromWalk(w, prepared.Home, prepared.Rules, prepared.Walk, prepared.GitRepos, prepared.GitSkipped, nil)
+}
 
+func writeArchiveFromWalk(w io.Writer, home string, rules ExclusionRules, res *walkResult, gitRepos *GitRepoWorktreesSnapshot, gitSkipped bool, onPack ArchivePackProgress) error {
+	dirStats := sortedDirStats(res.DirStats)
 	manifest := Manifest{
 		Version:   manifestVersion,
 		CreatedAt: time.Now().UTC(),
@@ -94,12 +113,34 @@ func WriteArchive(w io.Writer, home string, exclude, include []string, gitOpts G
 	tw := tar.NewWriter(xzw)
 	defer tw.Close()
 
+	if onPack != nil {
+		if err := onPack("manifest.json", formatSize(int64(len(manifestData)))); err != nil {
+			return err
+		}
+	}
 	if err := writeTarBytes(tw, "manifest.json", 0644, manifestData); err != nil {
 		return err
 	}
 
 	for _, member := range res.Members {
+		if onPack != nil {
+			detail := "symlink"
+			if !member.IsSymlink {
+				full := filepath.Join(home, filepath.FromSlash(member.RelPath))
+				if info, statErr := os.Stat(full); statErr == nil {
+					detail = formatSize(info.Size())
+				}
+			}
+			if err := onPack(member.RelPath, detail); err != nil {
+				return err
+			}
+		}
 		if err := writeMember(tw, home, member); err != nil {
+			return err
+		}
+	}
+	if onPack != nil {
+		if err := onPack(".backup/", "meta"); err != nil {
 			return err
 		}
 	}

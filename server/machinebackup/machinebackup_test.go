@@ -299,6 +299,26 @@ func TestBackupPlanStreamEmitsProgressThenDone(t *testing.T) {
 	}
 }
 
+func TestBackupStreamArchiveEmitsPackingThenToken(t *testing.T) {
+	stubInstalledToolsSnapshot(t)
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".bashrc"), []byte("export FAKE=1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := newFlushRecorder()
+	if err := BackupStream(rec, home, nil, nil, BackupStreamOptions{WriteArchive: true}); err != nil {
+		t.Fatal(err)
+	}
+	body := rec.body.String()
+	if !strings.Contains(body, `"layer":"pack"`) && !strings.Contains(body, `"layer": "pack"`) {
+		t.Fatalf("missing pack progress: %s", body)
+	}
+	if !strings.Contains(body, "archive_token") {
+		t.Fatalf("done missing archive_token: %s", body)
+	}
+}
+
 func TestRestorePlanStreamDryRun(t *testing.T) {
 	stubInstalledToolsSnapshot(t)
 	home := t.TempDir()

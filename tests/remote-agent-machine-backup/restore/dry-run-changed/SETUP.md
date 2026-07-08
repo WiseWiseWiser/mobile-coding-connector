@@ -3,8 +3,8 @@
 **Feature**: restore --dry-run reports update for changed files
 
 ```
-# backup, mutate .bashrc, restore --dry-run via /restore/stream
-stream update: for .bashrc + skip lines; summary dry-run: machine restore plan
+# backup, mutate .bashrc, restore --dry-run via /restore/stream?dry_run=true
+CLASSIFYING: update .bashrc + skip lines; no APPLYING; dry-run: machine restore plan
 ```
 
 ## Preconditions

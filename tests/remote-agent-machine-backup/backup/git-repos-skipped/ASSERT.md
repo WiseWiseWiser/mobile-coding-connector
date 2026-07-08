@@ -1,12 +1,13 @@
 ## Expected Output
 
-Dry-run summary prints `GIT REPOS: (skipped)`. Real backup archive omits
-`.backup/git-repo-worktrees.json`. Stdout ends with a trailing newline.
+Dry-run summary prints `GIT REPOS(.backup/git-repo-worktrees.json): (skipped)`.
+Real backup archive omits `.backup/git-repo-worktrees.json`. Stdout ends with a
+trailing newline.
 
 ## Expected
 
 1. Exit code 0.
-2. Dry-run combined output contains `GIT REPOS: (skipped)`.
+2. Dry-run combined output contains `GIT REPOS(.backup/git-repo-worktrees.json): (skipped)`.
 3. Archive member list does not contain `.backup/git-repo-worktrees.json`.
 4. Stdout ends with `\n`.
 
@@ -47,7 +48,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assert.Output(t, gitReposSummarySection(resp.DryRunCombined), `---
 version: 2
 ---
-GIT REPOS: (skipped)
+GIT REPOS(.backup/git-repo-worktrees.json): (skipped)
 `)
 
 	members := tarXZListMembers(t, resp.BackupPath)

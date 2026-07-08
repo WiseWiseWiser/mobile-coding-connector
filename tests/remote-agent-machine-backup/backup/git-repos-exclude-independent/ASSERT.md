@@ -1,15 +1,16 @@
 ## Expected Output
 
-Dry-run summary includes `GIT REPOS` listing `.wrk-test/main` with branch `main`,
-7-char short sha, `clean` status, and commit message. `.wrk-test` is excluded from
-the backup plan (not listed under DOT DIRS). Stdout ends with a trailing newline.
+Dry-run summary includes `GIT REPOS(.backup/git-repo-worktrees.json):` with a flat
+table listing `.wrk-test/main` (branch `main`, 7-char short sha, `clean`, commit
+subject). `.wrk-test` is excluded from the backup plan (not listed under DOT DIRS).
+Stdout ends with a trailing newline.
 
 ## Expected
 
 1. Exit code 0.
 2. Combined output contains `dry-run: machine backup plan`.
-3. GIT REPOS section lists `.wrk-test/main`, `branch main`, `clean`, and `backup git fixture`.
-4. Status line includes a 7-character hex short sha.
+3. GIT REPOS table lists `.wrk-test/main`, `main`, `clean`, and `backup git fixture`.
+4. Status includes a 7-character hex short sha.
 5. DOT DIRS summary does not include `.wrk-test` (excluded from backup).
 6. Stdout ends with `\n`.
 
@@ -35,7 +36,10 @@ import (
 	"github.com/xhd2015/doctest/assert"
 )
 
-var gitReposExcludeIndepStatusRE = regexp.MustCompile(`(?m)^\s+branch main\s+[0-9a-f]{7}\s+clean\s*$`)
+var (
+	gitReposCapturedAtRE        = regexp.MustCompile(`captured_at: .+  \(1 repo, 0 worktree\)`)
+	gitReposExcludeIndepRowRE   = regexp.MustCompile(`repo\s+\.wrk-test/main\s+main\s+[0-9a-f]{7}\s+clean\s+.*` + regexp.QuoteMeta(gitFixtureCommitMsg))
+)
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if err != nil {
@@ -45,24 +49,31 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("exit %d; combined:\n%s", resp.ExitCode, resp.Combined)
 	}
 
-	assert.Output(t, gitReposSummarySection(resp.Combined), `---
+	section := gitReposSummarySection(resp.Combined)
+	if section == "" {
+		t.Fatalf("missing GIT REPOS summary section; got:\n%s", resp.Combined)
+	}
+
+	header := metaSectionHeaderLines(section, 1)
+	assert.Output(t, header, `---
 version: 2
 ---
-GIT REPOS:
-    .wrk-test/main
-      branch main  [0-9a-f]{7}  clean
-      backup git fixture
+GIT REPOS(.backup/git-repo-worktrees.json):
 `)
+	if !gitReposCapturedAtRE.MatchString(section) {
+		t.Fatalf("GIT REPOS missing repo/worktree count subheader; section:\n%s", section)
+	}
 
+	assertGitReposTableHeaders(t, section)
 	assertGitReposSummaryContains(t, resp.Combined,
 		".wrk-test/main",
-		"branch main",
+		"repo",
+		"main",
 		"clean",
 		gitFixtureCommitMsg,
 	)
-	section := gitReposSummarySection(resp.Combined)
-	if !gitReposExcludeIndepStatusRE.MatchString(section) {
-		t.Fatalf("GIT REPOS missing branch main + 7-char sha + clean line; section:\n%s", section)
+	if !gitReposExcludeIndepRowRE.MatchString(section) {
+		t.Fatalf("GIT REPOS missing repo table row; section:\n%s", section)
 	}
 	if !strings.Contains(resp.Stdout, gitFixtureCommitMsg) {
 		t.Fatalf("stdout missing commit message; got:\n%s", resp.Stdout)

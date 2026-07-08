@@ -3,6 +3,7 @@ package machinebackup
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/remote-agent/machine/backup", handleBackup)
 	mux.HandleFunc("/api/remote-agent/machine/backup/stream", handleBackupStream)
+	mux.HandleFunc("/api/remote-agent/machine/backup/archive", handleBackupArchiveDownload)
 	mux.HandleFunc("/api/remote-agent/machine/restore", handleRestore)
 	mux.HandleFunc("/api/remote-agent/machine/restore/stream", handleRestoreStream)
 	mux.HandleFunc("/api/remote-agent/machine/config", handleBuiltinConfig)
@@ -152,8 +154,30 @@ func handleBackupStream(w http.ResponseWriter, r *http.Request) {
 		SkipGitDirsScan:     req.SkipGitDirsScan,
 		GitDirsScanMaxDepth: req.GitDirsScanMaxDepth,
 	}
-	if err := BackupPlanStream(w, home, req.Exclude, req.Include, thresholdBytes, gitOpts); err != nil {
+	if err := BackupStream(w, home, req.Exclude, req.Include, BackupStreamOptions{
+		LargeDirThresholdBytes: thresholdBytes,
+		GitOpts:                gitOpts,
+		WriteArchive:           req.Archive,
+	}); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+}
+
+func handleBackupArchiveDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	body, err := openArchiveSession(token)
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	defer body.Close()
+	w.Header().Set("Content-Type", "application/x-xz")
+	if _, err := io.Copy(w, body); err != nil {
 		return
 	}
 }

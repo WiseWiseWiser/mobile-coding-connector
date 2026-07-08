@@ -15,9 +15,12 @@ server home (dot-files and dot-dirs), applies built-in exclusions plus optional
 `--exclude`, archives symlinks without following, and streams `tar.xz` for real
 backups. With `--dry-run`, backup and restore use SSE `/stream` endpoints:
 incremental per-entry lines (with sizes on backup) followed by a human summary
-block after the `done` frame. Restore reads the archive, skips byte-identical
-entries (printing `skip (identical): <path>` in dry-run and apply), and applies
-create/update actions.
+block after the `done` frame. Restore (dry-run and apply) uses
+`/restore/stream`: **CLASSIFYING** lists every classified entry (`skip` /
+`update` / `create`); apply also emits **APPLYING** for non-skip actions as
+they run, then a verbatim summary log (`dry-run: machine restore plan` or
+`machine restore summary`). Identical paths are skipped on disk; create/update
+entries are applied only on real restore.
 
 **Participants**
 
@@ -25,8 +28,9 @@ create/update actions.
   and `machine restore` with `--server` / `--token`.
 - **ai-critic-server subprocess** — ephemeral port; `POST /api/remote-agent/machine/backup`
   (`application/x-xz` stream) and `POST /api/remote-agent/machine/backup/stream` (SSE
-  dry-run plan); `POST /api/remote-agent/machine/restore` (apply) and
-  `POST /api/remote-agent/machine/restore/stream?dry_run=true` (SSE dry-run plan).
+  dry-run plan); `POST /api/remote-agent/machine/restore` (JSON apply API, not used by
+  CLI); `POST /api/remote-agent/machine/restore/stream` (SSE classify/apply progress;
+  `dry_run=true` plan only, `dry_run=false` classify + apply + summary).
 - **serverHome** — temp fake machine home seeded with dot fixtures, built-in
   exclusion trees (`.cache`, `.npm`, `.cargo/registry`, etc.), and v1.1 extended
   fixtures (ELF stub, `.log` files, `upload-chunks/`, SQLite DB, JPEG image, new
@@ -71,30 +75,61 @@ create/update actions.
 - Built-in exclusion config version `1.1` adds path-prefix entries, segment rule
   `**/upload-chunks`, suffix rule `**/*.log`, and executable rule `**(binary)`
   (`IsExecutableBinary` for ELF/Mach-O/PE only; SQLite and images stay included).
-- `machine restore --dry-run` streams `skip (identical):` / `update:` / `create:` lines,
-  then prints `dry-run: machine restore plan` summary with counts; no writes.
-- `machine restore` applies create/update entries; identical paths are skipped with
-  the same skip line printed to stdout.
+- `machine restore --dry-run` streams `CLASSIFYING:` then per-entry
+  `skip (identical):` / `update:` / `create:` lines (all-identical shortcut may emit
+  one skip line), then `dry-run: machine restore plan` summary with counts; no APPLYING
+  section; no writes.
+- `machine restore` (apply) uses the same `/restore/stream` endpoint with
+  `dry_run=false`: `CLASSIFYING:` (all entries), `APPLYING:` (update/create only),
+  then `machine restore summary`; identical paths skipped on disk.
 - `machine restore --show-config` without archive prints effective merged config
   JSON from the server (same CLI merge as backup preview); with archive prints
   `.backup/config.json` from the archive (or effective merged fallback; no CLI merge).
 - `machine backup` discovers git repos under server `HOME` via `scan_repo`
   (dot-dir and non-dot paths; backup `--exclude` does not affect git scan),
-  enriches branch/short-sha/status/worktrees, and prints a `GIT REPOS` section in
-  the dry-run summary (`(none)` when no repos, `(skipped)` with
-  `--skip-git-dirs-scan`). Per-repo and per-root scan/enrichment failures are
-  recorded as `error:` lines in GIT REPOS; backup and dry-run never abort on git
-  meta scan failures. `--git-dirs-scan-max-depth N` caps scan depth from `HOME`
-  (`0` = unlimited). Real backups embed `.backup/git-repo-worktrees.json` when scan runs.
+  enriches branch/short-sha/status/worktrees, and prints a `GIT REPOS(.backup/git-repo-worktrees.json):`
+  table in the dry-run summary (KIND / PATH / BRANCH / SHA / STATUS / ORIGIN / MESSAGE;
+  `captured_at` subheader with repo/worktree counts; `(none)` when no repos,
+  `(skipped)` with `--skip-git-dirs-scan`). Per-repo enrichment failures appear as
+  table rows with PATH filled and STATUS `error: …` (other columns blank); backup and
+  dry-run never abort on git meta scan failures. `--git-dirs-scan-max-depth N` caps
+  scan depth from `HOME` (`0` = unlimited). Real backups embed `.backup/git-repo-worktrees.json`
+  when scan runs.
+- Dry-run summary after EXCLUDED prints pack-time meta before `TOTAL`: GIT REPOS →
+  `INSTALLED SOFTWARE(.backup/installed.json):` (NAME / VERSION / PATH table with
+  `captured_at` subheader) → `ENV(.backup/ENV):` (indented `KEY=VALUE` lines, not a
+  table) → optional `TAILSCALE(.backup/tailscale-config.json):` when Tailscale is
+  running (summary tables + DAEMON + SETUP + SHELL HISTORY + PEERS; omitted when not
+  running) → optional `CLOUDFLARED(.backup/cloudflared-config.json):` when cloudflared is
+  running (summary table + DAEMON + CONFIG + SHELL HISTORY; omitted when not running) →
+  optional `SYSTEMD SERVICES(.backup/systemd-services.json):` when `systemctl`
+  is available (USER/SYSTEM running-service tables with UNIT/PID/DESCRIPTION; `(0 running)`
+  when gate passes but no units; omitted when `systemctl` unavailable). Archive JSON
+  formats unchanged; only verbatim dry-run summary changes. CLI stdout ends with `\n`
+  after the last line.
+- When Tailscale is running (`tailscale status --json` with `BackendState == "Running"`),
+  pack-time meta includes `.backup/tailscale-config.json` (version `1.0`: full status
+  JSON, redacted prefs, setup commands/history). When not running, the file and dry-run
+  section are omitted (no placeholder).
+- When cloudflared is running (`cloudflared` on PATH and `pgrep` finds a `cloudflared`
+  process; doctest harness stubs via `.doctest-cloudflared.pid` + mock `pgrep`), pack-time
+  meta includes `.backup/cloudflared-config.json` (version `1.0`: version text, process
+  cmdline, quick-tunnel flags, best-effort tunnel list, redacted `config.yml`, shell history).
+  When not running, the file and dry-run section are omitted (no placeholder).
+- When `systemctl` is on PATH and `systemctl --version` succeeds, pack-time meta includes
+  `.backup/systemd-services.json` (version `1.0`: best-effort `systemctl --user` and
+  system scopes, per-scope errors recorded, zero-running still included). When unavailable,
+  the file and dry-run section are omitted (no placeholder). macOS/launchd out of scope v1.
 - `machine restore --show-meta` requires an archive and prints `.backup/*` meta
-  except `config.json` and `*.machine.bak` (includes `git-repo-worktrees.json`
-  when present in the archive).
+  except `config.json` and `*.machine.bak` (includes `git-repo-worktrees.json`,
+  `tailscale-config.json`, `cloudflared-config.json`, and `systemd-services.json` when
+  present in the archive).
 - Restore skips meta snapshots (`.backup/config.json`, `.backup/installed.json`,
   `.backup/ENV`) but restores `.backup/*.machine.bak` to `~/.backup/{original name}`.
 
 ## Version
 
-0.0.2
+0.0.5
 
 ## Decision Tree
 
@@ -138,12 +173,22 @@ create/update actions.
  |    +-- git-repos-summary/              (LEAF)   GIT REPOS dry-run lists main repo
  |    +-- git-repos-worktree/             (LEAF)   nested worktree + dirty status
  |    +-- git-repos-empty-repo/           (LEAF)   init-only repo → error line; exit 0
- |    +-- git-repos-none/                 (LEAF)   GIT REPOS: (none)
+ |    +-- git-repos-none/                 (LEAF)   GIT REPOS table: (none)
  |    +-- git-repos-skipped/              (LEAF)   skip scan; no archive JSON
  |    +-- git-repos-max-depth/            (LEAF)   max depth excludes deep repo
  |    +-- git-repos-archive/              (LEAF)   archive git-repo-worktrees.json
  |    +-- git-repos-non-dot-path/         (LEAF)   HOME scan lists projects/demo
  |    +-- git-repos-exclude-independent/  (LEAF)   --exclude does not hide git repos
+ |    +-- git-repos-origin-url/           (LEAF)   GIT REPOS + archive JSON include origin_url
+ |    +-- git-repos-no-origin/            (LEAF)   GIT REPOS table ORIGIN (none)
+ |    +-- dry-run-meta/                   (LEAF)   INSTALLED SOFTWARE + ENV dry-run tables
+ |    +-- tailscale-meta/                 (LEAF)   mock tailscale → archive JSON + TAILSCALE section
+ |    +-- tailscale-meta-absent/          (LEAF)   no mock → omit tailscale meta + section
+ |    +-- cloudflared-meta/               (LEAF)   mock cloudflared → archive JSON + CLOUDFLARED section
+ |    +-- cloudflared-meta-absent/        (LEAF)   no mock → omit cloudflared meta + section
+ |    +-- systemd-services-meta/          (LEAF)   mock systemctl → archive JSON + SYSTEMD section
+ |    +-- systemd-services-meta-absent/   (LEAF)   no mock → omit systemd meta + section
+ |    +-- systemd-services-meta-empty/    (LEAF)   mock systemctl empty lists → (0 running)
  |
  +-- restore/                             (GROUP)  apply archive to server HOME
       |
@@ -155,6 +200,9 @@ create/update actions.
       +-- show-config-archive/            (LEAF)   effective config from archive
       +-- show-meta/                      (LEAF)   installed.json + ENV sections
       +-- show-meta-git-repos/            (LEAF)   --show-meta prints git JSON
+      +-- show-meta-tailscale/           (LEAF)   --show-meta prints tailscale JSON
+      +-- show-meta-cloudflared/         (LEAF)   --show-meta prints cloudflared JSON
+      +-- show-meta-systemd-services/    (LEAF)   --show-meta prints systemd-services JSON
       +-- meta-restore/                   (LEAF)   .machine.bak restores ~/.backup/*
 ```
 
@@ -194,24 +242,37 @@ create/update actions.
 | 18 | `backup/large-dir-threshold` | `--large-dir-threshold 100MB` hides LARGE SIZE; detail still lists ≥10 MB dirs |
 | 19 | `backup/dry-run-matches-archive` | Plan included paths match archive members (minus `.backup/` meta) |
 | 20 | `backup/included-fetch-skills` | git-fetch, confluence-fetch, knowledge-index paths in dry-run + archive |
-| 21 | `restore/dry-run-identical` | Home matches archive → skip stream + restore summary, no writes |
-| 22 | `restore/dry-run-changed` | Modified `.bashrc` → `update:` stream line + restore summary counts |
-| 23 | `restore/apply` | Apply restores changed file; identical paths still skipped |
+| 21 | `restore/dry-run-identical` | CLASSIFYING skip shortcut; no APPLYING; dry-run summary; no writes |
+| 22 | `restore/dry-run-changed` | CLASSIFYING `update:` + skips; no APPLYING; dry-run summary counts |
+| 23 | `restore/apply` | CLASSIFYING + APPLYING; `machine restore summary`; file restored |
 | 24 | `restore/show-config-builtin` | `--show-config` without archive prints effective merged JSON v1.1 |
 | 37 | `restore/show-config-cli-exclude` | Restore `--show-config --exclude .knowledge-index` merges CLI (no archive) |
 | 25 | `restore/show-config-archive` | Prereq backup → `--show-config` prints archive effective config |
 | 26 | `restore/show-meta` | Prereq backup → `--show-meta` prints installed.json + ENV (not git JSON) |
 | 27 | `restore/meta-restore` | Prereq backup with seeded meta → apply restores `.machine.bak` content |
-| 41 | `backup/git-repos-summary` | Dry-run GIT REPOS lists `.wrk-test/main` (branch, 7-char sha, clean, commit msg) |
-| 42 | `backup/git-repos-worktree` | Dry-run GIT REPOS nests worktree with dirty status count |
-| 48 | `backup/git-repos-empty-repo` | Init-only `.wrk-test/empty` → `error: no commits (HEAD unborn)`; exit 0 |
-| 43 | `backup/git-repos-none` | Default seed → `GIT REPOS: (none)` |
+| 41 | `backup/git-repos-summary` | Dry-run GIT REPOS table lists `.wrk-test/main` (repo row: branch, sha, clean, message) |
+| 42 | `backup/git-repos-worktree` | Dry-run GIT REPOS table: repo + worktree rows; dirty status count |
+| 48 | `backup/git-repos-empty-repo` | Init-only `.wrk-test/empty` → error row in STATUS column; exit 0 |
+| 43 | `backup/git-repos-none` | Default seed → `GIT REPOS(.backup/git-repo-worktrees.json): (none)` |
 | 44 | `backup/git-repos-skipped` | `--skip-git-dirs-scan` → `(skipped)`; archive omits git JSON |
 | 45 | `backup/git-repos-max-depth` | Deep repo beyond `--git-dirs-scan-max-depth 2` → `(none)` |
 | 46 | `backup/git-repos-archive` | Real backup archive contains valid `git-repo-worktrees.json` |
 | 47 | `restore/show-meta-git-repos` | Prereq backup with git → `--show-meta` prints git JSON section |
 | 49 | `backup/git-repos-non-dot-path` | HOME scan lists `projects/demo` (non-dot path) with branch, sha, clean, commit msg |
 | 50 | `backup/git-repos-exclude-independent` | `--exclude .wrk-test/**` omits dot-dir from plan; GIT REPOS still lists `.wrk-test/main` |
+| 51 | `backup/git-repos-origin-url` | Dry-run + archive: GIT REPOS table ORIGIN URL; JSON `origin_url` for `.wrk-test/main` |
+| 52 | `backup/git-repos-no-origin` | Dry-run GIT REPOS table ORIGIN `(none)` when repo has no remotes |
+| 53 | `backup/dry-run-meta` | Dry-run summary: GIT REPOS (none) + INSTALLED SOFTWARE table + ENV lines before TOTAL |
+| 54 | `backup/tailscale-meta` | Mock tailscale: archive `tailscale-config.json` + dry-run TAILSCALE section (PEERS, history, DAEMON) |
+| 55 | `backup/tailscale-meta-absent` | Default seed: no `tailscale-config.json`; dry-run omits TAILSCALE section |
+| 56 | `restore/show-meta-tailscale` | Prereq tailscale backup → `--show-meta` prints `tailscale-config.json` section |
+| 57 | `backup/cloudflared-meta` | Mock cloudflared: archive `cloudflared-config.json` + dry-run CLOUDFLARED section (DAEMON, CONFIG, history) |
+| 58 | `backup/cloudflared-meta-absent` | Default seed: no `cloudflared-config.json`; dry-run omits CLOUDFLARED section |
+| 59 | `restore/show-meta-cloudflared` | Prereq cloudflared backup → `--show-meta` prints `cloudflared-config.json` section |
+| 60 | `backup/systemd-services-meta` | Mock systemctl: archive `systemd-services.json` + dry-run SYSTEMD USER/SYSTEM tables |
+| 61 | `backup/systemd-services-meta-absent` | Default seed: no `systemd-services.json`; dry-run omits SYSTEMD section |
+| 62 | `backup/systemd-services-meta-empty` | Mock systemctl empty lists: JSON `running_count: 0`; dry-run `(0 running)` |
+| 63 | `restore/show-meta-systemd-services` | Prereq systemd backup → `--show-meta` prints `systemd-services.json` section |
 
 ## Parameter Coverage
 
@@ -219,7 +280,7 @@ create/update actions.
 |--------|--------|
 | Subcommand `backup` | backup/* |
 | Subcommand `restore` | restore/* |
-| `--dry-run` | backup/dry-run, backup/excluded-sizes, backup/large-dir-summary, backup/large-dir-detail-deep, backup/large-dir-threshold, backup/dry-run-matches-archive, backup/included-fetch-skills, backup/upload-chunks, backup/log-suffix, backup/include-log, backup/binary-exclude, backup/include-binary, backup/include, restore/dry-run-identical, restore/dry-run-changed |
+| `--dry-run` | backup/dry-run, backup/dry-run-meta, backup/excluded-sizes, backup/large-dir-summary, backup/large-dir-detail-deep, backup/large-dir-threshold, backup/dry-run-matches-archive, backup/included-fetch-skills, backup/upload-chunks, backup/log-suffix, backup/include-log, backup/binary-exclude, backup/include-binary, backup/include, backup/git-repos-*, restore/dry-run-identical, restore/dry-run-changed |
 | `--large-dir-threshold` | backup/large-dir-threshold, backup/set-config-threshold, backup/persisted-threshold |
 | `--set-config` | backup/set-config, backup/set-config-threshold, backup/set-config-merge, backup/set-config-merge-threshold, backup/set-config-empty, backup/set-config-mutual-exclude, backup/persisted-merge, backup/persisted-threshold, backup/show-config-persisted |
 | Set-config incremental merge | backup/set-config-merge, backup/set-config-merge-threshold, backup/set-config-threshold |
@@ -230,7 +291,7 @@ create/update actions.
 | LARGE SIZE / LARGE DIR DETAIL summary | backup/large-dir-summary, backup/large-dir-detail-deep, backup/large-dir-threshold, backup/persisted-threshold |
 | `--show-config` | backup/show-config, backup/show-config-persisted, backup/persisted-merge, backup/extended-exclusions, backup/show-config-cli-exclude, backup/show-config-cli-include, restore/show-config-builtin, restore/show-config-cli-exclude, restore/show-config-archive |
 | `--show-config` + CLI merge (`--exclude` / `--include`) | backup/show-config-cli-exclude, backup/show-config-cli-include, restore/show-config-cli-exclude |
-| `--show-meta` | restore/show-meta |
+| `--show-meta` | restore/show-meta, restore/show-meta-git-repos, restore/show-meta-tailscale, restore/show-meta-cloudflared, restore/show-meta-systemd-services |
 | Streamed archive (no dry-run) | backup/stream, backup/keep-sqlite, backup/keep-images, backup/path-exclusions, backup/backup-meta, restore/* (prereq backup except show-config-builtin) |
 | Built-in exclusions v1.1 | backup/dry-run, backup/excluded-sizes, backup/stream, backup/show-config, backup/extended-exclusions, backup/upload-chunks, backup/log-suffix, backup/binary-exclude, backup/path-exclusions, restore/show-config-builtin |
 | EXCLUDED per-rule FILES/SIZE stats | backup/excluded-sizes, backup/dry-run (header totals) |
@@ -243,12 +304,25 @@ create/update actions.
 | Identical vs changed restore target | restore/dry-run-identical, restore/dry-run-changed, restore/apply, restore/meta-restore |
 | `--skip-git-dirs-scan` | backup/git-repos-skipped |
 | `--git-dirs-scan-max-depth` | backup/git-repos-max-depth |
-| Git repo scan / `GIT REPOS` summary | backup/git-repos-summary, backup/git-repos-worktree, backup/git-repos-empty-repo, backup/git-repos-none, backup/git-repos-skipped, backup/git-repos-max-depth, backup/git-repos-non-dot-path, backup/git-repos-exclude-independent |
+| Git repo scan / `GIT REPOS` summary | backup/git-repos-summary, backup/git-repos-worktree, backup/git-repos-empty-repo, backup/git-repos-none, backup/git-repos-skipped, backup/git-repos-max-depth, backup/git-repos-non-dot-path, backup/git-repos-exclude-independent, backup/git-repos-origin-url, backup/git-repos-no-origin |
 | HOME-wide git scan (non-dot paths) | backup/git-repos-non-dot-path |
 | Git scan independent of `--exclude` | backup/git-repos-exclude-independent |
 | Per-repo git enrichment error (durable) | backup/git-repos-empty-repo |
-| `.backup/git-repo-worktrees.json` | backup/git-repos-archive, backup/git-repos-skipped (absent), restore/show-meta-git-repos |
-| Git fixture seeding (`SeedGitRepos*`) | backup/git-repos-summary, backup/git-repos-worktree, backup/git-repos-empty-repo, backup/git-repos-skipped, backup/git-repos-archive, backup/git-repos-non-dot-path, backup/git-repos-exclude-independent, restore/show-meta-git-repos |
+| `.backup/git-repo-worktrees.json` | backup/git-repos-archive, backup/git-repos-skipped (absent), backup/git-repos-origin-url, restore/show-meta-git-repos |
+| Git fixture seeding (`SeedGitRepos*`) | backup/git-repos-summary, backup/git-repos-worktree, backup/git-repos-empty-repo, backup/git-repos-skipped, backup/git-repos-archive, backup/git-repos-non-dot-path, backup/git-repos-exclude-independent, backup/git-repos-origin-url, backup/git-repos-no-origin, restore/show-meta-git-repos |
+| Git remote `origin` URL in summary / JSON | backup/git-repos-origin-url, backup/git-repos-no-origin |
+| Dry-run INSTALLED SOFTWARE table | backup/dry-run-meta |
+| Dry-run ENV `KEY=VALUE` lines | backup/dry-run-meta |
+| Dry-run meta section order (GIT → INSTALLED → ENV → [TAILSCALE?] → [CLOUDFLARED?] → [SYSTEMD?] → TOTAL) | backup/dry-run-meta, backup/tailscale-meta, backup/cloudflared-meta, backup/systemd-services-meta |
+| `SeedTailscaleMock` harness (mock CLI + shell history) | backup/tailscale-meta, restore/show-meta-tailscale |
+| `.backup/tailscale-config.json` (running only) | backup/tailscale-meta, backup/tailscale-meta-absent (absent), restore/show-meta-tailscale |
+| Dry-run TAILSCALE summary (DAEMON / SETUP / SHELL HISTORY / PEERS) | backup/tailscale-meta, backup/tailscale-meta-absent (absent) |
+| `SeedCloudflaredMock` harness (mock CLI + pgrep stub + config/history) | backup/cloudflared-meta, restore/show-meta-cloudflared |
+| `.backup/cloudflared-config.json` (running only) | backup/cloudflared-meta, backup/cloudflared-meta-absent (absent), restore/show-meta-cloudflared |
+| Dry-run CLOUDFLARED summary (DAEMON / CONFIG / SHELL HISTORY) | backup/cloudflared-meta, backup/cloudflared-meta-absent (absent) |
+| `SeedSystemdMock` harness (mock systemctl CLI) | backup/systemd-services-meta, backup/systemd-services-meta-empty, restore/show-meta-systemd-services |
+| `.backup/systemd-services.json` (systemctl available) | backup/systemd-services-meta, backup/systemd-services-meta-absent (absent), backup/systemd-services-meta-empty, restore/show-meta-systemd-services |
+| Dry-run SYSTEMD SERVICES summary (USER/SYSTEM tables, zero-running) | backup/systemd-services-meta, backup/systemd-services-meta-absent (absent), backup/systemd-services-meta-empty |
 
 ## How to Run
 
@@ -375,11 +449,30 @@ type Request struct {
 	// SeedGitReposEmpty adds git init only under .wrk-test/empty (no commits).
 	SeedGitReposEmpty bool
 
+	// SeedGitReposOrigin seeds .wrk-test/main and adds origin remote (backup-fixture URL).
+	SeedGitReposOrigin bool
+
 	// SkipGitDirsScan sets --skip-git-dirs-scan on backup invocation.
 	SkipGitDirsScan bool
 
 	// GitDirsScanMaxDepth sets --git-dirs-scan-max-depth (0 = omit flag).
 	GitDirsScanMaxDepth int
+
+	// SeedTailscaleMock writes serverHome/bin/tailscale mock CLI and shell history;
+	// server subprocess PATH is prepended with serverHome/bin.
+	SeedTailscaleMock bool
+
+	// SeedCloudflaredMock writes serverHome/bin/cloudflared + pgrep stubs, doctest pid/cmdline
+	// files, .cloudflared/config.yml, and bash history; server subprocess PATH prepended.
+	SeedCloudflaredMock bool
+
+	// SeedSystemdMock writes serverHome/bin/systemctl mock CLI; server subprocess PATH
+	// is prepended with serverHome/bin.
+	SeedSystemdMock bool
+
+	// SeedSystemdMockEmpty sets SYSTEMD_MOCK_EMPTY=1 on the server subprocess so the
+	// mock systemctl returns empty running unit lists (requires SeedSystemdMock).
+	SeedSystemdMockEmpty bool
 }
 
 type Response struct {
@@ -445,6 +538,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	if req.SeedGitReposWorktree {
 		seedGitReposWorktreeFixture(t, serverHome)
+	} else if req.SeedGitReposOrigin {
+		seedGitReposOriginFixture(t, serverHome)
 	} else if req.SeedGitRepos {
 		seedGitReposFixture(t, serverHome)
 	} else if req.SeedGitReposEmpty {
@@ -455,6 +550,15 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	if req.SeedGitReposMaxDepth {
 		seedGitReposMaxDepthFixture(t, serverHome)
+	}
+	if req.SeedTailscaleMock {
+		seedTailscaleMock(t, serverHome)
+	}
+	if req.SeedCloudflaredMock {
+		seedCloudflaredMock(t, serverHome)
+	}
+	if req.SeedSystemdMock {
+		seedSystemdMock(t, serverHome)
 	}
 
 	agentHome, err := os.MkdirTemp("", "machine-backup-agent-home-*")
@@ -500,6 +604,12 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	serverCmd.Env = stripEnvPrefix(serverCmd.Env, lib.EnvAI_CRITIC_HOME+"=")
 	serverCmd.Env = append(serverCmd.Env, "HOME="+serverHome)
 	serverCmd.Env = append(serverCmd.Env, "AI_CRITIC_NO_OPEN_BROWSER=1")
+	if req.SeedTailscaleMock || req.SeedCloudflaredMock || req.SeedSystemdMock {
+		serverCmd.Env = prependPathToEnv(serverCmd.Env, filepath.Join(serverHome, "bin"))
+	}
+	if req.SeedSystemdMockEmpty {
+		serverCmd.Env = append(serverCmd.Env, "SYSTEMD_MOCK_EMPTY=1")
+	}
 	if err := serverCmd.Start(); err != nil {
 		return nil, fmt.Errorf("start server: %w", err)
 	}

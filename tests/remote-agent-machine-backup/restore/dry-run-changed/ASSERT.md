@@ -1,15 +1,31 @@
 ## Expected Output
 
-Stream phase prints `update:` for mutated `.bashrc` and `skip (identical):` for
-unchanged paths. Summary phase prints `dry-run: machine restore plan` with counts.
+Dry-run streams **CLASSIFYING** only (no APPLYING). Mutated `.bashrc` is `update:`;
+unchanged paths are `skip (identical):`. Summary is `dry-run: machine restore plan`.
+
+```
+CLASSIFYING:
+skip (identical): .ai-critic/ai-models.json
+update: .bashrc
+...more skip lines...
+
+dry-run: machine restore plan
+  home:         ...
+  skip (identical):  ...
+  update:            1
+  create:            0
+  TOTAL: ... entries
+```
 
 ## Expected
 
 1. Exit code 0.
-2. Combined output contains `update:` referencing `.bashrc` (stream phase).
-3. Combined output contains `dry-run: machine restore plan` with skip/update/create counts.
-4. Mutated on-disk `.bashrc` remains until apply (`mutated after backup`).
-5. At least one other path still reports `skip (identical):` (e.g. `.ai-critic/...`).
+2. Combined output has `CLASSIFYING:` and no `APPLYING:`.
+3. CLASSIFYING contains `update:` referencing `.bashrc`.
+4. CLASSIFYING contains at least one other `skip (identical):` line.
+5. CLASSIFYING does not contain `skip (identical): .bashrc`.
+6. Combined output contains `dry-run: machine restore plan` with `TOTAL:` counts.
+7. Mutated on-disk `.bashrc` remains until apply (`mutated after backup`).
 
 ## Side Effects
 
@@ -18,7 +34,9 @@ None (dry-run).
 ## Errors
 
 - `.bashrc` listed only as identical skip.
-- Missing `update:` stream line or restore summary.
+- Missing CLASSIFYING section or `update:` line.
+- Unexpected APPLYING section.
+- Missing restore plan summary.
 - Server file reverted during dry-run.
 
 ## Exit Code
@@ -29,6 +47,8 @@ None (dry-run).
 import (
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/assert"
 )
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
@@ -40,25 +60,33 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 
 	combined := resp.Combined
-	if !strings.Contains(combined, "update:") {
-		t.Fatalf("expected update: stream line; got:\n%s", combined)
+	assertRestoreStreamSections(t, combined, false)
+
+	classify := restoreClassifyingSection(combined)
+	assert.Output(t, classify, `---
+version: 2
+---
+CLASSIFYING:
+...0 lines omitted...
+update: .bashrc
+...9 lines omitted...`)
+	if strings.Contains(classify, "skip (identical): .bashrc") {
+		t.Fatalf(".bashrc should not be identical after mutation; section:\n%s", classify)
 	}
-	if !strings.Contains(strings.ToLower(combined), ".bashrc") {
-		t.Fatalf("output missing .bashrc plan; got:\n%s", combined)
-	}
-	if !strings.Contains(combined, "dry-run: machine restore plan") {
-		t.Fatalf("missing restore plan summary; got:\n%s", combined)
-	}
-	if !strings.Contains(combined, "TOTAL:") {
-		t.Fatalf("restore summary missing TOTAL entry count; got:\n%s", combined)
+	if !strings.Contains(classify, "skip (identical):") {
+		t.Fatalf("expected some identical skips in CLASSIFYING; section:\n%s", classify)
 	}
 
-	if strings.Contains(combined, "skip (identical): .bashrc") {
-		t.Fatalf(".bashrc should not be identical after mutation; got:\n%s", combined)
+	summary := restoreSummaryRest(combined)
+	if summary == "" {
+		t.Fatalf("missing dry-run restore plan summary; got:\n%s", combined)
 	}
-	if !strings.Contains(combined, "skip (identical):") {
-		t.Fatalf("expected some identical skips; got:\n%s", combined)
-	}
+	assert.Output(t, summary, `---
+version: 2
+---
+dry-run: machine restore plan
+...5 lines omitted...
+  TOTAL: .+ entries`)
 
 	got := readServerFile(t, resp.ServerHome, ".bashrc")
 	want := "mutated after backup\n"

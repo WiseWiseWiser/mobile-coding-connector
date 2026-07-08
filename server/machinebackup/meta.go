@@ -79,9 +79,54 @@ func writeBackupMeta(tw *tar.Writer, home string, rules ExclusionRules, gitRepos
 		payloads[metaGitReposName] = gitData
 	}
 
+	tailscaleSnap, tailscaleIncluded, err := captureTailscaleConfigForHome(home)
+	if err != nil {
+		return fmt.Errorf("build tailscale-config.json: %w", err)
+	}
+	if tailscaleIncluded && tailscaleSnap != nil {
+		tailscaleData, err := marshalTailscaleConfigSnapshot(tailscaleSnap)
+		if err != nil {
+			return fmt.Errorf("marshal tailscale-config.json: %w", err)
+		}
+		payloads[metaTailscaleName] = tailscaleData
+	}
+
 	metaFiles := append([]string(nil), backupMetaFiles...)
 	if !gitSkipped && gitRepos != nil {
 		metaFiles = append(metaFiles, metaGitReposName)
+	}
+	if tailscaleIncluded && tailscaleSnap != nil {
+		metaFiles = append(metaFiles, metaTailscaleName)
+	}
+
+	cloudflaredSnap, cloudflaredIncluded, err := captureCloudflaredConfigForHome(home)
+	if err != nil {
+		return fmt.Errorf("build cloudflared-config.json: %w", err)
+	}
+	if cloudflaredIncluded && cloudflaredSnap != nil {
+		cloudflaredData, err := marshalCloudflaredConfigSnapshot(cloudflaredSnap)
+		if err != nil {
+			return fmt.Errorf("marshal cloudflared-config.json: %w", err)
+		}
+		payloads[metaCloudflaredName] = cloudflaredData
+	}
+	if cloudflaredIncluded && cloudflaredSnap != nil {
+		metaFiles = append(metaFiles, metaCloudflaredName)
+	}
+
+	systemdSnap, systemdIncluded, err := captureSystemdServicesForHome(home)
+	if err != nil {
+		return fmt.Errorf("build systemd-services.json: %w", err)
+	}
+	if systemdIncluded && systemdSnap != nil {
+		systemdData, err := marshalSystemdServicesSnapshot(systemdSnap)
+		if err != nil {
+			return fmt.Errorf("marshal systemd-services.json: %w", err)
+		}
+		payloads[metaSystemdServicesName] = systemdData
+	}
+	if systemdIncluded && systemdSnap != nil {
+		metaFiles = append(metaFiles, metaSystemdServicesName)
 	}
 
 	metaHome := filepath.Join(home, backupMetaDir)
@@ -106,7 +151,10 @@ func isBackupMetaSnapshot(rel string) bool {
 	case backupMetaDir + "/" + metaConfigName,
 		backupMetaDir + "/" + metaInstalledName,
 		backupMetaDir + "/" + metaEnvName,
-		backupMetaDir + "/" + metaGitReposName:
+		backupMetaDir + "/" + metaGitReposName,
+		backupMetaDir + "/" + metaTailscaleName,
+		backupMetaDir + "/" + metaCloudflaredName,
+		backupMetaDir + "/" + metaSystemdServicesName:
 		return true
 	default:
 		return false

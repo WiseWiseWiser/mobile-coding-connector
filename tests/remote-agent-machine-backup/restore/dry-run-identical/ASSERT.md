@@ -1,22 +1,25 @@
 ## Expected Output
 
-Stream phase prints `skip (identical):` lines. Summary phase may follow with
-`dry-run: machine restore plan` and entry counts.
+All-identical dry-run: **CLASSIFYING** may emit one representative `skip (identical):`
+line (shortcut). No APPLYING section. Summary is `dry-run: machine restore plan`.
 
 ```
-...stream lines...
+CLASSIFYING:
 skip (identical): .bashrc
-...summary...
+
 dry-run: machine restore plan
+  ...
+  TOTAL: ... entries
 ```
 
 ## Expected
 
 1. Exit code 0.
-2. Combined output contains `skip (identical):` for at least `.bashrc`.
-3. Combined output contains `dry-run: machine restore plan`.
-4. Server `.bashrc` content unchanged from seed (`export FAKE=1`).
-5. No restore writes (identical content remains).
+2. Combined output has `CLASSIFYING:` and no `APPLYING:`.
+3. CLASSIFYING contains `skip (identical):` for at least `.bashrc`.
+4. Combined output contains `dry-run: machine restore plan`.
+5. Server `.bashrc` content unchanged from seed (`export FAKE=1`).
+6. No restore writes (identical content remains).
 
 ## Side Effects
 
@@ -24,7 +27,8 @@ None (dry-run).
 
 ## Errors
 
-- Missing skip lines for identical paths.
+- Missing CLASSIFYING section or skip lines.
+- Unexpected APPLYING section.
 - Missing restore plan summary.
 - Server files modified during dry-run.
 
@@ -48,19 +52,19 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("exit %d; combined:\n%s", resp.ExitCode, resp.Combined)
 	}
 
-// Relaxed v2: require skip line; allow stream lines before and summary after.
-assert.Output(t, resp.Combined, `---
+	combined := resp.Combined
+	assertRestoreStreamSections(t, combined, false)
+
+	assert.Output(t, combined, `---
 version: 2
 ---
+CLASSIFYING:
 ...0 lines omitted...
 skip (identical): .bashrc
 ...7 lines omitted...`)
 
-	if !strings.Contains(resp.Combined, "skip (identical):") {
-		t.Fatalf("expected skip (identical) lines; got:\n%s", resp.Combined)
-	}
-	if !strings.Contains(resp.Combined, "dry-run: machine restore plan") {
-		t.Fatalf("missing restore plan summary; got:\n%s", resp.Combined)
+	if !strings.Contains(combined, "dry-run: machine restore plan") {
+		t.Fatalf("missing restore plan summary; got:\n%s", combined)
 	}
 
 	got := readServerFile(t, resp.ServerHome, ".bashrc")

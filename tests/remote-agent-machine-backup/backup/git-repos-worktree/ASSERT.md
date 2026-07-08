@@ -1,15 +1,16 @@
 ## Expected Output
 
-Dry-run summary nests a `worktree .wrk-test/feature-wt` block with branch
-`feature/foo`, 7-char sha, and `dirty (1 modified)` status. Stdout ends with a
-trailing newline.
+Dry-run summary lists main repo and linked worktree as flat table rows (KIND
+`repo` / `worktree`) with branch `feature/foo`, 7-char sha, and `dirty (N modified)`
+status on the worktree row. Stdout ends with a trailing newline.
 
 ## Expected
 
 1. Exit code 0.
-2. GIT REPOS section lists main repo `.wrk-test/main` and worktree `.wrk-test/feature-wt`.
-3. Worktree block contains `worktree`, `branch feature/foo`, and `dirty (` with count.
-4. Stdout ends with `\n`.
+2. GIT REPOS table lists `.wrk-test/main` and `.wrk-test/feature-wt`.
+3. Worktree row contains `worktree`, `feature/foo`, and `dirty (` with count.
+4. Subheader reports `(1 repo, 1 worktree)`.
+5. Stdout ends with `\n`.
 
 ## Side Effects
 
@@ -17,7 +18,7 @@ None (dry-run).
 
 ## Errors
 
-- Missing worktree nesting or dirty status count.
+- Missing worktree table row or dirty status count.
 
 ## Exit Code
 
@@ -26,13 +27,16 @@ None (dry-run).
 ```go
 import (
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/xhd2015/doctest/assert"
 )
 
-var gitReposWorktreeDirtyRE = regexp.MustCompile(`dirty \(\d+ modified\)`)
+var (
+	gitReposWorktreeCapturedAtRE = regexp.MustCompile(`captured_at: .+  \(1 repo, 1 worktree\)`)
+	gitReposWorktreeDirtyRE      = regexp.MustCompile(`dirty \(\d+ modified\)`)
+	gitReposWorktreeRowRE        = regexp.MustCompile(`worktree\s+\.wrk-test/feature-wt\s+feature/foo\s+[0-9a-f]{7}\s+dirty \(\d+ modified\)`)
+)
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if err != nil {
@@ -42,23 +46,30 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("exit %d; combined:\n%s", resp.ExitCode, resp.Combined)
 	}
 
-	assert.Output(t, gitReposSummarySection(resp.Combined), `---
+	section := gitReposSummarySection(resp.Combined)
+	if section == "" {
+		t.Fatalf("missing GIT REPOS summary section; got:\n%s", resp.Combined)
+	}
+
+	header := metaSectionHeaderLines(section, 1)
+	assert.Output(t, header, `---
 version: 2
 ---
-...4 lines omitted...
-      worktree .wrk-test/feature-wt
-        branch feature/foo  [0-9a-f]{7}  dirty \(\d+ modified\)
-...1 lines omitted...
+GIT REPOS(.backup/git-repo-worktrees.json):
 `)
+	if !gitReposWorktreeCapturedAtRE.MatchString(section) {
+		t.Fatalf("GIT REPOS missing repo/worktree count subheader; section:\n%s", section)
+	}
 
+	assertGitReposTableHeaders(t, section)
 	assertGitReposSummaryContains(t, resp.Combined,
 		".wrk-test/main",
-		"worktree .wrk-test/feature-wt",
-		"branch feature/foo",
+		".wrk-test/feature-wt",
+		"worktree",
+		"feature/foo",
 	)
-	section := gitReposSummarySection(resp.Combined)
-	if !strings.Contains(section, "worktree") {
-		t.Fatalf("GIT REPOS missing worktree prefix; section:\n%s", section)
+	if !gitReposWorktreeRowRE.MatchString(section) {
+		t.Fatalf("GIT REPOS missing worktree table row; section:\n%s", section)
 	}
 	if !gitReposWorktreeDirtyRE.MatchString(section) {
 		t.Fatalf("GIT REPOS missing dirty status with modified count; section:\n%s", section)

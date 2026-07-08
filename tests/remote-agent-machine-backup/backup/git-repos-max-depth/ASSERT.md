@@ -1,12 +1,12 @@
 ## Expected Output
 
 Deep repo beyond `--git-dirs-scan-max-depth 2` is not discovered; summary prints
-`GIT REPOS: (none)`. Stdout ends with a trailing newline.
+`GIT REPOS(.backup/git-repo-worktrees.json): (none)`. Stdout ends with a trailing newline.
 
 ## Expected
 
 1. Exit code 0.
-2. Combined output contains `GIT REPOS: (none)`.
+2. Combined output contains `GIT REPOS(.backup/git-repo-worktrees.json): (none)`.
 3. GIT REPOS section does not list `deep-repo`.
 4. Stdout ends with `\n`.
 
@@ -41,7 +41,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assert.Output(t, gitReposSummarySection(resp.Combined), `---
 version: 2
 ---
-GIT REPOS: (none)
+GIT REPOS(.backup/git-repo-worktrees.json): (none)
 `)
 
 	section := gitReposSummarySection(resp.Combined)

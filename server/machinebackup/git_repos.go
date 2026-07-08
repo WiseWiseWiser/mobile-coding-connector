@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -60,6 +61,7 @@ func gitReposSnapshotFromBuild(snap reposnapshot.Snapshot) *GitRepoWorktreesSnap
 			CommitSHA: node.Checkout.CommitSHA,
 			CommitMsg: node.Checkout.CommitMsg,
 			Status:    node.Checkout.Status,
+			OriginURL: node.Checkout.OriginURL,
 			Error:     node.Error,
 		}
 		for _, wt := range node.Worktrees {
@@ -69,6 +71,7 @@ func gitReposSnapshotFromBuild(snap reposnapshot.Snapshot) *GitRepoWorktreesSnap
 				CommitSHA: wt.Checkout.CommitSHA,
 				CommitMsg: wt.Checkout.CommitMsg,
 				Status:    wt.Checkout.Status,
+				OriginURL: wt.Checkout.OriginURL,
 				Error:     wt.Error,
 			})
 		}
@@ -136,37 +139,62 @@ func mustRelPathFromHome(home, absPath string) string {
 
 func formatGitReposSummaryLines(gitRepos *GitRepoWorktreesSnapshot, skipped bool) []string {
 	if skipped {
-		return []string{"  GIT REPOS: (skipped)"}
+		return []string{gitReposDryRunHeader + " (skipped)"}
 	}
 	if gitRepos == nil || len(gitRepos.Repos) == 0 {
-		return []string{"  GIT REPOS: (none)"}
+		return []string{gitReposDryRunHeader + " (none)"}
 	}
-	lines := []string{"  GIT REPOS:"}
-	for _, repo := range gitRepos.Repos {
-		lines = append(lines, fmt.Sprintf("    %s", repo.Path))
-		appendGitCheckoutSummaryLines(&lines, repo.Branch, repo.CommitSHA, repo.Status, repo.CommitMsg, repo.Error, "      ")
+
+	repos := append([]GitRepoEntry(nil), gitRepos.Repos...)
+	sort.Slice(repos, func(i, j int) bool { return repos[i].Path < repos[j].Path })
+
+	worktreeCount := 0
+	for _, repo := range repos {
+		worktreeCount += len(repo.Worktrees)
+	}
+
+	lines := []string{
+		gitReposDryRunHeader,
+		fmt.Sprintf("    captured_at: %s  (%d repo, %d worktree)",
+			formatMetaCapturedAt(gitRepos.CapturedAt), len(repos), worktreeCount),
+		gitReposTableColumnHeader,
+	}
+	for _, repo := range repos {
+		lines = append(lines, formatGitReposCheckoutRow(
+			"repo", repo.Path, repo.Branch, repo.CommitSHA, repo.Status, repo.OriginURL, repo.CommitMsg, repo.Error,
+		))
 		for _, wt := range repo.Worktrees {
-			lines = append(lines, fmt.Sprintf("      worktree %s", wt.Path))
-			appendGitCheckoutSummaryLines(&lines, wt.Branch, wt.CommitSHA, wt.Status, wt.CommitMsg, wt.Error, "        ")
+			lines = append(lines, formatGitReposCheckoutRow(
+				"worktree", wt.Path, wt.Branch, wt.CommitSHA, wt.Status, wt.OriginURL, wt.CommitMsg, wt.Error,
+			))
 		}
 	}
-	return lines
+	return appendMetaSectionTerminator(lines)
 }
 
-func appendGitCheckoutSummaryLines(lines *[]string, branch, sha, status, commitMsg, errMsg, indent string) {
-	if errMsg != "" && branch == "" && sha == "" && status == "" {
-		*lines = append(*lines, fmt.Sprintf("%serror: %s", indent, errMsg))
-		return
+func formatGitReposCheckoutRow(kind, path, branch, sha, status, originURL, commitMsg, errMsg string) string {
+	const rowIndent = "    "
+	if isGitCheckoutErrorOnly(branch, sha, status, errMsg) {
+		return fmt.Sprintf("%s%-10s%-24s%-14s%-10s%s",
+			rowIndent, kind, path, "", "", "error: "+errMsg)
 	}
-	if branch != "" || sha != "" || status != "" {
-		*lines = append(*lines, fmt.Sprintf("%sbranch %s  %s  %s", indent, branch, sha, status))
+	origin := "(none)"
+	if originURL != "" {
+		origin = originURL
 	}
-	if commitMsg != "" {
-		*lines = append(*lines, fmt.Sprintf("%s%s", indent, commitMsg))
+	return fmt.Sprintf("%s%-10s%-24s%-14s%-10s%-20s%-40s%s",
+		rowIndent, kind, path, branch, shortGitCommitSHA(sha), status, origin, commitMsg)
+}
+
+func isGitCheckoutErrorOnly(branch, sha, status, errMsg string) bool {
+	return errMsg != "" && branch == "" && sha == "" && status == ""
+}
+
+func shortGitCommitSHA(sha string) string {
+	if len(sha) <= 7 {
+		return sha
 	}
-	if errMsg != "" {
-		*lines = append(*lines, fmt.Sprintf("%serror: %s", indent, errMsg))
-	}
+	return sha[:7]
 }
 
 func marshalGitReposSnapshot(snap *GitRepoWorktreesSnapshot) ([]byte, error) {

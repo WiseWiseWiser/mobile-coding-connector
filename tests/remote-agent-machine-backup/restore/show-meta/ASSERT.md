@@ -2,7 +2,9 @@
 
 Stdout prints `=== .backup/ENV ===` and `=== .backup/installed.json ===` sections
 with archive content; does not print `config.json` or `*.machine.bak`. Git repo
-meta (`git-repo-worktrees.json`) is covered by `restore/show-meta-git-repos`.
+meta (`git-repo-worktrees.json`) is covered by `restore/show-meta-git-repos`;
+tailscale meta (`tailscale-config.json`) is covered by `restore/show-meta-tailscale`;
+cloudflared meta (`cloudflared-config.json`) is covered by `restore/show-meta-cloudflared`.
 
 ## Expected
 

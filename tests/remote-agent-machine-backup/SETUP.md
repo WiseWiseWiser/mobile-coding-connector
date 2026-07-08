@@ -32,9 +32,25 @@ REQUIREMENT-DESIGN-backup-large-dir-summary.md,
 REQUIREMENT-DESIGN-large-dir-detail-deep.md, and
 REQUIREMENT-DESIGN-backup-config-refinements.md, and
 REQUIREMENT-DESIGN-machine-backup-git-repos.md, and
-REQUIREMENT-DESIGN-git-repos-home-scan.md. Git fixture leaves skip when `git`
+REQUIREMENT-DESIGN-git-repos-home-scan.md, and
+REQUIREMENT-DESIGN-dry-run-meta-tables.md, and
+REQUIREMENT-DESIGN-tailscale-config-meta.md, and
+REQUIREMENT-DESIGN-systemd-services-meta.md, and
+REQUIREMENT-DESIGN-cloudflared-config-meta.md. `SeedTailscaleMock` writes
+`serverHome/bin/tailscale` (mock CLI), seeds bash/zsh history with tailscale
+lines, and prepends `serverHome/bin` to the server subprocess `PATH`.
+`SeedCloudflaredMock` writes `serverHome/bin/cloudflared` (mock CLI),
+`serverHome/bin/pgrep` (stub that reads `.doctest-cloudflared.pid`),
+`.doctest-cloudflared.pid` + `.doctest-cloudflared.cmdline` stubs, optional
+`.cloudflared/config.yml` with fake credentials, bash history with cloudflared
+quick-tunnel line, and prepends `serverHome/bin` to the server subprocess `PATH`.
+`SeedSystemdMock` writes `serverHome/bin/systemctl` (mock CLI) and prepends
+`serverHome/bin` to the server subprocess `PATH`; `SeedSystemdMockEmpty` sets
+`SYSTEMD_MOCK_EMPTY=1` on the server subprocess so list-units returns `[]`.
+Git fixture leaves skip when `git`
 is not on PATH (`requireGit`). `SeedGitReposNonDot` seeds `projects/demo` via
-`seedGitReposNonDotFixture`. `SeedExcludedSizes` writes 1024 B /
+`seedGitReposNonDotFixture`. `SeedGitReposOrigin` seeds `.wrk-test/main` and adds
+`origin` remote `https://github.com/example/backup-fixture.git`. `SeedExcludedSizes` writes 1024 B /
 512 B fixtures for per-rule EXCLUDED stats assertions. `SeedLargeDir` writes
 `.big-test/` (>40 MB) and `.small-test/` for size-sorted DOT DIRS / LARGE SIZE
 coverage. `SeedLargeDirDetailDeep` extends `SeedLargeDir` with `.deep-test/nested-big/`
@@ -125,7 +141,7 @@ func needsCustomPrereqArchive(req *Request) bool {
 	if len(req.ExcludePaths) > 0 || len(req.IncludePaths) > 0 {
 		return true
 	}
-	return req.SeedDocker || req.SeedBackupMeta || req.SeedGitRepos || req.SeedGitReposWorktree || req.SeedGitReposEmpty
+	return req.SeedDocker || req.SeedBackupMeta || req.SeedGitRepos || req.SeedGitReposWorktree || req.SeedGitReposEmpty || req.SeedGitReposOrigin || req.SeedTailscaleMock || req.SeedCloudflaredMock || req.SeedSystemdMock
 }
 
 func fileExists(path string) bool {
@@ -437,9 +453,589 @@ func seedKnowledgeHub(t *testing.T, home string) {
 }
 
 const (
-	gitFixtureCommitMsg    = "backup git fixture"
+	gitFixtureCommitMsg       = "backup git fixture"
 	gitNonDotFixtureCommitMsg = "non-dot fixture"
+	gitFixtureOriginURL       = "https://github.com/example/backup-fixture.git"
 )
+
+const (
+	tailscaleFixtureVersion   = "1.96.2"
+	tailscaleFixtureSelfIP    = "100.64.209.66"
+	tailscaleFixtureDNSName   = "samd-agent.example.ts.net"
+	tailscaleFixturePeerAName = "peer-a"
+	tailscaleFixturePeerAIP   = "100.69.30.59"
+	tailscaleFixturePeerBName = "peer-b"
+	tailscaleFixturePeerBIP   = "100.126.43.79"
+	tailscaleFixtureSocks5    = "localhost:1055"
+	tailscaleFixtureCmdline   = "tailscaled --tun=userspace-networking --socks5-server=localhost:1055"
+)
+
+const tailscaleMockScript = `#!/bin/sh
+set -e
+case "$1" in
+version)
+  if [ "$2" = "--json" ]; then
+    printf '%s\n' '{"ClientVersion":"1.96.2","TUN":true}'
+  else
+    echo "1.96.2"
+  fi
+  ;;
+status)
+  if [ "$2" = "--json" ]; then
+    cat <<'MOCK_EOF'
+{
+  "BackendState": "Running",
+  "Version": "1.96.2",
+  "Self": {
+    "TailscaleIPs": ["100.64.209.66"],
+    "DNSName": "samd-agent.example.ts.net"
+  },
+  "Peer": {
+    "peerA123": {
+      "DNSName": "peer-a",
+      "TailscaleIPs": ["100.69.30.59"],
+      "OS": "linux",
+      "Online": false,
+      "LastSeen": "2026-07-06T08:51:00Z"
+    },
+    "peerB456": {
+      "DNSName": "peer-b",
+      "TailscaleIPs": ["100.126.43.79"],
+      "OS": "macOS",
+      "Online": true
+    }
+  }
+}
+MOCK_EOF
+  else
+    echo "mock tailscale: status requires --json" >&2
+    exit 1
+  fi
+  ;;
+debug)
+  if [ "$2" = "prefs" ]; then
+    cat <<'MOCK_EOF'
+{
+  "PrivateNodeKey": "nodekey:fake-private-should-redact",
+  "OldPrivateNodeKey": "nodekey:fake-old-should-redact",
+  "NetworkLockKey": "nlkey:fake-lock-should-redact",
+  "Config": {
+    "PrivateNodeKey": "nodekey:fake-nested-should-redact"
+  }
+}
+MOCK_EOF
+  else
+    echo "mock tailscale: unknown debug subcommand" >&2
+    exit 1
+  fi
+  ;;
+*)
+  echo "mock tailscale: unsupported: $*" >&2
+  exit 1
+  ;;
+esac
+`
+
+func prependPathToEnv(env []string, dir string) []string {
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			env[i] = "PATH=" + dir + string(os.PathListSeparator) + strings.TrimPrefix(e, "PATH=")
+			return env
+		}
+	}
+	return append(env, "PATH="+dir)
+}
+
+func seedTailscaleMock(t *testing.T, home string) {
+	t.Helper()
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", binDir, err)
+	}
+	tailscaleBin := filepath.Join(binDir, "tailscale")
+	if err := os.WriteFile(tailscaleBin, []byte(tailscaleMockScript), 0755); err != nil {
+		t.Fatalf("write mock tailscale: %v", err)
+	}
+	writeServerFile(t, home, ".bash_history", "ls\ntailscale up\n")
+	writeServerFile(t, home, ".zsh_history", "cd ~\ntailscaled --tun=userspace-networking --socks5-server=localhost:1055\n")
+}
+
+const (
+	cloudflaredFixtureVersion     = "cloudflared 2026.1.2"
+	cloudflaredFixturePID         = 4567
+	cloudflaredFixtureURL         = "http://127.0.0.1:23712"
+	cloudflaredFixtureHostname    = ""
+	cloudflaredFixtureCmdline     = "cloudflared tunnel --url http://127.0.0.1:23712"
+	cloudflaredFixtureTunnelError = "tunnel list requires cloudflare credentials"
+	cloudflaredFixtureTunnelID    = "fake-tunnel-id-should-redact"
+	cloudflaredFixtureCredFile    = "fake-tunnel-id.json"
+)
+
+const cloudflaredMockScript = `#!/bin/sh
+set -e
+case "$1" in
+version)
+  echo "` + cloudflaredFixtureVersion + `"
+  ;;
+tunnel)
+  if [ "$2" = "list" ] && [ "$4" = "json" ]; then
+    printf '%s\n' '[]'
+    exit 0
+  fi
+  echo "mock cloudflared: unsupported tunnel subcommand: $*" >&2
+  exit 1
+  ;;
+*)
+  echo "mock cloudflared: unsupported: $*" >&2
+  exit 1
+  ;;
+esac
+`
+
+const cloudflaredMockPgrepScript = `#!/bin/sh
+set -e
+for arg in "$@"; do
+  case "$arg" in
+  *cloudflared*)
+    if [ -f "${HOME}/.doctest-cloudflared.pid" ]; then
+      cat "${HOME}/.doctest-cloudflared.pid"
+      exit 0
+    fi
+    ;;
+  esac
+done
+if command -v /usr/bin/pgrep >/dev/null 2>&1; then
+  exec /usr/bin/pgrep "$@"
+fi
+if command -v pgrep >/dev/null 2>&1; then
+  exec pgrep "$@"
+fi
+exit 1
+`
+
+const cloudflaredFixtureConfigYAML = `tunnel: ` + cloudflaredFixtureTunnelID + `
+credentials-file: ` + cloudflaredFixtureCredFile + `
+ingress:
+  - hostname: example.test
+    service: http://localhost:8080
+`
+
+func seedCloudflaredMock(t *testing.T, home string) {
+	t.Helper()
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", binDir, err)
+	}
+	cloudflaredBin := filepath.Join(binDir, "cloudflared")
+	if err := os.WriteFile(cloudflaredBin, []byte(cloudflaredMockScript), 0755); err != nil {
+		t.Fatalf("write mock cloudflared: %v", err)
+	}
+	pgrepBin := filepath.Join(binDir, "pgrep")
+	if err := os.WriteFile(pgrepBin, []byte(cloudflaredMockPgrepScript), 0755); err != nil {
+		t.Fatalf("write mock pgrep: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".doctest-cloudflared.pid"), []byte(strconv.Itoa(cloudflaredFixturePID)+"\n"), 0644); err != nil {
+		t.Fatalf("write .doctest-cloudflared.pid: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".doctest-cloudflared.cmdline"), []byte(cloudflaredFixtureCmdline), 0644); err != nil {
+		t.Fatalf("write .doctest-cloudflared.cmdline: %v", err)
+	}
+	writeServerFile(t, home, ".cloudflared/config.yml", cloudflaredFixtureConfigYAML)
+	writeServerFile(t, home, ".bash_history", "ls\n"+cloudflaredFixtureCmdline+"\n")
+	writeServerFile(t, home, ".zsh_history", "cd ~\n")
+}
+
+type cloudflaredConfigSnapshot struct {
+	Version     string `json:"version"`
+	CapturedAt  string `json:"captured_at"`
+	Running     bool   `json:"running"`
+	VersionInfo struct {
+		Text string `json:"text"`
+	} `json:"version_info"`
+	Process struct {
+		PID     int    `json:"pid"`
+		Cmdline string `json:"cmdline"`
+	} `json:"process"`
+	QuickTunnel struct {
+		URL      string `json:"url"`
+		Hostname string `json:"hostname"`
+	} `json:"quick_tunnel"`
+	Tunnels struct {
+		Available bool            `json:"available"`
+		Error     string          `json:"error,omitempty"`
+		Items     []json.RawMessage `json:"items"`
+	} `json:"tunnels"`
+	Config struct {
+		Path         string `json:"path"`
+		Present      bool   `json:"present"`
+		RedactedYAML string `json:"redacted_yaml"`
+	} `json:"config"`
+	Setup struct {
+		BashHistory []string `json:"bash_history"`
+		ZshHistory  []string `json:"zsh_history"`
+	} `json:"setup"`
+}
+
+func parseCloudflaredConfigJSON(t *testing.T, raw []byte) cloudflaredConfigSnapshot {
+	t.Helper()
+	var snap cloudflaredConfigSnapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		t.Fatalf("parse cloudflared-config.json: %v\n%s", err, raw)
+	}
+	return snap
+}
+
+func assertCloudflaredConfigBasics(t *testing.T, snap cloudflaredConfigSnapshot) {
+	t.Helper()
+	if snap.Version != "1.0" {
+		t.Fatalf("cloudflared snapshot version = %q, want 1.0", snap.Version)
+	}
+	if snap.CapturedAt == "" {
+		t.Fatal("cloudflared snapshot missing captured_at")
+	}
+	if !snap.Running {
+		t.Fatal("cloudflared snapshot running = false, want true")
+	}
+	if snap.VersionInfo.Text != cloudflaredFixtureVersion {
+		t.Fatalf("cloudflared version_info.text = %q, want %q", snap.VersionInfo.Text, cloudflaredFixtureVersion)
+	}
+	if snap.Process.PID != cloudflaredFixturePID {
+		t.Fatalf("cloudflared process.pid = %d, want %d", snap.Process.PID, cloudflaredFixturePID)
+	}
+	if snap.Process.Cmdline != cloudflaredFixtureCmdline {
+		t.Fatalf("cloudflared process.cmdline = %q, want %q", snap.Process.Cmdline, cloudflaredFixtureCmdline)
+	}
+	if snap.QuickTunnel.URL != cloudflaredFixtureURL {
+		t.Fatalf("cloudflared quick_tunnel.url = %q, want %q", snap.QuickTunnel.URL, cloudflaredFixtureURL)
+	}
+}
+
+func assertCloudflaredConfigRedacted(t *testing.T, snap cloudflaredConfigSnapshot) {
+	t.Helper()
+	if !snap.Config.Present {
+		t.Fatal("cloudflared config.present = false, want true")
+	}
+	yaml := snap.Config.RedactedYAML
+	for _, forbidden := range []string{cloudflaredFixtureTunnelID, cloudflaredFixtureCredFile} {
+		if strings.Contains(yaml, forbidden) {
+			t.Fatalf("cloudflared config not redacted; still contains %q:\n%s", forbidden, yaml)
+		}
+	}
+	if !strings.Contains(strings.ToLower(yaml), "redact") {
+		t.Fatalf("cloudflared config redacted_yaml missing redaction marker; got:\n%s", yaml)
+	}
+}
+
+func assertCloudflaredSetupHistory(t *testing.T, snap cloudflaredConfigSnapshot) {
+	t.Helper()
+	var bashFound bool
+	for _, line := range snap.Setup.BashHistory {
+		if strings.Contains(strings.ToLower(line), "cloudflared") {
+			bashFound = true
+		}
+	}
+	if !bashFound {
+		t.Fatalf("cloudflared setup.bash_history missing cloudflared line; got %v", snap.Setup.BashHistory)
+	}
+}
+
+const (
+	systemdFixtureUserUnit        = "agent-proxy.service"
+	systemdFixtureUserPID         = 4521
+	systemdFixtureUserDesc        = "AI Critic remote agent proxy"
+	systemdFixtureUserUnitRel     = ".config/systemd/user/agent-proxy.service"
+	systemdFixtureTailscaledUnit  = "tailscaled.service"
+	systemdFixtureTailscaledPID   = 1234
+	systemdFixtureTailscaledDesc  = "Tailscale node agent"
+	systemdFixtureTailscaledRel   = "lib/systemd/system/tailscaled.service"
+	systemdFixtureDockerUnit      = "docker.service"
+	systemdFixtureDockerPID       = 890
+	systemdFixtureDockerDesc      = "Docker Application Container Engine"
+	systemdFixtureDockerRel       = "lib/systemd/system/docker.service"
+)
+
+const systemdMockScript = `#!/bin/sh
+set -e
+
+if [ "$1" = "--version" ]; then
+  echo "systemd 252 (252-16.el9)"
+  exit 0
+fi
+
+empty="${SYSTEMD_MOCK_EMPTY:-0}"
+user_scope=0
+for arg in "$@"; do
+  if [ "$arg" = "--user" ]; then
+    user_scope=1
+    break
+  fi
+done
+
+case "$*" in
+*list-units*--type=service*--state=running*--output=json*)
+  if [ "$empty" = "1" ]; then
+    printf '%s\n' '[]'
+    exit 0
+  fi
+  if [ "$user_scope" = "1" ]; then
+    cat <<'MOCK_EOF'
+[{"unit":"agent-proxy.service","load":"loaded","active":"active","sub":"running","description":"AI Critic remote agent proxy"}]
+MOCK_EOF
+  else
+    cat <<'MOCK_EOF'
+[{"unit":"tailscaled.service","load":"loaded","active":"active","sub":"running","description":"Tailscale node agent"},{"unit":"docker.service","load":"loaded","active":"active","sub":"running","description":"Docker Application Container Engine"}]
+MOCK_EOF
+  fi
+  exit 0
+  ;;
+esac
+
+unit=""
+if [ "$1" = "--user" ] && [ "$2" = "show" ]; then
+  unit="$3"
+elif [ "$1" = "show" ]; then
+  unit="$2"
+fi
+
+if [ -n "$unit" ]; then
+  case "$unit" in
+  agent-proxy.service)
+    printf 'Description=%s\nMainPID=%d\nFragmentPath=%s/%s\n' \
+      "AI Critic remote agent proxy" 4521 "${HOME}" ".config/systemd/user/agent-proxy.service"
+    ;;
+  tailscaled.service)
+    printf 'Description=%s\nMainPID=%d\nFragmentPath=%s/%s\n' \
+      "Tailscale node agent" 1234 "${HOME}" "lib/systemd/system/tailscaled.service"
+    ;;
+  docker.service)
+    printf 'Description=%s\nMainPID=%d\nFragmentPath=%s/%s\n' \
+      "Docker Application Container Engine" 890 "${HOME}" "lib/systemd/system/docker.service"
+    ;;
+  *)
+    echo "mock systemctl: unknown unit $unit" >&2
+    exit 1
+    ;;
+  esac
+  exit 0
+fi
+
+echo "mock systemctl: unsupported: $*" >&2
+exit 1
+`
+
+func seedSystemdMock(t *testing.T, home string) {
+	t.Helper()
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", binDir, err)
+	}
+	systemctlBin := filepath.Join(binDir, "systemctl")
+	if err := os.WriteFile(systemctlBin, []byte(systemdMockScript), 0755); err != nil {
+		t.Fatalf("write mock systemctl: %v", err)
+	}
+}
+
+type systemdUnitSnapshot struct {
+	Unit        string `json:"unit"`
+	Load        string `json:"load"`
+	Active      string `json:"active"`
+	Sub         string `json:"sub"`
+	Description string `json:"description"`
+	MainPID     int    `json:"main_pid"`
+	UnitFile    string `json:"unit_file"`
+}
+
+type systemdScopeSnapshot struct {
+	Available    bool                  `json:"available"`
+	RunningCount int                   `json:"running_count"`
+	Error        string                `json:"error,omitempty"`
+	Units        []systemdUnitSnapshot `json:"units"`
+}
+
+type systemdServicesSnapshot struct {
+	Version          string `json:"version"`
+	CapturedAt       string `json:"captured_at"`
+	SystemdAvailable bool   `json:"systemd_available"`
+	Scopes           struct {
+		User   systemdScopeSnapshot `json:"user"`
+		System systemdScopeSnapshot `json:"system"`
+	} `json:"scopes"`
+}
+
+func parseSystemdServicesJSON(t *testing.T, raw []byte) systemdServicesSnapshot {
+	t.Helper()
+	var snap systemdServicesSnapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		t.Fatalf("parse systemd-services.json: %v\n%s", err, raw)
+	}
+	return snap
+}
+
+func assertSystemdServicesBasics(t *testing.T, snap systemdServicesSnapshot) {
+	t.Helper()
+	if snap.Version != "1.0" {
+		t.Fatalf("systemd snapshot version = %q, want 1.0", snap.Version)
+	}
+	if snap.CapturedAt == "" {
+		t.Fatal("systemd snapshot missing captured_at")
+	}
+	if !snap.SystemdAvailable {
+		t.Fatal("systemd snapshot systemd_available = false, want true")
+	}
+}
+
+func assertSystemdServicesRunningCounts(t *testing.T, snap systemdServicesSnapshot, userCount, systemCount int) {
+	t.Helper()
+	if snap.Scopes.User.RunningCount != userCount {
+		t.Fatalf("systemd user running_count = %d, want %d", snap.Scopes.User.RunningCount, userCount)
+	}
+	if snap.Scopes.System.RunningCount != systemCount {
+		t.Fatalf("systemd system running_count = %d, want %d", snap.Scopes.System.RunningCount, systemCount)
+	}
+}
+
+func assertSystemdServicesHasUnit(t *testing.T, snap systemdServicesSnapshot, scope, unit string, wantPID int, wantDesc string) {
+	t.Helper()
+	var units []systemdUnitSnapshot
+	switch scope {
+	case "user":
+		units = snap.Scopes.User.Units
+	case "system":
+		units = snap.Scopes.System.Units
+	default:
+		t.Fatalf("unknown systemd scope %q", scope)
+	}
+	for _, u := range units {
+		if u.Unit != unit {
+			continue
+		}
+		if u.MainPID != wantPID {
+			t.Fatalf("systemd %s unit %q main_pid = %d, want %d", scope, unit, u.MainPID, wantPID)
+		}
+		if u.Description != wantDesc {
+			t.Fatalf("systemd %s unit %q description = %q, want %q", scope, unit, u.Description, wantDesc)
+		}
+		if u.Load != "loaded" || u.Active != "active" || u.Sub != "running" {
+			t.Fatalf("systemd %s unit %q state = load:%s active:%s sub:%s, want loaded/active/running",
+				scope, unit, u.Load, u.Active, u.Sub)
+		}
+		if u.UnitFile == "" {
+			t.Fatalf("systemd %s unit %q missing unit_file", scope, unit)
+		}
+		return
+	}
+	t.Fatalf("systemd %s scope missing unit %q; units=%v", scope, unit, units)
+}
+
+func assertSystemdServicesTableHeaders(t *testing.T, section string) {
+	t.Helper()
+	for _, h := range []string{"UNIT", "PID", "DESCRIPTION"} {
+		if !strings.Contains(section, h) {
+			t.Fatalf("SYSTEMD SERVICES table missing %q column header; section:\n%s", h, section)
+		}
+	}
+}
+
+type tailscaleConfigSnapshot struct {
+	Version     string `json:"version"`
+	CapturedAt  string `json:"captured_at"`
+	Running     bool   `json:"running"`
+	VersionInfo struct {
+		Text string          `json:"text"`
+		JSON json.RawMessage `json:"json"`
+	} `json:"version_info"`
+	Daemon struct {
+		PID                 int    `json:"pid"`
+		Cmdline             string `json:"cmdline"`
+		StatePath           string `json:"state_path"`
+		SocketPath          string `json:"socket_path"`
+		UserspaceNetworking bool   `json:"userspace_networking"`
+		Socks5Server        string `json:"socks5_server"`
+	} `json:"daemon"`
+	Status json.RawMessage `json:"status"`
+	Prefs  json.RawMessage `json:"prefs"`
+	Setup  struct {
+		Summary     string   `json:"summary"`
+		Steps       []string `json:"steps"`
+		Commands    []string `json:"commands"`
+		BashHistory []string `json:"bash_history"`
+		ZshHistory  []string `json:"zsh_history"`
+		Notes       []string `json:"notes"`
+	} `json:"setup"`
+}
+
+func parseTailscaleConfigJSON(t *testing.T, raw []byte) tailscaleConfigSnapshot {
+	t.Helper()
+	var snap tailscaleConfigSnapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		t.Fatalf("parse tailscale-config.json: %v\n%s", err, raw)
+	}
+	return snap
+}
+
+func assertTailscaleConfigBasics(t *testing.T, snap tailscaleConfigSnapshot) {
+	t.Helper()
+	if snap.Version != "1.0" {
+		t.Fatalf("tailscale snapshot version = %q, want 1.0", snap.Version)
+	}
+	if snap.CapturedAt == "" {
+		t.Fatal("tailscale snapshot missing captured_at")
+	}
+	if !snap.Running {
+		t.Fatal("tailscale snapshot running = false, want true")
+	}
+	if snap.VersionInfo.Text != tailscaleFixtureVersion {
+		t.Fatalf("tailscale version_info.text = %q, want %q", snap.VersionInfo.Text, tailscaleFixtureVersion)
+	}
+}
+
+func assertTailscalePrefsRedacted(t *testing.T, prefsRaw json.RawMessage) {
+	t.Helper()
+	prefsStr := string(prefsRaw)
+	for _, forbidden := range []string{
+		"nodekey:fake-private-should-redact",
+		"nodekey:fake-old-should-redact",
+		"nlkey:fake-lock-should-redact",
+		"nodekey:fake-nested-should-redact",
+	} {
+		if strings.Contains(prefsStr, forbidden) {
+			t.Fatalf("tailscale prefs not redacted; still contains %q:\n%s", forbidden, prefsStr)
+		}
+	}
+	var prefs map[string]json.RawMessage
+	if err := json.Unmarshal(prefsRaw, &prefs); err != nil {
+		t.Fatalf("parse tailscale prefs: %v\n%s", err, prefsRaw)
+	}
+	for _, key := range []string{"PrivateNodeKey", "OldPrivateNodeKey", "NetworkLockKey"} {
+		if val, ok := prefs[key]; ok {
+			var s string
+			if err := json.Unmarshal(val, &s); err == nil && s != "" && !strings.Contains(strings.ToLower(s), "redact") {
+				t.Fatalf("tailscale prefs[%q] = %q, want redacted or omitted", key, s)
+			}
+		}
+	}
+}
+
+func assertTailscaleSetupHistory(t *testing.T, snap tailscaleConfigSnapshot) {
+	t.Helper()
+	var bashFound, zshFound bool
+	for _, line := range snap.Setup.BashHistory {
+		if strings.Contains(strings.ToLower(line), "tailscale") {
+			bashFound = true
+		}
+	}
+	for _, line := range snap.Setup.ZshHistory {
+		if strings.Contains(strings.ToLower(line), "tailscale") {
+			zshFound = true
+		}
+	}
+	if !bashFound {
+		t.Fatalf("tailscale setup.bash_history missing tailscale line; got %v", snap.Setup.BashHistory)
+	}
+	if !zshFound {
+		t.Fatalf("tailscale setup.zsh_history missing tailscale line; got %v", snap.Setup.ZshHistory)
+	}
+}
 
 func requireGit(t *testing.T) {
 	t.Helper()
@@ -503,6 +1099,14 @@ func seedGitReposNonDotFixture(t *testing.T, home string) {
 	}
 	gitRun(t, demoDir, "add", "README.md")
 	gitRun(t, demoDir, "commit", "-m", gitNonDotFixtureCommitMsg)
+}
+
+func seedGitReposOriginFixture(t *testing.T, home string) {
+	t.Helper()
+	requireGit(t)
+	seedGitReposFixture(t, home)
+	mainDir := filepath.Join(home, ".wrk-test", "main")
+	gitRun(t, mainDir, "remote", "add", "origin", gitFixtureOriginURL)
 }
 
 func seedGitReposFixture(t *testing.T, home string) {
@@ -575,26 +1179,231 @@ func seedGitReposMaxDepthFixture(t *testing.T, home string) {
 
 var gitShortSHARE = regexp.MustCompile(`\b[0-9a-f]{7}\b`)
 
-func gitReposSummarySection(combined string) string {
+func dryRunSummaryRest(combined string) string {
 	idxPlan := strings.Index(combined, "dry-run: machine backup plan")
 	if idxPlan < 0 {
 		return ""
 	}
-	rest := combined[idxPlan:]
+	return combined[idxPlan:]
+}
+
+func gitReposSummarySection(combined string) string {
+	rest := dryRunSummaryRest(combined)
+	if rest == "" {
+		return ""
+	}
 	idxGit := strings.Index(rest, "GIT REPOS")
 	if idxGit < 0 {
 		return ""
 	}
 	rest = rest[idxGit:]
-	idxTotal := strings.Index(rest, "  TOTAL:")
-	if idxTotal < 0 {
-		idxExcluded := strings.Index(rest, "\n  EXCLUDED")
-		if idxExcluded >= 0 {
-			return rest[:idxExcluded]
-		}
-		return rest
+	if idxInstalled := strings.Index(rest, "\n  INSTALLED SOFTWARE"); idxInstalled >= 0 {
+		return rest[:idxInstalled]
 	}
-	return rest[:idxTotal]
+	if idxTotal := strings.Index(rest, "\n  TOTAL:"); idxTotal >= 0 {
+		return rest[:idxTotal]
+	}
+	return rest
+}
+
+func installedSummarySection(combined string) string {
+	rest := dryRunSummaryRest(combined)
+	if rest == "" {
+		return ""
+	}
+	idx := strings.Index(rest, "INSTALLED SOFTWARE")
+	if idx < 0 {
+		return ""
+	}
+	rest = rest[idx:]
+	if idxEnv := strings.Index(rest, "\n  ENV(.backup/ENV):"); idxEnv >= 0 {
+		return rest[:idxEnv]
+	}
+	if idxTotal := strings.Index(rest, "\n  TOTAL:"); idxTotal >= 0 {
+		return rest[:idxTotal]
+	}
+	return rest
+}
+
+func envSummarySection(combined string) string {
+	rest := dryRunSummaryRest(combined)
+	if rest == "" {
+		return ""
+	}
+	idx := strings.Index(rest, "ENV(.backup/ENV):")
+	if idx < 0 {
+		return ""
+	}
+	rest = rest[idx:]
+	if idxTail := strings.Index(rest, "\n  TAILSCALE(.backup/tailscale-config.json):"); idxTail >= 0 {
+		return rest[:idxTail]
+	}
+	if idxCloud := strings.Index(rest, "\n  CLOUDFLARED(.backup/cloudflared-config.json):"); idxCloud >= 0 {
+		return rest[:idxCloud]
+	}
+	if idxSystemd := strings.Index(rest, "\n  SYSTEMD SERVICES(.backup/systemd-services.json):"); idxSystemd >= 0 {
+		return rest[:idxSystemd]
+	}
+	if idxTotal := strings.Index(rest, "\n  TOTAL:"); idxTotal >= 0 {
+		return rest[:idxTotal]
+	}
+	return rest
+}
+
+// metaSectionHeaderLines returns the first n lines of a dry-run meta section for
+// assert.Output v2 prefix checks (tool/env rows may follow). Appends a trailing
+// newline so actual matches v2 templates authored with a closing blank line.
+func metaSectionHeaderLines(section string, n int) string {
+	if section == "" || n <= 0 {
+		return section
+	}
+	lines := strings.Split(strings.TrimSuffix(section, "\n"), "\n")
+	if len(lines) <= n {
+		if strings.HasSuffix(section, "\n") {
+			return section
+		}
+		return section + "\n"
+	}
+	return strings.Join(lines[:n], "\n") + "\n"
+}
+
+func tailscaleSummarySection(combined string) string {
+	rest := dryRunSummaryRest(combined)
+	if rest == "" {
+		return ""
+	}
+	idx := strings.Index(rest, "TAILSCALE(.backup/tailscale-config.json):")
+	if idx < 0 {
+		return ""
+	}
+	rest = rest[idx:]
+	if idxCloud := strings.Index(rest, "\n  CLOUDFLARED(.backup/cloudflared-config.json):"); idxCloud >= 0 {
+		return rest[:idxCloud]
+	}
+	if idxSystemd := strings.Index(rest, "\n  SYSTEMD SERVICES(.backup/systemd-services.json):"); idxSystemd >= 0 {
+		return rest[:idxSystemd]
+	}
+	if idxTotal := strings.Index(rest, "\n  TOTAL:"); idxTotal >= 0 {
+		return rest[:idxTotal]
+	}
+	return rest
+}
+
+func cloudflaredSummarySection(combined string) string {
+	rest := dryRunSummaryRest(combined)
+	if rest == "" {
+		return ""
+	}
+	idx := strings.Index(rest, "CLOUDFLARED(.backup/cloudflared-config.json):")
+	if idx < 0 {
+		return ""
+	}
+	rest = rest[idx:]
+	if idxSystemd := strings.Index(rest, "\n  SYSTEMD SERVICES(.backup/systemd-services.json):"); idxSystemd >= 0 {
+		return rest[:idxSystemd]
+	}
+	if idxTotal := strings.Index(rest, "\n  TOTAL:"); idxTotal >= 0 {
+		return rest[:idxTotal]
+	}
+	return rest
+}
+
+func systemdServicesSummarySection(combined string) string {
+	rest := dryRunSummaryRest(combined)
+	if rest == "" {
+		return ""
+	}
+	idx := strings.Index(rest, "SYSTEMD SERVICES(.backup/systemd-services.json):")
+	if idx < 0 {
+		return ""
+	}
+	rest = rest[idx:]
+	if idxTotal := strings.Index(rest, "\n  TOTAL:"); idxTotal >= 0 {
+		return rest[:idxTotal]
+	}
+	return rest
+}
+
+// metaSummarySection spans GIT REPOS through ENV (exclusive of TOTAL).
+func metaSummarySection(combined string) string {
+	rest := dryRunSummaryRest(combined)
+	if rest == "" {
+		return ""
+	}
+	idxGit := strings.Index(rest, "GIT REPOS")
+	if idxGit < 0 {
+		idxGit = strings.Index(rest, "INSTALLED SOFTWARE")
+	}
+	if idxGit < 0 {
+		return ""
+	}
+	rest = rest[idxGit:]
+	if idxTotal := strings.Index(rest, "\n  TOTAL:"); idxTotal >= 0 {
+		return rest[:idxTotal]
+	}
+	return rest
+}
+
+func assertGitReposTableHeaders(t *testing.T, section string) {
+	t.Helper()
+	for _, h := range []string{"KIND", "PATH", "BRANCH", "SHA", "STATUS", "ORIGIN", "MESSAGE"} {
+		if !strings.Contains(section, h) {
+			t.Fatalf("GIT REPOS table missing %q column header; section:\n%s", h, section)
+		}
+	}
+}
+
+func assertInstalledTableHeaders(t *testing.T, section string) {
+	t.Helper()
+	for _, h := range []string{"NAME", "VERSION", "PATH"} {
+		if !strings.Contains(section, h) {
+			t.Fatalf("INSTALLED SOFTWARE table missing %q column header; section:\n%s", h, section)
+		}
+	}
+}
+
+func assertMetaSectionsBeforeTotal(t *testing.T, combined string) {
+	t.Helper()
+	rest := dryRunSummaryRest(combined)
+	if rest == "" {
+		t.Fatalf("missing dry-run summary block; got:\n%s", combined)
+	}
+	gitIdx := strings.Index(rest, "GIT REPOS")
+	installedIdx := strings.Index(rest, "INSTALLED SOFTWARE")
+	envIdx := strings.Index(rest, "ENV(.backup/ENV):")
+	tailscaleIdx := strings.Index(rest, "TAILSCALE(.backup/tailscale-config.json):")
+	cloudflaredIdx := strings.Index(rest, "CLOUDFLARED(.backup/cloudflared-config.json):")
+	systemdIdx := strings.Index(rest, "SYSTEMD SERVICES(.backup/systemd-services.json):")
+	totalIdx := strings.Index(rest, "TOTAL:")
+	if gitIdx < 0 || installedIdx < 0 || envIdx < 0 || totalIdx < 0 {
+		t.Fatalf("missing meta section markers; git=%d installed=%d env=%d total=%d\n%s",
+			gitIdx, installedIdx, envIdx, totalIdx, rest)
+	}
+	if !(gitIdx < installedIdx && installedIdx < envIdx && envIdx < totalIdx) {
+		t.Fatalf("meta sections out of order (want GIT REPOS → INSTALLED → ENV → [TAILSCALE?] → [CLOUDFLARED?] → [SYSTEMD?] → TOTAL); indices git=%d installed=%d env=%d total=%d",
+			gitIdx, installedIdx, envIdx, totalIdx)
+	}
+	prevIdx := envIdx
+	if tailscaleIdx >= 0 {
+		if !(prevIdx < tailscaleIdx && tailscaleIdx < totalIdx) {
+			t.Fatalf("TAILSCALE section out of order (want after ENV, before TOTAL); prev=%d tailscale=%d total=%d",
+				prevIdx, tailscaleIdx, totalIdx)
+		}
+		prevIdx = tailscaleIdx
+	}
+	if cloudflaredIdx >= 0 {
+		if !(prevIdx < cloudflaredIdx && cloudflaredIdx < totalIdx) {
+			t.Fatalf("CLOUDFLARED section out of order (want after ENV/[TAILSCALE?], before TOTAL); prev=%d cloudflared=%d total=%d",
+				prevIdx, cloudflaredIdx, totalIdx)
+		}
+		prevIdx = cloudflaredIdx
+	}
+	if systemdIdx >= 0 {
+		if !(prevIdx < systemdIdx && systemdIdx < totalIdx) {
+			t.Fatalf("SYSTEMD SERVICES section out of order (want after ENV/[TAILSCALE?]/[CLOUDFLARED?], before TOTAL); prev=%d systemd=%d total=%d",
+				prevIdx, systemdIdx, totalIdx)
+		}
+	}
 }
 
 func assertGitReposSummaryContains(t *testing.T, combined string, needles ...string) {
@@ -633,12 +1442,14 @@ type gitRepoWorktreesSnapshot struct {
 		CommitSHA string `json:"commit_sha"`
 		CommitMsg string `json:"commit_msg"`
 		Status    string `json:"status"`
+		OriginURL string `json:"origin_url,omitempty"`
 		Worktrees []struct {
 			Path      string `json:"path"`
 			Branch    string `json:"branch"`
 			CommitSHA string `json:"commit_sha"`
 			CommitMsg string `json:"commit_msg"`
 			Status    string `json:"status"`
+			OriginURL string `json:"origin_url,omitempty"`
 		} `json:"worktrees,omitempty"`
 	} `json:"repos"`
 }
@@ -676,6 +1487,26 @@ func assertGitRepoSnapshotBasics(t *testing.T, snap gitRepoWorktreesSnapshot, re
 	if !found {
 		t.Fatalf("git snapshot missing repo path %q; repos=%v", repoPath, snap.Repos)
 	}
+}
+
+func assertGitRepoSnapshotOriginURL(t *testing.T, snap gitRepoWorktreesSnapshot, repoPath, want string) {
+	t.Helper()
+	for _, repo := range snap.Repos {
+		if repo.Path != repoPath {
+			continue
+		}
+		if want == "" {
+			if repo.OriginURL != "" {
+				t.Fatalf("repo %q origin_url = %q, want omitted", repoPath, repo.OriginURL)
+			}
+			return
+		}
+		if repo.OriginURL != want {
+			t.Fatalf("repo %q origin_url = %q, want %q", repoPath, repo.OriginURL, want)
+		}
+		return
+	}
+	t.Fatalf("git snapshot missing repo path %q", repoPath)
 }
 
 func exclusionConfigHasPath(cfg exclusionConfigJSON, path string) (reason string, ok bool) {

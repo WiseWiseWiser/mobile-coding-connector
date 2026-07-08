@@ -3,8 +3,8 @@
 **Feature**: restore apply writes changed files and skips identical paths
 
 ```
-# backup, mutate .bashrc, restore (no --dry-run)
-.bashrc reverted to archive content; identical paths skipped on stdout
+# backup, mutate .bashrc, restore apply via /restore/stream?dry_run=false
+CLASSIFYING: all entries; APPLYING: update .bashrc; machine restore summary
 ```
 
 ## Preconditions

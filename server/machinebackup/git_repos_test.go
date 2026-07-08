@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFormatGitReposSummaryLines(t *testing.T) {
 	snap := &GitRepoWorktreesSnapshot{
+		CapturedAt: mustParseRFC3339(t, "2026-07-07T12:00:00Z"),
 		Repos: []GitRepoEntry{{
 			Path: "main", Branch: "main", CommitSHA: "abc1234", CommitMsg: "fix", Status: "clean",
 			Worktrees: []GitWorktreeEntry{{
@@ -20,24 +22,49 @@ func TestFormatGitReposSummaryLines(t *testing.T) {
 	lines := formatGitReposSummaryLines(snap, false)
 	text := strings.Join(lines, "\n")
 	for _, want := range []string{
-		"GIT REPOS:",
-		"main",
-		"branch main  abc1234  clean",
+		"GIT REPOS(.backup/git-repo-worktrees.json):",
+		"captured_at: 2026-07-07T12:00:00Z  (1 repo, 1 worktree)",
+		"KIND",
+		"PATH",
+		"BRANCH",
+		"SHA",
+		"STATUS",
+		"ORIGIN",
+		"MESSAGE",
+		"repo      main",
+		"main          abc1234   clean",
 		"fix",
-		"worktree wt",
-		"branch feature  def5678  dirty (1 modified)",
+		"worktree  wt",
+		"feature       def5678   dirty (1 modified)",
 		"wip",
+		"(none)",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("summary missing %q:\n%s", want, text)
 		}
 	}
 
-	if got := strings.Join(formatGitReposSummaryLines(nil, true), "\n"); got != "  GIT REPOS: (skipped)" {
+	if got := strings.Join(formatGitReposSummaryLines(nil, true), "\n"); got != "  GIT REPOS(.backup/git-repo-worktrees.json): (skipped)" {
 		t.Fatalf("skipped summary = %q", got)
 	}
-	if got := strings.Join(formatGitReposSummaryLines(emptyGitReposSnapshot(), false), "\n"); got != "  GIT REPOS: (none)" {
+	if got := strings.Join(formatGitReposSummaryLines(emptyGitReposSnapshot(), false), "\n"); got != "  GIT REPOS(.backup/git-repo-worktrees.json): (none)" {
 		t.Fatalf("none summary = %q", got)
+	}
+}
+
+func TestFormatGitReposSummaryLinesErrorOnlyRow(t *testing.T) {
+	snap := &GitRepoWorktreesSnapshot{
+		CapturedAt: mustParseRFC3339(t, "2026-07-07T12:00:00Z"),
+		Repos: []GitRepoEntry{{
+			Path: ".wrk-test/empty", Error: "no commits (HEAD unborn)",
+		}},
+	}
+	text := strings.Join(formatGitReposSummaryLines(snap, false), "\n")
+	if !strings.Contains(text, "repo      .wrk-test/empty") {
+		t.Fatalf("missing error row path:\n%s", text)
+	}
+	if !strings.Contains(text, "error: no commits (HEAD unborn)") {
+		t.Fatalf("missing error status:\n%s", text)
 	}
 }
 
@@ -75,9 +102,18 @@ func TestBuildPlanGitReposIntegration(t *testing.T) {
 	}
 	lines := formatBackupDryRunSummary(plan, DryRunSummaryOptions{})
 	text := strings.Join(lines, "\n")
-	if !strings.Contains(text, "GIT REPOS:") || !strings.Contains(text, ".wrk-test/main") {
+	if !strings.Contains(text, "GIT REPOS(.backup/git-repo-worktrees.json):") || !strings.Contains(text, ".wrk-test/main") {
 		t.Fatalf("summary missing git repos:\n%s", text)
 	}
+}
+
+func mustParseRFC3339(t *testing.T, value string) time.Time {
+	t.Helper()
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parsed
 }
 
 func gitRun(t *testing.T, dir string, args ...string) {
