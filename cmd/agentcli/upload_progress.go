@@ -14,6 +14,14 @@ func printUploadProgress(p client.UploadProgress) {
 			p.ChunkIndex+1, p.TotalChunks,
 			p.Attempt, p.MaxAttempts,
 			shortUploadErr(p.Err))
+	case client.UploadChunkSkipped:
+		percent := 100
+		if p.TotalBytes > 0 {
+			percent = int(p.CompletedBytes * 100 / p.TotalBytes)
+		}
+		fmt.Printf("  chunk %d/%d skipped (cached, %s / %s, %d%%)\n",
+			p.ChunkIndex+1, p.TotalChunks,
+			formatSize(p.CompletedBytes), formatSize(p.TotalBytes), percent)
 	case client.UploadChunkUploaded:
 		percent := 100
 		if p.TotalBytes > 0 {

@@ -26,6 +26,8 @@ const (
 	UploadChunkRetrying UploadChunkPhase = "retrying"
 	// UploadChunkUploaded means the chunk was accepted by the server.
 	UploadChunkUploaded UploadChunkPhase = "uploaded"
+	// UploadChunkSkipped means the chunk was already present in the server cache.
+	UploadChunkSkipped UploadChunkPhase = "skipped"
 )
 
 // UploadProgress describes progress reported during a chunked upload.
@@ -85,13 +87,7 @@ func (c *Client) UploadFile(localFile string, remotePath string, opts UploadOpti
 		remotePath = strings.TrimRight(home.Home, "/") + "/" + remotePath
 	}
 
-	f, err := os.Open(localFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open local file: %w", err)
-	}
-	defer f.Close()
-
-	stat, err := f.Stat()
+	stat, err := os.Stat(localFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat local file: %w", err)
 	}
@@ -99,26 +95,39 @@ func (c *Client) UploadFile(localFile string, remotePath string, opts UploadOpti
 		return nil, fmt.Errorf("local path is a directory, not a file: %s", localFile)
 	}
 
-	totalSize := stat.Size()
-	totalChunks := int((totalSize + ChunkSize - 1) / ChunkSize)
-	if totalChunks < 1 {
-		totalChunks = 1
+	fileHash, chunks, err := computeFileChunkPlan(localFile, ChunkSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read local file: %w", err)
 	}
 
-	uploadID, err := c.initUpload(remotePath, totalChunks, totalSize, opts)
+	totalSize := stat.Size()
+	totalChunks := len(chunks)
+
+	sess, err := c.initUpload(remotePath, fileHash, totalChunks, totalSize, opts)
 	if err != nil {
 		return nil, fmt.Errorf("init upload failed: %w", err)
 	}
+	uploadID := sess.UploadID
+	received := sess.Received
 
 	completedBytes := int64(0)
-	buf := make([]byte, ChunkSize)
-	for i := 0; i < totalChunks; i++ {
-		n, readErr := io.ReadFull(f, buf)
-		if readErr != nil && readErr != io.ErrUnexpectedEOF && readErr != io.EOF {
-			return nil, fmt.Errorf("failed to read chunk %d: %w", i, readErr)
+	for i, chunkData := range chunks {
+		chunkLen := int64(len(chunkData))
+		if received[i] {
+			completedBytes += chunkLen
+			if onProgress != nil {
+				onProgress(UploadProgress{
+					ChunkIndex:     i,
+					TotalChunks:    totalChunks,
+					CompletedBytes: completedBytes,
+					TotalBytes:     totalSize,
+					Phase:          UploadChunkSkipped,
+				})
+			}
+			continue
 		}
 
-		attempts, err := c.uploadChunkWithRetry(uploadID, i, buf[:n], opts, func(ev UploadProgress) {
+		attempts, err := c.uploadChunkWithRetry(uploadID, i, chunkData, opts, func(ev UploadProgress) {
 			ev.TotalChunks = totalChunks
 			ev.TotalBytes = totalSize
 			ev.CompletedBytes = completedBytes
@@ -126,11 +135,40 @@ func (c *Client) UploadFile(localFile string, remotePath string, opts UploadOpti
 				onProgress(ev)
 			}
 		})
+		if err != nil && isUploadSessionNotFound(err) {
+			sess, initErr := c.initUpload(remotePath, fileHash, totalChunks, totalSize, opts)
+			if initErr != nil {
+				return nil, fmt.Errorf("re-init upload after session loss failed: %w", initErr)
+			}
+			uploadID = sess.UploadID
+			received = sess.Received
+			if received[i] {
+				completedBytes += chunkLen
+				if onProgress != nil {
+					onProgress(UploadProgress{
+						ChunkIndex:     i,
+						TotalChunks:    totalChunks,
+						CompletedBytes: completedBytes,
+						TotalBytes:     totalSize,
+						Phase:          UploadChunkSkipped,
+					})
+				}
+				continue
+			}
+			attempts, err = c.uploadChunkWithRetry(uploadID, i, chunkData, opts, func(ev UploadProgress) {
+				ev.TotalChunks = totalChunks
+				ev.TotalBytes = totalSize
+				ev.CompletedBytes = completedBytes
+				if onProgress != nil {
+					onProgress(ev)
+				}
+			})
+		}
 		if err != nil {
 			return nil, fmt.Errorf("upload chunk %d failed: %w", i, err)
 		}
 
-		completedBytes += int64(n)
+		completedBytes += chunkLen
 		if onProgress != nil {
 			onProgress(UploadProgress{
 				ChunkIndex:     i,
@@ -151,44 +189,54 @@ func (c *Client) UploadFile(localFile string, remotePath string, opts UploadOpti
 	return result, nil
 }
 
-func (c *Client) initUpload(remotePath string, totalChunks int, totalSize int64, opts UploadOptions) (string, error) {
+type uploadSession struct {
+	UploadID string
+	Received map[int]bool
+}
+
+func (c *Client) initUpload(remotePath, fileHash string, totalChunks int, totalSize int64, opts UploadOptions) (*uploadSession, error) {
 	body := map[string]any{
 		"path":         remotePath,
 		"total_chunks": totalChunks,
 		"total_size":   totalSize,
 		"chmod_exec":   opts.ChmodExec,
+		"file_hash":    fileHash,
 	}
 	buf, err := json.Marshal(body)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	req, err := c.NewRequest(http.MethodPost, "/api/files/upload/init", bytes.NewReader(buf))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", readAPIError(resp)
+		return nil, readAPIError(resp)
 	}
 
 	var out struct {
-		UploadID string `json:"upload_id"`
+		UploadID       string `json:"upload_id"`
+		ReceivedChunks []int  `json:"received_chunks"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("failed to decode init response: %w", err)
+		return nil, fmt.Errorf("failed to decode init response: %w", err)
 	}
 	if out.UploadID == "" {
-		return "", fmt.Errorf("server returned empty upload_id")
+		return nil, fmt.Errorf("server returned empty upload_id")
 	}
-	return out.UploadID, nil
+	return &uploadSession{
+		UploadID: out.UploadID,
+		Received: receivedSet(out.ReceivedChunks),
+	}, nil
 }
 
 func (c *Client) uploadChunk(uploadID string, chunkIndex int, chunk []byte) error {

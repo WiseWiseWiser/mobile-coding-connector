@@ -75,6 +75,7 @@ func handleUploadInit(w http.ResponseWriter, r *http.Request) {
 		TotalChunks int    `json:"total_chunks"`
 		TotalSize   int64  `json:"total_size"`
 		ChmodExec   bool   `json:"chmod_exec"`
+		FileHash    string `json:"file_hash"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -90,6 +91,37 @@ func handleUploadInit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	destPath := filepath.Clean(req.Path)
+
+	if req.FileHash != "" {
+		if !isFileHash(req.FileHash) {
+			writeJSONError(w, http.StatusBadRequest, "invalid file_hash")
+			return
+		}
+		dir, err := uploadCacheDir(req.FileHash)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to prepare cache dir: %v", err))
+			return
+		}
+		if err := saveUploadMeta(dir, uploadMeta{
+			DestPath:    destPath,
+			TotalChunks: req.TotalChunks,
+			TotalSize:   req.TotalSize,
+			ChmodExec:   req.ChmodExec,
+		}); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save upload meta: %v", err))
+			return
+		}
+		received, err := listCachedChunkIndices(dir)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to list cached chunks: %v", err))
+			return
+		}
+		writeJSON(w, map[string]any{
+			"upload_id":       req.FileHash,
+			"received_chunks": received,
+		})
+		return
+	}
 
 	// Create temp directory for chunks
 	tempDir, err := os.MkdirTemp("", "upload-chunks-*")
@@ -144,6 +176,11 @@ func handleUploadChunk(w http.ResponseWriter, r *http.Request) {
 	chunkIndex, err := strconv.Atoi(chunkIndexStr)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid chunk_index")
+		return
+	}
+
+	if isFileHash(uploadID) {
+		handleHashUploadChunk(w, uploadID, chunkIndex, r)
 		return
 	}
 
@@ -211,6 +248,11 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if isFileHash(req.UploadID) {
+		handleHashUploadComplete(w, req.UploadID)
 		return
 	}
 
@@ -293,6 +335,104 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 		absPath = session.DestPath
 	}
 
+	writeJSON(w, map[string]any{
+		"status": "ok",
+		"path":   absPath,
+		"size":   totalWritten,
+	})
+}
+
+func handleHashUploadChunk(w http.ResponseWriter, uploadID string, chunkIndex int, r *http.Request) {
+	dir, err := uploadCacheDir(uploadID)
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "upload session not found")
+		return
+	}
+	meta, err := loadUploadMeta(dir)
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "upload session not found")
+		return
+	}
+	if chunkIndex < 0 || chunkIndex >= meta.TotalChunks {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("chunk_index out of range [0, %d)", meta.TotalChunks))
+		return
+	}
+	chunkFile, _, err := r.FormFile("chunk")
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("chunk file is required: %v", err))
+		return
+	}
+	defer chunkFile.Close()
+	data, err := io.ReadAll(chunkFile)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to read chunk: %v", err))
+		return
+	}
+	if path, ok := findCachedChunk(dir, chunkIndex); ok && chunkMatchesHash(path, data) {
+		writeJSON(w, map[string]any{
+			"status":       "ok",
+			"chunk_index":  chunkIndex,
+			"chunk_size":   len(data),
+			"skipped":      true,
+			"total_chunks": meta.TotalChunks,
+		})
+		return
+	}
+	if _, err := saveCachedChunk(dir, chunkIndex, data); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to write chunk: %v", err))
+		return
+	}
+	received, _ := listCachedChunkIndices(dir)
+	writeJSON(w, map[string]any{
+		"status":         "ok",
+		"chunk_index":    chunkIndex,
+		"chunk_size":     len(data),
+		"received_count": len(received),
+		"total_chunks":   meta.TotalChunks,
+	})
+}
+
+func handleHashUploadComplete(w http.ResponseWriter, uploadID string) {
+	dir, err := uploadCacheDir(uploadID)
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "upload session not found")
+		return
+	}
+	meta, err := loadUploadMeta(dir)
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "upload session not found")
+		return
+	}
+	received, err := listCachedChunkIndices(dir)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to list chunks: %v", err))
+		return
+	}
+	if len(received) != meta.TotalChunks {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("only %d of %d chunks received", len(received), meta.TotalChunks))
+		return
+	}
+	parent := filepath.Dir(meta.DestPath)
+	if err := os.MkdirAll(parent, 0755); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to create directory: %v", err))
+		return
+	}
+	totalWritten, err := assembleCachedFile(dir, meta, meta.DestPath)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to assemble file: %v", err))
+		return
+	}
+	if meta.ChmodExec {
+		if err := os.Chmod(meta.DestPath, 0755); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to chmod destination file: %v", err))
+			return
+		}
+	}
+	removeUploadCache(dir)
+	absPath, absErr := filepath.Abs(meta.DestPath)
+	if absErr != nil {
+		absPath = meta.DestPath
+	}
 	writeJSON(w, map[string]any{
 		"status": "ok",
 		"path":   absPath,

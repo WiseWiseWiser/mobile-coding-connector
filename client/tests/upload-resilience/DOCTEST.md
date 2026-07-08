@@ -165,17 +165,30 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 				Path        string `json:"path"`
 				TotalChunks int    `json:"total_chunks"`
 				TotalSize   int64  `json:"total_size"`
+				FileHash    string `json:"file_hash"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				writeJSONErr(w, http.StatusBadRequest, "bad init")
 				return
 			}
-			uploadID = "test-upload-1"
+			if body.FileHash != "" {
+				uploadID = body.FileHash
+			} else {
+				uploadID = "test-upload-1"
+			}
 			sessionAlive = true
+			var received []int
+			for idx := range persistentChunks {
+				received = append(received, idx)
+			}
+			sortInts(received)
 			mu.Lock()
 			resp.UploadID = uploadID
 			mu.Unlock()
-			writeJSON(w, map[string]string{"upload_id": uploadID})
+			writeJSON(w, map[string]any{
+				"upload_id":       uploadID,
+				"received_chunks": received,
+			})
 
 		case "/api/files/upload/chunk":
 			if err := r.ParseMultipartForm(8 << 20); err != nil {
@@ -191,7 +204,12 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			resp.TotalChunkPosts++
 			mu.Unlock()
 
-			if uid != uploadID || !sessionAlive {
+			hashMode := len(uid) == 64
+			if !hashMode && (uid != uploadID || !sessionAlive) {
+				writeJSONErr(w, http.StatusNotFound, "upload session not found")
+				return
+			}
+			if hashMode && uid != uploadID {
 				writeJSONErr(w, http.StatusNotFound, "upload session not found")
 				return
 			}
@@ -282,6 +300,16 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	t.Logf("evidence: InitCount=%d TotalChunkPosts=%d ChunkAttempts=%v TransportAttempts=%v CompleteCalled=%v ResultSize=%d UploadErr=%q",
 		resp.InitCount, resp.TotalChunkPosts, resp.ChunkAttempts, resp.TransportAttempts, resp.CompleteCalled, resp.ResultSize, resp.UploadErr)
 	return resp, nil
+}
+
+func sortInts(v []int) {
+	for i := 0; i < len(v); i++ {
+		for j := i + 1; j < len(v); j++ {
+			if v[j] < v[i] {
+				v[i], v[j] = v[j], v[i]
+			}
+		}
+	}
 }
 
 func shouldFailChunk(req *Request, idx int, counts map[int]int) bool {
