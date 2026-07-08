@@ -35,6 +35,9 @@ dist
 /remote-agent
 script/fuzzy-test/fuzzy-test-output.log
 
+# Local remote-debug wrapper (copy from local-debug-remote-exec.sh.example)
+/local-debug-remote-exec.sh
+
 
 *.log
 /external

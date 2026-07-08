@@ -26,6 +26,7 @@ type Daemon struct {
 	httpServer     *HTTPServer
 	port           int
 	serverArgs     []string
+	startupTimeout time.Duration
 }
 
 // DualLogger writes to both stdout/stderr and a log file
@@ -95,7 +96,7 @@ func (dl *DualLogger) GetStderr() io.Writer {
 }
 
 // NewDaemon creates a new daemon instance
-func NewDaemon(port int, serverArgs []string) *Daemon {
+func NewDaemon(port int, serverArgs []string, startupTimeout time.Duration) *Daemon {
 	state := GlobalState
 	return &Daemon{
 		state:          state,
@@ -104,6 +105,7 @@ func NewDaemon(port int, serverArgs []string) *Daemon {
 		httpServer:     NewHTTPServer(state),
 		port:           port,
 		serverArgs:     serverArgs,
+		startupTimeout: startupTimeout,
 	}
 }
 
@@ -126,8 +128,8 @@ func (d *Daemon) Run(forever bool, logPath string) error {
 	}
 
 	cwd, _ := os.Getwd()
-	Logger("Keep-alive daemon starting (PID=%d, serverPort=%d, forever=%v, logPath=%q, cwd=%s, serverArgs=%v)",
-		os.Getpid(), d.port, forever, logPath, cwd, d.serverArgs)
+	Logger("Keep-alive daemon starting (PID=%d, serverPort=%d, startupTimeout=%v, forever=%v, logPath=%q, cwd=%s, serverArgs=%v)",
+		os.Getpid(), d.port, d.startupTimeout, forever, logPath, cwd, d.serverArgs)
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			LogPanic("keep-alive daemon", recovered)
@@ -188,6 +190,7 @@ func consumeKeepAliveSkipServerPortCheckEnv() bool {
 // runLoop is the main daemon loop that manages the server process
 func (d *Daemon) runLoop() error {
 	iteration := 0
+	consecutiveStartupFailures := 0
 	for {
 		iteration++
 		Logger("Keep-alive run loop iteration %d starting", iteration)
@@ -270,17 +273,20 @@ func (d *Daemon) runLoop() error {
 		setCurrentCommand(cmd)
 
 		// Wait for port to become ready
-		ready := d.processManager.WaitForPort(d.port, StartupTimeout, cmd)
+		ready := d.processManager.WaitForPort(d.port, d.startupTimeout, cmd)
 		if !ready {
-			Logger("ERROR: Server failed to become ready within %v", StartupTimeout)
+			consecutiveStartupFailures++
+			backoff := StartupBackoffDelay(consecutiveStartupFailures)
+			Logger("ERROR: Server failed to become ready within %v", d.startupTimeout)
 			d.processManager.KillProcessGroup(cmd)
 			d.state.SetServerPID(0)
 			setCurrentCommand(nil)
-			Logger("Restarting in %v...", RestartDelay)
-			time.Sleep(RestartDelay)
+			Logger("Startup failure %d, restarting in %v (exponential backoff)...", consecutiveStartupFailures, backoff)
+			time.Sleep(backoff)
 			continue
 		}
 
+		consecutiveStartupFailures = 0
 		startedAt := d.state.GetStartedAt()
 		waitedMs := int(time.Since(startedAt).Milliseconds())
 		Logger("[keepalive] phase=server_ready t_ms=%d pid=%d waited_ms=%d", keepaliveElapsedMs(), pid, waitedMs)
@@ -414,8 +420,8 @@ func (d *Daemon) reconnectToServer(pid string, binPath string) (*exec.Cmd, error
 }
 
 // RunKeepAlive is the main entry point for the keep-alive daemon
-func RunKeepAlive(port int, forever bool, logPath string, serverArgs []string, killExisting bool) error {
+func RunKeepAlive(port int, forever bool, logPath string, serverArgs []string, killExisting bool, startupTimeout time.Duration) error {
 	killExistingFlag = killExisting
-	daemon := NewDaemon(port, serverArgs)
+	daemon := NewDaemon(port, serverArgs, startupTimeout)
 	return daemon.Run(forever, logPath)
 }

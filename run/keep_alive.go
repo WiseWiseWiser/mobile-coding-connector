@@ -26,6 +26,7 @@ Keep the ai-critic server running with automatic restart and health checking.
 
 Options:
   --port PORT         Port to run the server on (default: %d)
+  --startup-timeout D Startup wait for TCP listen (default: 60s, min: 10s)
   --forever           Skip port-in-use check and start anyway
   --kill-existing     Kill processes on keep-alive and server ports before starting
   --log FILE          Log keep-alive output to file (default: ai-critic-server-keep-alive.log)
@@ -51,10 +52,12 @@ func runKeepAlive(args []string) error {
 	var foreverFlag bool
 	var killExistingFlag bool
 	var logFlag string
+	var startupTimeoutFlag string
 
 	args, err := flags.
 		Bool("--script", &scriptFlag).
 		Int("--port", &portFlag).
+		String("--startup-timeout", &startupTimeoutFlag).
 		Bool("--forever", &foreverFlag).
 		Bool("--kill-existing", &killExistingFlag).
 		String("--log", &logFlag).
@@ -95,7 +98,12 @@ func runKeepAlive(args []string) error {
 		}
 	}
 
-	return daemon.RunKeepAlive(port, foreverFlag, logPath, args, killExistingFlag)
+	startupTimeout, err := daemon.ResolveStartupTimeout(startupTimeoutFlag)
+	if err != nil {
+		return err
+	}
+
+	return daemon.RunKeepAlive(port, foreverFlag, logPath, args, killExistingFlag, startupTimeout)
 }
 
 func resolveKeepAliveLogPath(logFlag string) string {

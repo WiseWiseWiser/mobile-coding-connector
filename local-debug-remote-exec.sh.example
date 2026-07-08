@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Copy this file to local-debug-remote-exec.sh (gitignored) and set REMOTE_SHELL.
+#
+# Usage:
+#   ./local-debug-remote-exec.sh echo yes
+#   ./local-debug-remote-exec.sh grep -c pattern /root/some.log
+#
+# Arguments are joined into one remote command line. For pipelines, &&, or
+# multiple commands, pass a single sh -c argument:
+#   ./local-debug-remote-exec.sh sh -c 'cd /root && pwd'
+#   ./local-debug-remote-exec.sh sh -c 'ss -tlnp | grep 23712'
+#
+# If smc prompts for device-cert registration, add --skip-deviceauth to REMOTE_SHELL.
+
+set -euo pipefail
+
+# Configure how you reach the remote container shell.
+# This is machine- and team-specific — keep it in the gitignored copy only.
+#
+# Example (replace with your own wrapper):
+# REMOTE_SHELL=(spl codelens admin smc enter --region=ph)
+REMOTE_SHELL=()
+
+if ((${#REMOTE_SHELL[@]} == 0)); then
+  echo "Set REMOTE_SHELL in local-debug-remote-exec.sh (copy from local-debug-remote-exec.sh.example)" >&2
+  exit 1
+fi
+
+# Non-interactive session:
+#   n×3   — decline stacked smc/spl prompts (idc, device auth, cert)
+#   …     — remote command (all args joined on one line)
+#   exit  — leave remote shell
+#
+# Pipe directly — do NOT use $(printf ...) for the body; command substitution
+# strips trailing newlines and would glue the last command to "exit".
+{
+  printf 'n\nn\nn\n'
+  if (($# > 0)); then
+    printf '%s\n' "$*"
+  fi
+  printf 'exit\n'
+} | "${REMOTE_SHELL[@]}"

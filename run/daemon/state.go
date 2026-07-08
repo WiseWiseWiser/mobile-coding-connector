@@ -9,7 +9,10 @@ import (
 
 // Constants for timing configuration
 const (
-	StartupTimeout         = 10 * time.Second
+	DefaultStartupTimeout  = 60 * time.Second
+	MinStartupTimeout      = 10 * time.Second
+	StartupBackoffBase     = 3 * time.Second
+	StartupBackoffMax      = 60 * time.Second
 	HealthCheckInterval    = 10 * time.Second
 	RestartDelay           = 3 * time.Second
 	PortCheckTimeout       = 2 * time.Second

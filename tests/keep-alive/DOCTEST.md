@@ -1,32 +1,36 @@
 # Keep-Alive Core vs Extension Startup Doctests
 
 End-to-end tests that start the **keep-alive daemon**, which spawns the managed
-`ai-critic` server, and verify that **core HTTP readiness** (`/ping`) precedes
-slow **extension startup** (tunnels, opencode auto-start) so the daemon does not
-hit the 10s startup timeout.
+`ai-critic` server, and verify startup readiness under configurable
+`--startup-timeout`: **slow core bind** (delay before `net.Listen`) and **slow
+extension** (delay after core bind) must not trigger premature kill/restart loops.
 
 # DSN (Domain Specific Notion)
 
 **Participants**
 
-- **Keep-alive daemon** — loops on managed server lifecycle; polls `localhost:P`
-  until TCP + `GET /ping` succeed within `StartupTimeout` (10s); logs
-  `[keepalive] phase=*` markers when implemented.
+- **Keep-alive daemon** — loops on managed server lifecycle; polls `127.0.0.1:P`
+  until TCP listen succeeds within `StartupTimeout` (CLI `--startup-timeout`,
+  default 60s); logs `[keepalive] phase=*` markers when implemented.
 - **Managed ai-critic server** — binds the HTTP port in a **core** phase, then
   runs **extension** work asynchronously (tunnels, `AutoStartWebServer`, etc.);
   emits `[bootstrap] phase=*` markers when implemented.
 - **Test config home** — isolated `AI_CRITIC_HOME` with credentials; optional
   `opencode.json` to trigger extension path without real Cloudflare I/O (hooks
   delay or stub extension entry).
-- **Test hooks (env)** — `AI_CRITIC_TEST_EXTENSION_DELAY_MS` sleeps at extension
-  start; `AI_CRITIC_TEST_SKIP_EXTENSION` skips extension work for baseline.
+- **Test hooks (env)** — `AI_CRITIC_TEST_CORE_DELAY_MS` sleeps before
+  `net.Listen`; `AI_CRITIC_TEST_EXTENSION_DELAY_MS` sleeps at extension start;
+  `AI_CRITIC_TEST_SKIP_EXTENSION` skips extension work for baseline.
 
 **Behaviors**
 
-- Core listener and `/ping` must become reachable before extension tasks block
-  the accept loop.
-- With a multi-second extension delay, the daemon must still mark the server
-  ready within 10s and must not enter a restart loop.
+- Core listener must become reachable before extension tasks block the accept
+  loop; steady-state health checks remain TCP + `/ping`.
+- With a multi-second **core** delay (pre-listen), the daemon must wait out the
+  delay when `--startup-timeout` is generous (60s) and must not restart-loop.
+- With a multi-second **extension** delay (post-bind), the daemon must still mark
+  the server ready within the configured timeout (10s for regression leaves) and
+  must not enter a restart loop.
 - Log ordering: `core_ready` before `extension_start`; independent `/ping` before
   extension auto-task logs.
 
@@ -38,6 +42,13 @@ hit the 10s startup timeout.
 
 ```
 [keep-alive manages server bootstrap]
+ |
+ +-- slow-core/                              (grouping: core bind delay before net.Listen)
+ |    |
+ |    +-- daemon-ready/                      (grouping: startup-timeout vs core delay)
+ |         +-- survives-core-delay-with-60s-timeout/  (LEAF) 15s core delay + 60s timeout → ready
+ |         +-- no-restart-loop-under-core-delay/      (LEAF) 25s observe; no restart churn
+ |         +-- fails-with-10s-timeout-control/        (LEAF) 15s core delay + 10s timeout → fail loop
  |
  +-- slow-extension/                         (grouping: extension path + hook delay)
  |    |
@@ -57,21 +68,27 @@ hit the 10s startup timeout.
 
 | # | Leaf | Description |
 |---|------|-------------|
-| 1 | `slow-extension/daemon-ready/core-ready-within-timeout` | 15s extension delay; daemon sees ready within 10s |
-| 2 | `slow-extension/daemon-ready/no-restart-loop` | 20s observation; no startup timeout restart loop |
-| 3 | `slow-extension/timing-order/core-before-extension` | Bootstrap log ordering: core before extension |
-| 4 | `slow-extension/timing-order/ping-before-extension-tasks` | HTTP `/ping` precedes extension task logs |
-| 5 | `no-extension/baseline-fast-start` | Fast core_ready; daemon stable; no extension tunnel path |
+| 1 | `slow-core/daemon-ready/survives-core-delay-with-60s-timeout` | 15s pre-listen delay; 60s timeout; server_ready without restart loop |
+| 2 | `slow-core/daemon-ready/no-restart-loop-under-core-delay` | 25s observe with 15s core delay; stable ready, no timeout churn |
+| 3 | `slow-core/daemon-ready/fails-with-10s-timeout-control` | Negative control: 15s core delay + 10s timeout documents old failure |
+| 4 | `slow-extension/daemon-ready/core-ready-within-timeout` | 15s extension delay; daemon sees ready within 10s |
+| 5 | `slow-extension/daemon-ready/no-restart-loop` | 20s observation; no startup timeout restart loop |
+| 6 | `slow-extension/timing-order/core-before-extension` | Bootstrap log ordering: core before extension |
+| 7 | `slow-extension/timing-order/ping-before-extension-tasks` | HTTP `/ping` precedes extension task logs |
+| 8 | `no-extension/baseline-fast-start` | Fast core_ready; daemon stable; no extension tunnel path |
 
 ## Parameter Coverage
 
-| Leaf | ExtensionDelayMs | SkipExtension | opencode.json | ObserveSecs |
-|------|------------------|---------------|---------------|-------------|
-| core-ready-within-timeout | 15000 | false | minimal enabled | 12 |
-| no-restart-loop | 15000 | false | minimal enabled | 20 |
-| core-before-extension | 5000 | false | minimal enabled | 10 |
-| ping-before-extension-tasks | 5000 | false | minimal enabled | 10 |
-| baseline-fast-start | 0 | true | absent / disabled | 8 |
+| Leaf | CoreDelayMs | ExtensionDelayMs | StartupTimeout | SkipExtension | opencode.json | ObserveSecs |
+|------|-------------|------------------|----------------|---------------|---------------|-------------|
+| survives-core-delay-with-60s-timeout | 15000 | 0 | 60s | true | absent | 65 |
+| no-restart-loop-under-core-delay | 15000 | 0 | 60s | true | absent | 25 |
+| fails-with-10s-timeout-control | 15000 | 0 | 10s | true | absent | 15 |
+| core-ready-within-timeout | 0 | 15000 | 10s | false | minimal enabled | 12 |
+| no-restart-loop | 0 | 15000 | 10s | false | minimal enabled | 20 |
+| core-before-extension | 0 | 5000 | 10s | false | minimal enabled | 10 |
+| ping-before-extension-tasks | 0 | 5000 | 10s | false | minimal enabled | 10 |
+| baseline-fast-start | 0 | 0 | (default) | true | absent / disabled | 8 |
 
 ## How to Run
 
@@ -83,6 +100,7 @@ doctest test ./tests/keep-alive/...
 Single leaf:
 
 ```sh
+doctest test ./tests/keep-alive/slow-core/daemon-ready/survives-core-delay-with-60s-timeout
 doctest test ./tests/keep-alive/slow-extension/daemon-ready/core-ready-within-timeout
 ```
 
@@ -108,6 +126,7 @@ import (
 )
 
 const (
+	envCoreDelayMs      = "AI_CRITIC_TEST_CORE_DELAY_MS"
 	envExtensionDelayMs = "AI_CRITIC_TEST_EXTENSION_DELAY_MS"
 	envSkipExtension    = "AI_CRITIC_TEST_SKIP_EXTENSION"
 	envSkipPortPrecheck = "AI_CRITIC_KEEPALIVE_SKIP_SERVER_PORT_CHECK"
@@ -115,7 +134,9 @@ const (
 
 type Request struct {
 	ServerPort           int
+	CoreDelayMs          int
 	ExtensionDelayMs     int
+	StartupTimeout       string
 	ObserveSecs          int
 	SkipExtensionStartup bool
 	WriteExtensionConfig bool
@@ -191,6 +212,9 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		"--forever",
 		"--log", daemonLogPath,
 	}
+	if req.StartupTimeout != "" {
+		daemonArgs = append(daemonArgs, "--startup-timeout", req.StartupTimeout)
+	}
 	daemonArgs = append(daemonArgs, serverArgs...)
 
 	cmd := exec.Command(binPath, daemonArgs...)
@@ -261,6 +285,9 @@ func buildDaemonEnv(configHome string, req *Request) []string {
 	env = append(env, envSkipPortPrecheck+"=1")
 	if req.SkipExtensionStartup {
 		env = append(env, envSkipExtension+"=1")
+	}
+	if req.CoreDelayMs > 0 {
+		env = append(env, fmt.Sprintf("%s=%d", envCoreDelayMs, req.CoreDelayMs))
 	}
 	if req.ExtensionDelayMs > 0 {
 		env = append(env, fmt.Sprintf("%s=%d", envExtensionDelayMs, req.ExtensionDelayMs))

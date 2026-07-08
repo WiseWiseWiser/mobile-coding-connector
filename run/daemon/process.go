@@ -81,12 +81,22 @@ func (pm *ProcessManager) StartServer(binPath string, serverArgs []string) (*exe
 	return cmd, nil
 }
 
+// IsPortListening checks whether the TCP port is accepting connections on loopback.
+func IsPortListening(port int) bool {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", config.LoopbackHost, port), PortCheckTimeout)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
 // WaitForPort waits for the port to become accessible within the timeout
 func (pm *ProcessManager) WaitForPort(port int, timeout time.Duration, cmd *exec.Cmd) bool {
 	deadline := time.Now().Add(timeout)
 	loggedPortOK := false
 	for time.Now().Before(deadline) {
-		if IsPortReachable(port) {
+		if IsPortListening(port) {
 			if !loggedPortOK {
 				loggedPortOK = true
 				Logger("[keepalive] phase=port_check_ok t_ms=%d port=%d", keepaliveElapsedMs(), port)

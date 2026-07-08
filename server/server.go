@@ -60,6 +60,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/quicktest"
 	"github.com/xhd2015/ai-critic/server/services"
 	"github.com/xhd2015/ai-critic/server/settings"
+	"github.com/xhd2015/ai-critic/server/startup"
 	"github.com/xhd2015/ai-critic/server/sshservers"
 	"github.com/xhd2015/ai-critic/server/subprocess"
 	"github.com/xhd2015/ai-critic/server/terminal"
@@ -258,6 +259,10 @@ func Serve(port int, dev bool) error {
 		}
 	} else {
 		fmt.Printf("Serving quick-test server at http://localhost:%d\n", port)
+	}
+
+	if delay := startup.CoreStartupDelay(); delay > 0 {
+		time.Sleep(delay)
 	}
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))

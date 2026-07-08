@@ -27,6 +27,9 @@ import "testing"
 func Setup(t *testing.T, req *Request) error {
 	req.WriteExtensionConfig = true
 	req.SkipExtensionStartup = false
+	if req.StartupTimeout == "" {
+		req.StartupTimeout = "10s"
+	}
 	if req.ExtensionDelayMs <= 0 {
 		req.ExtensionDelayMs = 15000
 	}

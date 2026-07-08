@@ -41,7 +41,7 @@ func ScanGitRepos(home string, opts GitScanOptions) (*GitRepoWorktreesSnapshot, 
 	}
 	snap := reposnapshot.Build(result, rel)
 
-	return gitReposSnapshotFromBuild(snap), false, nil
+	return gitReposSnapshotFromBuild(snap, originURLByRelPath(result, rel)), false, nil
 }
 
 func emptyGitReposSnapshot() *GitRepoWorktreesSnapshot {
@@ -52,7 +52,7 @@ func emptyGitReposSnapshot() *GitRepoWorktreesSnapshot {
 	}
 }
 
-func gitReposSnapshotFromBuild(snap reposnapshot.Snapshot) *GitRepoWorktreesSnapshot {
+func gitReposSnapshotFromBuild(snap reposnapshot.Snapshot, originByPath map[string]string) *GitRepoWorktreesSnapshot {
 	repos := make([]GitRepoEntry, 0, len(snap.Nodes))
 	for _, node := range snap.Nodes {
 		entry := GitRepoEntry{
@@ -61,7 +61,7 @@ func gitReposSnapshotFromBuild(snap reposnapshot.Snapshot) *GitRepoWorktreesSnap
 			CommitSHA: node.Checkout.CommitSHA,
 			CommitMsg: node.Checkout.CommitMsg,
 			Status:    node.Checkout.Status,
-			OriginURL: node.Checkout.OriginURL,
+			OriginURL: originByPath[node.Path],
 			Error:     node.Error,
 		}
 		for _, wt := range node.Worktrees {
@@ -71,7 +71,7 @@ func gitReposSnapshotFromBuild(snap reposnapshot.Snapshot) *GitRepoWorktreesSnap
 				CommitSHA: wt.Checkout.CommitSHA,
 				CommitMsg: wt.Checkout.CommitMsg,
 				Status:    wt.Checkout.Status,
-				OriginURL: wt.Checkout.OriginURL,
+				OriginURL: originByPath[wt.Path],
 				Error:     wt.Error,
 			})
 		}
@@ -82,6 +82,33 @@ func gitReposSnapshotFromBuild(snap reposnapshot.Snapshot) *GitRepoWorktreesSnap
 		CapturedAt: time.Now().UTC(),
 		Repos:      repos,
 	}
+}
+
+func originURLByRelPath(result scan_repo.Result, rel func(abs string) string) map[string]string {
+	out := make(map[string]string)
+	for _, repo := range result.Repos {
+		origin := originURLFromRemotes(repo.Remotes)
+		if origin == "" {
+			continue
+		}
+		out[rel(repo.Path)] = origin
+		for _, wt := range repo.Worktrees {
+			if wt.IsMain {
+				continue
+			}
+			out[rel(wt.Path)] = origin
+		}
+	}
+	return out
+}
+
+func originURLFromRemotes(remotes []scan_repo.Remote) string {
+	for _, remote := range remotes {
+		if remote.Name == "origin" && remote.URL != "" {
+			return remote.URL
+		}
+	}
+	return ""
 }
 
 func relPathFromHome(home, absPath string) (string, error) {
