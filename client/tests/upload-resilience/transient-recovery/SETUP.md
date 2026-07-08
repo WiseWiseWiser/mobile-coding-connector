@@ -28,6 +28,7 @@ func Setup(t *testing.T, req *Request) error {
 	req.TransientFails = 2
 	req.FailStatus = 502
 	req.MaxChunkAttempts = 5
+	req.AlwaysFailChunk = -1
 	return nil
 }
 ```

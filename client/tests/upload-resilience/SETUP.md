@@ -32,6 +32,10 @@ func Setup(t *testing.T, req *Request) error {
 	if req.MaxChunkAttempts == 0 {
 		req.MaxChunkAttempts = 5
 	}
+	if req.AlwaysFailChunk == 0 && req.TransientFails == 0 && req.TransportFailCount == 0 {
+		// Go zero default; -1 means "no always-fail chunk" unless a leaf sets >=0.
+		req.AlwaysFailChunk = -1
+	}
 	return nil
 }
 ```

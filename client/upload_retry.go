@@ -46,8 +46,11 @@ func (opts UploadOptions) resolvedChunkRetry() resolvedChunkRetry {
 	max := defaultChunkMaxAttempts
 	backoff := defaultChunkBackoff
 	if opts.ChunkRetry != nil {
-		if opts.ChunkRetry.MaxAttempts > 0 {
-			max = opts.ChunkRetry.MaxAttempts
+		// MaxAttempts >= 1 is honored as-is (1 = no retry). Zero or negative
+		// falls back to the production default.
+		max = opts.ChunkRetry.MaxAttempts
+		if max < 1 {
+			max = defaultChunkMaxAttempts
 		}
 		if opts.ChunkRetry.Backoff != nil {
 			fn := opts.ChunkRetry.Backoff
@@ -55,6 +58,9 @@ func (opts UploadOptions) resolvedChunkRetry() resolvedChunkRetry {
 				return time.Duration(fn(attempt)) * time.Millisecond
 			}
 		}
+	}
+	if max < 1 {
+		max = 1
 	}
 	return resolvedChunkRetry{maxAttempts: max, backoff: backoff}
 }
@@ -120,7 +126,7 @@ func readUploadAPIError(resp *http.Response) error {
 func (c *Client) uploadChunkWithRetry(uploadID string, chunkIndex int, chunk []byte, opts UploadOptions) error {
 	cfg := opts.resolvedChunkRetry()
 	var lastErr error
-	for attempt := 1; attempt <= cfg.maxAttempts; attempt++ {
+	for attempt := 1; attempt <= cfg.maxAttempts; attempt++ { // maxAttempts is always >= 1
 		lastErr = c.uploadChunk(uploadID, chunkIndex, chunk)
 		if lastErr == nil {
 			return nil

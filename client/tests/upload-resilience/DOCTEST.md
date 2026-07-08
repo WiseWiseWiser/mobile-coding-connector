@@ -32,7 +32,8 @@ ai-critic server file-upload API.
  |
  +-- transient-recovery/
  |    |
- |    +-- succeeds-after-502/           (LEAF)  flaky chunk recovers; full file OK
+ |    +-- succeeds-after-502/                  (LEAF)  flaky chunk recovers; full file OK
+ |    +-- succeeds-after-connection-reset/     (LEAF)  transport error then succeeds
  |
  +-- retry-exhaustion/
  |    |
@@ -48,8 +49,9 @@ ai-critic server file-upload API.
 | # | Leaf | Description |
 |---|------|-------------|
 | 1 | `transient-recovery/succeeds-after-502` | Chunk fails twice with 502, succeeds on 3rd try; file intact |
-| 2 | `retry-exhaustion/aborts-after-max-attempts` | Permanent 502 exhausts attempts and errors |
-| 3 | `non-retryable/fast-fail-on-400` | HTTP 400 on chunk → single POST, immediate fail |
+| 2 | `transient-recovery/succeeds-after-connection-reset` | Transport reset twice on chunk 2, succeeds on 3rd try |
+| 3 | `retry-exhaustion/aborts-after-max-attempts` | Permanent 502 exhausts attempts and errors |
+| 4 | `non-retryable/fast-fail-on-400` | HTTP 400 on chunk → single POST, immediate fail |
 
 ## How to Run
 
@@ -76,28 +78,34 @@ import (
 )
 
 type Request struct {
-	TotalBytes       int64
-	FlakyChunkIndex  int
-	TransientFails   int
-	FailStatus       int
-	PermanentStatus  int
-	MaxChunkAttempts int
-	AlwaysFailChunk  int
+	TotalBytes         int64
+	FlakyChunkIndex    int
+	TransientFails     int
+	FailStatus         int
+	PermanentStatus    int
+	MaxChunkAttempts   int
+	AlwaysFailChunk    int // -1 disables; >=0 fails that chunk on every HTTP attempt
+	TransportFailChunk int
+	TransportFailCount int
 }
 
 type Response struct {
-	UploadErr       string
-	ResultPath      string
-	ResultSize      int64
-	ChunkAttempts   map[int]int
-	TotalChunkPosts int
-	CompleteCalled  bool
-	InitCount       int
-	UploadID        string
+	UploadErr          string
+	ResultPath         string
+	ResultSize         int64
+	ChunkAttempts      map[int]int
+	TransportAttempts  map[int]int
+	TotalChunkPosts    int
+	CompleteCalled     bool
+	InitCount          int
+	UploadID           string
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
-	resp := &Response{ChunkAttempts: make(map[int]int)}
+	resp := &Response{
+		ChunkAttempts:     make(map[int]int),
+		TransportAttempts: make(map[int]int),
+	}
 
 	if req.TotalBytes <= 0 {
 		req.TotalBytes = 5 * client.ChunkSize
@@ -216,8 +224,15 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}))
 	defer srv.Close()
 
+	transportTracker := &client.ChunkTransportTracker{Attempts: resp.TransportAttempts}
 	c := client.New(srv.URL, "")
-	c.HTTPClient = srv.Client()
+	base := srv.Client()
+	base.Transport = client.WrapFlakyChunkTransport(base.Transport, client.FlakyChunkTransportConfig{
+		FailChunkIndex: req.TransportFailChunk,
+		FailCount:      req.TransportFailCount,
+		Tracker:        transportTracker,
+	})
+	c.HTTPClient = base
 	result, err := c.UploadFile(localFile, destPath, client.UploadOptions{
 		ChunkRetry: &client.ChunkRetryConfig{
 			MaxAttempts: req.MaxChunkAttempts,
@@ -233,17 +248,13 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		resp.ResultPath = result.Path
 		resp.ResultSize = result.Size
 	}
+	t.Logf("evidence: InitCount=%d TotalChunkPosts=%d ChunkAttempts=%v TransportAttempts=%v CompleteCalled=%v ResultSize=%d UploadErr=%q",
+		resp.InitCount, resp.TotalChunkPosts, resp.ChunkAttempts, resp.TransportAttempts, resp.CompleteCalled, resp.ResultSize, resp.UploadErr)
 	return resp, nil
 }
 
 func shouldFailChunk(req *Request, idx int, counts map[int]int) bool {
-	alwaysFail := req.AlwaysFailChunk
-	// Zero is the Go default; treat it as "always fail chunk 0" only when no
-	// transient-failure scenario is configured (retry-exhaustion leaf).
-	if alwaysFail == 0 && req.TransientFails > 0 {
-		alwaysFail = -1
-	}
-	if alwaysFail >= 0 && idx == alwaysFail {
+	if req.AlwaysFailChunk >= 0 && idx == req.AlwaysFailChunk {
 		return true
 	}
 	if req.TransientFails > 0 && idx == req.FlakyChunkIndex {

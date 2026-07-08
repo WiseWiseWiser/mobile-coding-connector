@@ -39,3 +39,14 @@ func TestIsRetryableUploadError_Unknown(t *testing.T) {
 		t.Fatal("connection reset should be retryable")
 	}
 }
+
+func TestResolvedChunkRetry_MaxAttempts(t *testing.T) {
+	opts := UploadOptions{ChunkRetry: &ChunkRetryConfig{MaxAttempts: 1}}
+	if got := opts.resolvedChunkRetry().maxAttempts; got != 1 {
+		t.Fatalf("MaxAttempts=1: got %d want 1", got)
+	}
+	opts.ChunkRetry.MaxAttempts = 0
+	if got := opts.resolvedChunkRetry().maxAttempts; got != defaultChunkMaxAttempts {
+		t.Fatalf("MaxAttempts=0: got %d want default %d", got, defaultChunkMaxAttempts)
+	}
+}
