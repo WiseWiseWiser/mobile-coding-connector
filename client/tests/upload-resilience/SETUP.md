@@ -36,6 +36,12 @@ func Setup(t *testing.T, req *Request) error {
 		// Go zero default; -1 means "no always-fail chunk" unless a leaf sets >=0.
 		req.AlwaysFailChunk = -1
 	}
+	if req.SessionDropAfterChunk == 0 {
+		req.SessionDropAfterChunk = -1
+	}
+	if req.FlakyChunkIndex == 0 && req.TransientFails == 0 {
+		req.FlakyChunkIndex = -1
+	}
 	return nil
 }
 ```

@@ -39,6 +39,14 @@ ai-critic server file-upload API.
  |    |
  |    +-- aborts-after-max-attempts/   (LEAF)  always-502 until cap
  |
+ +-- session-lost/
+ |    |
+ |    +-- recovers-after-mid-upload-404/  (LEAF)  server drops session; client re-inits
+ |
+ +-- cross-run-resume/
+ |    |
+ |    +-- skips-cached-chunks-on-reupload/ (LEAF)  same binary re-run skips known chunks
+ |
  +-- non-retryable/
       |
       +-- fast-fail-on-400/             (LEAF)  400 → no retry
@@ -51,7 +59,9 @@ ai-critic server file-upload API.
 | 1 | `transient-recovery/succeeds-after-502` | Chunk fails twice with 502, succeeds on 3rd try; file intact |
 | 2 | `transient-recovery/succeeds-after-connection-reset` | Transport reset twice on chunk 2, succeeds on 3rd try |
 | 3 | `retry-exhaustion/aborts-after-max-attempts` | Permanent 502 exhausts attempts and errors |
-| 4 | `non-retryable/fast-fail-on-400` | HTTP 400 on chunk → single POST, immediate fail |
+| 4 | `session-lost/recovers-after-mid-upload-404` | Session dies after chunk 28; upload still completes |
+| 5 | `cross-run-resume/skips-cached-chunks-on-reupload` | Chunks 0..N-2 cached; only missing chunk uploaded |
+| 6 | `non-retryable/fast-fail-on-400` | HTTP 400 on chunk → single POST, immediate fail |
 
 ## How to Run
 
@@ -85,8 +95,10 @@ type Request struct {
 	PermanentStatus    int
 	MaxChunkAttempts   int
 	AlwaysFailChunk    int // -1 disables; >=0 fails that chunk on every HTTP attempt
-	TransportFailChunk int
-	TransportFailCount int
+	TransportFailChunk     int
+	TransportFailCount     int
+	SessionDropAfterChunk int  // after storing this index, session becomes invalid
+	PrefilledChunks       int // chunks 0..N-1 already on server before upload
 }
 
 type Response struct {
@@ -125,8 +137,23 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	var mu sync.Mutex
 	chunks := make(map[int][]byte)
+	persistentChunks := make(map[int][]byte)
 	var uploadID string
+	sessionAlive := true
 	chunkFailCounts := make(map[int]int)
+	totalChunks := int((req.TotalBytes + client.ChunkSize - 1) / client.ChunkSize)
+
+	if req.PrefilledChunks > 0 {
+		for i := 0; i < req.PrefilledChunks && i < totalChunks; i++ {
+			start := int64(i) * client.ChunkSize
+			end := start + client.ChunkSize
+			if end > req.TotalBytes {
+				end = req.TotalBytes
+			}
+			persistentChunks[i] = append([]byte(nil), wantContent[start:end]...)
+			chunks[i] = persistentChunks[i]
+		}
+	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -144,6 +171,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 				return
 			}
 			uploadID = "test-upload-1"
+			sessionAlive = true
 			mu.Lock()
 			resp.UploadID = uploadID
 			mu.Unlock()
@@ -163,8 +191,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			resp.TotalChunkPosts++
 			mu.Unlock()
 
-			if uid != uploadID {
-				writeJSONErr(w, http.StatusNotFound, "unknown upload")
+			if uid != uploadID || !sessionAlive {
+				writeJSONErr(w, http.StatusNotFound, "upload session not found")
 				return
 			}
 
@@ -188,6 +216,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			f.Close()
 			mu.Lock()
 			chunks[idx] = append([]byte(nil), data...)
+			persistentChunks[idx] = chunks[idx]
+			if req.SessionDropAfterChunk >= 0 && idx == req.SessionDropAfterChunk {
+				sessionAlive = false
+			}
 			mu.Unlock()
 			writeJSON(w, map[string]any{"status": "ok", "chunk_index": idx})
 
@@ -201,7 +233,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			json.NewDecoder(r.Body).Decode(&body)
 			mu.Lock()
 			defer mu.Unlock()
-			totalChunks := int((req.TotalBytes + client.ChunkSize - 1) / client.ChunkSize)
 			if len(chunks) != totalChunks {
 				writeJSONErr(w, http.StatusBadRequest, fmt.Sprintf("only %d of %d chunks", len(chunks), totalChunks))
 				return
@@ -233,13 +264,13 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		Tracker:        transportTracker,
 	})
 	c.HTTPClient = base
-	result, err := c.UploadFile(localFile, destPath, client.UploadOptions{
+	uploadOpts := client.UploadOptions{
 		ChunkRetry: &client.ChunkRetryConfig{
 			MaxAttempts: req.MaxChunkAttempts,
 			Backoff:     func(int) int64 { return 0 },
 		},
-	}, nil)
-
+	}
+	result, err := c.UploadFile(localFile, destPath, uploadOpts, nil)
 	if err != nil {
 		resp.UploadErr = err.Error()
 		return resp, nil
@@ -260,14 +291,14 @@ func shouldFailChunk(req *Request, idx int, counts map[int]int) bool {
 	if req.TransientFails > 0 && idx == req.FlakyChunkIndex {
 		return counts[idx] < req.TransientFails
 	}
-	if req.PermanentStatus != 0 && req.TransientFails == 0 && req.AlwaysFailChunk < 0 && idx == req.FlakyChunkIndex {
+	if req.FlakyChunkIndex >= 0 && req.PermanentStatus != 0 && req.TransientFails == 0 && req.AlwaysFailChunk < 0 && idx == req.FlakyChunkIndex {
 		return true
 	}
 	return false
 }
 
 func failStatus(req *Request, idx int) int {
-	if req.PermanentStatus != 0 && req.TransientFails == 0 && req.AlwaysFailChunk < 0 && idx == req.FlakyChunkIndex {
+	if req.FlakyChunkIndex >= 0 && req.PermanentStatus != 0 && req.TransientFails == 0 && req.AlwaysFailChunk < 0 && idx == req.FlakyChunkIndex {
 		return req.PermanentStatus
 	}
 	return req.FailStatus
