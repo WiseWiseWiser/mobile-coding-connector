@@ -1,42 +1,30 @@
 #!/usr/bin/env bash
-# Copy this file to local-debug-remote-exec.sh (gitignored) and set REMOTE_SHELL.
+# Copy this file to local-debug-remote-exec.sh (gitignored) and set REMOTE_EXEC.
 #
 # Usage:
 #   ./local-debug-remote-exec.sh echo yes
 #   ./local-debug-remote-exec.sh grep -c pattern /root/some.log
-#
-# Arguments are joined into one remote command line. For pipelines, &&, or
-# multiple commands, pass a single sh -c argument:
 #   ./local-debug-remote-exec.sh sh -c 'cd /root && pwd'
-#   ./local-debug-remote-exec.sh sh -c 'ss -tlnp | grep 23712'
-#
-# If smc prompts for device-cert registration, add --skip-deviceauth to REMOTE_SHELL.
 
 set -euo pipefail
 
-# Configure how you reach the remote container shell.
-# This is machine- and team-specific — keep it in the gitignored copy only.
-#
-# Example (replace with your own wrapper):
-# REMOTE_SHELL=(spl codelens admin smc enter --region=ph)
-REMOTE_SHELL=()
+# Non-interactive one-shot remote exec. Configure locally — not committed.
+# REMOTE_EXEC is the argv prefix; remote command args are appended as "$@".
+# If your tool needs a "--" separator before the remote command, include it here.
+REMOTE_EXEC=()
 
-if ((${#REMOTE_SHELL[@]} == 0)); then
-  echo "Set REMOTE_SHELL in local-debug-remote-exec.sh (copy from local-debug-remote-exec.sh.example)" >&2
+if ((${#REMOTE_EXEC[@]} == 0)); then
+  echo "Set REMOTE_EXEC in local-debug-remote-exec.sh (copy from local-debug-remote-exec.sh.example)" >&2
   exit 1
 fi
 
-# Non-interactive session:
-#   n×3   — decline stacked smc/spl prompts (idc, device auth, cert)
-#   …     — remote command (all args joined on one line)
-#   exit  — leave remote shell
-#
-# Pipe directly — do NOT use $(printf ...) for the body; command substitution
-# strips trailing newlines and would glue the last command to "exit".
-{
-  printf 'n\nn\nn\n'
-  if (($# > 0)); then
-    printf '%s\n' "$*"
-  fi
-  printf 'exit\n'
-} | "${REMOTE_SHELL[@]}"
+if (($# == 0)); then
+  echo "Usage: $0 <remote-command...>" >&2
+  echo "Example: $0 echo yes" >&2
+  echo "         $0 sh -c 'cd /root && pwd'" >&2
+  exit 1
+fi
+
+# Use non-interactive remote exec — do not pipe into an interactive remote login
+# (prompts consume stdin lines before your command runs).
+exec "${REMOTE_EXEC[@]}" "$@"

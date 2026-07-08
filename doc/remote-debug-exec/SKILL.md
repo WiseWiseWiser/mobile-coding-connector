@@ -27,10 +27,14 @@ The repo ships a **template only**. Your machine-specific entry command stays lo
 ```bash
 cp local-debug-remote-exec.sh.example local-debug-remote-exec.sh
 chmod +x local-debug-remote-exec.sh
-# Edit REMOTE_SHELL=() — set to however you reach the remote container shell
+# Set REMOTE_EXEC to your non-interactive remote command wrapper (machine-specific)
 ```
 
 `local-debug-remote-exec.sh` is in `.gitignore`. Never commit it.
+
+**Use non-interactive remote exec.** Do not pipe commands into an interactive remote login — prompts (device auth, cert registration) consume stdin lines before your command runs (`echo` answers a prompt, `yes` runs forever).
+
+The wrapper calls `REMOTE_EXEC` with `"$@"` appended so each invocation runs one remote command directly.
 
 ### Demo
 
@@ -38,15 +42,7 @@ chmod +x local-debug-remote-exec.sh
 ./local-debug-remote-exec.sh echo yes
 ```
 
-Arguments are **joined into one remote command line** (`echo yes` works). For pipelines or `&&` chains, use a single `sh -c '…'` argument.
-
-The script sends:
-
-1. `n` ×3 — decline stacked smc/spl prompts (idc, device auth, cert registration)
-2. Your command (all args on one line)
-3. `exit`
-
-If cert registration still appears, add `--skip-deviceauth` to `REMOTE_SHELL` in your local copy.
+For pipelines or `&&` chains, use a single `sh -c '…'` argument.
 
 ### More examples
 
@@ -66,7 +62,7 @@ If cert registration still appears, add `--skip-deviceauth` to `REMOTE_SHELL` in
 
 1. **Always `cd /root` first** — default cwd may not be the ai-critic home; data lives under `/root`.
 2. **Run `pwd` on the first debug command** — confirm cwd before reading logs.
-3. **Args join into one command** — `./local-debug-remote-exec.sh grep -c pattern file` is fine; use `sh -c` for `|`, `&&`, or multiple commands.
+3. **Args pass through to remote** — `./local-debug-remote-exec.sh grep -c pattern file` works; use `sh -c` for `|`, `&&`, or multiple commands.
 4. **Keep commands short** — avoid `tail` on multi-GB files; use `tail -n 50` or `grep` with date filters.
 5. **Logs may be rotated/deleted** — capture excerpts during investigation.
 
