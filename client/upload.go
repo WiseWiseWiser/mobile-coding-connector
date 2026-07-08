@@ -35,7 +35,8 @@ type UploadResult struct {
 
 // UploadOptions configures optional server-side handling for uploads.
 type UploadOptions struct {
-	ChmodExec bool
+	ChmodExec  bool
+	ChunkRetry *ChunkRetryConfig
 }
 
 // UploadFile reads localFile and uploads it to remotePath on the server
@@ -99,7 +100,7 @@ func (c *Client) UploadFile(localFile string, remotePath string, opts UploadOpti
 			return nil, fmt.Errorf("failed to read chunk %d: %w", i, readErr)
 		}
 
-		if err := c.uploadChunk(uploadID, i, buf[:n]); err != nil {
+		if err := c.uploadChunkWithRetry(uploadID, i, buf[:n], opts); err != nil {
 			return nil, fmt.Errorf("upload chunk %d failed: %w", i, err)
 		}
 
@@ -196,7 +197,7 @@ func (c *Client) uploadChunk(uploadID string, chunkIndex int, chunk []byte) erro
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return readAPIError(resp)
+		return readUploadAPIError(resp)
 	}
 	io.Copy(io.Discard, resp.Body)
 	return nil
