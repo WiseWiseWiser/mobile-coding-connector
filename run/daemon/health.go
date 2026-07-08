@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os/exec"
 	"time"
+
+	"github.com/xhd2015/ai-critic/server/config"
 )
 
 // ExitReasonType represents why the health check loop exited
@@ -235,7 +237,7 @@ func (hc *HealthChecker) killProcess(cmd *exec.Cmd) {
 // checkPingEndpoint checks if the server's /ping endpoint returns "pong"
 func (hc *HealthChecker) checkPingEndpoint(port int) bool {
 	client := &http.Client{Timeout: 5 * time.Second}
-	url := fmt.Sprintf("http://localhost:%d/ping", port)
+	url := fmt.Sprintf("http://%s:%d/ping", config.LoopbackHost, port)
 	Logger("[health-check] Making HTTP GET request to %s", url)
 
 	resp, err := client.Get(url)
@@ -283,7 +285,7 @@ func (hc *HealthChecker) checkProcessAlive(port int) bool {
 
 // checkTCPConnectivity checks if a port is reachable via TCP
 func (hc *HealthChecker) checkTCPConnectivity(port int) bool {
-	address := fmt.Sprintf("localhost:%d", port)
+	address := fmt.Sprintf("%s:%d", config.LoopbackHost, port)
 	Logger("[health-check] Attempting TCP connection to %s", address)
 
 	conn, err := net.DialTimeout("tcp", address, PortCheckTimeout)

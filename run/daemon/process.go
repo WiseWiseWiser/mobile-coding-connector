@@ -163,8 +163,8 @@ func WaitForDone(done <-chan struct{}, timeout time.Duration) {
 // IsPortReachable checks if a port is reachable and the /ping endpoint returns "pong"
 func IsPortReachable(port int) bool {
 	// First check if port is accessible via TCP
-	Logger("[IsPortReachable] Step 1/2: Checking TCP connectivity to localhost:%d (timeout=%v)", port, PortCheckTimeout)
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), PortCheckTimeout)
+	Logger("[IsPortReachable] Step 1/2: Checking TCP connectivity to %s:%d (timeout=%v)", config.LoopbackHost, port, PortCheckTimeout)
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", config.LoopbackHost, port), PortCheckTimeout)
 	if err != nil {
 		Logger("[IsPortReachable] TCP connection failed: %v", err)
 		return false
@@ -175,7 +175,7 @@ func IsPortReachable(port int) bool {
 	// Then verify /ping endpoint returns "pong" within 5 seconds
 	Logger("[IsPortReachable] Step 2/2: Checking HTTP /ping endpoint")
 	client := &http.Client{Timeout: 5 * time.Second}
-	url := fmt.Sprintf("http://localhost:%d/ping", port)
+	url := fmt.Sprintf("http://%s:%d/ping", config.LoopbackHost, port)
 	Logger("[IsPortReachable] Making HTTP GET request to %s", url)
 
 	resp, err := client.Get(url)

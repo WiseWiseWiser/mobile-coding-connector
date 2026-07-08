@@ -132,7 +132,7 @@ func runKeepAliveRequest(args []string) error {
 
 // sendKeepAliveInfo fetches and displays status from the keep-alive daemon.
 func sendKeepAliveInfo() error {
-	url := fmt.Sprintf("http://localhost:%d/api/keep-alive/status", config.KeepAlivePort)
+	url := fmt.Sprintf("http://%s:%d/api/keep-alive/status", config.LoopbackHost, config.KeepAlivePort)
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -211,7 +211,7 @@ func sendKeepAliveExecReplace(newBinary string) error {
 		return fmt.Errorf("binary path %q is a directory", absPath)
 	}
 
-	url := fmt.Sprintf("http://localhost:%d/api/keep-alive/exec-replace", config.KeepAlivePort)
+	url := fmt.Sprintf("http://%s:%d/api/keep-alive/exec-replace", config.LoopbackHost, config.KeepAlivePort)
 	reqBody := strings.NewReader(fmt.Sprintf(`{"binary_path":%q}`, absPath))
 
 	resp, err := http.Post(url, "application/json", reqBody)
@@ -243,7 +243,7 @@ func sendKeepAliveExecReplace(newBinary string) error {
 
 // sendKeepAliveRestart sends a restart request to the keep-alive daemon.
 func sendKeepAliveRestart() error {
-	url := fmt.Sprintf("http://localhost:%d/api/keep-alive/restart", config.KeepAlivePort)
+	url := fmt.Sprintf("http://%s:%d/api/keep-alive/restart", config.LoopbackHost, config.KeepAlivePort)
 
 	resp, err := http.Post(url, "application/json", nil)
 	if err != nil {
@@ -269,7 +269,7 @@ func sendKeepAliveRestart() error {
 
 // sendKeepAliveFixTunnel sends a request to fix stale tunnels to the keep-alive daemon.
 func sendKeepAliveFixTunnel() error {
-	url := fmt.Sprintf("http://localhost:%d/api/keep-alive/fix-tunnel", config.KeepAlivePort)
+	url := fmt.Sprintf("http://%s:%d/api/keep-alive/fix-tunnel", config.LoopbackHost, config.KeepAlivePort)
 
 	resp, err := http.Post(url, "application/json", nil)
 	if err != nil {
@@ -347,9 +347,9 @@ RESTART_DELAY=3
 check_port() {
   # Returns 0 if port is reachable
   if command -v nc >/dev/null 2>&1; then
-    nc -z localhost "$PORT" 2>/dev/null
+    nc -z 127.0.0.1 "$PORT" 2>/dev/null
   elif command -v curl >/dev/null 2>&1; then
-    curl -sf --max-time 2 "http://localhost:$PORT/api/ping" >/dev/null 2>&1
+    curl -sf --max-time 2 "http://127.0.0.1:$PORT/api/ping" >/dev/null 2>&1
   else
     # Fallback: use the binary's built-in check-port command
     %s check-port --port "$PORT" --timeout 2 2>/dev/null

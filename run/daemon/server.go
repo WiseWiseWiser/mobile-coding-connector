@@ -237,7 +237,7 @@ func (s *HTTPServer) fixStaleTunnels(serverPort int) map[string]interface{} {
 	}
 
 	// Get domains configuration from main server
-	domainsURL := fmt.Sprintf("http://localhost:%d/api/domains", serverPort)
+	domainsURL := fmt.Sprintf("http://%s:%d/api/domains", config.LoopbackHost, serverPort)
 	req, err := http.NewRequest("GET", domainsURL, nil)
 	if err != nil {
 		result["status"] = "error"
@@ -336,7 +336,7 @@ func (s *HTTPServer) getAuthToken() (string, error) {
 // Returns true if the tunnel was fixed.
 func (s *HTTPServer) fixDomainTunnel(domain string, serverPort int, token string) bool {
 	// Request the main server to restart the tunnel for this domain
-	restartURL := fmt.Sprintf("http://localhost:%d/api/domains/tunnel/stop", serverPort)
+	restartURL := fmt.Sprintf("http://%s:%d/api/domains/tunnel/stop", config.LoopbackHost, serverPort)
 
 	reqBody := fmt.Sprintf(`{"domain":"%s"}`, domain)
 	req, err := http.NewRequest("POST", restartURL, strings.NewReader(reqBody))
@@ -360,7 +360,7 @@ func (s *HTTPServer) fixDomainTunnel(domain string, serverPort int, token string
 	}
 
 	// Now start the tunnel again
-	startURL := fmt.Sprintf("http://localhost:%d/api/domains/tunnel/start", serverPort)
+	startURL := fmt.Sprintf("http://%s:%d/api/domains/tunnel/start", config.LoopbackHost, serverPort)
 	req, err = http.NewRequest("POST", startURL, strings.NewReader(reqBody))
 	if err != nil {
 		Logger("Failed to create start request for %s: %v", domain, err)

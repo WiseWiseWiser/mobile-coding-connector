@@ -255,7 +255,7 @@ func Run(args []string) error {
 
 // isPortInUse checks if the given port is already in use.
 func isPortInUse(port int) bool {
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 1*time.Second)
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", config.LoopbackHost, port), 1*time.Second)
 	if err != nil {
 		return false
 	}

@@ -26,7 +26,7 @@ func CallShutdownEndpoint() bool {
 	}
 
 	port := config.DefaultServerPort
-	url := fmt.Sprintf("http://localhost:%d/api/shutdown", port)
+	url := fmt.Sprintf("http://%s:%d/api/shutdown", config.LoopbackHost, port)
 
 	req, err := http.NewRequest(http.MethodPost, url, nil)
 	if err != nil {

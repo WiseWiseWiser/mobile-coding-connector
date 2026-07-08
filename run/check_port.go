@@ -5,13 +5,14 @@ import (
 	"net"
 	"time"
 
+	"github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/less-gen/flags"
 )
 
 var checkPortHelp = `
 Usage: ai-critic check-port --port PORT
 
-Checks if a TCP port is accessible on localhost.
+Checks if a TCP port is accessible on the loopback interface.
 Exits with code 0 if the port is reachable, 1 otherwise.
 
 Options:
@@ -41,7 +42,7 @@ func runCheckPort(args []string) error {
 		timeout = time.Duration(timeoutFlag) * time.Second
 	}
 
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", portFlag), timeout)
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", config.LoopbackHost, portFlag), timeout)
 	if err != nil {
 		return fmt.Errorf("port %d is not accessible", portFlag)
 	}

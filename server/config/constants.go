@@ -16,6 +16,10 @@ func resolveDataDir() string {
 // working directory (or under $HOME for per-user configs like agents.json).
 var DataDir = resolveDataDir()
 
+// LoopbackHost is used for local TCP/HTTP checks. Prefer 127.0.0.1 over
+// "localhost" so remote hosts with flaky DNS/nsswitch do not break health checks.
+const LoopbackHost = "127.0.0.1"
+
 // Network ports.
 const (
 	// DefaultServerPort is the default port for the Go backend server.
