@@ -1,15 +1,15 @@
 # Scenario
 
-**Feature**: relative countdown from provider reset strings
+**Feature**: compound relative countdown from provider reset strings
 
 ```
-reset string + now -> FormatTimeLeft -> left 3d | left 3h | left 2min | left 0min | empty
+reset string + now -> FormatTimeLeft -> left 3d4h | left 4h5m | left 5m | left 0m | empty
 ```
 
 ## Preconditions
 
 1. `macosapp/menubar` exports `FormatTimeLeft(reset string, now time.Time) string`.
-2. Tests use fixed `NowRFC3339` in `America/Los_Angeles` (PDT in July 2026).
+2. Tests use fixed `NowRFC3339` with explicit timezone offsets in leaves.
 
 ## Steps
 
@@ -17,8 +17,9 @@ reset string + now -> FormatTimeLeft -> left 3d | left 3h | left 2min | left 0mi
 
 ## Context
 
-REQUIREMENT-DESIGN-menubar-rel-time.md relative-time rules: floor to largest unit;
-minutes floor to at least 1 when 0 < duration < 1h; duration ≤ 0 → `left 0min`;
+REQUIREMENT-DESIGN-menubar-display-v2.md compound relative rules: two-tier units
+(`d`+`h`, `h`+`m`, `m` only); omit zero tail units; use `m` not `min`;
+minutes floor to at least 1 when 0 < duration < 1h; duration ≤ 0 → `left 0m`;
 unparseable → empty.
 
 ```go

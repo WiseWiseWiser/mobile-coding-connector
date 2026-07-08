@@ -3,7 +3,7 @@
 **Feature**: grok reset <1h away → minutes unit
 
 ```
-FormatTimeLeft("July 6, 16:57 PT", now=Jul 6 16:55 PDT) -> "left 2min"
+FormatTimeLeft("July 6, 16:57 PT", now=Jul 6 16:55 PDT) -> "left 2m"
 ```
 
 ## Preconditions

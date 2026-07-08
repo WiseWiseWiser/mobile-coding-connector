@@ -1,14 +1,14 @@
 # Scenario
 
-**Feature**: grok reset ≥1h and <24h away → hours unit
+**Feature**: grok reset 3h5m away → compound hours and minutes
 
 ```
-FormatTimeLeft("July 6, 20:00 PT", now=Jul 6 16:55 PDT) -> "left 3h"
+FormatTimeLeft("July 6, 20:00 PT", now=Jul 6 16:55 PDT) -> "left 3h5m"
 ```
 
 ## Preconditions
 
-Remaining duration is 3 hours 5 minutes — floors to hours.
+Remaining duration is 3 hours 5 minutes.
 
 ## Steps
 
@@ -16,7 +16,7 @@ Remaining duration is 3 hours 5 minutes — floors to hours.
 
 ## Context
 
-REQUIREMENT leaf: `relative-time/three-hours`.
+REQUIREMENT-DESIGN-menubar-display-v2.md: ≥1h and <24h uses `h`+`m` compound.
 
 ```go
 import "testing"

@@ -59,7 +59,13 @@ enum UsageLabelFormatter {
     static func formatGrokDropdownLine(status: String, weekly: String, reset: String, errorMsg: String, now: Date = Date()) -> String {
         switch status {
         case "ready":
-            return "Grok: Weekly Limit: \(weekly) (Reset \(reset)\(formatResetSuffix(reset: reset, now: now)))"
+            let display = formatResetDisplay(reset: reset, now: now)
+            var line = "Grok: \(weekly)(Weekly), Reset \(display)"
+            let timeLeft = formatTimeLeft(reset: reset, now: now)
+            if !timeLeft.isEmpty {
+                line += ", \(timeLeft)"
+            }
+            return line
         case "loading":
             return "Grok: Loading..."
         case "error":
@@ -80,7 +86,13 @@ enum UsageLabelFormatter {
     ) -> String {
         switch status {
         case "ready":
-            return "Codex: Monthly Usage: \(monthly) — \(creditsUsed)/\(creditsTotal) (Reset \(reset)\(formatResetSuffix(reset: reset, now: now)))"
+            let display = formatResetDisplay(reset: reset, now: now)
+            var line = "Codex: \(monthly)(Monthly) \(creditsUsed)/\(creditsTotal), Reset \(display)"
+            let timeLeft = formatTimeLeft(reset: reset, now: now)
+            if !timeLeft.isEmpty {
+                line += ", \(timeLeft)"
+            }
+            return line
         case "loading":
             return "Codex: Loading..."
         case "error":
@@ -112,36 +124,70 @@ enum UsageLabelFormatter {
     ]
     private static let pacificTimeZone = TimeZone(identifier: "America/Los_Angeles") ?? TimeZone(secondsFromGMT: -8 * 3600)!
 
+    static func formatResetDisplay(reset: String, now: Date) -> String {
+        let trimmed = reset.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return trimmed
+        }
+
+        let isGrok = grokResetRegex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) != nil
+        let isCodex = codexResetRegex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) != nil
+        guard let resetTime = parseResetTime(reset: reset, now: now) else {
+            return reset
+        }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone.current
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: resetTime)
+
+        if isGrok {
+            guard let month = components.month, let day = components.day,
+                  let hour = components.hour, let minute = components.minute else {
+                return reset
+            }
+            let monthName = grokMonthName(month)
+            return String(format: "%@ %d, %02d:%02d", monthName, day, hour, minute)
+        }
+        if isCodex {
+            guard let month = components.month, let day = components.day,
+                  let hour = components.hour, let minute = components.minute else {
+                return reset
+            }
+            let monthAbbrev = codexMonthAbbrev(month)
+            return String(format: "%@ %d, %02d:%02d", monthAbbrev, day, hour, minute)
+        }
+        return reset
+    }
+
     static func formatTimeLeft(reset: String, now: Date) -> String {
         guard let resetTime = parseResetTime(reset: reset, now: now) else {
             return ""
         }
         let remaining = resetTime.timeIntervalSince(now)
         if remaining <= 0 {
-            return "left 0min"
+            return "left 0m"
         }
-        let hours = remaining / 3600
-        if hours >= 24 {
+        let totalHours = Int(remaining / 3600)
+        if totalHours >= 24 {
             let days = Int(remaining / (24 * 3600))
-            return "left \(days)d"
+            let hours = totalHours % 24
+            if hours == 0 {
+                return "left \(days)d"
+            }
+            return "left \(days)d\(hours)h"
         }
-        if hours >= 1 {
-            let hrs = Int(remaining / 3600)
-            return "left \(hrs)h"
+        if totalHours >= 1 {
+            let minutes = Int(remaining / 60) % 60
+            if minutes == 0 {
+                return "left \(totalHours)h"
+            }
+            return "left \(totalHours)h\(minutes)m"
         }
         var mins = Int(remaining / 60)
         if mins < 1 {
             mins = 1
         }
-        return "left \(mins)min"
-    }
-
-    static func formatResetSuffix(reset: String, now: Date) -> String {
-        let left = formatTimeLeft(reset: reset, now: now)
-        if left.isEmpty {
-            return ""
-        }
-        return ", \(left)"
+        return "left \(mins)m"
     }
 
     private static func parseResetTime(reset: String, now: Date) -> Date? {
@@ -219,6 +265,25 @@ enum UsageLabelFormatter {
 
     private static func monthNumber(from name: String) -> Int? {
         monthByName[name.lowercased()]
+    }
+
+    private static let grokMonthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ]
+    private static let codexMonthAbbrevs = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ]
+
+    private static func grokMonthName(_ month: Int) -> String {
+        guard month >= 1, month <= 12 else { return "" }
+        return grokMonthNames[month - 1]
+    }
+
+    private static func codexMonthAbbrev(_ month: Int) -> String {
+        guard month >= 1, month <= 12 else { return "" }
+        return codexMonthAbbrevs[month - 1]
     }
 
     private static func captureGroup(_ match: NSTextCheckingResult, in text: String, index: Int) -> String? {

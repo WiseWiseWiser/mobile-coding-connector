@@ -125,6 +125,31 @@ func parseResetTime(reset string, now time.Time) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// FormatResetDisplay parses provider reset strings and returns local wall-clock display text.
+func FormatResetDisplay(reset string, now time.Time) string {
+	reset = strings.TrimSpace(reset)
+	if reset == "" {
+		return reset
+	}
+
+	isGrok := grokResetRE.MatchString(reset)
+	isCodex := codexResetRE.MatchString(reset)
+
+	resetTime, ok := parseResetTime(reset, now)
+	if !ok {
+		return reset
+	}
+
+	local := resetTime.In(now.Location())
+	if isGrok {
+		return fmt.Sprintf("%s %d, %02d:%02d", local.Month().String(), local.Day(), local.Hour(), local.Minute())
+	}
+	if isCodex {
+		return local.Format("Jan 2, 15:04")
+	}
+	return reset
+}
+
 // FormatTimeLeft parses provider reset strings and returns compact relative countdown text.
 func FormatTimeLeft(reset string, now time.Time) string {
 	resetTime, ok := parseResetTime(reset, now)
@@ -134,24 +159,31 @@ func FormatTimeLeft(reset string, now time.Time) string {
 
 	remaining := resetTime.Sub(now)
 	if remaining <= 0 {
-		return "left 0min"
+		return "left 0m"
 	}
 
-	hours := remaining.Hours()
-	if hours >= 24 {
+	totalHours := int(remaining / time.Hour)
+	if totalHours >= 24 {
 		days := int(remaining / (24 * time.Hour))
-		return fmt.Sprintf("left %dd", days)
+		hours := totalHours % 24
+		if hours == 0 {
+			return fmt.Sprintf("left %dd", days)
+		}
+		return fmt.Sprintf("left %dd%dh", days, hours)
 	}
-	if hours >= 1 {
-		hrs := int(remaining / time.Hour)
-		return fmt.Sprintf("left %dh", hrs)
+	if totalHours >= 1 {
+		minutes := int(remaining/time.Minute) % 60
+		if minutes == 0 {
+			return fmt.Sprintf("left %dh", totalHours)
+		}
+		return fmt.Sprintf("left %dh%dm", totalHours, minutes)
 	}
 
 	mins := int(remaining / time.Minute)
 	if mins < 1 {
 		mins = 1
 	}
-	return fmt.Sprintf("left %dmin", mins)
+	return fmt.Sprintf("left %dm", mins)
 }
 
 // FormatResetSuffix returns a comma-prefixed relative suffix for dropdown parentheses.

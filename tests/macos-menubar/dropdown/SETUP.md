@@ -16,8 +16,10 @@ Ready-state dropdown lines per REQUIREMENT-DESIGN-codex-usage.md confirmed decis
 
 ## Context
 
-Dropdown leaves assert exact canonical strings for grok weekly and codex monthly usage,
-including absolute reset plus relative countdown suffix when parseable.
+Dropdown leaves assert exact canonical v2 strings for grok weekly and codex monthly
+usage: `Grok: {pct}(Weekly), Reset {local}, {timeLeft}` and
+`Codex: {pct}(Monthly) {used}/{total}, Reset {local}, {timeLeft}`.
+Unparseable reset omits `{timeLeft}`; error/loading lines unchanged.
 
 ```go
 import "testing"

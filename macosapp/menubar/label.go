@@ -63,7 +63,12 @@ func FormatMenuBarLabel(
 func FormatGrokDropdownLine(status, weeklyLimit, reset, errorMsg string, now time.Time) string {
 	switch status {
 	case "ready":
-		return fmt.Sprintf("Grok: Weekly Limit: %s (Reset %s%s)", weeklyLimit, reset, FormatResetSuffix(reset, now))
+		display := FormatResetDisplay(reset, now)
+		line := fmt.Sprintf("Grok: %s(Weekly), Reset %s", weeklyLimit, display)
+		if timeLeft := FormatTimeLeft(reset, now); timeLeft != "" {
+			line += ", " + timeLeft
+		}
+		return line
 	case "loading":
 		return "Grok: Loading..."
 	case "error":
@@ -77,7 +82,12 @@ func FormatGrokDropdownLine(status, weeklyLimit, reset, errorMsg string, now tim
 func FormatCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, reset, errorMsg string, now time.Time) string {
 	switch status {
 	case "ready":
-		return fmt.Sprintf("Codex: Monthly Usage: %s — %s/%s (Reset %s%s)", monthlyUsage, creditsUsed, creditsTotal, reset, FormatResetSuffix(reset, now))
+		display := FormatResetDisplay(reset, now)
+		line := fmt.Sprintf("Codex: %s(Monthly) %s/%s, Reset %s", monthlyUsage, creditsUsed, creditsTotal, display)
+		if timeLeft := FormatTimeLeft(reset, now); timeLeft != "" {
+			line += ", " + timeLeft
+		}
+		return line
 	case "loading":
 		return "Codex: Loading..."
 	case "error":

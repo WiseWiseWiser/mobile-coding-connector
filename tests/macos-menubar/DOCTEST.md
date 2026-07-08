@@ -12,15 +12,16 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
   `Grok ` (backward-compatible helper).
 - **FormatMenuBarLabel** — selects grok or codex title from display mode
   (`rotating`|`grok`|`codex`) and rotating index; handles loading/error truncation.
-- **FormatGrokDropdownLine** — single-line grok dropdown text with weekly limit,
-  absolute reset, and relative countdown suffix.
-- **FormatCodexDropdownLine** — single-line codex dropdown text with monthly usage,
-  credits fraction, absolute reset, and relative countdown suffix.
+- **FormatGrokDropdownLine** — single-line grok dropdown text:
+  `Grok: {pct}(Weekly), Reset {local}, {timeLeft}`.
+- **FormatCodexDropdownLine** — single-line codex dropdown text:
+  `Codex: {pct}(Monthly) {used}/{total}, Reset {local}, {timeLeft}`.
+- **FormatResetDisplay** — parses provider reset string to an absolute instant,
+  converts to `now.Location()` (local), formats as `{Month} {day}, {HH}:{mm}`
+  (24h clock, no timezone suffix); unparseable → raw string unchanged.
 - **FormatTimeLeft** — parses provider reset strings (grok `July 9, 16:55 PT` or codex
-  `08:00 on 1 Aug`), infers year from `now`, and returns compact relative text
-  (`left 3d`, `left 3h`, `left 2min`, or empty when unparseable).
-- **FormatResetSuffix** — comma-prefixed relative suffix for dropdown parentheses
-  (`, left 3d` or empty when unparseable).
+  `08:00 on 1 Aug`), infers year from `now`, and returns compound relative text
+  (`left 3d4h`, `left 4h5m`, `left 5m`, `left 0m`, or empty when unparseable).
 - **Test harness** — invokes formatters with leaf-provided inputs and fixed `now`;
   no UI or network.
 
@@ -30,19 +31,21 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
   `error` → fixed short `Grok err` (not full daemon message).
 - `formatCodexLabel`: `error` → fixed short `Codex err`.
 - `FormatMenuBarLabel`: fixed `grok`/`codex` modes; rotating index 0 → grok, 1 → codex.
-- `FormatTimeLeft`: floor to largest unit (≥24h→days, ≥1h→hours, <1h→minutes);
-  minutes floor to at least 1 when 0 < duration < 1h; duration ≤ 0 → `left 0min`;
-  unparseable/empty reset → empty string.
-- `FormatResetSuffix`: `, ` + `FormatTimeLeft` when parseable; empty otherwise.
-- `FormatGrokDropdownLine`: ready → `Grok: Weekly Limit: … (Reset <abs>, left <rel>)`;
-  `error` → `Grok: Error: {msg}` (no reset suffix on error).
-- `FormatCodexDropdownLine`: ready → `Codex: Monthly Usage: … (Reset <abs>, left <rel>)`;
+- `FormatResetDisplay`: grok PT reset → local wall clock; codex `08:00 on 1 Aug` →
+  `Aug 1, 08:00`; unparseable → pass through raw reset string.
+- `FormatTimeLeft`: compound two-tier units (≥24h → `d`+`h`, ≥1h → `h`+`m`, <1h → `m`);
+  omit zero tail units; minutes floor to at least 1 when 0 < duration < 1h;
+  duration ≤ 0 → `left 0m`; unparseable/empty reset → empty string.
+- `FormatGrokDropdownLine`: ready → `Grok: {pct}(Weekly), Reset {local}, {timeLeft}`;
+  `error` → `Grok: Error: {msg}` (no reset suffix on error); unparseable reset omits
+  `{timeLeft}` but still shows `Reset {raw}`.
+- `FormatCodexDropdownLine`: ready → `Codex: {pct}(Monthly) {used}/{total}, Reset {local}, {timeLeft}`;
   `error` → `Codex: Error: {msg}` (no reset suffix on error).
 - Compact menu-bar pill labels (`label/*`) remain unchanged — no reset or relative time.
 
 ## Version
 
-0.0.3
+0.0.4
 
 ## Decision Tree
 
@@ -60,21 +63,29 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
  |    +-- rotating-grok-slot/         (LEAF)   FormatMenuBarLabel rotating index=0
  |    +-- rotating-codex-slot/       (LEAF)   FormatMenuBarLabel rotating index=1
  |
- +-- relative-time/                   (GROUP)  FormatTimeLeft relative countdown
- |    +-- three-days/                 (LEAF)   grok reset, ≥24h → `left 3d`
- |    +-- three-hours/                (LEAF)   grok reset, ≥1h <24h → `left 3h`
- |    +-- two-minutes/                (LEAF)   grok reset, <1h → `left 2min`
+ +-- relative-time/                   (GROUP)  FormatTimeLeft compound countdown
+ |    +-- three-days/                 (LEAF)   exact 72h → `left 3d`
+ |    +-- three-days-four-hours/      (LEAF)   76h → `left 3d4h`
+ |    +-- two-days-five-hours/        (LEAF)   53h → `left 2d5h`
+ |    +-- three-hours-five-minutes/   (LEAF)   3h5m → `left 3h5m`
+ |    +-- four-hours-five-minutes/    (LEAF)   4h5m → `left 4h5m`
+ |    +-- five-minutes/               (LEAF)   <1h → `left 5m`
+ |    +-- two-minutes/                (LEAF)   <1h → `left 2m`
  |    +-- codex-three-days/           (LEAF)   codex reset format → `left 3d`
- |    +-- one-minute-floor/           (LEAF)   90s remaining → `left 1min`
- |    +-- zero-minutes/               (LEAF)   duration ≤ 0 → `left 0min`
+ |    +-- one-minute-floor/           (LEAF)   90s remaining → `left 1m`
+ |    +-- zero-minutes/               (LEAF)   duration ≤ 0 → `left 0m`
  |    +-- unparseable-fallback/       (LEAF)   unparseable reset → empty
  |
+ +-- reset-display/                   (GROUP)  FormatResetDisplay local time
+ |    +-- grok-same-tz/               (LEAF)   PT reset in PDT → same wall clock
+ |    +-- grok-cross-tz/              (LEAF)   PT reset in EDT → +3h local
+ |    +-- grok-date-rollover/         (LEAF)   PT reset in JST → next calendar day
+ |    +-- codex-reformat/             (LEAF)   `08:00 on 1 Aug` → `Aug 1, 08:00`
+ |    +-- unparseable-fallback/       (LEAF)   unparseable → raw string
+ |
  +-- dropdown/                        (GROUP)  dropdown single lines
- |    +-- reset-suffix/               (GROUP)  FormatResetSuffix comma prefix
- |    |    +-- grok-three-days/       (LEAF)   parseable grok → `, left 3d`
- |    |    +-- codex-three-days/      (LEAF)   parseable codex → `, left 3d`
- |    |    +-- unparseable/           (LEAF)   unparseable → empty
  |    +-- grok-line/                  (LEAF)   FormatGrokDropdownLine ready + relative
+ |    +-- grok-unparseable-reset/     (LEAF)   ready, unparseable reset → no `left`
  |    +-- grok-error/                 (LEAF)   FormatGrokDropdownLine error msg
  |    +-- codex-line/                 (LEAF)   FormatCodexDropdownLine ready + relative
  |    +-- codex-error/                (LEAF)   FormatCodexDropdownLine error msg
@@ -98,21 +109,28 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
 | 8 | `label/rotating-grok-slot` | rotating index=0 → `Grok 6%` |
 | 9 | `label/rotating-codex-slot` | rotating index=1 → `Codex 58%` |
 | 10 | `relative-time/three-days` | `FormatTimeLeft` grok reset → `left 3d` |
-| 11 | `relative-time/three-hours` | `FormatTimeLeft` grok reset → `left 3h` |
-| 12 | `relative-time/two-minutes` | `FormatTimeLeft` grok reset → `left 2min` |
-| 13 | `relative-time/codex-three-days` | `FormatTimeLeft` codex reset → `left 3d` |
-| 14 | `relative-time/one-minute-floor` | 90s remaining → `left 1min` |
-| 15 | `relative-time/zero-minutes` | reset at or before `now` → `left 0min` |
-| 16 | `relative-time/unparseable-fallback` | `soon` → empty |
-| 17 | `dropdown/reset-suffix/grok-three-days` | `FormatResetSuffix` grok → `, left 3d` |
-| 18 | `dropdown/reset-suffix/codex-three-days` | `FormatResetSuffix` codex → `, left 3d` |
-| 19 | `dropdown/reset-suffix/unparseable` | `FormatResetSuffix` unparseable → empty |
-| 20 | `dropdown/grok-line` | `Grok: Weekly Limit: 6% (Reset July 9, 16:55 PT, left 3d)` |
-| 21 | `dropdown/grok-error` | `Grok: Error: timeout waiting` |
-| 22 | `dropdown/codex-line` | `Codex: Monthly Usage: 58% — 6,519/11,250 (Reset 08:00 on 1 Aug, left 26d)` |
-| 23 | `dropdown/codex-error` | `Codex: Error: fork/exec ...` full message |
-| 24 | `dropdown/codex-timeout-error` | `Codex: Error: timeout waiting for status output` |
-| 25 | `client/swift-grok-codex-server-port` | AppState refresh uses ServerClient for grok/codex |
+| 11 | `relative-time/three-days-four-hours` | 76h remaining → `left 3d4h` |
+| 12 | `relative-time/two-days-five-hours` | 53h remaining → `left 2d5h` |
+| 13 | `relative-time/three-hours-five-minutes` | 3h5m remaining → `left 3h5m` |
+| 14 | `relative-time/four-hours-five-minutes` | 4h5m remaining → `left 4h5m` |
+| 15 | `relative-time/five-minutes` | 5m remaining → `left 5m` |
+| 16 | `relative-time/two-minutes` | 2m remaining → `left 2m` |
+| 17 | `relative-time/codex-three-days` | `FormatTimeLeft` codex reset → `left 3d` |
+| 18 | `relative-time/one-minute-floor` | 90s remaining → `left 1m` |
+| 19 | `relative-time/zero-minutes` | reset at or before `now` → `left 0m` |
+| 20 | `relative-time/unparseable-fallback` | `soon` → empty |
+| 21 | `reset-display/grok-same-tz` | `July 9, 17:55 PT` in PDT → `July 9, 17:55` |
+| 22 | `reset-display/grok-cross-tz` | `July 9, 17:55 PT` in EDT → `July 9, 20:55` |
+| 23 | `reset-display/grok-date-rollover` | `July 9, 17:55 PT` in JST → `July 10, 09:55` |
+| 24 | `reset-display/codex-reformat` | `08:00 on 1 Aug` → `Aug 1, 08:00` |
+| 25 | `reset-display/unparseable-fallback` | `soon` → `soon` (unchanged) |
+| 26 | `dropdown/grok-line` | `Grok: 6%(Weekly), Reset July 9, 16:55, left 3d` |
+| 27 | `dropdown/grok-unparseable-reset` | ready + `soon` → no `left` suffix |
+| 28 | `dropdown/grok-error` | `Grok: Error: timeout waiting` |
+| 29 | `dropdown/codex-line` | `Codex: 58%(Monthly) 6,519/11,250, Reset Aug 1, 08:00, left 26d` |
+| 30 | `dropdown/codex-error` | `Codex: Error: fork/exec ...` full message |
+| 31 | `dropdown/codex-timeout-error` | `Codex: Error: timeout waiting for status output` |
+| 32 | `client/swift-grok-codex-server-port` | AppState refresh uses ServerClient for grok/codex |
 
 ## Parameter Coverage
 
@@ -128,16 +146,23 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
 | rotating-grok-slot | menu-label | rotating | — | grok ready 6% |
 | rotating-codex-slot | menu-label | rotating | — | codex ready 58% |
 | three-days | time-left | — | 2026-07-06T16:55:00-07:00 | reset=July 9, 16:55 PT |
-| three-hours | time-left | — | 2026-07-06T16:55:00-07:00 | reset=July 6, 20:00 PT |
+| three-days-four-hours | time-left | — | 2026-07-06T16:55:00-07:00 | reset=July 9, 20:55 PT |
+| two-days-five-hours | time-left | — | 2026-07-06T16:55:00-07:00 | reset=July 8, 21:55 PT |
+| three-hours-five-minutes | time-left | — | 2026-07-06T16:55:00-07:00 | reset=July 6, 20:00 PT |
+| four-hours-five-minutes | time-left | — | 2026-07-06T16:55:00-07:00 | reset=July 6, 21:00 PT |
+| five-minutes | time-left | — | 2026-07-06T16:55:00-07:00 | reset=July 6, 17:00 PT |
 | two-minutes | time-left | — | 2026-07-06T16:55:00-07:00 | reset=July 6, 16:57 PT |
 | codex-three-days | time-left | — | 2026-07-06T08:00:00-07:00 | reset=08:00 on 9 Jul |
 | one-minute-floor | time-left | — | 2026-07-06T16:55:00-07:00 | reset=July 6, 16:56:30 PT |
 | zero-minutes | time-left | — | 2026-07-06T16:55:00-07:00 | reset=July 6, 16:55 PT |
 | unparseable-fallback | time-left | — | 2026-07-06T16:55:00-07:00 | reset=soon |
-| grok-three-days | reset-suffix | — | 2026-07-06T16:55:00-07:00 | reset=July 9, 16:55 PT |
-| codex-three-days | reset-suffix | — | 2026-07-06T08:00:00-07:00 | reset=08:00 on 9 Jul |
-| unparseable | reset-suffix | — | 2026-07-06T16:55:00-07:00 | reset=soon |
+| grok-same-tz | reset-display | — | 2026-07-06T16:55:00-07:00 | reset=July 9, 17:55 PT |
+| grok-cross-tz | reset-display | — | 2026-07-06T16:55:00-04:00 | reset=July 9, 17:55 PT |
+| grok-date-rollover | reset-display | — | 2026-07-06T16:55:00+09:00 | reset=July 9, 17:55 PT |
+| codex-reformat | reset-display | — | 2026-07-06T08:00:00-07:00 | reset=08:00 on 1 Aug |
+| unparseable-fallback (reset) | reset-display | — | 2026-07-06T16:55:00-07:00 | reset=soon |
 | grok-line | grok-dropdown | — | 2026-07-06T16:55:00-07:00 | weekly=6%, reset=July 9, 16:55 PT |
+| grok-unparseable-reset | grok-dropdown | — | 2026-07-06T16:55:00-07:00 | weekly=6%, reset=soon |
 | grok-error | grok-dropdown | — | — | status=error, error=timeout waiting |
 | codex-line | codex-dropdown | — | 2026-07-06T08:00:00-07:00 | monthly=58%, credits 6,519/11,250 |
 | codex-error | codex-dropdown | — | — | status=error, fork/exec message |
@@ -168,7 +193,7 @@ import (
 type Request struct {
 	Op string
 
-	// Fixed clock for relative-time and dropdown formatters (RFC3339, America/Los_Angeles in tests).
+	// Fixed clock for relative-time, reset-display, and dropdown formatters.
 	NowRFC3339 string
 
 	// FormatGrokLabel (Op=grok-label or empty)
@@ -186,7 +211,7 @@ type Request struct {
 	CodexMonthly   string
 	CodexError     string
 
-	// FormatTimeLeft / FormatResetSuffix (Op=time-left or reset-suffix)
+	// FormatTimeLeft / FormatResetDisplay (Op=time-left or reset-display)
 	Reset string
 
 	// FormatGrokDropdownLine (Op=grok-dropdown)
@@ -202,7 +227,7 @@ type Response struct {
 	Label        string
 	DropdownLine string
 	TimeLeft     string
-	ResetSuffix  string
+	ResetDisplay string
 	MaxLabelLen  int
 
 	// client contract
@@ -247,12 +272,12 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			return nil, fmt.Errorf("parse NowRFC3339: %w", err)
 		}
 		resp.TimeLeft = menubar.FormatTimeLeft(req.Reset, now)
-	case "reset-suffix":
+	case "reset-display":
 		now, err := parseNow(req)
 		if err != nil {
 			return nil, fmt.Errorf("parse NowRFC3339: %w", err)
 		}
-		resp.ResetSuffix = menubar.FormatResetSuffix(req.Reset, now)
+		resp.ResetDisplay = menubar.FormatResetDisplay(req.Reset, now)
 	case "grok-dropdown":
 		now, err := parseNow(req)
 		if err != nil {

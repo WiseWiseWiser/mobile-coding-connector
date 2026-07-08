@@ -10,7 +10,7 @@ usage fields -> FormatGrokLabel / FormatMenuBarLabel / dropdown formatters -> st
 
 1. `macosapp/menubar` exports `FormatGrokLabel`, `FormatMenuBarLabel`,
    `FormatGrokDropdownLine`, `FormatCodexDropdownLine`, `FormatTimeLeft`,
-   `FormatResetSuffix`, and `TestExported_MaxLabelLen()`.
+   `FormatResetDisplay`, and `TestExported_MaxLabelLen()`.
 2. No subprocess or HTTP — pure function calls.
 
 ## Steps
@@ -23,8 +23,9 @@ usage fields -> FormatGrokLabel / FormatMenuBarLabel / dropdown formatters -> st
 
 Implements REQUIREMENT-DESIGN-macos-app-and-bar.md Feature 3,
 REQUIREMENT-DESIGN-codex-usage.md Part 2 menubar formatters, and
-REQUIREMENT-DESIGN-menubar-rel-time.md relative reset suffix. Swift UI is manual;
-this tree locks the shared formatting contract.
+REQUIREMENT-DESIGN-menubar-display-v2.md dropdown v2 (local reset display,
+compound relative countdown). Swift UI is manual; this tree locks the shared
+formatting contract.
 
 ```go
 import "testing"

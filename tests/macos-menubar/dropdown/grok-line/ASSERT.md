@@ -1,10 +1,10 @@
 ## Expected
 
-1. `DropdownLine` is exactly `Grok: Weekly Limit: 6% (Reset July 9, 16:55 PT, left 3d)`.
+1. `DropdownLine` is exactly `Grok: 6%(Weekly), Reset July 9, 16:55, left 3d`.
 
 ## Errors
 
-- Wrong prefix, punctuation, or reset formatting.
+- Old parenthetical format, raw PT suffix, or wrong relative unit.
 
 ```go
 import "testing"
@@ -13,7 +13,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Grok: Weekly Limit: 6% (Reset July 9, 16:55 PT, left 3d)"
+	want := "Grok: 6%(Weekly), Reset July 9, 16:55, left 3d"
 	if resp.DropdownLine != want {
 		t.Fatalf("dropdown = %q, want %q", resp.DropdownLine, want)
 	}

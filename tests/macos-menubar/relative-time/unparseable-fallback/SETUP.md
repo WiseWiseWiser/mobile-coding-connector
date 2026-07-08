@@ -16,7 +16,7 @@ Reset string cannot be parsed as grok or codex format.
 
 ## Context
 
-REQUIREMENT leaf: `relative-time/unparseable-fallback`. Dropdown keeps `(Reset soon)` only.
+REQUIREMENT leaf: `relative-time/unparseable-fallback`. Dropdown shows `Reset soon` only (no `left`).
 
 ```go
 import "testing"

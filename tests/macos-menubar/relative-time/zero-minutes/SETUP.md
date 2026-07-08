@@ -3,7 +3,7 @@
 **Feature**: reset at or before now → zero minutes
 
 ```
-FormatTimeLeft("July 6, 16:55 PT", now=Jul 6 16:55 PDT) -> "left 0min"
+FormatTimeLeft("July 6, 16:55 PT", now=Jul 6 16:55 PDT) -> "left 0m"
 ```
 
 ## Preconditions
@@ -16,7 +16,7 @@ Remaining duration is zero (reset time equals `now`).
 
 ## Context
 
-REQUIREMENT rule: duration ≤ 0 → `left 0min`.
+REQUIREMENT rule: duration ≤ 0 → `left 0m`.
 
 ```go
 import "testing"

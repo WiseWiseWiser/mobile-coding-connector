@@ -3,7 +3,7 @@
 **Feature**: sub-minute remainder floors to at least 1 minute
 
 ```
-FormatTimeLeft("July 6, 16:56:30 PT", now=Jul 6 16:55 PDT) -> "left 1min"
+FormatTimeLeft("July 6, 16:56:30 PT", now=Jul 6 16:55 PDT) -> "left 1m"
 ```
 
 ## Preconditions
