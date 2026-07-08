@@ -55,7 +55,7 @@ func (pm *ProcessManager) StartServer(binPath string, serverArgs []string) (*exe
 	detach := pm.state.GetDetach()
 	cmd, err := pm.startServerCommand(binPath, serverArgs, detach)
 	if err != nil && detach {
-		Logger("Warning: detached server start failed (%v); retrying without Setsid", err)
+		Logger("Server child Setsid unavailable (%v); starting without session detach", err)
 		cmd, err = pm.startServerCommand(binPath, serverArgs, false)
 	}
 	if err != nil {
