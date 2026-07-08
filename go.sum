@@ -32,6 +32,10 @@ github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e h1:MRM5ITcdelLK2j1
 github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e/go.mod h1:XV66xRDqSt+GTGFMVlhk3ULuV0y9ZmzeVGR4mloJI3M=
 github.com/ulikunitz/xz v0.5.12 h1:37Nm15o69RwBkXM0J6A5OlE67RZTfzUxTj8fB3dfcsc=
 github.com/ulikunitz/xz v0.5.12/go.mod h1:nbz6k7qbPmH4IRqmfOplQw/tblSgqTqBwxkY0oWt/14=
+github.com/xhd2015/agent-pro v0.0.49 h1:89xbq7JR0qj1Y4q7DFWTfR07NS5rGaz7sVwKZcMfd8k=
+github.com/xhd2015/agent-pro v0.0.49/go.mod h1:EKjtFg5l36kXQIcuaBz83poBahzQtZ6hi0wDldW5XGA=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.54 h1:9yW3eUdZxSke9DPsqJiLX6f7/LArtUNMBlhA20W5Dd8=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.54/go.mod h1:A4ul60XVmlEMpOQ+9rt8MpGp+DVGFc0dHQyHB19kN2w=
 github.com/xhd2015/gitops v0.0.24 h1:IEQbxN7iQTL8Z8jWtVJOBfIwiy+sfgolOQkXt+bQgew=
 github.com/xhd2015/gitops v0.0.24/go.mod h1:KS8y6tZ3FG+myEaR+H6MvoR099YrP/ADIHZX9ROpZo8=
 github.com/xhd2015/go-coverage v1.0.41 h1:JjUcE93IMz0KHmdCYUKq9JN/EDC/5k0OEhsMAeVvL88=

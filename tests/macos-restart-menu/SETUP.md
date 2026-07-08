@@ -55,7 +55,7 @@ func Setup(t *testing.T, req *Request) error {
 }
 
 func acquireKeepAliveLock(t *testing.T) func() {
-	session := os.Getenv("DOCTEST_SESSION_ID")
+	session := DOCTEST_SESSION_ID
 	if session == "" {
 		session = fmt.Sprintf("%d", time.Now().UnixNano())
 	}

@@ -64,6 +64,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/subprocess"
 	"github.com/xhd2015/ai-critic/server/terminal"
 	"github.com/xhd2015/ai-critic/server/tools"
+	"github.com/xhd2015/ai-critic/server/usage"
 	"github.com/xhd2015/kool/pkgs/web"
 )
 
@@ -169,7 +170,19 @@ func Serve(port int, dev bool) error {
 	mux := http.NewServeMux()
 
 	// Wrap with auth middleware - skip login, auth check, setup, credential generate, ping, public key and path-info endpoints
-	handler := auth.Middleware(mux, []string{"/api/login", "/api/auth/check", "/api/auth/status", "/api/auth/setup", "/api/auth/credentials/generate", "/ping", "/api/encrypt/public-key", "/api/tools/path-info"})
+	handler := auth.Middleware(mux, []string{
+		"/api/login",
+		"/api/auth/check",
+		"/api/auth/status",
+		"/api/auth/setup",
+		"/api/auth/credentials/generate",
+		"/ping",
+		"/api/encrypt/public-key",
+		"/api/tools/path-info",
+		"/api/grok/usage",
+		"/api/codex/usage",
+		"/api/debug/log",
+	})
 
 	// Wrap with quick-test mode handler if enabled
 	if quicktest.Enabled() {
@@ -558,6 +571,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Services API
 	services.RegisterAPI(mux)
+
+	// Grok/codex usage and debug log APIs (business plane on main server port)
+	usage.RegisterAPI(mux)
 
 	// Server status API
 	RegisterServerStatusAPI(mux)

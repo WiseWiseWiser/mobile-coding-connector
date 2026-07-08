@@ -1,11 +1,13 @@
 import SwiftUI
 import ServiceManagement
+import AppKit
 
 @MainActor
 final class AppState: ObservableObject {
     @Published var menuLabel = "Grok ..."
     @Published var grokUsage: GrokUsageResponse?
     @Published var codexUsage: CodexUsageResponse?
+    @Published var services: [ServiceStatus] = []
     @Published var daemonStatus: KeepAliveStatus?
     @Published var statusLine = "Connecting..."
     @Published var rotatingIndex = 0
@@ -14,14 +16,21 @@ final class AppState: ObservableObject {
     func refresh() async {
         async let grokTask: GrokUsageResponse? = {
             do {
-                return try await DaemonClient.shared.grokUsage()
+                return try await ServerClient.shared.grokUsage()
             } catch {
                 return nil
             }
         }()
         async let codexTask: CodexUsageResponse? = {
             do {
-                return try await DaemonClient.shared.codexUsage()
+                return try await ServerClient.shared.codexUsage()
+            } catch {
+                return nil
+            }
+        }()
+        async let servicesTask: [ServiceStatus]? = {
+            do {
+                return try await ServerClient.shared.listServices()
             } catch {
                 return nil
             }
@@ -29,6 +38,9 @@ final class AppState: ObservableObject {
 
         grokUsage = await grokTask
         codexUsage = await codexTask
+        if let listed = await servicesTask {
+            services = listed
+        }
         updateMenuLabel()
 
         do {
@@ -61,6 +73,14 @@ final class AppState: ObservableObject {
     func advanceRotation() {
         rotatingIndex = (rotatingIndex + 1) % 2
         updateMenuLabel()
+    }
+
+    func refreshServices() async {
+        do {
+            services = try await ServerClient.shared.listServices()
+        } catch {
+            // Keep prior list when server is temporarily unreachable.
+        }
     }
 }
 
@@ -205,6 +225,47 @@ private struct MenuBarDropdownContent: View {
                 }
             }
 
+            Menu("Services") {
+                if state.services.isEmpty {
+                    Text(ServiceMenuFormatter.formatServicesEmptyLabel())
+                } else {
+                    ForEach(state.services) { service in
+                        Menu(ServiceMenuFormatter.formatServiceTitle(
+                            name: service.name,
+                            status: service.status,
+                            enabled: service.enabled
+                        )) {
+                            Button("Start") {
+                                Task { await runServiceAction(service.id) { try await ServerClient.shared.startService(id: service.id) } }
+                            }
+                            Button("Restart") {
+                                Task { await runServiceAction(service.id) { try await ServerClient.shared.restartService(id: service.id) } }
+                            }
+                            Button("Stop") {
+                                Task { await runServiceAction(service.id) { try await ServerClient.shared.stopService(id: service.id) } }
+                            }
+                            .disabled(!ServiceMenuFormatter.canStopService(pid: service.pid, desiredRunning: service.desiredRunning))
+
+                            if ServiceMenuFormatter.showEnableAction(enabled: service.enabled) {
+                                Button("Enable") {
+                                    Task { await runToggleEnable(service: service, enable: true) }
+                                }
+                            } else {
+                                Button("Disable") {
+                                    Task { await runToggleEnable(service: service, enable: false) }
+                                }
+                            }
+
+                            Button("View Logs…") {
+                                LogTailWindow.open(logPath: service.logPath)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
             Button(OpenInBrowserLabelFormatter.format(browser: defaultBrowser)) {
                 if let port = state.daemonStatus?.serverPort,
                    let url = URL(string: "http://127.0.0.1:\(port)") {
@@ -246,6 +307,35 @@ private struct MenuBarDropdownContent: View {
         .padding(8)
         .task {
             await state.refresh()
+        }
+    }
+
+    private func runServiceAction(_ id: String, action: @escaping () async throws -> Void) async {
+        do {
+            try await action()
+            await state.refreshServices()
+        } catch {
+            // Ignore transient server errors; user can retry from the menu.
+        }
+    }
+
+    private func runToggleEnable(service: ServiceStatus, enable: Bool) async {
+        do {
+            let response: ServiceActionResponse
+            if enable {
+                response = try await ServerClient.shared.enableService(id: service.id)
+            } else {
+                response = try await ServerClient.shared.disableService(id: service.id)
+            }
+            let alert = NSAlert()
+            alert.messageText = enable ? "Enable Service" : "Disable Service"
+            alert.informativeText = response.message
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            await state.refreshServices()
+        } catch {
+            // Ignore transient server errors.
         }
     }
 }

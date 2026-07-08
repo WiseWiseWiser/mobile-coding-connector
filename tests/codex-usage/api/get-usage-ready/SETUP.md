@@ -3,7 +3,7 @@
 **Feature**: GET /api/codex/usage returns ready JSON
 
 ```
-daemon in-process fetch (CODEX_SHOW_STATUS_COMMAND) -> GET /api/codex/usage -> status ready
+server in-process fetch (CODEX_SHOW_STATUS_COMMAND) -> GET :23712/api/codex/usage -> status ready
 ```
 
 ## Preconditions

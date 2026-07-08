@@ -70,15 +70,18 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
  |    +-- unparseable-fallback/       (LEAF)   unparseable reset → empty
  |
  +-- dropdown/                        (GROUP)  dropdown single lines
-      +-- reset-suffix/               (GROUP)  FormatResetSuffix comma prefix
-      |    +-- grok-three-days/       (LEAF)   parseable grok → `, left 3d`
-      |    +-- codex-three-days/      (LEAF)   parseable codex → `, left 3d`
-      |    +-- unparseable/           (LEAF)   unparseable → empty
-      +-- grok-line/                  (LEAF)   FormatGrokDropdownLine ready + relative
-      +-- grok-error/                 (LEAF)   FormatGrokDropdownLine error msg
-      +-- codex-line/                 (LEAF)   FormatCodexDropdownLine ready + relative
-      +-- codex-error/                (LEAF)   FormatCodexDropdownLine error msg
-      +-- codex-timeout-error/        (LEAF)   FormatCodexDropdownLine timeout error
+ |    +-- reset-suffix/               (GROUP)  FormatResetSuffix comma prefix
+ |    |    +-- grok-three-days/       (LEAF)   parseable grok → `, left 3d`
+ |    |    +-- codex-three-days/      (LEAF)   parseable codex → `, left 3d`
+ |    |    +-- unparseable/           (LEAF)   unparseable → empty
+ |    +-- grok-line/                  (LEAF)   FormatGrokDropdownLine ready + relative
+ |    +-- grok-error/                 (LEAF)   FormatGrokDropdownLine error msg
+ |    +-- codex-line/                 (LEAF)   FormatCodexDropdownLine ready + relative
+ |    +-- codex-error/                (LEAF)   FormatCodexDropdownLine error msg
+ |    +-- codex-timeout-error/        (LEAF)   FormatCodexDropdownLine timeout error
+ |
+ +-- client/                          (GROUP)  Swift grok/codex server-port contract
+      +-- swift-grok-codex-server-port/ (LEAF)  usage via ServerClient :23712
 ```
 
 ## Test Index
@@ -109,6 +112,7 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
 | 22 | `dropdown/codex-line` | `Codex: Monthly Usage: 58% — 6,519/11,250 (Reset 08:00 on 1 Aug, left 26d)` |
 | 23 | `dropdown/codex-error` | `Codex: Error: fork/exec ...` full message |
 | 24 | `dropdown/codex-timeout-error` | `Codex: Error: timeout waiting for status output` |
+| 25 | `client/swift-grok-codex-server-port` | AppState refresh uses ServerClient for grok/codex |
 
 ## Parameter Coverage
 
@@ -138,6 +142,7 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
 | codex-line | codex-dropdown | — | 2026-07-06T08:00:00-07:00 | monthly=58%, credits 6,519/11,250 |
 | codex-error | codex-dropdown | — | — | status=error, fork/exec message |
 | codex-timeout-error | codex-dropdown | — | — | status=error, timeout waiting for status output |
+| swift-grok-codex-server-port | client | — | — | Swift sources use ServerClient :23712 |
 
 ## How to Run
 
@@ -149,10 +154,15 @@ doctest test ./tests/macos-menubar/...
 ```go
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/xhd2015/ai-critic/macosapp/menubar"
+	"github.com/xhd2015/ai-critic/server/config"
 )
 
 type Request struct {
@@ -194,6 +204,13 @@ type Response struct {
 	TimeLeft     string
 	ResetSuffix  string
 	MaxLabelLen  int
+
+	// client contract
+	GrokViaServerClient  bool
+	CodexViaServerClient bool
+	GrokViaDaemonClient  bool
+	CodexViaDaemonClient bool
+	SwiftSourcesChecked  []string
 }
 
 func parseNow(req *Request) (time.Time, error) {
@@ -213,6 +230,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 
 	switch op {
+	case "client":
+		return runClientContract(t, resp)
 	case "grok-label":
 		resp.Label = menubar.FormatGrokLabel(req.Status, req.WeeklyLimit, req.ErrorMsg)
 	case "menu-label":
@@ -260,5 +279,68 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}
 	return resp, nil
+}
+
+func runClientContract(t *testing.T, resp *Response) (*Response, error) {
+	moduleRoot, err := findModuleRoot()
+	if err != nil {
+		return nil, err
+	}
+	appPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "AICriticApp.swift")
+	serverPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "ServerClient.swift")
+	daemonPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "DaemonClient.swift")
+	resp.SwiftSourcesChecked = []string{appPath, serverPath, daemonPath}
+
+	appSrc, err := os.ReadFile(appPath)
+	if err != nil {
+		return nil, fmt.Errorf("read AICriticApp.swift: %w", err)
+	}
+	serverSrc, err := os.ReadFile(serverPath)
+	if err != nil {
+		return nil, fmt.Errorf("read ServerClient.swift: %w", err)
+	}
+	daemonSrc, err := os.ReadFile(daemonPath)
+	if err != nil {
+		return nil, fmt.Errorf("read DaemonClient.swift: %w", err)
+	}
+	app := string(appSrc)
+	server := string(serverSrc)
+	daemon := string(daemonSrc)
+
+	port := strconv.Itoa(config.DefaultServerPort)
+	resp.GrokViaServerClient = strings.Contains(server, "/api/grok/usage") && strings.Contains(server, port)
+	resp.CodexViaServerClient = strings.Contains(server, "/api/codex/usage") && strings.Contains(server, port)
+	resp.GrokViaDaemonClient = strings.Contains(app, "DaemonClient.shared.grokUsage") ||
+		(strings.Contains(daemon, "/api/grok/usage") && strings.Contains(app, "grokUsage"))
+	resp.CodexViaDaemonClient = strings.Contains(app, "DaemonClient.shared.codexUsage") ||
+		(strings.Contains(daemon, "/api/codex/usage") && strings.Contains(app, "codexUsage"))
+	return resp, nil
+}
+
+func findModuleRoot() (string, error) {
+	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
+		for dir := root; ; dir = filepath.Dir(dir) {
+			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+				return dir, nil
+			}
+			if filepath.Dir(dir) == dir {
+				break
+			}
+		}
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("go.mod not found")
+		}
+		dir = parent
+	}
 }
 ```

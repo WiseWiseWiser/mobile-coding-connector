@@ -28,7 +28,3 @@ require (
 	github.com/xhd2015/less-flags v1.0.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 )
-
-replace github.com/xhd2015/dot-pkgs/go-pkgs => /Users/xhd2015/.wrk/worktrees/ai-critic-master-2026-07-05-backup-server/external/dot-pkgs-master-2026-07-07/go-pkgs
-
-replace github.com/xhd2015/agent-pro => /Users/xhd2015/.wrk/worktrees/ai-critic-master-2026-07-05-backup-server/external/agent-pro-master-2026-07-07

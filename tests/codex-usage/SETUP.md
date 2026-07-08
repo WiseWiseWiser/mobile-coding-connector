@@ -11,7 +11,7 @@ injectable usage.Fetch hook -> parser/service -> GET /api/codex/usage (optional 
 1. `macosapp/codexusage` provides parser and `TestExported_NewService`,
    `TestExported_SetFetcher`, `TestExported_FetchOnce`, `TestExported_TriggerRefresh`.
 2. Service calls `agent/usage.Fetch(ctx, Codex)` by default (no `CODEX_SHOW_STATUS_BIN`).
-3. Keep-alive daemon registers `GET /api/codex/usage` for API leaves.
+3. `GET /api/codex/usage` is served on main server port `23712` (not daemon `23312`).
 4. API leaves use `CODEX_SHOW_STATUS_COMMAND` + isolated `TTY_WATCH_HOME`.
 5. API leaves acquire keep-alive session lock (port `23312`).
 
@@ -51,7 +51,7 @@ func Setup(t *testing.T, req *Request) error {
 }
 
 func acquireKeepAliveLock(t *testing.T) func() {
-	session := os.Getenv("DOCTEST_SESSION_ID")
+	session := DOCTEST_SESSION_ID
 	if session == "" {
 		session = fmt.Sprintf("%d", time.Now().UnixNano())
 	}

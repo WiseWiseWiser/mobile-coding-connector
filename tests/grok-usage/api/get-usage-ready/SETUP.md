@@ -3,7 +3,7 @@
 **Feature**: GET /api/grok/usage returns ready JSON
 
 ```
-daemon fetch (mock) -> GET /api/grok/usage -> status ready
+server fetch (mock) -> GET :23712/api/grok/usage -> status ready
 ```
 
 ## Preconditions

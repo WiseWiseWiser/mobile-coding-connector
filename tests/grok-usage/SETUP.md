@@ -11,8 +11,8 @@ GROK_SHOW_USAGE_COMMAND fake TUI -> tty.FetchUsageWithOptions -> service cache -
 1. `agent/grok/tty` provides `ParseShowUsageOutput` and `FetchUsageWithOptions`.
 2. `macosapp/grokusage` delegates fetch to `tty` and exposes `TestExported_*` hooks.
 3. Mock fake-TUI scripts live in `tests/grok-usage/testdata/` (chmod +x before use).
-4. Keep-alive daemon registers `GET /api/grok/usage` for API leaves.
-5. API leaves acquire keep-alive session lock (port `23312`).
+4. `GET /api/grok/usage` is served on main server port `23712` (not daemon `23312`).
+5. API leaves start keep-alive (spawns server) and acquire session lock on `23312`.
 
 ## Steps
 
@@ -47,7 +47,7 @@ func Setup(t *testing.T, req *Request) error {
 }
 
 func acquireKeepAliveLock(t *testing.T) func() {
-	session := os.Getenv("DOCTEST_SESSION_ID")
+	session := DOCTEST_SESSION_ID
 	if session == "" {
 		session = fmt.Sprintf("%d", time.Now().UnixNano())
 	}

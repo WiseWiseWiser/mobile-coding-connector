@@ -11,6 +11,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/proxy/wsproxy"
 	"github.com/xhd2015/ai-critic/server/services"
 	"github.com/xhd2015/ai-critic/server/startup"
+	"github.com/xhd2015/ai-critic/server/usage"
 )
 
 func RunBackgroundTasks() {
@@ -18,6 +19,7 @@ func RunBackgroundTasks() {
 	opencode_exposed.StartHealthCheck()
 	unified_tunnel.StartGlobalHealthChecks()
 	services.StartHealthCheck()
+	usage.Start()
 }
 
 func runExtensionWork() {

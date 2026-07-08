@@ -17,8 +17,9 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
   fetch for deterministic service-layer tests (success, error, slow overlap).
 - **Fake Codex TUI (`CODEX_SHOW_STATUS_COMMAND`)** — env hook honored by
   `agent/codex/tty` for daemon API leaves; isolated `TTY_WATCH_HOME` per run.
-- **Keep-alive daemon** — serves `GET /api/codex/usage` on management port `23312`
-  when API leaves run.
+- **ai-critic-server subprocess** — serves `GET /api/codex/usage` on main server port
+  `23712` when API leaves run (started by keep-alive harness).
+- **Keep-alive daemon** — management port `23312` control plane only; spawns server.
 - **HTTP client** — asserts JSON `status`, `monthly_usage`, `credits_used`,
   `credits_total`, `next_reset`, `error`, `updated_at` fields.
 
@@ -54,8 +55,8 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
  |    +-- real-codex-inprocess/       (LEAF)   real codex CLI in-process fetch (slow)
  |
  +-- api/                             (GROUP)  HTTP surface
- |    +-- get-usage-ready/            (LEAF)   GET /api/codex/usage JSON ready
- |    +-- get-usage-timeout/           (LEAF)   GET /api/codex/usage must not timeout-error
+ |    +-- get-usage-ready/            (LEAF)   GET /api/codex/usage on server :23712
+ |    +-- get-usage-timeout/           (LEAF)   GET :23712/api/codex/usage must not timeout-error
  |
  +-- tty-watch/                       (GROUP)  real tty-watch CLI timing
  |    +-- wait-idle-production-status/ (LEAF)  idle + /status\n\r ~16s
@@ -78,8 +79,8 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
 | 7 | `fetch/timeout-slow-prompt` | 30s silent boot → ready within service ctx (`slow`) |
 | 8 | `fetch/timeout-no-status-response` | Never-respond fake → error (`slow && negative`) |
 | 9 | `fetch/real-codex-inprocess` | Real codex CLI + daemon PATH → fetch ready |
-| 10 | `api/get-usage-ready` | HTTP API returns ready JSON |
-| 11 | `api/get-usage-timeout` | HTTP API returns timeout error (`slow && negative && requires-dist`) |
+| 10 | `api/get-usage-ready` | HTTP API on server port returns ready JSON |
+| 11 | `api/get-usage-timeout` | HTTP API on server port returns timeout error (`slow && negative && requires-dist`) |
 | 12 | `tty-watch/wait-idle-production-status` | Real CLI: idle then /status in ~16s (`slow && real-codex`) |
 | 13 | `tty-watch/user-script-early-status` | Manual early script: no fields (`slow && real-codex && negative`) |
 | 14 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
@@ -706,7 +707,11 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 	}
 	t.Cleanup(stop)
 
-	url := fmt.Sprintf("http://127.0.0.1:%d/api/codex/usage", config.KeepAlivePort)
+	serverPort, err := waitManagedServerPort(req.WaitAPIReadySecs)
+	if err != nil {
+		return resp, err
+	}
+	url := fmt.Sprintf("http://127.0.0.1:%d/api/codex/usage", serverPort)
 	deadline := time.Now().Add(time.Duration(req.WaitAPIReadySecs) * time.Second)
 	for time.Now().Before(deadline) {
 		httpResp, err := http.Get(url)
@@ -871,5 +876,34 @@ func portHash(name string) int {
 		hash = -hash
 	}
 	return hash
+}
+
+type keepAliveStatus struct {
+	ServerPort int `json:"server_port"`
+	ServerPID  int `json:"server_pid"`
+}
+
+func waitManagedServerPort(timeoutSecs int) (int, error) {
+	if timeoutSecs <= 0 {
+		timeoutSecs = 12
+	}
+	statusURL := fmt.Sprintf("http://127.0.0.1:%d/api/keep-alive/status", config.KeepAlivePort)
+	deadline := time.Now().Add(time.Duration(timeoutSecs) * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(statusURL)
+		if err == nil {
+			var st keepAliveStatus
+			if json.NewDecoder(resp.Body).Decode(&st) == nil {
+				resp.Body.Close()
+				if st.ServerPort > 0 && st.ServerPID > 0 {
+					return st.ServerPort, nil
+				}
+			} else {
+				resp.Body.Close()
+			}
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	return 0, fmt.Errorf("managed server not ready on keep-alive status within %ds", timeoutSecs)
 }
 ```

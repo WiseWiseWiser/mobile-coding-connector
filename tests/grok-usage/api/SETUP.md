@@ -1,14 +1,14 @@
 # Scenario
 
-**Feature**: HTTP API for grok usage on keep-alive daemon
+**Feature**: HTTP API for grok usage on main server port
 
 ```
-keep-alive + GROK_SHOW_USAGE_COMMAND -> tty fetch -> GET /api/grok/usage
+keep-alive spawns server + GROK_SHOW_USAGE_COMMAND -> GET :23712/api/grok/usage
 ```
 
 ## Preconditions
 
-Daemon exposes grok usage route; `GROK_SHOW_USAGE_COMMAND` passed in daemon env; session lock held.
+Server exposes grok usage route on port `23712`; `GROK_SHOW_USAGE_COMMAND` in env; session lock held.
 
 ## Steps
 

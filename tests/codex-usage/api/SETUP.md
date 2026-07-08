@@ -1,14 +1,14 @@
 # Scenario
 
-**Feature**: HTTP API for codex usage on keep-alive daemon
+**Feature**: HTTP API for codex usage on main server port
 
 ```
-keep-alive + CODEX_SHOW_STATUS_BIN -> GET /api/codex/usage
+keep-alive spawns server + CODEX_SHOW_STATUS_COMMAND -> GET :23712/api/codex/usage
 ```
 
 ## Preconditions
 
-Daemon exposes codex usage route; session lock held.
+Server exposes codex usage route on port `23712`; session lock held.
 
 ## Steps
 

@@ -307,12 +307,22 @@ func (m *Manager) Shutdown() {
 	}
 }
 
+func (m *Manager) ListAll() []ServiceStatus {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.buildStatusListLocked(append([]ServiceDefinition(nil), m.definitions...))
+}
+
 func (m *Manager) List(projectDir string) []ServiceStatus {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	projectDir = normalizeProjectDir(projectDir)
 	defs := m.filteredDefinitionsLocked(projectDir)
+	return m.buildStatusListLocked(defs)
+}
+
+func (m *Manager) buildStatusListLocked(defs []ServiceDefinition) []ServiceStatus {
 	portMap := make(map[int]portforward.PortForward)
 	for _, pf := range m.getPortForwardManager().List() {
 		portMap[pf.LocalPort] = pf
@@ -1122,13 +1132,25 @@ func (m *Manager) filteredDefinitionsLocked(projectDir string) []ServiceDefiniti
 	if projectDir == "" {
 		return append([]ServiceDefinition(nil), m.definitions...)
 	}
+	scopeDir := canonicalProjectDir(projectDir)
 	filtered := make([]ServiceDefinition, 0, len(m.definitions))
 	for _, def := range m.definitions {
-		if normalizeProjectDir(def.ProjectDir) == projectDir {
+		if canonicalProjectDir(def.ProjectDir) == scopeDir {
 			filtered = append(filtered, def)
 		}
 	}
 	return filtered
+}
+
+func canonicalProjectDir(projectDir string) string {
+	projectDir = normalizeProjectDir(projectDir)
+	if projectDir == "" {
+		return ""
+	}
+	if canon, err := filepath.EvalSymlinks(projectDir); err == nil {
+		projectDir = canon
+	}
+	return filepath.Clean(projectDir)
 }
 
 func (m *Manager) findDefinitionLocked(id string) (ServiceDefinition, bool) {
@@ -1591,9 +1613,13 @@ func handleServices(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		projectDir := r.URL.Query().Get("project_dir")
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(manager.List(projectDir))
+		if r.URL.Query().Get("all") == "1" {
+			_ = json.NewEncoder(w).Encode(manager.ListAll())
+		} else {
+			projectDir := r.URL.Query().Get("project_dir")
+			_ = json.NewEncoder(w).Encode(manager.List(projectDir))
+		}
 
 	case http.MethodPost, http.MethodPut:
 		var req ServiceDefinition

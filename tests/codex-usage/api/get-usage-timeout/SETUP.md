@@ -3,7 +3,7 @@
 **Feature**: GET /api/codex/usage returns error when TUI never prints /status fields
 
 ```
-never-respond fake TUI -> daemon fetch -> GET /api/codex/usage -> status error
+never-respond fake TUI -> server fetch -> GET :23712/api/codex/usage -> status error
 ```
 
 ## Preconditions

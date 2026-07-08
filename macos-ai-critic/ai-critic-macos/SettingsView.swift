@@ -111,22 +111,22 @@ struct SettingsView: View {
 
     private func loadDebugLogSettings() async {
         do {
-            let settings = try await DaemonClient.shared.debugLogSettings()
+            let settings = try await ServerClient.shared.debugLogSettings()
             debugLogEnabled = settings.enabled
             debugLogPath = settings.path
             debugSyncError = nil
         } catch {
-            debugSyncError = "Daemon unreachable; toggle may not apply until keep-alive is running."
+            debugSyncError = "Server unreachable; toggle may not apply until the main server is running."
         }
     }
 
     private func syncDebugLogSetting(enabled: Bool) async {
         do {
-            let settings = try await DaemonClient.shared.setDebugLog(enabled: enabled)
+            let settings = try await ServerClient.shared.setDebugLog(enabled: enabled)
             debugLogPath = settings.path
             debugSyncError = nil
         } catch {
-            debugSyncError = "Failed to update debug log setting on daemon."
+            debugSyncError = "Failed to update debug log setting on server."
         }
     }
 }

@@ -20,8 +20,9 @@ deterministically without a live grok binary.
   skips overlapping in-flight fetches.
 - **Mock fake-TUI script** — shell fixtures under `testdata/`; mimic grok prompt,
   read `/usage show`, emit usage lines; fail and slow variants for error/overlap.
-- **Keep-alive daemon** — serves `GET /api/grok/usage` on management port `23312`
-  when API leaves run.
+- **ai-critic-server subprocess** — serves `GET /api/grok/usage` on main server port
+  `23712` when API leaves run (started by keep-alive harness).
+- **Keep-alive daemon** — management port `23312` control plane only; spawns server.
 - **HTTP client** — asserts JSON `status`, `weekly_limit`, `next_reset`, `error`,
   `updated_at` fields.
 
@@ -53,7 +54,7 @@ deterministically without a live grok binary.
  |    +-- mock-command-fails/          (LEAF)   status error
  |
  +-- api/                             (GROUP)  HTTP surface
- |    +-- get-usage-ready/            (LEAF)   GET /api/grok/usage JSON ready
+ |    +-- get-usage-ready/            (LEAF)   GET /api/grok/usage on server :23712
  |
  +-- refresh/                         (GROUP)  cache refresh semantics
       +-- skips-overlap/              (LEAF)   concurrent refresh skipped
@@ -69,7 +70,7 @@ deterministically without a live grok binary.
 | 4 | `parse/missing-reset` | Missing reset line → error |
 | 5 | `fetch/mock-command-success` | `GROK_SHOW_USAGE_COMMAND` mock → service ready |
 | 6 | `fetch/mock-command-fails` | Mock exit 1 → service error |
-| 7 | `api/get-usage-ready` | HTTP API returns ready JSON after library fetch |
+| 7 | `api/get-usage-ready` | HTTP API on server port returns ready JSON |
 | 8 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
 
 ## Parameter Coverage
@@ -265,7 +266,11 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 	}
 	t.Cleanup(stop)
 
-	url := fmt.Sprintf("http://127.0.0.1:%d/api/grok/usage", config.KeepAlivePort)
+	serverPort, err := waitManagedServerPort(req.WaitAPIReadySecs)
+	if err != nil {
+		return resp, err
+	}
+	url := fmt.Sprintf("http://127.0.0.1:%d/api/grok/usage", serverPort)
 	deadline := time.Now().Add(time.Duration(req.WaitAPIReadySecs) * time.Second)
 	for time.Now().Before(deadline) {
 		httpResp, err := http.Get(url)
@@ -420,5 +425,34 @@ func portHash(name string) int {
 		hash = -hash
 	}
 	return hash
+}
+
+type keepAliveStatus struct {
+	ServerPort int `json:"server_port"`
+	ServerPID  int `json:"server_pid"`
+}
+
+func waitManagedServerPort(timeoutSecs int) (int, error) {
+	if timeoutSecs <= 0 {
+		timeoutSecs = 12
+	}
+	statusURL := fmt.Sprintf("http://127.0.0.1:%d/api/keep-alive/status", config.KeepAlivePort)
+	deadline := time.Now().Add(time.Duration(timeoutSecs) * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(statusURL)
+		if err == nil {
+			var st keepAliveStatus
+			if json.NewDecoder(resp.Body).Decode(&st) == nil {
+				resp.Body.Close()
+				if st.ServerPort > 0 && st.ServerPID > 0 {
+					return st.ServerPort, nil
+				}
+			} else {
+				resp.Body.Close()
+			}
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	return 0, fmt.Errorf("managed server not ready on keep-alive status within %ds", timeoutSecs)
 }
 ```

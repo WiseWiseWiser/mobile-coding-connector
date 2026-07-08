@@ -26,7 +26,7 @@ menu label, `DaemonClient.restartDaemon()`, and wires the button.
 import "testing"
 
 func Setup(t *testing.T, req *Request) error {
-	req.Op = "client"
+	req.Op = "client-restart"
 	return nil
 }
 ```

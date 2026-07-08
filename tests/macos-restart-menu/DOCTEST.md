@@ -38,6 +38,7 @@ aligned with the web Manage Server **Restart Daemon** button.
  |
  +-- client/                           (GROUP)  Swift menu/DaemonClient contract
  |    +-- macos-menu-contract/        (LEAF)   label + endpoint map (RED before fix)
+ |    +-- swift-business-server-port/ (LEAF)   grok/codex/debug on server :23712
  |
  +-- api/                              (GROUP)  management HTTP restart endpoints
       +-- restart-server-signal/      (LEAF)   POST /restart → server PID changes
@@ -49,14 +50,16 @@ aligned with the web Manage Server **Restart Daemon** button.
 | # | Leaf | Description |
 |---|------|-------------|
 | 1 | `client/macos-menu-contract` | Menu → `/restart-daemon`, not `/restart` |
-| 2 | `api/restart-server-signal` | POST `/restart` requests server restart only |
-| 3 | `api/restart-daemon-exec` | POST `/restart-daemon` SSE done + daemon back |
+| 2 | `client/swift-business-server-port` | Grok/codex/debug use ServerClient :23712 |
+| 3 | `api/restart-server-signal` | POST `/restart` requests server restart only |
+| 4 | `api/restart-daemon-exec` | POST `/restart-daemon` SSE done + daemon back |
 
 ## Parameter Coverage
 
 | Leaf | Op | Endpoint | Expect RED (pre-fix) |
 |------|-----|----------|----------------------|
-| macos-menu-contract | client | Swift sources | yes — current `/restart` + Restart Server |
+| macos-menu-contract | client-restart | Swift sources | yes — current `/restart` + Restart Server |
+| swift-business-server-port | client-business-port | Swift sources | yes — grok/codex on daemon |
 | restart-server-signal | api-restart-server | `/api/keep-alive/restart` | no |
 | restart-daemon-exec | api-restart-daemon | `/api/keep-alive/restart-daemon` | no |
 
@@ -130,6 +133,10 @@ type Response struct {
 	ClientMethod        string
 	SwiftSourcesChecked []string
 
+	BusinessOnServerPort bool
+	DebugOnServerPort    bool
+	GrokOnDaemonPort     bool
+
 	// API restart
 	RestartHTTPStatus int
 	RestartJSONStatus string
@@ -149,8 +156,10 @@ type Response struct {
 func Run(t *testing.T, req *Request) (*Response, error) {
 	resp := &Response{}
 	switch req.Op {
-	case "client":
+	case "client", "client-restart":
 		return runClientContract(t, resp)
+	case "client-business-port":
+		return runClientBusinessPortContract(t, resp)
 	case "api-restart-server":
 		return runAPIRestartServer(t, req, resp)
 	case "api-restart-daemon":
@@ -158,6 +167,35 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	default:
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}
+}
+
+func runClientBusinessPortContract(t *testing.T, resp *Response) (*Response, error) {
+	moduleRoot, err := findModuleRoot()
+	if err != nil {
+		return nil, err
+	}
+	serverPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "ServerClient.swift")
+	daemonPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "DaemonClient.swift")
+	resp.SwiftSourcesChecked = []string{serverPath, daemonPath}
+
+	serverSrc, err := os.ReadFile(serverPath)
+	if err != nil {
+		return nil, fmt.Errorf("read ServerClient.swift: %w", err)
+	}
+	daemonSrc, err := os.ReadFile(daemonPath)
+	if err != nil {
+		return nil, fmt.Errorf("read DaemonClient.swift: %w", err)
+	}
+	server := string(serverSrc)
+	daemon := string(daemonSrc)
+	port := strconv.Itoa(config.DefaultServerPort)
+
+	resp.BusinessOnServerPort = strings.Contains(server, "/api/grok/usage") &&
+		strings.Contains(server, "/api/codex/usage") &&
+		strings.Contains(server, port)
+	resp.DebugOnServerPort = strings.Contains(server, "/api/debug/log") && strings.Contains(server, port)
+	resp.GrokOnDaemonPort = strings.Contains(daemon, "/api/grok/usage") || strings.Contains(daemon, "/api/codex/usage")
+	return resp, nil
 }
 
 func runClientContract(t *testing.T, resp *Response) (*Response, error) {
