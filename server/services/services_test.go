@@ -183,6 +183,28 @@ func TestCreateOrUpdateNoRestartDoesNotMutateRunningProcessDefinition(t *testing
 	}
 }
 
+func TestEnsureServiceWorkingDirCreatesMissingDirectory(t *testing.T) {
+	base := t.TempDir()
+	workingDir := filepath.Join(base, "nested", "my-openclaw")
+
+	if err := ensureServiceWorkingDir(workingDir); err != nil {
+		t.Fatalf("ensureServiceWorkingDir() error = %v", err)
+	}
+	info, err := os.Stat(workingDir)
+	if err != nil {
+		t.Fatalf("Stat(workingDir) error = %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("working dir is not a directory")
+	}
+}
+
+func TestEnsureServiceWorkingDirNoopsForEmptyPath(t *testing.T) {
+	if err := ensureServiceWorkingDir(""); err != nil {
+		t.Fatalf("ensureServiceWorkingDir(\"\") error = %v", err)
+	}
+}
+
 func TestResolveServiceUpgradeTargetPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

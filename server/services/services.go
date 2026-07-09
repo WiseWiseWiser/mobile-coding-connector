@@ -812,6 +812,11 @@ func (m *Manager) start(id string, force bool) error {
 		return err
 	}
 
+	if err := ensureServiceWorkingDir(workingDir); err != nil {
+		m.recordStartFailure(id, err.Error())
+		return err
+	}
+
 	if err := killConfiguredPortOwner(def.PortForward); err != nil {
 		m.recordStartFailure(id, err.Error())
 		return err
@@ -1347,6 +1352,17 @@ func processAlive(pid int) bool {
 
 func serviceLogPath(id string) string {
 	return filepath.Join(config.DataDir, "services", id+".log")
+}
+
+func ensureServiceWorkingDir(workingDir string) error {
+	workingDir = strings.TrimSpace(workingDir)
+	if workingDir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(workingDir, 0755); err != nil {
+		return fmt.Errorf("create working directory %s: %w", workingDir, err)
+	}
+	return nil
 }
 
 func normalizeProjectDir(projectDir string) string {
