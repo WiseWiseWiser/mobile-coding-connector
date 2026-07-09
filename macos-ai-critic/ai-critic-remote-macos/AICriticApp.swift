@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 import AppKit
 import AICriticMacShared
 
@@ -166,11 +167,14 @@ class RemoteAppDelegate: NSObject, NSApplicationDelegate {
 struct AICriticRemoteApp: App {
     @NSApplicationDelegateAdaptor(RemoteAppDelegate.self) var appDelegate
     @StateObject private var state = RemoteAppState()
+    /// Launch-at-login for this remote menubar app (same as local Auto Start).
+    @AppStorage("autoStart") private var autoStart = false
 
     init() {
         let state = RemoteAppState()
         _state = StateObject(wrappedValue: state)
         appDelegate.state = state
+        _autoStart.wrappedValue = SMAppService.mainApp.status == .enabled
     }
 
     var body: some Scene {
@@ -191,6 +195,7 @@ struct AICriticRemoteApp: App {
         MenuBarExtra {
             RemoteMenuBarDropdown(
                 state: state,
+                autoStart: $autoStart,
                 showSettings: showSettingsWindow
             )
         } label: {
@@ -222,6 +227,7 @@ struct AICriticRemoteApp: App {
 @available(macOS 15.0, *)
 private struct RemoteMenuBarDropdown: View {
     @ObservedObject var state: RemoteAppState
+    @Binding var autoStart: Bool
     @AppStorage("defaultBrowser") private var defaultBrowser = BrowserPreference.default.rawValue
     @Environment(\.openWindow) private var openWindow
     let showSettings: (OpenWindowAction) -> Void
@@ -347,6 +353,20 @@ private struct RemoteMenuBarDropdown: View {
                 }
             }
             .disabled(!state.hasEndpoint || state.serverURL.isEmpty)
+
+            Toggle("Auto Start", isOn: $autoStart)
+                .onChange(of: autoStart) { enabled in
+                    do {
+                        if enabled {
+                            try SMAppService.mainApp.register()
+                        } else {
+                            try SMAppService.mainApp.unregister()
+                        }
+                    } catch {
+                        autoStart = !enabled
+                    }
+                }
+                .accessibilityIdentifier("auto-start-toggle")
 
             Button("Refresh") {
                 Task { await state.refresh() }
