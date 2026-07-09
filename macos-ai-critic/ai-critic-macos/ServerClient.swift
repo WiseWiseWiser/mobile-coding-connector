@@ -1,4 +1,5 @@
 import Foundation
+import AICriticMacShared
 
 struct GrokUsageResponse: Decodable {
     let status: String
@@ -41,21 +42,7 @@ struct DebugLogSettings: Codable {
     let path: String
 }
 
-struct ServiceStatus: Decodable, Identifiable {
-    let id: String
-    let name: String
-    let status: String
-    let pid: Int
-    let logPath: String
-    let desiredRunning: Bool
-    let enabled: Bool
-}
-
-struct ServiceActionResponse: Decodable {
-    let status: String
-    let message: String
-    let service: ServiceStatus?
-}
+// ServiceStatus / ServiceActionResponse live in AICriticMacShared.
 
 struct LogStreamEvent: Decodable {
     let type: String

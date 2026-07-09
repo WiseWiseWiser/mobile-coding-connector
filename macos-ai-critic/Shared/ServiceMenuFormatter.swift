@@ -1,7 +1,8 @@
 import Foundation
 
-enum ServiceMenuFormatter {
-    static func formatServiceTitle(name: String, status: String, enabled: Bool) -> String {
+/// Service submenu labels/actions — mirrors `macosapp/menubar` service formatters.
+public enum ServiceMenuFormatter {
+    public static func formatServiceTitle(name: String, status: String, enabled: Bool) -> String {
         switch status {
         case "running":
             return "\(name) ● Running"
@@ -22,16 +23,16 @@ enum ServiceMenuFormatter {
         }
     }
 
-    static func canStopService(pid: Int, desiredRunning: Bool) -> Bool {
+    public static func canStopService(pid: Int, desiredRunning: Bool) -> Bool {
         if pid > 0 { return true }
         return desiredRunning
     }
 
-    static func showEnableAction(enabled: Bool) -> Bool {
+    public static func showEnableAction(enabled: Bool) -> Bool {
         !enabled
     }
 
-    static func formatServicesEmptyLabel() -> String {
+    public static func formatServicesEmptyLabel() -> String {
         "No services configured"
     }
 

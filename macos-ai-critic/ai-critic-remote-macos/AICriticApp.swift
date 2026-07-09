@@ -11,7 +11,11 @@ final class RemoteAppState: ObservableObject {
     @Published var serverURL: String = ""
     @Published var hasEndpoint = false
     @Published var token: String = ""
+    @Published var services: [ServiceStatus] = []
     @AppStorage("menuBarDisplayMode") var menuBarDisplayMode = "rotating"
+
+    /// Shared HTTP client for remote service APIs (base URL + Bearer token).
+    let serviceClient = ServiceClient()
 
     /// Override for tests; empty means use default CLI path.
     var configPathOverride: String?
@@ -32,21 +36,38 @@ final class RemoteAppState: ObservableObject {
             hasEndpoint = result.resolved
             menuLabel = result.resolved ? "Remote" : "Remote …"
 
-            // Keep token for authenticated API calls later; never put it in statusLine.
             if result.resolved {
                 if let cfg = try RemoteConfigStore.load(path: path) {
                     let (ep, _) = RemoteConfigStore.resolve(cfg)
                     token = ep.token
+                    serviceClient.configure(baseURL: ep.server, token: ep.token)
                 }
+                await refreshServices()
             } else {
                 token = ""
+                serviceClient.configure(baseURL: "", token: "")
+                services = []
             }
         } catch {
             statusLine = "Not configured — open Configure… to add a remote server"
             serverURL = ""
             hasEndpoint = false
             token = ""
+            serviceClient.configure(baseURL: "", token: "")
+            services = []
             menuLabel = "Remote …"
+        }
+    }
+
+    func refreshServices() async {
+        guard serviceClient.isConfigured else {
+            services = []
+            return
+        }
+        do {
+            services = try await serviceClient.listServices()
+        } catch {
+            // Keep prior list when server is temporarily unreachable.
         }
     }
 }
@@ -55,7 +76,6 @@ class RemoteAppDelegate: NSObject, NSApplicationDelegate {
     weak var state: RemoteAppState?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Stay a menu-bar agent until a window is opened.
         NSApp.setActivationPolicy(.accessory)
         Task { @MainActor in
             await state?.refresh()
@@ -63,7 +83,6 @@ class RemoteAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        // Menu-bar app must not quit when Settings window closes.
         false
     }
 }
@@ -81,7 +100,6 @@ struct AICriticRemoteApp: App {
     }
 
     var body: some Scene {
-        // Same Settings window role as local app (id/title "settings" / "Settings").
         Window("Settings", id: "settings") {
             SettingsView(
                 menuBarDisplayMode: $state.menuBarDisplayMode,
@@ -143,10 +161,60 @@ private struct RemoteMenuBarDropdown: View {
 
             Divider()
 
-            Button("Settings…") {
-                showSettings(openWindow)
+            Menu("Services") {
+                if !state.hasEndpoint {
+                    Text("Not configured")
+                } else if state.services.isEmpty {
+                    Text(ServiceMenuFormatter.formatServicesEmptyLabel())
+                } else {
+                    ForEach(state.services) { service in
+                        Menu(ServiceMenuFormatter.formatServiceTitle(
+                            name: service.name,
+                            status: service.status,
+                            enabled: service.enabled
+                        )) {
+                            Button("Start") {
+                                Task {
+                                    await runServiceAction {
+                                        try await state.serviceClient.startService(id: service.id)
+                                    }
+                                }
+                            }
+                            Button("Restart") {
+                                Task {
+                                    await runServiceAction {
+                                        try await state.serviceClient.restartService(id: service.id)
+                                    }
+                                }
+                            }
+                            Button("Stop") {
+                                Task {
+                                    await runServiceAction {
+                                        try await state.serviceClient.stopService(id: service.id)
+                                    }
+                                }
+                            }
+                            .disabled(!ServiceMenuFormatter.canStopService(
+                                pid: service.pid,
+                                desiredRunning: service.desiredRunning
+                            ))
+
+                            if ServiceMenuFormatter.showEnableAction(enabled: service.enabled) {
+                                Button("Enable") {
+                                    Task { await runToggleEnable(service: service, enable: true) }
+                                }
+                            } else {
+                                Button("Disable") {
+                                    Task { await runToggleEnable(service: service, enable: false) }
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            .accessibilityIdentifier("settings-menu-button")
+            .accessibilityIdentifier("services-menu")
+
+            Divider()
 
             Button(OpenInBrowserLabelFormatter.format(browser: defaultBrowser)) {
                 if !state.serverURL.isEmpty,
@@ -165,6 +233,11 @@ private struct RemoteMenuBarDropdown: View {
 
             Divider()
 
+            Button("Settings…") {
+                showSettings(openWindow)
+            }
+            .accessibilityIdentifier("settings-menu-button")
+
             Button("Quit") {
                 NSApp.terminate(nil)
             }
@@ -172,6 +245,35 @@ private struct RemoteMenuBarDropdown: View {
         .padding(8)
         .task {
             await state.refresh()
+        }
+    }
+
+    private func runServiceAction(_ action: @escaping () async throws -> Void) async {
+        do {
+            try await action()
+            await state.refreshServices()
+        } catch {
+            // Ignore transient server errors; user can retry from the menu.
+        }
+    }
+
+    private func runToggleEnable(service: ServiceStatus, enable: Bool) async {
+        do {
+            let response: ServiceActionResponse
+            if enable {
+                response = try await state.serviceClient.enableService(id: service.id)
+            } else {
+                response = try await state.serviceClient.disableService(id: service.id)
+            }
+            let alert = NSAlert()
+            alert.messageText = enable ? "Enable Service" : "Disable Service"
+            alert.informativeText = response.displayMessage
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            await state.refreshServices()
+        } catch {
+            // Ignore transient server errors.
         }
     }
 }

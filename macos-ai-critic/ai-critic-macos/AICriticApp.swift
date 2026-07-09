@@ -330,7 +330,7 @@ private struct MenuBarDropdownContent: View {
             }
             let alert = NSAlert()
             alert.messageText = enable ? "Enable Service" : "Disable Service"
-            alert.informativeText = response.message
+            alert.informativeText = response.displayMessage
             alert.alertStyle = .informational
             alert.addButton(withTitle: "OK")
             alert.runModal()

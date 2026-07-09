@@ -23,5 +23,10 @@ let package = Package(
             dependencies: ["AICriticMacShared"],
             path: "ai-critic-remote-macos"
         ),
+        .testTarget(
+            name: "AICriticMacSharedTests",
+            dependencies: ["AICriticMacShared"],
+            path: "Tests/AICriticMacSharedTests"
+        ),
     ]
 )
