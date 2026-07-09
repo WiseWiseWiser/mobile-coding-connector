@@ -322,7 +322,7 @@ private struct RemoteMenuBarDropdown: View {
                     Text(TerminalMenuFormatter.formatTerminalsEmptyLabel())
                 } else {
                     ForEach(state.terminals) { session in
-                        Button(TerminalMenuFormatter.formatTerminalTitle(name: session.name, id: session.id)) {
+                        Button(TerminalMenuFormatter.formatTerminalTitle(name: session.name, id: session.id, status: session.status)) {
                             state.openAttachTerminal(sessionID: session.id)
                         }
                     }

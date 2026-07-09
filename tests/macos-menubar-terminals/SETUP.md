@@ -4,7 +4,8 @@
 
 ```
 # pure helpers
-TerminalSession(name,id) -> FormatTerminalTitle / empty label / attach|new cmds
+TerminalSession(name,id,status) -> FormatTerminalTitle / empty label / attach|new cmds
+# exited status appends " [EXITED]" to base title; running/empty/unknown → base only
 remote-agent-config domains -> SelectDefaultDomain -> default persisted + Resolve
 
 # Swift apps
@@ -33,7 +34,8 @@ session click / New Terminal -> iTerm2 only (no Terminal.app fallback)
 
 ## Context
 
-Implements REQUIREMENT-DESIGN-macos-menubar-terminals.md. Primary logic lives in
+Implements REQUIREMENT-DESIGN-macos-menubar-terminals.md and
+REQUIREMENT-DESIGN-macos-menubar-terminal-exited-title.md. Primary logic lives in
 Go (`macosapp/menubar`, `macosapp/remoteconfig`); Swift mirrors for UI.
 
 ```go

@@ -3,12 +3,15 @@ import Foundation
 /// Terminals menu labels/commands — mirrors `macosapp/menubar` terminal helpers.
 public enum TerminalMenuFormatter {
     /// Non-empty trimmed name wins; empty/whitespace name falls back to id.
-    public static func formatTerminalTitle(name: String, id: String) -> String {
+    /// When status is "exited" (case-insensitive, trimmed), appends " [EXITED]".
+    public static func formatTerminalTitle(name: String, id: String, status: String = "") -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            return name
+        let base = trimmed.isEmpty ? id : name
+        let statusTrimmed = status.trimmingCharacters(in: .whitespacesAndNewlines)
+        if statusTrimmed.caseInsensitiveCompare("exited") == .orderedSame {
+            return base + " [EXITED]"
         }
-        return id
+        return base
     }
 
     public static func formatTerminalsEmptyLabel() -> String {

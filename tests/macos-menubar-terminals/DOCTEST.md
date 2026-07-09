@@ -27,8 +27,10 @@ for local (`ai-critic-macos`) and remote (`ai-critic-remote-macos`) menu-bar app
 
 **Behaviors**
 
-- `FormatTerminalTitle(name, id)`: if `strings.TrimSpace(name) != ""` → name;
-  else → id.
+- `FormatTerminalTitle(name, id, status)`: base = non-empty trimmed name, else id;
+  if trimmed status equals `exited` case-insensitively → base + ` [EXITED]`;
+  else (running, empty, unknown) → base only. Cleared sessions are not listed by
+  the API (no menubar title handling for cleared).
 - `FormatTerminalsEmptyLabel()`: exact `No terminal sessions`.
 - `BuildTerminalAttachCommand(agentBinary, sessionID)`:
   `{agentBinary} terminal attach {sessionID}` (space-joined; prefer session id).
@@ -50,10 +52,14 @@ for local (`ai-critic-macos`) and remote (`ai-critic-remote-macos`) menu-bar app
 ```
 [macos-menubar-terminals]
  |
- +-- title/                              (GROUP)  session display title
- |    +-- with-name/                     (LEAF)   non-empty name wins
- |    +-- empty-name/                    (LEAF)   empty name → id
- |    +-- whitespace-name/               (LEAF)   whitespace-only name → id
+ +-- title/                              (GROUP)  session display title (+ status)
+ |    +-- with-name/                     (LEAF)   non-empty name, running → base
+ |    +-- empty-name/                    (LEAF)   empty name, empty status → id
+ |    +-- whitespace-name/               (LEAF)   whitespace name, running → id
+ |    +-- exited-with-name/              (LEAF)   name + status=exited → base [EXITED]
+ |    +-- exited-empty-name/             (LEAF)   empty name + exited → id [EXITED]
+ |    +-- exited-whitespace-name/        (LEAF)   whitespace name + exited → id [EXITED]
+ |    +-- exited-case-insensitive/       (LEAF)   status ` Exited ` still suffixes
  |
  +-- empty/                              (GROUP)  empty Terminals list
  |    +-- label/                         (LEAF)   `No terminal sessions`
@@ -87,34 +93,42 @@ for local (`ai-critic-macos`) and remote (`ai-critic-remote-macos`) menu-bar app
 
 | # | Leaf | Description |
 |---|------|-------------|
-| 1 | `title/with-name` | `FormatTerminalTitle("demo","abc")` → `demo` |
-| 2 | `title/empty-name` | empty name → id `sess-1` |
-| 3 | `title/whitespace-name` | whitespace name → id `sess-1` |
-| 4 | `empty/label` | `FormatTerminalsEmptyLabel` → `No terminal sessions` |
-| 5 | `command/attach-local` | `local-agent terminal attach web1` |
-| 6 | `command/attach-remote` | `remote-agent terminal attach web1` |
-| 7 | `command/new-local` | `local-agent terminal new` |
-| 8 | `command/new-remote` | `remote-agent terminal new` |
-| 9 | `command/agent-binary-local` | `AgentBinaryForApp(false)` → `local-agent` |
-| 10 | `command/agent-binary-remote` | `AgentBinaryForApp(true)` → `remote-agent` |
-| 11 | `domain/select-persists-default` | select domain B → `default` + resolve B |
-| 12 | `interval/thirty-seconds` | periodic refresh interval is 30s |
-| 13 | `client/local-terminals-menu` | local `AICriticApp.swift` has Terminals menu |
-| 14 | `client/remote-terminals-menu` | remote `AICriticApp.swift` has Terminals menu |
-| 15 | `client/remote-server-switcher` | remote level-1 Server/domain switcher |
-| 16 | `client/local-no-domain-switcher` | local app has no domain switcher |
-| 17 | `client/iterm-only` | iTerm open path; no Terminal.app fallback |
-| 18 | `client/top-level-refresh` | top-level Refresh button present |
-| 19 | `client/periodic-refresh` | periodic services+terminals refresh present |
-| 20 | `client/new-terminal` | New Terminal present in both apps |
+| 1 | `title/with-name` | name=demo, id=abc, status=running → `demo` |
+| 2 | `title/empty-name` | empty name, empty status → id `sess-1` |
+| 3 | `title/whitespace-name` | whitespace name, status=running → `sess-1` |
+| 4 | `title/exited-with-name` | name=demo, status=exited → `demo [EXITED]` |
+| 5 | `title/exited-empty-name` | empty name, status=exited → `sess-1 [EXITED]` |
+| 6 | `title/exited-whitespace-name` | whitespace name, status=exited → `sess-1 [EXITED]` |
+| 7 | `title/exited-case-insensitive` | status=` Exited ` → still `demo [EXITED]` |
+| 8 | `empty/label` | `FormatTerminalsEmptyLabel` → `No terminal sessions` |
+| 9 | `command/attach-local` | `local-agent terminal attach web1` |
+| 10 | `command/attach-remote` | `remote-agent terminal attach web1` |
+| 11 | `command/new-local` | `local-agent terminal new` |
+| 12 | `command/new-remote` | `remote-agent terminal new` |
+| 13 | `command/agent-binary-local` | `AgentBinaryForApp(false)` → `local-agent` |
+| 14 | `command/agent-binary-remote` | `AgentBinaryForApp(true)` → `remote-agent` |
+| 15 | `domain/select-persists-default` | select domain B → `default` + resolve B |
+| 16 | `interval/thirty-seconds` | periodic refresh interval is 30s |
+| 17 | `client/local-terminals-menu` | local `AICriticApp.swift` has Terminals menu |
+| 18 | `client/remote-terminals-menu` | remote `AICriticApp.swift` has Terminals menu |
+| 19 | `client/remote-server-switcher` | remote level-1 Server/domain switcher |
+| 20 | `client/local-no-domain-switcher` | local app has no domain switcher |
+| 21 | `client/iterm-only` | iTerm open path; no Terminal.app fallback |
+| 22 | `client/top-level-refresh` | top-level Refresh button present |
+| 23 | `client/periodic-refresh` | periodic services+terminals refresh present |
+| 24 | `client/new-terminal` | New Terminal present in both apps |
 
 ## Parameter Coverage
 
 | Leaf | Op | Key inputs | Expected |
 |------|-----|------------|----------|
-| with-name | title | name=demo, id=abc | Title=`demo` |
-| empty-name | title | name="", id=sess-1 | Title=`sess-1` |
-| whitespace-name | title | name=`"  \t  "`, id=sess-1 | Title=`sess-1` |
+| with-name | title | name=demo, id=abc, status=running | Title=`demo` |
+| empty-name | title | name="", id=sess-1, status="" | Title=`sess-1` |
+| whitespace-name | title | name=`"  \t  "`, id=sess-1, status=running | Title=`sess-1` |
+| exited-with-name | title | name=demo, id=abc, status=exited | Title=`demo [EXITED]` |
+| exited-empty-name | title | name="", id=sess-1, status=exited | Title=`sess-1 [EXITED]` |
+| exited-whitespace-name | title | name=`"  \t  "`, id=sess-1, status=exited | Title=`sess-1 [EXITED]` |
+| exited-case-insensitive | title | name=demo, id=abc, status=` Exited ` | Title=`demo [EXITED]` |
 | label | empty | — | EmptyLabel=`No terminal sessions` |
 | attach-local | attach_cmd | binary=local-agent, id=web1 | Command exact |
 | attach-remote | attach_cmd | binary=remote-agent, id=web1 | Command exact |
@@ -161,6 +175,7 @@ type Request struct {
 	// title
 	Name      string
 	SessionID string
+	Status    string
 
 	// command builders
 	AgentBinary string
@@ -208,7 +223,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	resp := &Response{}
 	switch req.Op {
 	case "title":
-		resp.Title = menubar.FormatTerminalTitle(req.Name, req.SessionID)
+		resp.Title = menubar.FormatTerminalTitle(req.Name, req.SessionID, req.Status)
 	case "empty":
 		resp.EmptyLabel = menubar.FormatTerminalsEmptyLabel()
 	case "attach_cmd":

@@ -10,11 +10,16 @@ const PeriodicRefreshInterval = 30 * time.Second
 
 // FormatTerminalTitle returns the Terminals submenu title for a session.
 // Non-empty trimmed name wins; empty/whitespace name falls back to id.
-func FormatTerminalTitle(name, id string) string {
+// When status is "exited" (case-insensitive, trimmed), appends " [EXITED]".
+func FormatTerminalTitle(name, id, status string) string {
+	base := id
 	if strings.TrimSpace(name) != "" {
-		return name
+		base = name
 	}
-	return id
+	if strings.EqualFold(strings.TrimSpace(status), "exited") {
+		return base + " [EXITED]"
+	}
+	return base
 }
 
 // FormatTerminalsEmptyLabel is shown when the sessions list is empty.
