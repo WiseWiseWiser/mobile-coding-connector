@@ -47,3 +47,4 @@ macos-ai-critic/.build/
 macos-ai-critic/.swiftpm/
 macos-ai-critic/ai-critic-macos.app/
 macos-ai-critic/*.dmg
+macos-ai-critic/ai-critic-remote-macos.app/Contents/MacOS/ai-critic-remote-macos
