@@ -79,6 +79,7 @@ type UploadResult struct {
 type UploadOptions struct {
 	ChmodExec  bool
 	ChunkRetry *ChunkRetryConfig
+	DryRun     bool
 }
 
 // UploadFile reads localFile and uploads it to remotePath on the server
@@ -101,12 +102,13 @@ func (c *Client) UploadFile(localFile string, remotePath string, opts UploadOpti
 	}
 
 	baseName := filepath.Base(localFile)
-	resolvedRemote := remotePath
-	if resolvedRemote == "" {
-		resolvedRemote = baseName
-	} else if strings.HasSuffix(resolvedRemote, "/") {
-		resolvedRemote = resolvedRemote + baseName
+	logicalRemote := remotePath
+	if logicalRemote == "" {
+		logicalRemote = baseName
+	} else if strings.HasSuffix(logicalRemote, "/") {
+		logicalRemote = logicalRemote + baseName
 	}
+	resolvedRemote := logicalRemote
 	if !strings.HasPrefix(resolvedRemote, "/") {
 		home, err := c.GetHome()
 		if err != nil {
@@ -114,10 +116,10 @@ func (c *Client) UploadFile(localFile string, remotePath string, opts UploadOpti
 		}
 		resolvedRemote = strings.TrimRight(home.Home, "/") + "/" + resolvedRemote
 	}
-	return c.uploadFileResolved(localFile, resolvedRemote, opts, onProgress)
+	return c.uploadFileResolved(localFile, resolvedRemote, logicalRemote, opts, onProgress)
 }
 
-func (c *Client) uploadFileResolved(localFile string, remotePath string, opts UploadOptions, onProgress func(UploadProgress)) (*UploadResult, error) {
+func (c *Client) uploadFileResolved(localFile string, remotePath string, logicalRemote string, opts UploadOptions, onProgress func(UploadProgress)) (*UploadResult, error) {
 	stat, err := os.Stat(localFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat local file: %w", err)
@@ -126,12 +128,20 @@ func (c *Client) uploadFileResolved(localFile string, remotePath string, opts Up
 		return nil, fmt.Errorf("local path is a directory, not a file: %s", localFile)
 	}
 
+	totalSize := stat.Size()
+	if opts.DryRun {
+		SimulateUploadChunks(totalSize, ChunkSize, onProgress)
+		return &UploadResult{
+			Path: logicalRemote,
+			Size: totalSize,
+		}, nil
+	}
+
 	fileHash, chunks, err := computeFileChunkPlan(localFile, ChunkSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read local file: %w", err)
 	}
 
-	totalSize := stat.Size()
 	totalChunks := len(chunks)
 
 	sess, err := c.initUpload(remotePath, fileHash, totalChunks, totalSize, opts)

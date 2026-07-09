@@ -62,7 +62,7 @@ func (c *Client) UploadDir(localDir, remotePath string, opts UploadOptions, onPr
 		return nil, err
 	}
 
-	if len(subdirs) > 0 {
+	if len(subdirs) > 0 && !opts.DryRun {
 		if err := c.mkdirRemote(subdirs...); err != nil {
 			return nil, fmt.Errorf("failed to create remote directories: %w", err)
 		}
@@ -91,10 +91,13 @@ func (c *Client) UploadDir(localDir, remotePath string, opts UploadOptions, onPr
 			}
 
 			priorCompleted := completedBytes
-			if _, err := c.uploadFileResolved(f.localPath, f.remotePath, UploadOptions{
+			fileOpts := UploadOptions{
 				ChmodExec:  f.chmodExec,
 				ChunkRetry: opts.ChunkRetry,
-			}, func(chunk UploadProgress) {
+				DryRun:     opts.DryRun,
+			}
+			logicalFileRemote := filepath.ToSlash(filepath.Join(logicalRemote, item.relativePath))
+			if _, err := c.uploadFileResolved(f.localPath, f.remotePath, logicalFileRemote, fileOpts, func(chunk UploadProgress) {
 				if onProgress == nil {
 					return
 				}

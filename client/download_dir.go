@@ -31,6 +31,8 @@ type DownloadDirProgress struct {
 	TotalBytes     int64
 	FileCompleted  int64
 	FileTotal      int64
+	ChunkIndex     int
+	TotalChunks    int
 	Attempt        int
 	MaxAttempts    int
 	Err            error
@@ -137,8 +139,10 @@ func (c *Client) DownloadDir(remotePath, localDir string, opts DownloadOptions, 
 			alreadyExists := false
 			if st, err := os.Stat(localPath); err == nil && st.IsDir() {
 				alreadyExists = true
-			} else if err := os.MkdirAll(localPath, 0755); err != nil {
-				return nil, fmt.Errorf("failed to create local directory %s: %w", localPath, err)
+			} else if !opts.DryRun {
+				if err := os.MkdirAll(localPath, 0755); err != nil {
+					return nil, fmt.Errorf("failed to create local directory %s: %w", localPath, err)
+				}
 			}
 			phase := DownloadDirPhaseDirCreated
 			if alreadyExists {
@@ -185,8 +189,10 @@ func (c *Client) downloadPlanFile(
 	skippedCount, resumedCount *int,
 ) (downloadAction, error) {
 	localPath := filepath.Join(localDir, filepath.FromSlash(f.relativePath))
-	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil && filepath.Dir(localPath) != "." {
-		return 0, fmt.Errorf("failed to create local directory: %w", err)
+	if !opts.DryRun {
+		if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil && filepath.Dir(localPath) != "." {
+			return 0, fmt.Errorf("failed to create local directory: %w", err)
+		}
 	}
 
 	localSize := int64(0)
@@ -214,6 +220,10 @@ func (c *Client) downloadPlanFile(
 			extra(&p)
 		}
 		onProgress(p)
+	}
+
+	if opts.DryRun {
+		return c.downloadPlanFileDryRun(f, opts, completedBytes, totalSize, fileIndex, totalItems, localExists, localSize, onProgress, skippedCount, resumedCount)
 	}
 
 	switch {
@@ -306,6 +316,85 @@ func (c *Client) downloadPlanFile(
 	}
 }
 
+func (c *Client) downloadPlanFileDryRun(
+	f *remoteDirFile,
+	opts DownloadOptions,
+	completedBytes, totalSize int64,
+	fileIndex, totalItems int,
+	localExists bool,
+	localSize int64,
+	onProgress func(DownloadDirProgress),
+	skippedCount, resumedCount *int,
+) (downloadAction, error) {
+	emit := func(phase DownloadDirPhase, fileCompleted int64, extra func(*DownloadDirProgress)) {
+		if onProgress == nil {
+			return
+		}
+		p := DownloadDirProgress{
+			FileIndex:      fileIndex,
+			TotalItems:     totalItems,
+			RelativePath:   f.relativePath,
+			Phase:          phase,
+			CompletedBytes: completedBytes,
+			TotalBytes:     totalSize,
+			FileCompleted:  fileCompleted,
+			FileTotal:      f.size,
+		}
+		if extra != nil {
+			extra(&p)
+		}
+		onProgress(p)
+	}
+
+	emitChunks := func(startOffset int64) {
+		if onProgress == nil {
+			return
+		}
+		remaining := f.size - startOffset
+		if remaining < 0 {
+			remaining = 0
+		}
+		totalChunks := ChunkCount(remaining, ChunkSize)
+		fileCompleted := startOffset
+		for i := 0; i < totalChunks; i++ {
+			fileCompleted += ChunkLenAt(i, remaining, ChunkSize)
+			onProgress(DownloadDirProgress{
+				FileIndex:      fileIndex,
+				TotalItems:     totalItems,
+				RelativePath:   f.relativePath,
+				Phase:          DownloadDirPhaseDownloading,
+				CompletedBytes: completedBytes + fileCompleted,
+				TotalBytes:     totalSize,
+				FileCompleted:  fileCompleted,
+				FileTotal:      f.size,
+				ChunkIndex:     i + 1,
+				TotalChunks:    totalChunks,
+			})
+		}
+	}
+
+	switch {
+	case localExists && localSize == f.size:
+		*skippedCount++
+		emit(DownloadDirPhaseSkipped, f.size, func(p *DownloadDirProgress) {
+			p.CompletedBytes = completedBytes + f.size
+		})
+		return downloadActionSkipped, nil
+
+	case localExists && localSize > 0 && localSize < f.size:
+		*resumedCount++
+		emit(DownloadDirPhaseResumed, localSize, func(p *DownloadDirProgress) {
+			p.CompletedBytes = completedBytes + localSize
+		})
+		emitChunks(localSize)
+		return downloadActionResumed, nil
+
+	default:
+		emitChunks(0)
+		return downloadActionFull, nil
+	}
+}
+
 func (c *Client) buildDownloadPlan(absoluteRemote string) (plan []downloadPlanItem, totalSize int64, err error) {
 	files, allDirRels, err := c.walkRemoteDownloadTree(absoluteRemote)
 	if err != nil {
@@ -320,40 +409,44 @@ func (c *Client) buildDownloadPlan(absoluteRemote string) (plan []downloadPlanIt
 		}
 	}
 
+	appendFile := func(e BrowseEntry, relPrefix string) {
+		relSlash := filepath.ToSlash(filepath.Join(relPrefix, e.Name))
+		totalSize += e.Size
+		plan = append(plan, downloadPlanItem{
+			itemType:     downloadPlanFile,
+			relativePath: relSlash,
+			file: &remoteDirFile{
+				remotePath:   e.Path,
+				relativePath: relSlash,
+				size:         e.Size,
+			},
+		})
+	}
+
 	var visit func(dirPath, relPrefix string) error
 	visit = func(dirPath, relPrefix string) error {
 		browse, err := c.BrowseDir(dirPath)
 		if err != nil {
 			return err
 		}
-		entries := append([]BrowseEntry(nil), browse.Entries...)
-		sort.Slice(entries, func(i, j int) bool {
-			return entries[i].Name < entries[j].Name
-		})
-		for _, e := range entries {
-			relSlash := filepath.ToSlash(filepath.Join(relPrefix, e.Name))
-			if e.IsDir {
-				if emptyDirs[relSlash] {
-					plan = append(plan, downloadPlanItem{
-						itemType:     downloadPlanEmptyDir,
-						relativePath: relSlash + "/",
-					})
-				}
-				if err := visit(e.Path, relSlash); err != nil {
-					return err
-				}
-				continue
+		firstFile, moreFiles, dirs := partitionDownloadBrowseEntries(browse.Entries)
+		if firstFile != nil {
+			appendFile(*firstFile, relPrefix)
+		}
+		for _, d := range dirs {
+			relSlash := filepath.ToSlash(filepath.Join(relPrefix, d.Name))
+			if emptyDirs[relSlash] {
+				plan = append(plan, downloadPlanItem{
+					itemType:     downloadPlanEmptyDir,
+					relativePath: relSlash + "/",
+				})
 			}
-			totalSize += e.Size
-			plan = append(plan, downloadPlanItem{
-				itemType:     downloadPlanFile,
-				relativePath: relSlash,
-				file: &remoteDirFile{
-					remotePath:   e.Path,
-					relativePath: relSlash,
-					size:         e.Size,
-				},
-			})
+			if err := visit(d.Path, relSlash); err != nil {
+				return err
+			}
+		}
+		for _, f := range moreFiles {
+			appendFile(f, relPrefix)
 		}
 		return nil
 	}
@@ -371,23 +464,28 @@ func (c *Client) walkRemoteDownloadTree(remoteRoot string) (files []remoteDirFil
 		if err != nil {
 			return err
 		}
-		entries := append([]BrowseEntry(nil), browse.Entries...)
-		sort.Slice(entries, func(i, j int) bool {
-			return entries[i].Name < entries[j].Name
-		})
-		for _, e := range entries {
-			relSlash := filepath.ToSlash(filepath.Join(relPrefix, e.Name))
-			if e.IsDir {
-				allDirRels = append(allDirRels, relSlash)
-				if err := visit(e.Path, relSlash); err != nil {
-					return err
-				}
-				continue
-			}
+		firstFile, moreFiles, dirs := partitionDownloadBrowseEntries(browse.Entries)
+		if firstFile != nil {
+			relSlash := filepath.ToSlash(filepath.Join(relPrefix, firstFile.Name))
 			files = append(files, remoteDirFile{
-				remotePath:   e.Path,
+				remotePath:   firstFile.Path,
 				relativePath: relSlash,
-				size:         e.Size,
+				size:         firstFile.Size,
+			})
+		}
+		for _, d := range dirs {
+			relSlash := filepath.ToSlash(filepath.Join(relPrefix, d.Name))
+			allDirRels = append(allDirRels, relSlash)
+			if err := visit(d.Path, relSlash); err != nil {
+				return err
+			}
+		}
+		for _, f := range moreFiles {
+			relSlash := filepath.ToSlash(filepath.Join(relPrefix, f.Name))
+			files = append(files, remoteDirFile{
+				remotePath:   f.Path,
+				relativePath: relSlash,
+				size:         f.Size,
 			})
 		}
 		return nil
@@ -396,6 +494,27 @@ func (c *Client) walkRemoteDownloadTree(remoteRoot string) (files []remoteDirFil
 		return nil, nil, fmt.Errorf("failed to browse remote directory: %w", err)
 	}
 	return files, allDirRels, nil
+}
+
+// partitionDownloadBrowseEntries orders plan items as: first file, directories, remaining files.
+func partitionDownloadBrowseEntries(entries []BrowseEntry) (firstFile *BrowseEntry, moreFiles []BrowseEntry, dirs []BrowseEntry) {
+	entries = append([]BrowseEntry(nil), entries...)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name < entries[j].Name
+	})
+	for i := range entries {
+		e := entries[i]
+		if e.IsDir {
+			dirs = append(dirs, e)
+			continue
+		}
+		if firstFile == nil {
+			firstFile = &entries[i]
+			continue
+		}
+		moreFiles = append(moreFiles, e)
+	}
+	return firstFile, moreFiles, dirs
 }
 
 func dirsContainingRemoteFiles(files []remoteDirFile) map[string]bool {

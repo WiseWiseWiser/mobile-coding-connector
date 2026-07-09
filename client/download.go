@@ -102,6 +102,39 @@ func (c *Client) DownloadFile(remotePath, localPath string, opts DownloadOptions
 
 	startOffset := int64(0)
 	truncate := true
+	if opts.DryRun {
+		totalBytes := remoteSize
+		if totalBytes < 0 {
+			totalBytes = 0
+		}
+		startOffset := int64(0)
+		if localExists {
+			if remoteSize >= 0 && localSize == remoteSize {
+				if onProgress != nil {
+					onProgress(DownloadProgress{
+						CompletedBytes: localSize,
+						TotalBytes:     totalBytes,
+						Phase:          DownloadPhaseDownloading,
+					})
+				}
+				return &DownloadResult{
+					RemotePath: resolvedRemote,
+					LocalPath:  localPath,
+					Size:       localSize,
+				}, nil
+			}
+			if remoteSize >= 0 && localSize > 0 && localSize < remoteSize {
+				startOffset = localSize
+			}
+		}
+		SimulateDownloadChunks(totalBytes, startOffset, onProgress)
+		return &DownloadResult{
+			RemotePath: resolvedRemote,
+			LocalPath:  localPath,
+			Size:       totalBytes,
+		}, nil
+	}
+
 	if localExists {
 		if remoteSize >= 0 && localSize == remoteSize {
 			return &DownloadResult{

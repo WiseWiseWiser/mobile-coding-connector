@@ -44,6 +44,10 @@ to model resume states.
   ` — X% overall` rollup) between banner and summary; empty subdirs emit
   `created <rel>/` lines counted in `[N/M]`.
 - Summary includes `N skipped, M resumed` when non-zero.
+- `--dry-run` streams the same hierarchical progress with `would` prefixes and
+  `dry-run: download plan` / `dry-run: download complete` banners but performs no
+  GET download or local writes; still browses server and stats local files for
+  resume preview (`would skip`, `would resume`).
 
 ## Version
 
@@ -63,6 +67,8 @@ to model resume states.
  |    +-- resume-skips-complete/          (LEAF)  pre-seeded complete files skipped
  |    +-- resume-partial-file/           (LEAF)  pre-seeded half file resumed
  |    +-- nested-and-dotfiles/           (LEAF)  dotfiles + empty subdir + created line
+ |    +-- dry-run-mirror/                (LEAF)  --dry-run full plan; no local files
+ |    +-- dry-run-resume-preview/        (LEAF)  --dry-run would skip/resume; local unchanged
  |
  +-- dir-rejected/                       (GROUP) remote source invalid
       +-- remote-is-missing/             (LEAF)  remote path absent
@@ -79,6 +85,8 @@ to model resume states.
 | 5 | `dir-success/resume-partial-file` | Pre-seeded half file → `resumed at` + full bytes |
 | 6 | `dir-success/nested-and-dotfiles` | Dotfiles, empty `emptydir/`, indexed `created` stdout |
 | 7 | `dir-rejected/remote-is-missing` | Non-zero exit, clear error |
+| 8 | `dir-success/dry-run-mirror` | `--dry-run` streams plan; no local files created |
+| 9 | `dir-success/dry-run-resume-preview` | Pre-seed partial local; `would skip`/`would resume`; local unchanged |
 
 ## Parameter Coverage
 
@@ -90,6 +98,7 @@ to model resume states.
 | Tree shape (dotfiles, empty dirs, nesting) | nested-and-dotfiles, mirror-tree |
 | Streaming progress (hierarchical stdout) | streams-progress, nested-and-dotfiles |
 | Single-file regression (no dir markers) | file-regression/single-file |
+| `--dry-run` (plan only, no mutations) | dry-run-mirror, dry-run-resume-preview |
 
 ## How to Run
 
@@ -153,6 +162,11 @@ type Response struct {
 	RemotePath   string
 	LocalPath    string
 	LocalDir     string
+
+	// LocalFilesBeforeCLI / LocalFilesAfterCLI snapshot localDir file
+	// contents (localDir-relative paths) when Args include --dry-run.
+	LocalFilesBeforeCLI map[string]string
+	LocalFilesAfterCLI  map[string]string
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
@@ -272,6 +286,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
 	agentEnv = append(agentEnv, "HOME="+agentHome)
 
+	if argsHasDryRun(req.Args) && req.LocalDir != "" {
+		resp.LocalFilesBeforeCLI = snapshotDataTree(t, req.LocalDir)
+	}
+
 	agentCmd := exec.Command(agentBin, argv...)
 	agentCmd.Dir = agentWorkDir
 	agentCmd.Env = agentEnv
@@ -281,6 +299,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	agentCmd.Stderr = &stderr
 
 	runErr := agentCmd.Run()
+
+	if argsHasDryRun(req.Args) && req.LocalDir != "" {
+		resp.LocalFilesAfterCLI = snapshotDataTree(t, req.LocalDir)
+	}
 	if runErr != nil {
 		if exitErr, ok := runErr.(*exec.ExitError); ok {
 			resp.ExitCode = exitErr.ExitCode()

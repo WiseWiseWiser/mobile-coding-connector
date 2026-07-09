@@ -7,6 +7,13 @@ import (
 	"github.com/xhd2015/ai-critic/client"
 )
 
+func printUploadDryRunProgress(p client.UploadProgress) {
+	percent := chunkPercent(p.CompletedBytes, p.TotalBytes)
+	fmt.Printf("  would upload chunk %d/%d (%s / %s, %d%%)\n",
+		p.ChunkIndex+1, p.TotalChunks,
+		formatSize(p.CompletedBytes), formatSize(p.TotalBytes), percent)
+}
+
 func printUploadProgress(p client.UploadProgress) {
 	switch p.Phase {
 	case client.UploadChunkRetrying:
@@ -54,6 +61,32 @@ func shortUploadErr(err error) string {
 		return msg[idx+2:]
 	}
 	return msg
+}
+
+func printUploadDirDryRunProgress(p client.UploadDirProgress) {
+	overall := formatOverallPercent(p.CompletedBytes, p.TotalBytes)
+	switch p.Phase {
+	case client.UploadDirPhaseFileStart:
+		fmt.Printf("  [%d/%d] %s (%s) — %s\n",
+			p.FileIndex, p.TotalItems,
+			p.RelativePath, formatSize(p.FileSize),
+			overall)
+	case client.UploadDirPhaseDirCreated:
+		fmt.Printf("  [%d/%d] would create %s — %s\n",
+			p.FileIndex, p.TotalItems,
+			p.RelativePath,
+			overall)
+	default:
+		printUploadDirDryRunChunkProgress(p.Chunk, overall)
+	}
+}
+
+func printUploadDirDryRunChunkProgress(p client.UploadProgress, overall string) {
+	percent := chunkPercent(p.CompletedBytes, p.TotalBytes)
+	fmt.Printf("    would upload chunk %d/%d (%s / %s, %d%%) — %s\n",
+		p.ChunkIndex+1, p.TotalChunks,
+		formatSize(p.CompletedBytes), formatSize(p.TotalBytes), percent,
+		overall)
 }
 
 func printUploadDirProgress(p client.UploadDirProgress) {

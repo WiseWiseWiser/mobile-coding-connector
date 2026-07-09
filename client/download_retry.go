@@ -26,7 +26,8 @@ type DownloadRetryConfig struct {
 
 // DownloadOptions configures optional download behavior.
 type DownloadOptions struct {
-	Retry *DownloadRetryConfig
+	Retry  *DownloadRetryConfig
+	DryRun bool
 }
 
 type downloadHTTPError struct {

@@ -9,7 +9,7 @@ import (
 	"github.com/xhd2015/ai-critic/client"
 )
 
-const downloadHelp = `Usage: remote-agent download <REMOTE_PATH> [LOCAL_PATH]
+const downloadHelp = `Usage: remote-agent download [--dry-run] <REMOTE_PATH> [LOCAL_PATH]
 
 Download a remote file or directory from the server.
 
@@ -19,11 +19,15 @@ Arguments:
                 basename. If LOCAL_PATH ends with '/', the basename is appended.
                 For directories, LOCAL_PATH is the mirror root.
 
+Options:
+  --dry-run     Print the download plan without making changes.
+
 Examples:
   remote-agent download '~/server.log'
   remote-agent download /tmp/foo.txt ./foo.txt
   remote-agent download /tmp/foo.txt
   remote-agent download uploads/mirror ./local-mirror
+  remote-agent download --dry-run uploads/mirror ./local-mirror
 `
 
 func runDownload(cli *client.Client, args []string) error {
@@ -31,6 +35,8 @@ func runDownload(cli *client.Client, args []string) error {
 		fmt.Print(downloadHelp)
 		return nil
 	}
+
+	dryRun, args := parseTransferFlags(args)
 	if len(args) < 1 {
 		return fmt.Errorf("download requires <REMOTE_PATH> [LOCAL_PATH]; see 'remote-agent download --help'")
 	}
@@ -42,6 +48,10 @@ func runDownload(cli *client.Client, args []string) error {
 	localPath := ""
 	if len(args) == 2 {
 		localPath = args[1]
+	}
+
+	if dryRun {
+		fmt.Println("dry-run: download plan")
 	}
 
 	resolvedRemote, err := cli.ResolveRemoteFilePath(remotePath)
@@ -57,21 +67,31 @@ func runDownload(cli *client.Client, args []string) error {
 		return fmt.Errorf("remote path %q is missing or does not exist", remotePath)
 	}
 	if info.IsDir {
-		return runDownloadDir(cli, remotePath, localPath)
+		return runDownloadDir(cli, remotePath, localPath, dryRun)
 	}
 
 	fmt.Printf("Downloading %s -> %s\n", remotePath, describeLocal(localPath))
 
-	result, err := cli.DownloadFile(remotePath, localPath, client.DownloadOptions{}, printDownloadProgress)
+	downloadOpts := client.DownloadOptions{DryRun: dryRun}
+	progressFn := printDownloadProgress
+	if dryRun {
+		progressFn = printDownloadDryRunProgress
+	}
+
+	result, err := cli.DownloadFile(remotePath, localPath, downloadOpts, progressFn)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Download complete: %s (%s)\n", result.LocalPath, formatSize(result.Size))
+	if dryRun {
+		fmt.Printf("dry-run: download complete: %s (%s)\n", result.LocalPath, formatSize(result.Size))
+	} else {
+		fmt.Printf("Download complete: %s (%s)\n", result.LocalPath, formatSize(result.Size))
+	}
 	return nil
 }
 
-func runDownloadDir(cli *client.Client, remotePath, localPath string) error {
+func runDownloadDir(cli *client.Client, remotePath, localPath string, dryRun bool) error {
 	itemCount, _, totalSize, err := cli.CountDownloadDirItems(remotePath)
 	if err != nil {
 		return err
@@ -81,7 +101,13 @@ func runDownloadDir(cli *client.Client, remotePath, localPath string) error {
 	fmt.Printf("Downloading %s -> %s (%d items, %s)\n",
 		remotePath, logicalLocal, itemCount, formatSize(totalSize))
 
-	result, err := cli.DownloadDir(remotePath, localPath, client.DownloadOptions{}, printDownloadDirProgress)
+	downloadOpts := client.DownloadOptions{DryRun: dryRun}
+	progressFn := printDownloadDirProgress
+	if dryRun {
+		progressFn = printDownloadDirDryRunProgress
+	}
+
+	result, err := cli.DownloadDir(remotePath, localPath, downloadOpts, progressFn)
 	if err != nil {
 		return err
 	}
@@ -90,13 +116,23 @@ func runDownloadDir(cli *client.Client, remotePath, localPath string) error {
 		fmt.Println()
 	}
 
-	summary := fmt.Sprintf("Download complete: %s (%d files, %s",
-		logicalLocal, result.FileCount, formatSize(result.TotalSize))
-	if result.SkippedCount > 0 || result.ResumedCount > 0 {
-		summary += fmt.Sprintf("; %d skipped, %d resumed", result.SkippedCount, result.ResumedCount)
+	if dryRun {
+		summary := fmt.Sprintf("dry-run: download complete: %s (%d files, %s",
+			logicalLocal, result.FileCount, formatSize(result.TotalSize))
+		if result.SkippedCount > 0 || result.ResumedCount > 0 {
+			summary += fmt.Sprintf("; %d would skip, %d would resume", result.SkippedCount, result.ResumedCount)
+		}
+		summary += ")"
+		fmt.Println(summary)
+	} else {
+		summary := fmt.Sprintf("Download complete: %s (%d files, %s",
+			logicalLocal, result.FileCount, formatSize(result.TotalSize))
+		if result.SkippedCount > 0 || result.ResumedCount > 0 {
+			summary += fmt.Sprintf("; %d skipped, %d resumed", result.SkippedCount, result.ResumedCount)
+		}
+		summary += ")"
+		fmt.Println(summary)
 	}
-	summary += ")"
-	fmt.Println(summary)
 	return nil
 }
 

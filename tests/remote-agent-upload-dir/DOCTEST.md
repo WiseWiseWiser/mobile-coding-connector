@@ -41,6 +41,9 @@ and optionally pre-seeds `serverHome` to model destination states.
   (`[N/M]` item headers, indented chunk sub-lines, ` — X% overall` rollup) between
   banner and summary; empty subdirs emit `created <rel>/` lines counted in `[N/M]`.
 - Single-file uploads keep flat chunk lines without `[N/M]` or `overall` suffixes.
+- `--dry-run` streams the same hierarchical progress with `would` prefixes and
+  `dry-run: upload plan` / `dry-run: upload complete` banners but performs no
+  server mkdir, upload init/chunk/complete; destination guard still runs.
 
 ## Version
 
@@ -53,6 +56,7 @@ and optionally pre-seeds `serverHome` to model destination states.
  |
  +-- file-regression/                    (GROUP) single-file path unchanged
  |    +-- single-file/                   (LEAF)  hello.txt -> remote file
+ |    +-- dry-run-single-file/           (LEAF)  --dry-run single file; no overall
  |
  +-- dir-success/                        (GROUP) directory accepted + mirrored
  |    +-- dst-not-exists/                (LEAF)  missing remoteDir
@@ -60,11 +64,13 @@ and optionally pre-seeds `serverHome` to model destination states.
  |    +-- nested-and-dotfiles/           (LEAF)  dotfiles + empty subdir + created line
  |    +-- streams-progress/              (LEAF)  multi-file streaming stdout
  |    +-- trailing-slash-dst/            (LEAF)  parent/ -> parent/proj/
+ |    +-- dry-run-mirror/                (LEAF)  --dry-run dir plan; serverHome unchanged
  |
  +-- dir-rejected/                       (GROUP) pre-flight guard fails
       +-- dst-has-file/                  (LEAF)  remoteDir contains a file
       +-- dst-has-subdir/                (LEAF)  remoteDir contains a subdir
       +-- dst-is-file/                   (LEAF)  remoteDir is a regular file
+      +-- dry-run-guard-fails/           (LEAF)  --dry-run + non-empty dst; server unchanged
 ```
 
 ## Test Index
@@ -80,6 +86,9 @@ and optionally pre-seeds `serverHome` to model destination states.
 | 7 | `dir-rejected/dst-has-file` | Reject when `remoteDir/existing.txt` present |
 | 8 | `dir-rejected/dst-has-subdir` | Reject when `remoteDir/child/` present |
 | 9 | `dir-rejected/dst-is-file` | Reject when destination path is a file |
+| 10 | `dir-success/dry-run-mirror` | `--dry-run` dir plan; `would upload`; serverHome unchanged |
+| 11 | `dir-rejected/dry-run-guard-fails` | `--dry-run` with non-empty dst; error; server unchanged |
+| 12 | `file-regression/dry-run-single-file` | `--dry-run` single file; `would upload chunk`; no `overall` |
 
 ## Parameter Coverage
 
@@ -91,6 +100,7 @@ and optionally pre-seeds `serverHome` to model destination states.
 | Tree shape (dotfiles, empty dirs, nesting) | nested-and-dotfiles, dst-not-exists, dst-empty-exists |
 | Streaming progress (hierarchical stdout) | streams-progress, nested-and-dotfiles |
 | Remote path form (plain vs trailing `/`) | trailing-slash-dst |
+| `--dry-run` (plan only, no mutations) | dry-run-mirror, dry-run-guard-fails, dry-run-single-file |
 
 ## How to Run
 
@@ -149,6 +159,11 @@ type Response struct {
 	LocalPath  string
 	RemotePath string
 	RemoteDir  string
+
+	// ServerFilesBeforeCLI / ServerFilesAfterCLI snapshot serverHome file
+	// contents (serverHome-relative paths) when Args include --dry-run.
+	ServerFilesBeforeCLI map[string]string
+	ServerFilesAfterCLI  map[string]string
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
@@ -255,6 +270,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
 	agentEnv = append(agentEnv, "HOME="+agentHome)
 
+	if argsHasDryRun(req.Args) {
+		resp.ServerFilesBeforeCLI = snapshotDataTree(t, serverHome)
+	}
+
 	agentCmd := exec.Command(agentBin, argv...)
 	agentCmd.Env = agentEnv
 
@@ -263,6 +282,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	agentCmd.Stderr = &stderr
 
 	runErr := agentCmd.Run()
+
+	if argsHasDryRun(req.Args) {
+		resp.ServerFilesAfterCLI = snapshotDataTree(t, serverHome)
+	}
 	if runErr != nil {
 		if exitErr, ok := runErr.(*exec.ExitError); ok {
 			resp.ExitCode = exitErr.ExitCode()

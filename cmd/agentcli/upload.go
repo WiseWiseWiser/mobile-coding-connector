@@ -9,7 +9,7 @@ import (
 	"github.com/xhd2015/ai-critic/client"
 )
 
-const uploadHelp = `Usage: remote-agent upload <LOCAL_PATH> [REMOTE_PATH]
+const uploadHelp = `Usage: remote-agent upload [--dry-run] <LOCAL_PATH> [REMOTE_PATH]
 
 Upload a local file or directory to the server using chunked upload.
 
@@ -19,11 +19,15 @@ Arguments:
                 basename. If REMOTE_PATH ends with '/', the basename is
                 appended. For directories, REMOTE_PATH is the mirror root.
 
+Options:
+  --dry-run     Print the upload plan without making changes.
+
 Examples:
   remote-agent upload ./foo.txt /tmp/foo.txt
   remote-agent upload ./foo.txt /tmp/          # basename appended
   remote-agent upload ./foo.txt                # uses saved config + basename
   remote-agent upload ./srcdir uploads/mirror  # mirror directory tree
+  remote-agent upload --dry-run ./srcdir uploads/mirror
 `
 
 func runUpload(cli *client.Client, args []string) error {
@@ -31,6 +35,8 @@ func runUpload(cli *client.Client, args []string) error {
 		fmt.Print(uploadHelp)
 		return nil
 	}
+
+	dryRun, args := parseTransferFlags(args)
 	if len(args) < 1 {
 		return fmt.Errorf("upload requires <LOCAL_PATH> [REMOTE_PATH]; see 'remote-agent upload --help'")
 	}
@@ -44,21 +50,32 @@ func runUpload(cli *client.Client, args []string) error {
 		remotePath = args[1]
 	}
 
+	if dryRun {
+		fmt.Println("dry-run: upload plan")
+	}
+
 	stat, err := os.Stat(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to stat local path: %w", err)
 	}
 	if stat.IsDir() {
-		return runUploadDir(cli, localPath, remotePath)
+		return runUploadDir(cli, localPath, remotePath, dryRun)
 	}
 
 	chmodExec := isExecutableMode(stat.Mode())
 
 	fmt.Printf("Uploading %s (%s) -> %s\n", localPath, formatSize(stat.Size()), describeRemote(remotePath))
 
-	result, err := cli.UploadFile(localPath, remotePath, client.UploadOptions{
+	uploadOpts := client.UploadOptions{
 		ChmodExec: chmodExec,
-	}, printUploadProgress)
+		DryRun:    dryRun,
+	}
+	progressFn := printUploadProgress
+	if dryRun {
+		progressFn = printUploadDryRunProgress
+	}
+
+	result, err := cli.UploadFile(localPath, remotePath, uploadOpts, progressFn)
 	if err != nil {
 		if hint := uploadFailureHint(err); hint != "" {
 			return fmt.Errorf("%w\n  %s", err, hint)
@@ -66,11 +83,15 @@ func runUpload(cli *client.Client, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Upload complete: %s (%s)\n", result.Path, formatSize(result.Size))
+	if dryRun {
+		fmt.Printf("dry-run: upload complete: %s (%s)\n", result.Path, formatSize(result.Size))
+	} else {
+		fmt.Printf("Upload complete: %s (%s)\n", result.Path, formatSize(result.Size))
+	}
 	return nil
 }
 
-func runUploadDir(cli *client.Client, localDir, remotePath string) error {
+func runUploadDir(cli *client.Client, localDir, remotePath string, dryRun bool) error {
 	itemCount, _, totalSize, err := client.CountUploadDirItems(localDir)
 	if err != nil {
 		return err
@@ -80,7 +101,13 @@ func runUploadDir(cli *client.Client, localDir, remotePath string) error {
 	fmt.Printf("Uploading %s/ (%d items, %s) -> %s\n",
 		localDir, itemCount, formatSize(totalSize), logicalRemote)
 
-	result, err := cli.UploadDir(localDir, remotePath, client.UploadOptions{}, printUploadDirProgress)
+	uploadOpts := client.UploadOptions{DryRun: dryRun}
+	progressFn := printUploadDirProgress
+	if dryRun {
+		progressFn = printUploadDirDryRunProgress
+	}
+
+	result, err := cli.UploadDir(localDir, remotePath, uploadOpts, progressFn)
 	if err != nil {
 		return err
 	}
@@ -89,8 +116,13 @@ func runUploadDir(cli *client.Client, localDir, remotePath string) error {
 	if itemCount == result.FileCount {
 		fmt.Println()
 	}
-	fmt.Printf("Upload complete: %s (%d files, %s)\n",
-		result.Path, result.FileCount, formatSize(result.TotalSize))
+	if dryRun {
+		fmt.Printf("dry-run: upload complete: %s (%d files, %s)\n",
+			result.Path, result.FileCount, formatSize(result.TotalSize))
+	} else {
+		fmt.Printf("Upload complete: %s (%d files, %s)\n",
+			result.Path, result.FileCount, formatSize(result.TotalSize))
+	}
 	return nil
 }
 

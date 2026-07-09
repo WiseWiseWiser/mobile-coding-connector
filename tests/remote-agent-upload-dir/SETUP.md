@@ -25,9 +25,11 @@ leaf Setup -> seed localDir and optional serverHome -> remote-agent upload -> re
 
 ## Context
 
-Implements REQUIREMENT-DESIGN-remote-agent-upload-dir.md. Directory uploads are
+Implements REQUIREMENT-DESIGN-remote-agent-upload-dir.md and
+REQUIREMENT-DESIGN-upload-download-dry-run.md. Directory uploads are
 client-orchestrated fan-outs of the existing per-file chunked upload API; rejected
-leaves must show no partial writes under `remoteDir`.
+leaves must show no partial writes under `remoteDir`. Dry-run leaves snapshot
+`serverHome` before/after CLI (`snapshotDataTree` / `assertTreeSnapshotUnchanged`).
 
 ```go
 import (
@@ -148,17 +150,91 @@ func writeLocalDir(t *testing.T, root, rel string) {
 
 func setUploadArgs(t *testing.T, req *Request, localPath, remotePath string) {
 	t.Helper()
+	setUploadArgsWithDryRun(t, req, localPath, remotePath, false)
+}
+
+func setUploadDryRunArgs(t *testing.T, req *Request, localPath, remotePath string) {
+	t.Helper()
+	setUploadArgsWithDryRun(t, req, localPath, remotePath, true)
+}
+
+func setUploadArgsWithDryRun(t *testing.T, req *Request, localPath, remotePath string, dryRun bool) {
+	t.Helper()
 	abs, err := filepath.Abs(localPath)
 	if err != nil {
 		t.Fatalf("abs local path: %v", err)
 	}
 	req.LocalPath = abs
 	req.RemotePath = remotePath
-	args := []string{"upload", abs}
+	args := []string{"upload"}
+	if dryRun {
+		args = append(args, "--dry-run")
+	}
+	args = append(args, abs)
 	if remotePath != "" {
 		args = append(args, remotePath)
 	}
 	req.Args = args
+}
+
+func argsHasDryRun(args []string) bool {
+	for _, a := range args {
+		if a == "--dry-run" {
+			return true
+		}
+	}
+	return false
+}
+
+func snapshotDataTree(t *testing.T, root string) map[string]string {
+	t.Helper()
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		return map[string]string{}
+	}
+	out := make(map[string]string)
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == "." {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		out[filepath.ToSlash(rel)] = string(data)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("snapshot data tree %s: %v", root, err)
+	}
+	return out
+}
+
+func assertTreeSnapshotUnchanged(t *testing.T, label string, before, after map[string]string) {
+	t.Helper()
+	if len(before) != len(after) {
+		t.Fatalf("%s file count changed: before=%d after=%d", label, len(before), len(after))
+	}
+	for rel, want := range before {
+		got, ok := after[rel]
+		if !ok {
+			t.Fatalf("%s missing file after CLI: %s", label, rel)
+		}
+		if got != want {
+			t.Fatalf("%s file %q changed:\nwant len=%d\ngot len=%d", label, rel, len(want), len(got))
+		}
+	}
+	for rel := range after {
+		if _, ok := before[rel]; !ok {
+			t.Fatalf("%s unexpected file after CLI: %s", label, rel)
+		}
+	}
 }
 
 func resolveRemoteDir(t *testing.T, serverHome, localPath, remotePath string) string {
