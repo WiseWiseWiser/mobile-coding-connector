@@ -3,16 +3,16 @@
 **Feature**: error service title
 
 ```
-FormatServiceTitle(...,"error",...) -> "… ⚠ Error"
+FormatServiceTitle("web","error",...) -> "web ⚠ Error"
 ```
 
 ## Preconditions
 
-Service status is `error`; title uses error presentation per menubar spec.
+Service status is `error`; title includes the full service name and error presentation.
 
 ## Steps
 
-1. Set status `error` (name may be truncated in output).
+1. Set status `error` with multi-character name `web`.
 
 ## Context
 

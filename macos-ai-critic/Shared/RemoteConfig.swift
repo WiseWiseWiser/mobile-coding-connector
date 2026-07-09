@@ -202,4 +202,33 @@ public enum RemoteConfigStore {
         let (ep, state) = resolve(cfg)
         return (formatStatus(state: state, server: ep.server), ep.server, ep.ok)
     }
+
+    /// Select a domain as default (mirrors Go `remoteconfig.SelectDefaultDomain`).
+    /// Sets `default` to the matching domain's normalized server URL.
+    public static func selectDefaultDomain(
+        _ config: RemoteAgentConfig,
+        serverURL: String
+    ) throws -> RemoteAgentConfig {
+        let norm = normalizeServer(serverURL)
+        guard !norm.isEmpty else {
+            throw RemoteConfigError.domainNotFound(serverURL)
+        }
+        guard let match = config.domains.first(where: { normalizeServer($0.server) == norm }) else {
+            throw RemoteConfigError.domainNotFound(serverURL)
+        }
+        var out = config
+        out.defaultServer = normalizeServer(match.server)
+        return out
+    }
+}
+
+public enum RemoteConfigError: LocalizedError {
+    case domainNotFound(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .domainNotFound(let server):
+            return "Domain not found: \(server)"
+        }
+    }
 }

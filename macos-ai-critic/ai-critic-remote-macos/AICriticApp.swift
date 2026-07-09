@@ -12,6 +12,9 @@ final class RemoteAppState: ObservableObject {
     @Published var hasEndpoint = false
     @Published var token: String = ""
     @Published var services: [ServiceStatus] = []
+    @Published var terminals: [TerminalSession] = []
+    @Published var domains: [RemoteDomain] = []
+    @Published var defaultServer: String = ""
     @AppStorage("menuBarDisplayMode") var menuBarDisplayMode = "rotating"
 
     /// Shared HTTP client for remote service APIs (base URL + Bearer token).
@@ -19,6 +22,8 @@ final class RemoteAppState: ObservableObject {
 
     /// Override for tests; empty means use default CLI path.
     var configPathOverride: String?
+
+    private let isRemoteApp = true
 
     func configPath() -> String {
         if let override = configPathOverride, !override.isEmpty {
@@ -36,25 +41,42 @@ final class RemoteAppState: ObservableObject {
             hasEndpoint = result.resolved
             menuLabel = result.resolved ? "Remote" : "Remote …"
 
-            if result.resolved {
-                if let cfg = try RemoteConfigStore.load(path: path) {
+            if let cfg = try RemoteConfigStore.load(path: path) {
+                domains = cfg.domains
+                defaultServer = cfg.defaultServer
+                if result.resolved {
                     let (ep, _) = RemoteConfigStore.resolve(cfg)
                     token = ep.token
                     serviceClient.configure(baseURL: ep.server, token: ep.token)
+                } else {
+                    token = ""
+                    serviceClient.configure(baseURL: "", token: "")
+                    services = []
+                    terminals = []
                 }
-                await refreshServices()
             } else {
+                domains = []
+                defaultServer = ""
                 token = ""
                 serviceClient.configure(baseURL: "", token: "")
                 services = []
+                terminals = []
+            }
+
+            if hasEndpoint {
+                await refreshServices()
+                await refreshTerminals()
             }
         } catch {
             statusLine = "Not configured — open Configure… to add a remote server"
             serverURL = ""
             hasEndpoint = false
             token = ""
+            domains = []
+            defaultServer = ""
             serviceClient.configure(baseURL: "", token: "")
             services = []
+            terminals = []
             menuLabel = "Remote …"
         }
     }
@@ -70,6 +92,46 @@ final class RemoteAppState: ObservableObject {
             // Keep prior list when server is temporarily unreachable.
         }
     }
+
+    func refreshTerminals() async {
+        guard serviceClient.isConfigured else {
+            terminals = []
+            return
+        }
+        do {
+            terminals = try await serviceClient.listTerminalSessions()
+        } catch {
+            // Keep prior list when server is temporarily unreachable.
+        }
+    }
+
+    /// Persist selected domain as `default` and reload clients (services + terminals + browser).
+    func selectDefaultDomain(server: String) async {
+        let path = configPath()
+        do {
+            guard let cfg = try RemoteConfigStore.load(path: path) else { return }
+            let updated = try RemoteConfigStore.selectDefaultDomain(cfg, serverURL: server)
+            try RemoteConfigStore.save(path: path, config: updated)
+            await refresh()
+        } catch {
+            // Keep prior selection on failure.
+        }
+    }
+
+    func openAttachTerminal(sessionID: String) {
+        let binary = TerminalMenuFormatter.agentBinaryForApp(isRemote: isRemoteApp)
+        let cmd = TerminalMenuFormatter.buildTerminalAttachCommand(
+            agentBinary: binary,
+            sessionID: sessionID
+        )
+        ITermOpener.openCommandOrAlert(cmd)
+    }
+
+    func openNewTerminal() {
+        let binary = TerminalMenuFormatter.agentBinaryForApp(isRemote: isRemoteApp)
+        let cmd = TerminalMenuFormatter.buildTerminalNewCommand(agentBinary: binary)
+        ITermOpener.openCommandOrAlert(cmd)
+    }
 }
 
 class RemoteAppDelegate: NSObject, NSApplicationDelegate {
@@ -79,11 +141,23 @@ class RemoteAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         Task { @MainActor in
             await state?.refresh()
+            startRefreshLoop()
         }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    /// Periodic services + terminals refresh (PeriodicRefreshInterval = 30s).
+    @MainActor
+    private func startRefreshLoop() {
+        Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: TerminalMenuFormatter.periodicRefreshIntervalNanoseconds)
+                await state?.refresh()
+            }
+        }
     }
 }
 
@@ -161,6 +235,33 @@ private struct RemoteMenuBarDropdown: View {
 
             Divider()
 
+            // Level-1 Server domain switcher (remote only)
+            Menu("Server") {
+                if state.domains.isEmpty {
+                    Text("No servers configured")
+                } else {
+                    ForEach(state.domains) { domain in
+                        let isSelected = RemoteConfigStore.normalizeServer(domain.server)
+                            == RemoteConfigStore.normalizeServer(state.defaultServer)
+                            || (state.defaultServer.isEmpty
+                                && RemoteConfigStore.normalizeServer(domain.server)
+                                == RemoteConfigStore.normalizeServer(state.serverURL))
+                        Button {
+                            Task { await state.selectDefaultDomain(server: domain.server) }
+                        } label: {
+                            HStack {
+                                Text(domain.server)
+                                if isSelected {
+                                    Spacer()
+                                    Text("✓")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .accessibilityIdentifier("server-switcher")
+
             Menu("Services") {
                 if !state.hasEndpoint {
                     Text("Not configured")
@@ -213,6 +314,26 @@ private struct RemoteMenuBarDropdown: View {
                 }
             }
             .accessibilityIdentifier("services-menu")
+
+            Menu("Terminals") {
+                if !state.hasEndpoint {
+                    Text("Not configured")
+                } else if state.terminals.isEmpty {
+                    Text(TerminalMenuFormatter.formatTerminalsEmptyLabel())
+                } else {
+                    ForEach(state.terminals) { session in
+                        Button(TerminalMenuFormatter.formatTerminalTitle(name: session.name, id: session.id)) {
+                            state.openAttachTerminal(sessionID: session.id)
+                        }
+                    }
+                }
+                Divider()
+                Button("New Terminal…") {
+                    state.openNewTerminal()
+                }
+                .disabled(!state.hasEndpoint)
+            }
+            .accessibilityIdentifier("terminals-menu")
 
             Divider()
 

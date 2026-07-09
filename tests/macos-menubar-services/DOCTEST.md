@@ -23,7 +23,7 @@ Swift contract leaves read sources under `macos-ai-critic/ai-critic-macos/`.
 **Behaviors**
 
 - `FormatServiceTitle`: running → `{name} ● Running`; stopped+disabled →
-  `{name} ○ Stopped (disabled)`; error → `… ⚠ Error` (truncated/error presentation).
+  `{name} ○ Stopped (disabled)`; error → `{name} ⚠ Error` (full name + error presentation).
 - `CanStopService`: false when `pid==0 && !desiredRunning`; true when `pid>0`.
 - `ShowEnableAction`: disabled service shows **Enable** (not Disable).
 - `DisableAlertMessage` / `EnableAlertMessage`: mirror `msgDisableRunning` and
@@ -45,7 +45,7 @@ Swift contract leaves read sources under `macos-ai-critic/ai-critic-macos/`.
  +-- title/                           (GROUP)  service submenu title strings
  |    +-- running/                    (LEAF)   `web ● Running`
  |    +-- stopped-disabled/           (LEAF)   `api ○ Stopped (disabled)`
- |    +-- error/                      (LEAF)   `… ⚠ Error`
+ |    +-- error/                      (LEAF)   `web ⚠ Error`
  |
  +-- action/                          (GROUP)  per-service action gating
  |    +-- stop-disabled/             (LEAF)   canStop=false when pid=0 && !desired
@@ -71,7 +71,7 @@ Swift contract leaves read sources under `macos-ai-critic/ai-critic-macos/`.
 |---|------|-------------|
 | 1 | `title/running` | `FormatServiceTitle` running → `web ● Running` |
 | 2 | `title/stopped-disabled` | stopped+disabled → `api ○ Stopped (disabled)` |
-| 3 | `title/error` | error status → `… ⚠ Error` |
+| 3 | `title/error` | error status → `web ⚠ Error` |
 | 4 | `action/stop-disabled` | `CanStopService` false when pid=0 && !desiredRunning |
 | 5 | `action/stop-enabled` | `CanStopService` true when pid>0 |
 | 6 | `action/toggle-enable` | `ShowEnableAction` true when disabled |
@@ -88,7 +88,7 @@ Swift contract leaves read sources under `macos-ai-critic/ai-critic-macos/`.
 |------|-----|------------|----------|
 | running | title | name=web, status=running, enabled=true | `web ● Running` |
 | stopped-disabled | title | name=api, status=stopped, enabled=false | `api ○ Stopped (disabled)` |
-| error | title | status=error | `… ⚠ Error` |
+| error | title | name=web, status=error | `web ⚠ Error` |
 | stop-disabled | action | pid=0, desiredRunning=false | canStop=false |
 | stop-enabled | action | pid=1234 | canStop=true |
 | toggle-enable | action | enabled=false | showEnable=true |

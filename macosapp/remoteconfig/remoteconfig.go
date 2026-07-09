@@ -165,6 +165,43 @@ func OpenBrowserURL(ep ResolvedEndpoint) string {
 	return ep.Server
 }
 
+// SelectDefaultDomain returns a copy of cfg with Default set to the matching
+// domain's normalized server URL. serverURL is matched after NormalizeServer.
+// Returns an error when cfg is nil or no domain matches.
+func SelectDefaultDomain(cfg *Config, serverURL string) (*Config, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
+	norm := NormalizeServer(serverURL)
+	if norm == "" {
+		return nil, fmt.Errorf("server URL is empty")
+	}
+	var match Domain
+	found := false
+	for _, d := range cfg.Domains {
+		if NormalizeServer(d.Server) == norm {
+			match = d
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("domain not found: %s", serverURL)
+	}
+
+	out := *cfg
+	if cfg.Domains != nil {
+		out.Domains = make([]Domain, len(cfg.Domains))
+		copy(out.Domains, cfg.Domains)
+	}
+	if cfg.ProjectBindings != nil {
+		out.ProjectBindings = make([]ProjectBinding, len(cfg.ProjectBindings))
+		copy(out.ProjectBindings, cfg.ProjectBindings)
+	}
+	out.Default = NormalizeServer(match.Server)
+	return &out, nil
+}
+
 // DefaultConfigPath returns $home/.ai-critic/remote-agent-config.json — the same
 // path used by remote-agent CLI and the remote menu-bar app.
 func DefaultConfigPath(home string) string {

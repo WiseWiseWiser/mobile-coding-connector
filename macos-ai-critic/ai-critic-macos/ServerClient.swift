@@ -98,6 +98,26 @@ final class ServerClient {
         return try JSONDecoder().decode([ServiceStatus].self, from: data)
     }
 
+    /// List terminal sessions via GET /api/terminal/sessions (paginated; all pages).
+    func listTerminalSessions() async throws -> [TerminalSession] {
+        var page = 1
+        var sessions: [TerminalSession] = []
+        while true {
+            let path = "/api/terminal/sessions?page=\(page)&page_size=100"
+            let (data, response) = try await get(path: path)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                throw ServerClientError.unreachable("terminal sessions list request failed")
+            }
+            let decoded = try JSONDecoder().decode(TerminalSessionsPage.self, from: data)
+            sessions.append(contentsOf: decoded.sessions)
+            if decoded.totalPages <= page || decoded.sessions.isEmpty {
+                break
+            }
+            page += 1
+        }
+        return sessions
+    }
+
     func startService(id: String) async throws {
         try await postServiceAction(path: "/api/services/start", id: id)
     }

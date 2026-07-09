@@ -93,6 +93,37 @@ public final class ServiceClient: @unchecked Sendable {
         return try JSONDecoder().decode([ServiceStatus].self, from: data)
     }
 
+    /// List terminal sessions via GET /api/terminal/sessions (paginated; all pages).
+    public func listTerminalSessions() async throws -> [TerminalSession] {
+        guard isConfigured else { throw ServiceClientError.notConfigured }
+        var page = 1
+        var sessions: [TerminalSession] = []
+        while true {
+            var components = URLComponents(string: baseURL + "/api/terminal/sessions")
+            components?.queryItems = [
+                URLQueryItem(name: "page", value: String(page)),
+                URLQueryItem(name: "page_size", value: "100"),
+            ]
+            guard let url = components?.url else {
+                throw ServiceClientError.unreachable("invalid terminal sessions url")
+            }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            Self.applyAuth(&request, token: token)
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                throw ServiceClientError.unreachable("terminal sessions list request failed")
+            }
+            let decoded = try JSONDecoder().decode(TerminalSessionsPage.self, from: data)
+            sessions.append(contentsOf: decoded.sessions)
+            if decoded.totalPages <= page || decoded.sessions.isEmpty {
+                break
+            }
+            page += 1
+        }
+        return sessions
+    }
+
     public func startService(id: String) async throws {
         try await postServiceAction(action: "start", id: id)
     }

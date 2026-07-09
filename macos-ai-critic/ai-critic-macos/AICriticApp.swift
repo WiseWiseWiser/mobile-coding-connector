@@ -9,10 +9,13 @@ final class AppState: ObservableObject {
     @Published var grokUsage: GrokUsageResponse?
     @Published var codexUsage: CodexUsageResponse?
     @Published var services: [ServiceStatus] = []
+    @Published var terminals: [TerminalSession] = []
     @Published var daemonStatus: KeepAliveStatus?
     @Published var statusLine = "Connecting..."
     @Published var rotatingIndex = 0
     @AppStorage("menuBarDisplayMode") var menuBarDisplayMode = "rotating"
+
+    private let isRemoteApp = false
 
     func refresh() async {
         async let grokTask: GrokUsageResponse? = {
@@ -36,11 +39,21 @@ final class AppState: ObservableObject {
                 return nil
             }
         }()
+        async let terminalsTask: [TerminalSession]? = {
+            do {
+                return try await ServerClient.shared.listTerminalSessions()
+            } catch {
+                return nil
+            }
+        }()
 
         grokUsage = await grokTask
         codexUsage = await codexTask
         if let listed = await servicesTask {
             services = listed
+        }
+        if let listed = await terminalsTask {
+            terminals = listed
         }
         updateMenuLabel()
 
@@ -83,6 +96,29 @@ final class AppState: ObservableObject {
             // Keep prior list when server is temporarily unreachable.
         }
     }
+
+    func refreshTerminals() async {
+        do {
+            terminals = try await ServerClient.shared.listTerminalSessions()
+        } catch {
+            // Keep prior list when server is temporarily unreachable.
+        }
+    }
+
+    func openAttachTerminal(sessionID: String) {
+        let binary = TerminalMenuFormatter.agentBinaryForApp(isRemote: isRemoteApp)
+        let cmd = TerminalMenuFormatter.buildTerminalAttachCommand(
+            agentBinary: binary,
+            sessionID: sessionID
+        )
+        ITermOpener.openCommandOrAlert(cmd)
+    }
+
+    func openNewTerminal() {
+        let binary = TerminalMenuFormatter.agentBinaryForApp(isRemote: isRemoteApp)
+        let cmd = TerminalMenuFormatter.buildTerminalNewCommand(agentBinary: binary)
+        ITermOpener.openCommandOrAlert(cmd)
+    }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -103,11 +139,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Periodic services + terminals (+ usage) refresh using PeriodicRefreshInterval (30s).
     @MainActor
     private func startRefreshLoop() {
         Task { @MainActor in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                try? await Task.sleep(nanoseconds: TerminalMenuFormatter.periodicRefreshIntervalNanoseconds)
                 await state?.refresh()
             }
         }
@@ -265,6 +302,24 @@ private struct MenuBarDropdownContent: View {
                 }
             }
 
+            // Terminals submenu (local — no domain/Server switcher)
+            Menu("Terminals") {
+                if state.terminals.isEmpty {
+                    Text(TerminalMenuFormatter.formatTerminalsEmptyLabel())
+                } else {
+                    ForEach(state.terminals) { session in
+                        Button(TerminalMenuFormatter.formatTerminalTitle(name: session.name, id: session.id)) {
+                            state.openAttachTerminal(sessionID: session.id)
+                        }
+                    }
+                }
+                Divider()
+                Button("New Terminal…") {
+                    state.openNewTerminal()
+                }
+            }
+            .accessibilityIdentifier("terminals-menu")
+
             Divider()
 
             Button(OpenInBrowserLabelFormatter.format(browser: defaultBrowser)) {
@@ -290,6 +345,10 @@ private struct MenuBarDropdownContent: View {
                         autoStart = !enabled
                     }
                 }
+
+            Button("Refresh") {
+                Task { await state.refresh() }
+            }
 
             Divider()
 

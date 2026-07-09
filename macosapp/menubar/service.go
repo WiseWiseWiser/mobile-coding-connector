@@ -13,7 +13,7 @@ func FormatServiceTitle(name, status string, enabled bool) string {
 	case "running":
 		return fmt.Sprintf("%s ● Running", name)
 	case "error":
-		return fmt.Sprintf("%s ⚠ Error", truncateRunes(name, 1))
+		return fmt.Sprintf("%s ⚠ Error", name)
 	case "stopped":
 		if !enabled {
 			return fmt.Sprintf("%s ○ Stopped (disabled)", name)
