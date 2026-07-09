@@ -66,7 +66,7 @@ func TestDownloadFile(t *testing.T) {
 	dir := t.TempDir()
 	localPath := filepath.Join(dir, "server.log")
 
-	result, err := c.DownloadFile("~/server.log", localPath, nil)
+	result, err := c.DownloadFile("~/server.log", localPath, DownloadOptions{}, nil)
 	if err != nil {
 		t.Fatalf("DownloadFile() error = %v", err)
 	}
@@ -111,7 +111,7 @@ func TestDownloadFileDefaultLocalName(t *testing.T) {
 	}
 	defer os.Chdir(origWD)
 
-	result, err := c.DownloadFile("~/server.log", "", nil)
+	result, err := c.DownloadFile("~/server.log", "", DownloadOptions{}, nil)
 	if err != nil {
 		t.Fatalf("DownloadFile() error = %v", err)
 	}

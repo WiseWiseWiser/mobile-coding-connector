@@ -30,6 +30,28 @@ const (
 	UploadChunkSkipped UploadChunkPhase = "skipped"
 )
 
+// UploadDirPhase reports directory-level upload events.
+type UploadDirPhase string
+
+const (
+	// UploadDirPhaseFileStart is emitted before a regular file upload begins.
+	UploadDirPhaseFileStart UploadDirPhase = "file_start"
+	// UploadDirPhaseDirCreated is emitted when an empty subdirectory is created remotely.
+	UploadDirPhaseDirCreated UploadDirPhase = "dir_created"
+)
+
+// UploadDirProgress describes progress reported during a directory upload.
+type UploadDirProgress struct {
+	FileIndex      int
+	TotalItems     int
+	RelativePath   string
+	Phase          UploadDirPhase
+	FileSize       int64
+	CompletedBytes int64
+	TotalBytes     int64
+	Chunk          UploadProgress
+}
+
 // UploadProgress describes progress reported during a chunked upload.
 type UploadProgress struct {
 	ChunkIndex     int
@@ -70,23 +92,32 @@ type UploadOptions struct {
 //
 // onProgress may be nil; when set, it is invoked after each chunk completes.
 func (c *Client) UploadFile(localFile string, remotePath string, opts UploadOptions, onProgress func(UploadProgress)) (*UploadResult, error) {
-	baseName := filepath.Base(localFile)
-	if remotePath == "" {
-		remotePath = baseName
-	} else if strings.HasSuffix(remotePath, "/") {
-		remotePath = remotePath + baseName
+	stat, err := os.Stat(localFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat local file: %w", err)
+	}
+	if stat.IsDir() {
+		return nil, fmt.Errorf("local path is a directory, not a file: %s", localFile)
 	}
 
-	// Resolve relative destinations against the server's home dir so the
-	// file lands somewhere predictable (~/<path>).
-	if !strings.HasPrefix(remotePath, "/") {
+	baseName := filepath.Base(localFile)
+	resolvedRemote := remotePath
+	if resolvedRemote == "" {
+		resolvedRemote = baseName
+	} else if strings.HasSuffix(resolvedRemote, "/") {
+		resolvedRemote = resolvedRemote + baseName
+	}
+	if !strings.HasPrefix(resolvedRemote, "/") {
 		home, err := c.GetHome()
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve server home dir: %w", err)
 		}
-		remotePath = strings.TrimRight(home.Home, "/") + "/" + remotePath
+		resolvedRemote = strings.TrimRight(home.Home, "/") + "/" + resolvedRemote
 	}
+	return c.uploadFileResolved(localFile, resolvedRemote, opts, onProgress)
+}
 
+func (c *Client) uploadFileResolved(localFile string, remotePath string, opts UploadOptions, onProgress func(UploadProgress)) (*UploadResult, error) {
 	stat, err := os.Stat(localFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat local file: %w", err)

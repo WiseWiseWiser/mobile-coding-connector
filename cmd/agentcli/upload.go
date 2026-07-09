@@ -3,24 +3,27 @@ package agentcli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/xhd2015/ai-critic/client"
 )
 
-const uploadHelp = `Usage: remote-agent upload <LOCAL_FILE> [REMOTE_PATH]
+const uploadHelp = `Usage: remote-agent upload <LOCAL_PATH> [REMOTE_PATH]
 
-Upload a local file to the server using chunked upload.
+Upload a local file or directory to the server using chunked upload.
 
 Arguments:
-  LOCAL_FILE    Path to the file on this machine.
+  LOCAL_PATH    Path to a file or directory on this machine.
   REMOTE_PATH   Destination path on the server. Optional; defaults to the
-                file's basename. If REMOTE_PATH ends with '/', the basename
-                is appended.
+                basename. If REMOTE_PATH ends with '/', the basename is
+                appended. For directories, REMOTE_PATH is the mirror root.
 
 Examples:
   remote-agent upload ./foo.txt /tmp/foo.txt
   remote-agent upload ./foo.txt /tmp/          # basename appended
   remote-agent upload ./foo.txt                # uses saved config + basename
+  remote-agent upload ./srcdir uploads/mirror  # mirror directory tree
 `
 
 func runUpload(cli *client.Client, args []string) error {
@@ -29,27 +32,31 @@ func runUpload(cli *client.Client, args []string) error {
 		return nil
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("upload requires <LOCAL_FILE> [REMOTE_PATH]; see 'remote-agent upload --help'")
+		return fmt.Errorf("upload requires <LOCAL_PATH> [REMOTE_PATH]; see 'remote-agent upload --help'")
 	}
 	if len(args) > 2 {
 		return fmt.Errorf("upload takes at most 2 arguments, got %d", len(args))
 	}
 
-	localFile := args[0]
+	localPath := args[0]
 	remotePath := ""
 	if len(args) == 2 {
 		remotePath = args[1]
 	}
 
-	stat, err := os.Stat(localFile)
+	stat, err := os.Stat(localPath)
 	if err != nil {
-		return fmt.Errorf("failed to stat local file: %w", err)
+		return fmt.Errorf("failed to stat local path: %w", err)
 	}
+	if stat.IsDir() {
+		return runUploadDir(cli, localPath, remotePath)
+	}
+
 	chmodExec := isExecutableMode(stat.Mode())
 
-	fmt.Printf("Uploading %s (%s) -> %s\n", localFile, formatSize(stat.Size()), describeRemote(remotePath))
+	fmt.Printf("Uploading %s (%s) -> %s\n", localPath, formatSize(stat.Size()), describeRemote(remotePath))
 
-	result, err := cli.UploadFile(localFile, remotePath, client.UploadOptions{
+	result, err := cli.UploadFile(localPath, remotePath, client.UploadOptions{
 		ChmodExec: chmodExec,
 	}, printUploadProgress)
 	if err != nil {
@@ -61,6 +68,41 @@ func runUpload(cli *client.Client, args []string) error {
 
 	fmt.Printf("Upload complete: %s (%s)\n", result.Path, formatSize(result.Size))
 	return nil
+}
+
+func runUploadDir(cli *client.Client, localDir, remotePath string) error {
+	itemCount, _, totalSize, err := client.CountUploadDirItems(localDir)
+	if err != nil {
+		return err
+	}
+
+	logicalRemote := describeUploadDirRemote(localDir, remotePath)
+	fmt.Printf("Uploading %s/ (%d items, %s) -> %s\n",
+		localDir, itemCount, formatSize(totalSize), logicalRemote)
+
+	result, err := cli.UploadDir(localDir, remotePath, client.UploadOptions{}, printUploadDirProgress)
+	if err != nil {
+		return err
+	}
+
+	// Blank line before summary when the plan has no empty subdirs (see streams-progress template).
+	if itemCount == result.FileCount {
+		fmt.Println()
+	}
+	fmt.Printf("Upload complete: %s (%d files, %s)\n",
+		result.Path, result.FileCount, formatSize(result.TotalSize))
+	return nil
+}
+
+func describeUploadDirRemote(localDir, remotePath string) string {
+	baseName := filepath.Base(localDir)
+	if remotePath == "" {
+		return baseName
+	}
+	if strings.HasSuffix(remotePath, "/") {
+		return strings.TrimSuffix(remotePath, "/") + "/" + baseName
+	}
+	return remotePath
 }
 
 func isExecutableMode(mode os.FileMode) bool {
@@ -76,9 +118,9 @@ func describeRemote(remotePath string) string {
 
 func formatSize(n int64) string {
 	const (
-		kb = 1024
-		mb = kb * 1024
-		gb = mb * 1024
+		kb = 1000
+		mb = 1000 * kb
+		gb = 1000 * mb
 	)
 	switch {
 	case n >= gb:
