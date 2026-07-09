@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-enum BrowserOpener {
+public enum BrowserOpener {
     private static let bundleIDs: [BrowserPreference: String] = [
         .chrome: "com.google.Chrome",
         .firefox: "org.mozilla.firefox",
@@ -14,7 +14,7 @@ enum BrowserOpener {
         .opera: "Opera",
     ]
 
-    static func open(url: URL, browser: BrowserPreference) {
+    public static func open(url: URL, browser: BrowserPreference) {
         switch browser {
         case .default:
             NSWorkspace.shared.open(url)

@@ -1,6 +1,7 @@
 import SwiftUI
 import ServiceManagement
 import AppKit
+import AICriticMacShared
 
 @MainActor
 final class AppState: ObservableObject {
@@ -139,7 +140,7 @@ struct AICriticApp: App {
 
     var body: some Scene {
         Window("Settings", id: "settings") {
-            SettingsView(menuBarDisplayMode: $state.menuBarDisplayMode)
+            LocalSettingsRoot(menuBarDisplayMode: $state.menuBarDisplayMode)
                 .onChange(of: state.menuBarDisplayMode) { _ in
                     state.updateMenuLabel()
                 }

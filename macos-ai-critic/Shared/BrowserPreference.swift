@@ -1,14 +1,14 @@
 import Foundation
 
-enum BrowserPreference: String, CaseIterable, Identifiable {
+public enum BrowserPreference: String, CaseIterable, Identifiable {
     case `default` = "default"
     case chrome = "chrome"
     case firefox = "firefox"
     case opera = "opera"
 
-    var id: String { rawValue }
+    public var id: String { rawValue }
 
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .default: return "Default"
         case .chrome: return "Chrome"
@@ -17,7 +17,7 @@ enum BrowserPreference: String, CaseIterable, Identifiable {
         }
     }
 
-    static func fromStored(_ value: String) -> BrowserPreference {
+    public static func fromStored(_ value: String) -> BrowserPreference {
         BrowserPreference(rawValue: value) ?? .default
     }
 }

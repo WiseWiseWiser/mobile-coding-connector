@@ -1,7 +1,7 @@
 import Foundation
 
-enum OpenInBrowserLabelFormatter {
-    static func format(browser: String) -> String {
+public enum OpenInBrowserLabelFormatter {
+    public static func format(browser: String) -> String {
         switch browser {
         case "", "default":
             return "Open in Browser"
