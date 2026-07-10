@@ -210,6 +210,57 @@ public final class ServiceClient: @unchecked Sendable {
         try await postCronAction(action: "disable", id: id)
     }
 
+    /// POST /api/cron-tasks — createCronTask.
+    public func createCronTask(_ def: CronTaskDefinition) async throws -> CronTaskStatus {
+        try await saveCronTask(method: "POST", def: def)
+    }
+
+    /// PUT /api/cron-tasks — updateCronTask (id required in body).
+    public func updateCronTask(_ def: CronTaskDefinition) async throws -> CronTaskStatus {
+        guard let id = def.id?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else {
+            throw ServiceClientError.unreachable("task id is required")
+        }
+        return try await saveCronTask(method: "PUT", def: def)
+    }
+
+    /// DELETE /api/cron-tasks?id=
+    public func deleteCronTask(id: String) async throws {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ServiceClientError.unreachable("task id is required")
+        }
+        guard isConfigured else { throw ServiceClientError.notConfigured }
+        var components = URLComponents(string: baseURL + Self.listCronTasksPath)
+        components?.queryItems = [URLQueryItem(name: "id", value: trimmed)]
+        guard let url = components?.url else {
+            throw ServiceClientError.unreachable("invalid delete cron task url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        Self.applyAuth(&request, token: token)
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw ServiceClientError.unreachable("delete cron task failed")
+        }
+    }
+
+    private func saveCronTask(method: String, def: CronTaskDefinition) async throws -> CronTaskStatus {
+        guard isConfigured else { throw ServiceClientError.notConfigured }
+        guard let url = URL(string: baseURL + Self.listCronTasksPath) else {
+            throw ServiceClientError.unreachable("invalid save cron task url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        Self.applyAuth(&request, token: token)
+        request.httpBody = try JSONEncoder().encode(def)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw ServiceClientError.unreachable("save cron task failed")
+        }
+        return try JSONDecoder().decode(CronTaskStatus.self, from: data)
+    }
+
     private func postCronAction(action: String, id: String) async throws -> CronTaskActionResponse {
         let request = try Self.buildCronActionRequest(
             baseURL: baseURL,

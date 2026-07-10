@@ -57,6 +57,17 @@ func CanRunCronTask(status string) bool {
 	return status != "running"
 }
 
+// CanDeleteCronTask reports whether Delete… should be enabled.
+// False only when status is "running".
+func CanDeleteCronTask(status string) bool {
+	return status != "running"
+}
+
+// FormatDeleteCronConfirm is the NSAlert confirm copy before DELETE.
+func FormatDeleteCronConfirm(name string) string {
+	return fmt.Sprintf(`Delete cron task "%s"?`, name)
+}
+
 // ShowEnableCronAction reports whether the menu should offer Enable instead of Disable.
 func ShowEnableCronAction(enabled bool) bool {
 	return !enabled

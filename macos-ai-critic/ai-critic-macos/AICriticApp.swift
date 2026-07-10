@@ -407,8 +407,23 @@ private struct MenuBarDropdownContent: View {
 
                             Button("History…") {}
                                 .disabled(true)
+
+                            Divider()
+
+                            Button("Edit…") {
+                                openEditCronTask(task)
+                            }
+
+                            Button("Delete…") {
+                                Task { await confirmAndDeleteCronTask(task) }
+                            }
+                            .disabled(!CronMenuFormatter.canDeleteCronTask(status: task.status))
                         }
                     }
+                }
+                Divider()
+                Button("New Cron Task…") {
+                    openNewCronTask()
                 }
             }
             .accessibilityIdentifier("cron-menu")
@@ -628,6 +643,50 @@ private struct MenuBarDropdownContent: View {
             await state.refreshCronTasks()
         } catch {
             // Ignore transient server errors.
+        }
+    }
+
+    private func openNewCronTask() {
+        CronEditorWindow.openCreate(
+            onSave: { def in
+                _ = try await ServerClient.shared.createCronTask(def)
+            },
+            onSaved: {
+                Task { await state.refreshCronTasks() }
+            }
+        )
+    }
+
+    private func openEditCronTask(_ task: CronTaskStatus) {
+        CronEditorWindow.openEdit(
+            task: task,
+            onSave: { def in
+                _ = try await ServerClient.shared.updateCronTask(def)
+            },
+            onSaved: {
+                Task { await state.refreshCronTasks() }
+            }
+        )
+    }
+
+    private func confirmAndDeleteCronTask(_ task: CronTaskStatus) async {
+        let alert = NSAlert()
+        alert.messageText = "Delete Cron Task"
+        alert.informativeText = CronMenuFormatter.formatDeleteCronConfirm(name: task.name)
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            try await ServerClient.shared.deleteCronTask(id: task.id)
+            await state.refreshCronTasks()
+        } catch {
+            let err = NSAlert()
+            err.messageText = "Delete Failed"
+            err.informativeText = error.localizedDescription
+            err.alertStyle = .warning
+            err.addButton(withTitle: "OK")
+            err.runModal()
         }
     }
 }

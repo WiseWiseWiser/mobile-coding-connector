@@ -58,6 +58,16 @@ public enum CronMenuFormatter {
         status != "running"
     }
 
+    /// Delete… enabled unless status is running (mirrors CanDeleteCronTask).
+    public static func canDeleteCronTask(status: String) -> Bool {
+        status != "running"
+    }
+
+    /// Confirm dialog copy before DELETE.
+    public static func formatDeleteCronConfirm(name: String) -> String {
+        "Delete cron task \"\(name)\"?"
+    }
+
     /// true → show Enable; false → show Disable.
     public static func showEnableCronAction(enabled: Bool) -> Bool {
         !enabled

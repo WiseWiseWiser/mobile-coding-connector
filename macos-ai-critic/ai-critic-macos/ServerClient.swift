@@ -178,6 +178,54 @@ final class ServerClient {
         try await postCronActionWithResponse(path: "/api/cron-tasks/disable", id: id)
     }
 
+    /// POST /api/cron-tasks — createCronTask.
+    func createCronTask(_ def: CronTaskDefinition) async throws -> CronTaskStatus {
+        try await saveCronTask(method: "POST", def: def)
+    }
+
+    /// PUT /api/cron-tasks — updateCronTask (id required in body).
+    func updateCronTask(_ def: CronTaskDefinition) async throws -> CronTaskStatus {
+        guard let id = def.id?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else {
+            throw ServerClientError.unreachable("task id is required")
+        }
+        return try await saveCronTask(method: "PUT", def: def)
+    }
+
+    /// DELETE /api/cron-tasks?id=
+    func deleteCronTask(id: String) async throws {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ServerClientError.unreachable("task id is required")
+        }
+        guard let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: baseURL + "/api/cron-tasks?id=" + encoded) else {
+            throw ServerClientError.unreachable("invalid url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        applyAuth(&request)
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw ServerClientError.unreachable("delete cron task failed")
+        }
+    }
+
+    private func saveCronTask(method: String, def: CronTaskDefinition) async throws -> CronTaskStatus {
+        guard let url = URL(string: baseURL + "/api/cron-tasks") else {
+            throw ServerClientError.unreachable("invalid url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(&request)
+        request.httpBody = try JSONEncoder().encode(def)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw ServerClientError.unreachable("save cron task failed")
+        }
+        return try JSONDecoder().decode(CronTaskStatus.self, from: data)
+    }
+
     /// List terminal sessions via GET /api/terminal/sessions (paginated; all pages).
     func listTerminalSessions() async throws -> [TerminalSession] {
         var page = 1
