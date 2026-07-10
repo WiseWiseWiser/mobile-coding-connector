@@ -166,10 +166,19 @@ final class AppState: ObservableObject {
 
     func createWorktree(for project: WrkProjectStatus, task: String?) async {
         do {
-            _ = try await ServerClient.shared.createWrkWorktree(projectPath: project.path, task: task)
+            let created = try await ServerClient.shared.createWrkWorktree(projectPath: project.path, task: task)
+            // Open returned worktree path with reuse, then refresh list.
+            try? await ServerClient.shared.openITerm2(dir: created.path, mode: "reuse")
             await refreshProjects()
         } catch {
             // Leave list as-is; optional: surface alert later.
+        }
+    }
+
+    /// Open a project/worktree directory in iTerm2 via local server API (reuse mode).
+    func openProjectInITerm2(path: String) {
+        Task {
+            try? await ServerClient.shared.openITerm2(dir: path, mode: "reuse")
         }
     }
 
@@ -179,13 +188,19 @@ final class AppState: ObservableObject {
             agentBinary: binary,
             sessionID: sessionID
         )
-        ITermOpener.openCommandOrAlert(cmd)
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        Task {
+            try? await ServerClient.shared.openITerm2(dir: home, mode: "new", send: [cmd])
+        }
     }
 
     func openNewTerminal() {
         let binary = TerminalMenuFormatter.agentBinaryForApp(isRemote: isRemoteApp)
         let cmd = TerminalMenuFormatter.buildTerminalNewCommand(agentBinary: binary)
-        ITermOpener.openCommandOrAlert(cmd)
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        Task {
+            try? await ServerClient.shared.openITerm2(dir: home, mode: "new", send: [cmd])
+        }
     }
 }
 
@@ -479,6 +494,9 @@ private struct MenuBarDropdownContent: View {
                                 Text(project.clean ? "● Clean" : "○ Dirty")
                                     .foregroundStyle(.secondary)
                             }
+                            Button("Open in iTerm2") {
+                                state.openProjectInITerm2(path: project.path)
+                            }
                             let worktrees = project.worktrees ?? []
                             if !worktrees.isEmpty {
                                 Divider()
@@ -488,7 +506,7 @@ private struct MenuBarDropdownContent: View {
                                         clean: wt.clean
                                     )
                                     Button {
-                                        // Display-only for v1; path available for future open actions.
+                                        state.openProjectInITerm2(path: wt.path)
                                     } label: {
                                         HStack {
                                             Text(wtParts.leading)

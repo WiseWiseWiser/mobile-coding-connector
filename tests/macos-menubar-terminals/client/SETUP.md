@@ -23,7 +23,9 @@ Swift sources exist under:
 
 ## Context
 
-Pure source inspection — no subprocess, UI, or network. RED until Terminals UI lands.
+Pure source inspection — no subprocess, UI, or network. Includes local iTerm2
+open API contracts (`iterm-only` tightened; `open-via-local-api` added) from
+REQUIREMENT-DESIGN-local-iterm2-open.md.
 
 ```go
 import "testing"

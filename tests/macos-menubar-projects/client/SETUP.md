@@ -19,7 +19,9 @@ AICriticApp.swift / ServerClient.swift / ProjectsMenuFormatter.swift
 
 ## Context
 
-REQUIREMENT scenarios 12–14 and prior menu/API leaves.
+REQUIREMENT scenarios 12–14, prior menu/API leaves, plus local iTerm2 open
+contracts (open-iterm2-api / click-main / click-worktree / create-worktree-opens)
+from REQUIREMENT-DESIGN-local-iterm2-open.md.
 
 ```go
 import "testing"

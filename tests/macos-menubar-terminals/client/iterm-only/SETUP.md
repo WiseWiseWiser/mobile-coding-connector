@@ -1,15 +1,20 @@
 # Scenario
 
-**Feature**: open path is iTerm-only with no Terminal.app fallback
+**Feature**: open path is iTerm-only via local open API (no Terminal.app; no raw osascript product path)
 
 ```
-session click / New Terminal -> iTerm2 (ModeForceNew + follow-up cmd)
-missing iTerm -> error/alert; never open /Applications/Terminal.app
+session click / New Terminal
+  -> ServerClient.openITerm2 -> POST /api/local/iterm2/open (mode + send)
+missing iTerm -> error/alert from server/client; never open /Applications/Terminal.app
+local product must not call ITermOpener.openCommandOrAlert for terminals
 ```
 
 ## Preconditions
 
-Both apps (and Shared open helpers) must not fall back to Apple Terminal.
+Local app sources under `macos-ai-critic/ai-critic-macos/`. Shared may still
+contain thin helpers, but **local** product terminal open must go through HTTP
+open API. Remote app may keep client-side iTerm open (not required to call
+`/api/local/iterm2/open`).
 
 ## Steps
 
@@ -17,7 +22,8 @@ Both apps (and Shared open helpers) must not fall back to Apple Terminal.
 
 ## Context
 
-REQUIREMENT leaf: `client/remote-no-terminal-app-fallback` / iTerm-hardcoded.
+REQUIREMENT leaf: iTerm-only + terminals refactor onto `/api/local/iterm2/open`.
+**Updated** from prior contract that only checked iTerm string presence.
 
 ```go
 import "testing"

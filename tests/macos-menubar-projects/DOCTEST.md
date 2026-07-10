@@ -29,9 +29,10 @@ flight. Formatters and optional list-state reducer live in Go
   renders titles with left/right alignment (`HStack` + `Spacer`); tracks
   `projectsLoading` / optional load error without wiping the last good list.
 - **Swift `ServerClient`** — `GET /api/wrk/projects` and worktree create on
-  port `23712`.
+  port `23712`; **`openITerm2(dir:mode:send:)`** → `POST /api/local/iterm2/open`
+  with Bearer (local token resolve).
 - **Test harness** — calls Go helpers with leaf inputs or inspects Swift
-  sources; no UI automation, no network, no live wrkserver.
+  sources; no UI automation, no network, no live wrkserver / iTerm.
 
 **Behaviors**
 
@@ -57,6 +58,11 @@ flight. Formatters and optional list-state reducer live in Go
 - Swift: title rows use parts + `HStack { Text(leading); Spacer(); Text(trailing) }`
   (or equivalent left/right layout); `AppState.projectsLoading`; do not clear
   `projects` on refresh start or failure; show `Loading…` when loading and empty.
+- Swift open (local app): under each project submenu, primary **“Open in iTerm2”**
+  opens `project.path` mode **reuse** (nested Menu titles are not click targets);
+  each worktree row is a **Button** opening `worktree.path` reuse; after create
+  worktree success → open returned path (reuse) then `refreshProjects`. Dead/missing
+  path: do not call open (alert optional).
 
 ## Version
 
@@ -98,6 +104,10 @@ flight. Formatters and optional list-state reducer live in Go
       +-- title-parts-hstack/           (LEAF)   parts + HStack left/right
       +-- projects-loading-flag/        (LEAF)   projectsLoading; no clear
       +-- loading-when-empty/           (LEAF)   Loading… when load && empty
+      +-- open-iterm2-api/              (LEAF)   ServerClient openITerm2 API
+      +-- click-main-opens/             (LEAF)   "Open in iTerm2" → project.path
+      +-- click-worktree-opens/         (LEAF)   worktree Button → open path
+      +-- create-worktree-opens/        (LEAF)   create success → open + refresh
 ```
 
 ## Test Index
@@ -124,6 +134,10 @@ flight. Formatters and optional list-state reducer live in Go
 | 18 | `client/title-parts-hstack` | Project/worktree titles use parts + HStack |
 | 19 | `client/projects-loading-flag` | `projectsLoading`; list not cleared on start/fail |
 | 20 | `client/loading-when-empty` | Shows Loading… when loading and empty |
+| 21 | `client/open-iterm2-api` | `openITerm2` / `POST /api/local/iterm2/open` + Bearer |
+| 22 | `client/click-main-opens` | Submenu **Open in iTerm2** opens `project.path` reuse |
+| 23 | `client/click-worktree-opens` | Worktree **Button** opens `worktree.path` reuse |
+| 24 | `client/create-worktree-opens` | Create success opens returned path then refresh |
 
 ## Parameter Coverage
 
@@ -149,6 +163,10 @@ flight. Formatters and optional list-state reducer live in Go
 | title-parts-hstack | client | Swift sources | HStack + parts |
 | projects-loading-flag | client | AppState | projectsLoading |
 | loading-when-empty | client | menu body | Loading… path |
+| open-iterm2-api | client | ServerClient | `/api/local/iterm2/open` + openITerm2 |
+| click-main-opens | client | AICriticApp | Button "Open in iTerm2" → project.path reuse |
+| click-worktree-opens | client | AICriticApp | worktree Button → path reuse |
+| create-worktree-opens | client | createWorktree | open path then refreshProjects |
 
 ## How to Run
 
@@ -226,6 +244,12 @@ type Response struct {
 	KeepsProjectsOnRefreshStart bool
 	KeepsProjectsOnRefreshFail  bool
 	ShowsLoadingWhenEmpty       bool
+	// local iTerm2 open (REQUIREMENT-DESIGN-local-iterm2-open)
+	HasOpenITerm2API            bool
+	OpenITerm2UsesBearer        bool
+	ClickMainOpensProjectPath   bool
+	ClickWorktreeOpensPath      bool
+	CreateWorktreeOpensThenRefresh bool
 	SwiftSourcesChecked         []string
 }
 
@@ -342,10 +366,67 @@ func runClientContract(t *testing.T, req *Request, resp *Response) (*Response, e
 		usesLoadingGate := strings.Contains(appStr, "projectsLoading") &&
 			(strings.Contains(appStr, "isEmpty") || strings.Contains(appStr, ".isEmpty"))
 		resp.ShowsLoadingWhenEmpty = hasLoadingLabel && usesLoadingGate
+	case "open-iterm2-api":
+		// ServerClient must expose openITerm2 (or equivalent) posting local open API.
+		hasPath := strings.Contains(serverStr, "/api/local/iterm2/open")
+		hasMethod := strings.Contains(serverStr, "openITerm2") ||
+			strings.Contains(serverStr, "openIterm2") ||
+			strings.Contains(serverStr, "OpenITerm2")
+		resp.HasOpenITerm2API = hasPath && hasMethod
+		// Bearer applied on request path (LocalAuth / Authorization header).
+		resp.OpenITerm2UsesBearer = strings.Contains(serverStr, "Authorization") ||
+			strings.Contains(serverStr, "Bearer") ||
+			strings.Contains(serverStr, "authToken") ||
+			strings.Contains(serverStr, "LocalAuth")
+	case "click-main-opens":
+		// Locked UX: primary Button "Open in iTerm2" under each project submenu
+		// (not Menu-title click). Opens project.path with mode reuse via openITerm2.
+		hasOpenLabel := strings.Contains(appStr, "Open in iTerm2") ||
+			strings.Contains(appStr, "Open in iTerm") ||
+			strings.Contains(appStr, `Button("Open in iTerm2")`)
+		hasOpenCall := strings.Contains(appStr, "openITerm2") ||
+			strings.Contains(appStr, "openIterm2") ||
+			strings.Contains(combined, "/api/local/iterm2/open")
+		usesProjectPath := strings.Contains(appStr, "project.path") ||
+			strings.Contains(appStr, "projectPath") ||
+			regexpProjectPathOpen(appStr)
+		// Mode reuse: explicit "reuse" or default (omit mode).
+		reuseOK := strings.Contains(appStr, "reuse") ||
+			strings.Contains(serverStr, "reuse") ||
+			hasOpenCall // default mode is reuse when openITerm2 omits mode
+		resp.ClickMainOpensProjectPath = hasOpenLabel && hasOpenCall && usesProjectPath && reuseOK
+	case "click-worktree-opens":
+		// Each worktree row is a Button that opens worktree.path with reuse.
+		hasOpenCall := strings.Contains(appStr, "openITerm2") ||
+			strings.Contains(appStr, "openIterm2") ||
+			strings.Contains(combined, "/api/local/iterm2/open")
+		usesWTPath := strings.Contains(appStr, "wt.path") ||
+			strings.Contains(appStr, "worktree.path") ||
+			strings.Contains(appStr, "wtPath") ||
+			(strings.Contains(appStr, "worktrees") && strings.Contains(appStr, ".path") &&
+				(strings.Contains(appStr, "openITerm2") || strings.Contains(appStr, "openIterm2")))
+		resp.ClickWorktreeOpensPath = hasOpenCall && usesWTPath
+	case "create-worktree-opens":
+		// createWorktree / createWrkWorktree success opens returned path then refresh.
+		inCreate := strings.Contains(appStr, "createWorktree") ||
+			strings.Contains(appStr, "createWrkWorktree")
+		opensAfter := strings.Contains(appStr, "openITerm2") ||
+			strings.Contains(appStr, "openIterm2")
+		// create response path used for open (created.path / result.path / .path)
+		usesCreatedPath := strings.Contains(appStr, "createWrkWorktree") ||
+			strings.Contains(appStr, ".path")
+		refreshes := strings.Contains(appStr, "refreshProjects")
+		resp.CreateWorktreeOpensThenRefresh = inCreate && opensAfter && usesCreatedPath && refreshes
 	default:
 		return nil, fmt.Errorf("unknown client leaf %q", req.ClientLeaf)
 	}
 	return resp, nil
+}
+
+func regexpProjectPathOpen(appSrc string) bool {
+	// project.path used near open call (loose window).
+	return strings.Contains(appSrc, "project.path") &&
+		(strings.Contains(appSrc, "openITerm2") || strings.Contains(appSrc, "openIterm2"))
 }
 
 func findModuleRoot() (string, error) {

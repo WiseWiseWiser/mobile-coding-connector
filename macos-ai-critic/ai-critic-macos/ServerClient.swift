@@ -279,6 +279,33 @@ final class ServerClient {
         return try JSONDecoder().decode(WrkCreateWorktreeResponse.self, from: data)
     }
 
+    /// Open a directory in iTerm2 via POST /api/local/iterm2/open.
+    /// - Parameters:
+    ///   - dir: Absolute path to open (required on server).
+    ///   - mode: Optional `"reuse"` | `"new"` | `"smart"`; omit for server default reuse.
+    ///   - send: Optional follow-up shell commands after `cd`.
+    func openITerm2(dir: String, mode: String? = nil, send: [String]? = nil) async throws {
+        guard let url = URL(string: baseURL + "/api/local/iterm2/open") else {
+            throw ServerClientError.unreachable("invalid url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(&request)
+        var body: [String: Any] = ["dir": dir]
+        if let mode, !mode.isEmpty {
+            body["mode"] = mode
+        }
+        if let send {
+            body["send"] = send
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable("iterm2 open request failed")
+        }
+    }
+
     func startService(id: String) async throws {
         try await postServiceAction(path: "/api/services/start", id: id)
     }

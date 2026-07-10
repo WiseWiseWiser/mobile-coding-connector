@@ -49,6 +49,7 @@ import (
 	serverprojectpull "github.com/xhd2015/ai-critic/server/projectpull"
 	"github.com/xhd2015/ai-critic/server/github"
 	"github.com/xhd2015/ai-critic/server/keepalive"
+	"github.com/xhd2015/ai-critic/server/localiterm2"
 	"github.com/xhd2015/ai-critic/server/logs"
 	openclawapi "github.com/xhd2015/ai-critic/server/openclaw"
 	"github.com/xhd2015/ai-critic/server/projects"
@@ -591,6 +592,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// wrk projects / worktrees API (list + create; host-owned base /api/wrk)
 	wrkserver.New(wrkserver.Options{}).Register(mux, "/api/wrk")
+
+	// Local iTerm2 open (menu bar projects/terminals; auth required — not skip-listed)
+	localiterm2.Register(mux, &localiterm2.Handler{})
 
 	// Server status API
 	RegisterServerStatusAPI(mux)

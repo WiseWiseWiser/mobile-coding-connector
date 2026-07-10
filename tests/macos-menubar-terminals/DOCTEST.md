@@ -20,8 +20,12 @@ for local (`ai-critic-macos`) and remote (`ai-critic-remote-macos`) menu-bar app
   remote domain/Server switcher.
 - **Remote macOS menu bar (`ai-critic-remote-macos`)** — same Terminals UX plus
   a **level-1** Server/domain switcher that writes `default` and reloads clients.
-- **iTerm2 opener** — session click and New Terminal open **iTerm only**
-  (no Terminal.app fallback).
+- **iTerm2 open path** — session click and New Terminal open **iTerm only**
+  (no Terminal.app fallback). **Local app only** routes open through
+  `POST /api/local/iterm2/open` (ServerClient) with mode + `send` (attach/new
+  command); does not keep a parallel product-path raw osascript-only open.
+  **Remote app** may keep client-side iTerm open (must not call open API on a
+  remote server — that would run osascript remotely).
 - **Test harness** — invokes Go helpers with leaf inputs or inspects Swift
   sources; no UI automation, no live iTerm, no network.
 
@@ -42,6 +46,11 @@ for local (`ai-critic-macos`) and remote (`ai-critic-remote-macos`) menu-bar app
 - Swift: both apps expose Terminals + New Terminal…; remote has level-1 Server
   switcher; local does not; iTerm-only open path; top-level Refresh kept;
   periodic background refresh of services + terminals.
+- Local Terminals attach/new: call `ServerClient.openITerm2` /
+  `/api/local/iterm2/open` with appropriate `mode` + `send` (command line),
+  not product-path-only `ITermOpener.openCommandOrAlert`.
+- Remote Terminals: out of scope for open-API refactor; existing client-side
+  open remains acceptable.
 
 ## Version
 
@@ -83,7 +92,8 @@ for local (`ai-critic-macos`) and remote (`ai-critic-remote-macos`) menu-bar app
       +-- remote-terminals-menu/         (LEAF)   remote app Terminals menu
       +-- remote-server-switcher/        (LEAF)   remote level-1 Server switcher
       +-- local-no-domain-switcher/      (LEAF)   local has no domain switcher
-      +-- iterm-only/                    (LEAF)   iTerm only; no Terminal.app
+      +-- iterm-only/                    (LEAF)   iTerm only; local open via API
+      +-- open-via-local-api/            (LEAF)   local attach/new → open API
       +-- top-level-refresh/             (LEAF)   top-level Refresh retained
       +-- periodic-refresh/              (LEAF)   timer refreshes services+terms
       +-- new-terminal/                  (LEAF)   New Terminal… in both apps
@@ -113,10 +123,11 @@ for local (`ai-critic-macos`) and remote (`ai-critic-remote-macos`) menu-bar app
 | 18 | `client/remote-terminals-menu` | remote `AICriticApp.swift` has Terminals menu |
 | 19 | `client/remote-server-switcher` | remote level-1 Server/domain switcher |
 | 20 | `client/local-no-domain-switcher` | local app has no domain switcher |
-| 21 | `client/iterm-only` | iTerm open path; no Terminal.app fallback |
-| 22 | `client/top-level-refresh` | top-level Refresh button present |
-| 23 | `client/periodic-refresh` | periodic services+terminals refresh present |
-| 24 | `client/new-terminal` | New Terminal present in both apps |
+| 21 | `client/iterm-only` | iTerm only; no Terminal.app; local uses open API |
+| 22 | `client/open-via-local-api` | Local attach/new → `/api/local/iterm2/open` |
+| 23 | `client/top-level-refresh` | top-level Refresh button present |
+| 24 | `client/periodic-refresh` | periodic services+terminals refresh present |
+| 25 | `client/new-terminal` | New Terminal present in both apps |
 
 ## Parameter Coverage
 
@@ -142,7 +153,8 @@ for local (`ai-critic-macos`) and remote (`ai-critic-remote-macos`) menu-bar app
 | remote-terminals-menu | client | remote Swift | Terminals menu |
 | remote-server-switcher | client | remote Swift | level-1 Server |
 | local-no-domain-switcher | client | local Swift | no domain switcher |
-| iterm-only | client | both apps | iTerm only |
+| iterm-only | client | both apps | iTerm only + local API open |
+| open-via-local-api | client | local app | attach/new via open API |
 | top-level-refresh | client | both apps | Refresh button |
 | periodic-refresh | client | both apps | timer + terminals |
 | new-terminal | client | both apps | New Terminal |
@@ -213,6 +225,12 @@ type Response struct {
 	LocalHasDomainSwitcher  bool
 	UsesITermOnly           bool
 	HasTerminalAppFallback  bool
+	// Local product path uses POST /api/local/iterm2/open (not raw osascript-only).
+	OpensViaLocalITerm2API  bool
+	// Local attach/new call openITerm2 / open API with send/mode.
+	LocalTerminalsUseOpenAPI bool
+	// Product paths still calling ITermOpener.openCommandOrAlert for terminals.
+	HasDirectITermOpenerProductPath bool
 	HasTopLevelRefresh      bool
 	HasPeriodicRefresh      bool
 	HasNewTerminal          bool
@@ -337,6 +355,26 @@ func runClientContract(t *testing.T, req *Request, resp *Response) (*Response, e
 	resp.UsesITermOnly = referencesITerm(both) && !hasTerminalAppFallback(both)
 	resp.HasTerminalAppFallback = hasTerminalAppFallback(both)
 
+	// Local open via server API (REQUIREMENT-DESIGN-local-iterm2-open)
+	localAndServer := localStr + "\n"
+	serverClientPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "ServerClient.swift")
+	if sc, err := os.ReadFile(serverClientPath); err == nil {
+		localAndServer += string(sc)
+		resp.SwiftSourcesChecked = append(resp.SwiftSourcesChecked, serverClientPath)
+	}
+	resp.OpensViaLocalITerm2API = strings.Contains(localAndServer, "/api/local/iterm2/open")
+	resp.LocalTerminalsUseOpenAPI = resp.OpensViaLocalITerm2API &&
+		(strings.Contains(localStr, "openITerm2") ||
+			strings.Contains(localAndServer, "openITerm2") ||
+			strings.Contains(localStr, "openIterm2")) &&
+		(strings.Contains(localStr, "openAttachTerminal") || strings.Contains(localStr, "openNewTerminal") ||
+			strings.Contains(localStr, "terminal attach") || strings.Contains(localStr, "terminal new") ||
+			strings.Contains(localStr, "BuildTerminalAttach") || strings.Contains(localStr, "buildTerminalAttach") ||
+			strings.Contains(localStr, "BuildTerminalNew") || strings.Contains(localStr, "buildTerminalNew"))
+	// Product-path direct osascript open for terminals (to be retired on local app).
+	resp.HasDirectITermOpenerProductPath = strings.Contains(localStr, "ITermOpener.openCommandOrAlert") ||
+		strings.Contains(localStr, "ITermOpener.openCommand(")
+
 	// Top-level Refresh retained
 	resp.HasTopLevelRefresh = hasTopLevelRefresh(localStr) && hasTopLevelRefresh(remoteStr)
 
@@ -353,6 +391,7 @@ func runClientContract(t *testing.T, req *Request, resp *Response) (*Response, e
 		"remote-server-switcher",
 		"local-no-domain-switcher",
 		"iterm-only",
+		"open-via-local-api",
 		"top-level-refresh",
 		"periodic-refresh",
 		"new-terminal":
