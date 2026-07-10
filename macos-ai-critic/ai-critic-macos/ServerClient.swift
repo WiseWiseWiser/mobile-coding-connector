@@ -50,6 +50,55 @@ struct LogStreamEvent: Decodable {
     let status: String?
 }
 
+// MARK: - wrk projects / worktrees (GET/POST /api/wrk/*)
+
+struct WrkWorktreeStatus: Decodable, Identifiable {
+    var id: String { path }
+    let path: String
+    let name: String
+    let branch: String?
+    let clean: Bool
+    let isMain: Bool
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case path, name, branch, clean, error
+        case isMain = "is_main"
+    }
+}
+
+struct WrkProjectStatus: Decodable, Identifiable {
+    var id: String { path }
+    let path: String
+    let name: String
+    let branch: String?
+    let commit: String?
+    let subject: String?
+    let clean: Bool
+    let error: String?
+    let worktrees: [WrkWorktreeStatus]?
+}
+
+struct WrkListProjectsResponse: Decodable {
+    let projects: [WrkProjectStatus]
+}
+
+struct WrkCreateWorktreeRequest: Encodable {
+    let projectPath: String
+    let task: String?
+
+    enum CodingKeys: String, CodingKey {
+        case projectPath = "project_path"
+        case task
+    }
+}
+
+struct WrkCreateWorktreeResponse: Decodable {
+    let path: String
+    let branch: String
+}
+
+
 enum ServerClientError: LocalizedError {
     case unreachable(String)
 
@@ -116,6 +165,38 @@ final class ServerClient {
             page += 1
         }
         return sessions
+    }
+
+    /// List wrk projects via GET /api/wrk/projects.
+    func listWrkProjects() async throws -> [WrkProjectStatus] {
+        let (data, response) = try await get(path: "/api/wrk/projects")
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable("wrk projects list request failed")
+        }
+        let decoded = try JSONDecoder().decode(WrkListProjectsResponse.self, from: data)
+        return decoded.projects
+    }
+
+    /// Create a worktree via POST /api/wrk/worktrees.
+    /// Empty/whitespace task is sent as omitted (no slug).
+    func createWrkWorktree(projectPath: String, task: String? = nil) async throws -> WrkCreateWorktreeResponse {
+        guard let url = URL(string: baseURL + "/api/wrk/worktrees") else {
+            throw ServerClientError.unreachable("invalid url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let trimmedTask = task?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = WrkCreateWorktreeRequest(
+            projectPath: projectPath,
+            task: (trimmedTask?.isEmpty == false) ? trimmedTask : nil
+        )
+        request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable("wrk create worktree request failed")
+        }
+        return try JSONDecoder().decode(WrkCreateWorktreeResponse.self, from: data)
     }
 
     func startService(id: String) async throws {

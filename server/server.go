@@ -67,6 +67,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/terminal"
 	"github.com/xhd2015/ai-critic/server/tools"
 	"github.com/xhd2015/ai-critic/server/usage"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/wrkcli/wrkserver"
 	"github.com/xhd2015/kool/pkgs/web"
 )
 
@@ -587,6 +588,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Grok/codex usage and debug log APIs (business plane on main server port)
 	usage.RegisterAPI(mux)
+
+	// wrk projects / worktrees API (list + create; host-owned base /api/wrk)
+	wrkserver.New(wrkserver.Options{}).Register(mux, "/api/wrk")
 
 	// Server status API
 	RegisterServerStatusAPI(mux)

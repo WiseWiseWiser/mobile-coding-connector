@@ -10,6 +10,7 @@ final class AppState: ObservableObject {
     @Published var codexUsage: CodexUsageResponse?
     @Published var services: [ServiceStatus] = []
     @Published var terminals: [TerminalSession] = []
+    @Published var projects: [WrkProjectStatus] = []
     @Published var daemonStatus: KeepAliveStatus?
     @Published var statusLine = "Connecting..."
     @Published var rotatingIndex = 0
@@ -46,6 +47,13 @@ final class AppState: ObservableObject {
                 return nil
             }
         }()
+        async let projectsTask: [WrkProjectStatus]? = {
+            do {
+                return try await ServerClient.shared.listWrkProjects()
+            } catch {
+                return nil
+            }
+        }()
 
         grokUsage = await grokTask
         codexUsage = await codexTask
@@ -54,6 +62,9 @@ final class AppState: ObservableObject {
         }
         if let listed = await terminalsTask {
             terminals = listed
+        }
+        if let listed = await projectsTask {
+            projects = listed
         }
         updateMenuLabel()
 
@@ -102,6 +113,23 @@ final class AppState: ObservableObject {
             terminals = try await ServerClient.shared.listTerminalSessions()
         } catch {
             // Keep prior list when server is temporarily unreachable.
+        }
+    }
+
+    func refreshProjects() async {
+        do {
+            projects = try await ServerClient.shared.listWrkProjects()
+        } catch {
+            // Keep prior list when server is temporarily unreachable.
+        }
+    }
+
+    func createWorktree(for project: WrkProjectStatus, task: String?) async {
+        do {
+            _ = try await ServerClient.shared.createWrkWorktree(projectPath: project.path, task: task)
+            await refreshProjects()
+        } catch {
+            // Leave list as-is; optional: surface alert later.
         }
     }
 
@@ -320,6 +348,52 @@ private struct MenuBarDropdownContent: View {
             }
             .accessibilityIdentifier("terminals-menu")
 
+            // Projects submenu (wrk registry + linked worktrees)
+            Menu("Projects") {
+                if state.projects.isEmpty {
+                    Text(ProjectsMenuFormatter.formatProjectsEmptyLabel())
+                } else {
+                    ForEach(state.projects) { project in
+                        Menu(ProjectsMenuFormatter.formatProjectTitle(
+                            name: project.name,
+                            branch: project.branch ?? "",
+                            clean: project.clean,
+                            errMsg: project.error ?? ""
+                        )) {
+                            if let err = project.error, !err.isEmpty {
+                                Text(err)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Branch: \(project.branch ?? "")")
+                                    .foregroundStyle(.secondary)
+                                Text(project.clean ? "● Clean" : "○ Dirty")
+                                    .foregroundStyle(.secondary)
+                            }
+                            let worktrees = project.worktrees ?? []
+                            if !worktrees.isEmpty {
+                                Divider()
+                                ForEach(worktrees) { wt in
+                                    Button(ProjectsMenuFormatter.formatWorktreeTitle(
+                                        name: wt.name,
+                                        clean: wt.clean
+                                    )) {
+                                        // Display-only for v1; path available for future open actions.
+                                    }
+                                }
+                            }
+                            Divider()
+                            Button("New Worktree…") {
+                                Task {
+                                    guard let prompt = promptNewWorktree() else { return }
+                                    await state.createWorktree(for: project, task: prompt.task)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .accessibilityIdentifier("projects-menu")
+
             Divider()
 
             Button(OpenInBrowserLabelFormatter.format(browser: defaultBrowser)) {
@@ -397,5 +471,24 @@ private struct MenuBarDropdownContent: View {
         } catch {
             // Ignore transient server errors.
         }
+    }
+
+    /// Prompt for optional task. Returns nil on Cancel.
+    private func promptNewWorktree() -> (task: String?)? {
+        let alert = NSAlert()
+        alert.messageText = "New Worktree"
+        alert.informativeText = "Optional task description (used as a path/branch slug)."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.placeholderString = "e.g. Fix Login"
+        alert.accessoryView = field
+        let response = alert.runModal()
+        if response != .alertFirstButtonReturn {
+            return nil
+        }
+        let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (task: text.isEmpty ? nil : text)
     }
 }
