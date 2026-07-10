@@ -1,9 +1,11 @@
 # Scenario
 
-**Feature**: project error title
+**Feature**: project error title parts
 
 ```
-FormatProjectTitle("demo",...,errMsg!=\"\") -> "demo ⚠ Error"
+# error wins over clean/branch
+FormatProjectTitleParts("demo",...,errMsg!="") -> Leading="demo", Trailing="⚠ Error"
+FormatProjectTitle(...) -> "demo  ⚠ Error"
 ```
 
 ## Preconditions
@@ -17,7 +19,7 @@ priority over clean/branch.
 
 ## Context
 
-REQUIREMENT leaf: project error.
+REQUIREMENT: project error → Leading `demo`, Trailing `⚠ Error`.
 
 ```go
 import "testing"

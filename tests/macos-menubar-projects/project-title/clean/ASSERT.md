@@ -1,10 +1,12 @@
 ## Expected
 
-1. `Title` is exactly `demo ● main` (name + clean marker + branch).
+1. `Leading` is exactly `demo` (basename only).
+2. `Trailing` is exactly `● main` (filled circle + branch).
+3. Legacy `Title` is exactly `demo  ● main` (`Leading + "  " + Trailing`).
 
 ## Errors
 
-- Wrong glyph, missing branch, or dirty presentation.
+- Wrong glyph (○ instead of ●), missing branch, or trailing folded into leading.
 
 ```go
 import "testing"
@@ -13,9 +15,15 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "demo ● main"
-	if resp.Title != want {
-		t.Fatalf("title = %q, want %q", resp.Title, want)
+	if resp.Leading != "demo" {
+		t.Fatalf("Leading = %q, want %q", resp.Leading, "demo")
+	}
+	if resp.Trailing != "● main" {
+		t.Fatalf("Trailing = %q, want %q", resp.Trailing, "● main")
+	}
+	wantTitle := "demo  ● main"
+	if resp.Title != wantTitle {
+		t.Fatalf("Title = %q, want %q (Leading + \"  \" + Trailing)", resp.Title, wantTitle)
 	}
 }
 ```

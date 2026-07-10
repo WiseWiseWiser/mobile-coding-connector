@@ -1,6 +1,6 @@
 ## Expected
 
-1. `EmptyLabel` is exactly `No wrk projects`.
+1. `Label` is exactly `No wrk projects`.
 
 ## Errors
 
@@ -14,8 +14,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatal(err)
 	}
 	want := "No wrk projects"
-	if resp.EmptyLabel != want {
-		t.Fatalf("empty label = %q, want %q", resp.EmptyLabel, want)
+	if resp.Label != want {
+		t.Fatalf("Label = %q, want %q", resp.Label, want)
 	}
 }
 ```

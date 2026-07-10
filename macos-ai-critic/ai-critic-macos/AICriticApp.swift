@@ -12,6 +12,10 @@ final class AppState: ObservableObject {
     @Published var cronTasks: [CronTaskStatus] = []
     @Published var terminals: [TerminalSession] = []
     @Published var projects: [WrkProjectStatus] = []
+    /// True while `listWrkProjects` is in flight (stale-while-revalidate; never clear projects).
+    @Published var projectsLoading = false
+    /// Last projects load error; nil on success. Kept for empty-area status labels.
+    @Published var projectsLoadError: String? = nil
     @Published var daemonStatus: KeepAliveStatus?
     @Published var statusLine = "Connecting..."
     @Published var rotatingIndex = 0
@@ -55,11 +59,15 @@ final class AppState: ObservableObject {
                 return nil
             }
         }()
-        async let projectsTask: [WrkProjectStatus]? = {
+
+        // Stale-while-revalidate: set loading, do not clear projects.
+        projectsLoading = true
+        async let projectsTask: Result<[WrkProjectStatus], Error> = {
             do {
-                return try await ServerClient.shared.listWrkProjects()
+                let listed = try await ServerClient.shared.listWrkProjects()
+                return .success(listed)
             } catch {
-                return nil
+                return .failure(error)
             }
         }()
 
@@ -74,8 +82,15 @@ final class AppState: ObservableObject {
         if let listed = await terminalsTask {
             terminals = listed
         }
-        if let listed = await projectsTask {
+        switch await projectsTask {
+        case .success(let listed):
             projects = listed
+            projectsLoadError = nil
+            projectsLoading = false
+        case .failure(let error):
+            // Keep prior projects; record error for empty-area status.
+            projectsLoadError = error.localizedDescription
+            projectsLoading = false
         }
         updateMenuLabel()
 
@@ -136,10 +151,16 @@ final class AppState: ObservableObject {
     }
 
     func refreshProjects() async {
+        // Stale-while-revalidate: mark loading without clearing projects.
+        projectsLoading = true
         do {
             projects = try await ServerClient.shared.listWrkProjects()
+            projectsLoadError = nil
+            projectsLoading = false
         } catch {
             // Keep prior list when server is temporarily unreachable.
+            projectsLoadError = error.localizedDescription
+            projectsLoading = false
         }
     }
 
@@ -412,16 +433,28 @@ private struct MenuBarDropdownContent: View {
 
             // Projects submenu (wrk registry + linked worktrees)
             Menu("Projects") {
+                // Empty-area status: Loading… when projectsLoading && isEmpty; else empty/failed labels.
+                let statusLabel = ProjectsMenuFormatter.formatProjectsListStatusLabel(
+                    loading: state.projectsLoading,
+                    count: state.projects.count,
+                    err: state.projectsLoadError ?? ""
+                )
                 if state.projects.isEmpty {
-                    Text(ProjectsMenuFormatter.formatProjectsEmptyLabel())
+                    // Shows Loading… / No wrk projects / Failed to load projects via status helper.
+                    Text(statusLabel.isEmpty ? ProjectsMenuFormatter.formatProjectsEmptyLabel() : statusLabel)
                 } else {
+                    // Optional top cue while refreshing non-empty list (count>0 → statusLabel "").
+                    if state.projectsLoading {
+                        Text(ProjectsMenuFormatter.formatProjectsLoadingLabel())
+                    }
                     ForEach(state.projects) { project in
-                        Menu(ProjectsMenuFormatter.formatProjectTitle(
+                        let titleParts = ProjectsMenuFormatter.formatProjectTitleParts(
                             name: project.name,
                             branch: project.branch ?? "",
                             clean: project.clean,
                             errMsg: project.error ?? ""
-                        )) {
+                        )
+                        Menu {
                             if let err = project.error, !err.isEmpty {
                                 Text(err)
                                     .foregroundStyle(.secondary)
@@ -435,11 +468,18 @@ private struct MenuBarDropdownContent: View {
                             if !worktrees.isEmpty {
                                 Divider()
                                 ForEach(worktrees) { wt in
-                                    Button(ProjectsMenuFormatter.formatWorktreeTitle(
+                                    let wtParts = ProjectsMenuFormatter.formatWorktreeTitleParts(
                                         name: wt.name,
                                         clean: wt.clean
-                                    )) {
+                                    )
+                                    Button {
                                         // Display-only for v1; path available for future open actions.
+                                    } label: {
+                                        HStack {
+                                            Text(wtParts.leading)
+                                            Spacer()
+                                            Text(wtParts.trailing)
+                                        }
                                     }
                                 }
                             }
@@ -451,6 +491,12 @@ private struct MenuBarDropdownContent: View {
                                     let task: String? = taskText.isEmpty ? nil : taskText
                                     await state.createWorktree(for: project, task: task)
                                 }
+                            }
+                        } label: {
+                            HStack {
+                                Text(titleParts.leading)
+                                Spacer()
+                                Text(titleParts.trailing)
                             }
                         }
                     }

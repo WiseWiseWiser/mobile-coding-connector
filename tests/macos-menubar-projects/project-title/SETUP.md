@@ -1,14 +1,17 @@
 # Scenario
 
-**Feature**: per-project submenu title strings
+**Feature**: per-project submenu title parts (Leading left / Trailing right)
 
 ```
-name + branch + clean/error -> FormatProjectTitle -> title line
+# name + branch + clean/error -> FormatProjectTitleParts -> {Leading, Trailing}
+name, branch, clean, errMsg -> FormatProjectTitleParts -> Leading, Trailing
+legacy FormatProjectTitle -> Leading + "  " + Trailing
 ```
 
 ## Preconditions
 
-`Op=project_title` dispatches to `menubar.FormatProjectTitle`.
+`Op=project_title` dispatches to `menubar.FormatProjectTitleParts` and legacy
+`FormatProjectTitle`.
 
 ## Steps
 
@@ -16,7 +19,7 @@ name + branch + clean/error -> FormatProjectTitle -> title line
 
 ## Context
 
-REQUIREMENT scenarios 12–14.
+REQUIREMENT scenarios 1–3 (project clean / dirty / error).
 
 ```go
 import "testing"

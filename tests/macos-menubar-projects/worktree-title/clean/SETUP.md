@@ -1,9 +1,10 @@
 # Scenario
 
-**Feature**: clean worktree title
+**Feature**: clean worktree title parts
 
 ```
-FormatWorktreeTitle("feat-login", true) -> "feat-login ● Clean"
+FormatWorktreeTitleParts("feat-login", true) -> Leading="feat-login", Trailing="● Clean"
+FormatWorktreeTitle(...) -> "feat-login  ● Clean"
 ```
 
 ## Preconditions
@@ -16,7 +17,7 @@ Linked worktree basename `feat-login` is clean.
 
 ## Context
 
-REQUIREMENT leaf: worktree title clean.
+REQUIREMENT: worktree clean → `● Clean`.
 
 ```go
 import "testing"

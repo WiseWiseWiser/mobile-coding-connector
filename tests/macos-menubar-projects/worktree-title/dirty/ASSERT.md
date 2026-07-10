@@ -1,6 +1,8 @@
 ## Expected
 
-1. `Title` is exactly `feat-login ○ Dirty`.
+1. `Leading` is exactly `feat-login`.
+2. `Trailing` is exactly `○ Dirty`.
+3. Legacy `Title` is exactly `feat-login  ○ Dirty`.
 
 ## Errors
 
@@ -13,9 +15,15 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "feat-login ○ Dirty"
-	if resp.Title != want {
-		t.Fatalf("title = %q, want %q", resp.Title, want)
+	if resp.Leading != "feat-login" {
+		t.Fatalf("Leading = %q, want %q", resp.Leading, "feat-login")
+	}
+	if resp.Trailing != "○ Dirty" {
+		t.Fatalf("Trailing = %q, want %q", resp.Trailing, "○ Dirty")
+	}
+	wantTitle := "feat-login  ○ Dirty"
+	if resp.Title != wantTitle {
+		t.Fatalf("Title = %q, want %q", resp.Title, wantTitle)
 	}
 }
 ```

@@ -1,6 +1,6 @@
 # Scenario
 
-**Feature**: empty Projects list placeholder
+**Feature**: empty projects registry label
 
 ```
 FormatProjectsEmptyLabel() -> "No wrk projects"
@@ -8,21 +8,21 @@ FormatProjectsEmptyLabel() -> "No wrk projects"
 
 ## Preconditions
 
-`Op=empty` dispatches to `menubar.FormatProjectsEmptyLabel`.
+Not loading; registry empty; no load error.
 
 ## Steps
 
-1. Set `Op=empty`.
+1. Set `LabelKind=empty`.
 
 ## Context
 
-REQUIREMENT scenario 15.
+REQUIREMENT: empty label → `No wrk projects`.
 
 ```go
 import "testing"
 
 func Setup(t *testing.T, req *Request) error {
-	req.Op = "empty"
+	req.LabelKind = "empty"
 	return nil
 }
 ```

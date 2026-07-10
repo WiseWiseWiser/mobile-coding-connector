@@ -1,14 +1,16 @@
 # Scenario
 
-**Feature**: dirty project title
+**Feature**: dirty project title parts
 
 ```
-FormatProjectTitle("demo","main",false,"") -> "demo ○ main"
+# dirty project on main
+FormatProjectTitleParts("demo","main",false,"") -> Leading="demo", Trailing="○ main"
+FormatProjectTitle(...) -> "demo  ○ main"
 ```
 
 ## Preconditions
 
-Project worktree is dirty; branch still `main`.
+Project worktree is dirty; branch still `main`; no error.
 
 ## Steps
 
@@ -16,7 +18,7 @@ Project worktree is dirty; branch still `main`.
 
 ## Context
 
-REQUIREMENT leaf: project title dirty.
+REQUIREMENT: project dirty → Leading `demo`, Trailing `○ main`.
 
 ```go
 import "testing"

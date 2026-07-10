@@ -1,14 +1,17 @@
 # Scenario
 
-**Feature**: linked worktree row title strings
+**Feature**: linked worktree row title parts (Leading left / Trailing right)
 
 ```
-basename + clean -> FormatWorktreeTitle -> row title
+# basename + clean -> FormatWorktreeTitleParts -> {Leading, Trailing}
+name, clean -> FormatWorktreeTitleParts -> Leading, Trailing
+legacy FormatWorktreeTitle -> Leading + "  " + Trailing
 ```
 
 ## Preconditions
 
-`Op=worktree_title` dispatches to `menubar.FormatWorktreeTitle`.
+`Op=worktree_title` dispatches to `menubar.FormatWorktreeTitleParts` and legacy
+`FormatWorktreeTitle`.
 
 ## Steps
 
@@ -16,7 +19,7 @@ basename + clean -> FormatWorktreeTitle -> row title
 
 ## Context
 
-REQUIREMENT scenario 16.
+REQUIREMENT scenario 4 (worktree clean/dirty).
 
 ```go
 import "testing"

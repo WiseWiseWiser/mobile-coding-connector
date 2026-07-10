@@ -1,9 +1,11 @@
 # Scenario
 
-**Feature**: Swift source contracts for Projects menu and wrk API paths
+**Feature**: Swift source contracts for Projects menu UX (parts, loading, API)
 
 ```
-AICriticApp.swift / ServerClient.swift -> Projects menu + /api/wrk/...
+# inspect local macOS app sources
+AICriticApp.swift / ServerClient.swift / ProjectsMenuFormatter.swift
+  -> Projects menu, /api/wrk/..., HStack titles, projectsLoading, Loading…
 ```
 
 ## Preconditions
@@ -17,7 +19,7 @@ AICriticApp.swift / ServerClient.swift -> Projects menu + /api/wrk/...
 
 ## Context
 
-REQUIREMENT optional scenarios 17–18.
+REQUIREMENT scenarios 12–14 and prior menu/API leaves.
 
 ```go
 import "testing"

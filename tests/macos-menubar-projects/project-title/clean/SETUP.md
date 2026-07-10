@@ -1,14 +1,16 @@
 # Scenario
 
-**Feature**: clean project title
+**Feature**: clean project title parts
 
 ```
-FormatProjectTitle("demo","main",true,"") -> "demo ● main"
+# clean project on main
+FormatProjectTitleParts("demo","main",true,"") -> Leading="demo", Trailing="● main"
+FormatProjectTitle(...) -> "demo  ● main"
 ```
 
 ## Preconditions
 
-Project is clean with branch `main`.
+Project is clean with branch `main`; no error.
 
 ## Steps
 
@@ -16,7 +18,7 @@ Project is clean with branch `main`.
 
 ## Context
 
-REQUIREMENT leaf: project title clean.
+REQUIREMENT: project clean → Leading `demo`, Trailing `● main`.
 
 ```go
 import "testing"
