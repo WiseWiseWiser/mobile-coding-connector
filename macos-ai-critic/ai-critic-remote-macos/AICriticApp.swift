@@ -19,20 +19,54 @@ final class RemoteAppState: ObservableObject {
     @Published var defaultServer: String = ""
     @AppStorage("menuBarDisplayMode") var menuBarDisplayMode = "rotating"
 
+    // MARK: - Periodic machine backup (default OFF; per active Server)
+
+    /// Explicit default: periodic backup is not auto-enabled on launch.
+    @Published var backupEnabled: Bool = false
+    @Published var backupPhase: BackupMenuFormatter.Phase = .off
+    @Published var backupLastFinishedAt: Date?
+    @Published var backupNextRunAt: Date?
+    @Published var backupLastError: String = ""
+    @Published var backupRunning: Bool = false
+    @Published var backupRecent: [BackupMenuFormatter.FileEntry] = []
+
     /// Shared HTTP client for remote service/cron APIs (base URL + Bearer token).
     /// Uses configured server baseURL + Authorization Bearer — not keep-alive port 23312.
     let serviceClient = ServiceClient()
+    /// Stream + archive_token download client for machine backup.
+    let machineBackupClient = MachineBackupClient()
 
     /// Override for tests; empty means use default CLI path.
     var configPathOverride: String?
 
     private let isRemoteApp = true
+    private var backupTickTask: Task<Void, Never>?
 
     func configPath() -> String {
         if let override = configPathOverride, !override.isEmpty {
             return override
         }
         return RemoteConfigStore.defaultConfigPath()
+    }
+
+    /// Filesystem scope key for the active server URL.
+    var backupServerName: String {
+        BackupMenuFormatter.serverNameFromURL(serverURL)
+    }
+
+    var backupDirectory: String {
+        BackupMenuFormatter.backupDirForServerURL(serverURL)
+    }
+
+    var backupStatusTitle: String {
+        let st = BackupMenuFormatter.TaskStatus(
+            enabled: backupEnabled,
+            phase: backupRunning ? .running : (backupEnabled ? backupPhase : .off),
+            lastFinishedAt: backupLastFinishedAt,
+            nextRunAt: backupNextRunAt,
+            lastError: backupLastError
+        )
+        return BackupMenuFormatter.formatBackupStatusTitle(st)
     }
 
     func refresh() async {
@@ -51,9 +85,11 @@ final class RemoteAppState: ObservableObject {
                     let (ep, _) = RemoteConfigStore.resolve(cfg)
                     token = ep.token
                     serviceClient.configure(baseURL: ep.server, token: ep.token)
+                    machineBackupClient.configure(baseURL: ep.server, token: ep.token)
                 } else {
                     token = ""
                     serviceClient.configure(baseURL: "", token: "")
+                    machineBackupClient.configure(baseURL: "", token: "")
                     services = []
                     cronTasks = []
                     terminals = []
@@ -63,6 +99,7 @@ final class RemoteAppState: ObservableObject {
                 defaultServer = ""
                 token = ""
                 serviceClient.configure(baseURL: "", token: "")
+                machineBackupClient.configure(baseURL: "", token: "")
                 services = []
                 cronTasks = []
                 terminals = []
@@ -73,6 +110,8 @@ final class RemoteAppState: ObservableObject {
                 await refreshCronTasks()
                 await refreshTerminals()
             }
+            reloadBackupStateFromDisk()
+            startBackupTickLoopIfNeeded()
         } catch {
             statusLine = "Not configured — open Configure… to add a remote server"
             serverURL = ""
@@ -81,12 +120,184 @@ final class RemoteAppState: ObservableObject {
             domains = []
             defaultServer = ""
             serviceClient.configure(baseURL: "", token: "")
+            machineBackupClient.configure(baseURL: "", token: "")
             services = []
             cronTasks = []
             terminals = []
             menuLabel = "Remote …"
+            reloadBackupStateFromDisk()
         }
     }
+
+    /// Load per-server backup task state (default enabled=false — never force-enable on launch).
+    func reloadBackupStateFromDisk() {
+        let name = backupServerName
+        guard !name.isEmpty else {
+            backupEnabled = false
+            backupPhase = .off
+            backupLastFinishedAt = nil
+            backupNextRunAt = nil
+            backupLastError = ""
+            backupRecent = []
+            return
+        }
+        let st = PeriodicBackupStore.state(for: name)
+        // Keep explicit default-off: PeriodicBackupServerState.enabled defaults to false.
+        backupEnabled = st.enabled
+        backupLastFinishedAt = PeriodicBackupStore.parseRFC3339(st.lastFinishedAt)
+        backupNextRunAt = PeriodicBackupStore.parseRFC3339(st.nextRunAt)
+        backupLastError = st.lastError
+        if st.enabled {
+            if st.lastStatus == "error" {
+                backupPhase = .error
+            } else {
+                backupPhase = .idle
+            }
+        } else {
+            backupPhase = .off
+        }
+        refreshBackupRecent()
+    }
+
+    func refreshBackupRecent() {
+        let dir = backupDirectory
+        guard !dir.isEmpty, !backupServerName.isEmpty else {
+            backupRecent = []
+            return
+        }
+        backupRecent = PeriodicBackupStore.listBackupEntries(dir: dir)
+    }
+
+    func setBackupEnabled(_ enable: Bool) async {
+        let name = backupServerName
+        guard !name.isEmpty else { return }
+        let now = Date()
+        let interval = TimeInterval(BackupMenuFormatter.backupIntervalSeconds)
+        var shouldRunNow = false
+        do {
+            try PeriodicBackupStore.update(serverName: name) { st in
+                st.enabled = enable
+                if enable {
+                    st.lastError = ""
+                    st.lastStatus = "idle"
+                    let last = PeriodicBackupStore.parseRFC3339(st.lastFinishedAt)
+                    shouldRunNow = BackupMenuFormatter.shouldRunOnEnable(
+                        lastFinished: last,
+                        now: now,
+                        interval: interval
+                    )
+                    if !shouldRunNow, let last {
+                        st.nextRunAt = PeriodicBackupStore.formatRFC3339(last.addingTimeInterval(interval))
+                    } else if shouldRunNow {
+                        st.nextRunAt = PeriodicBackupStore.formatRFC3339(now)
+                    }
+                } else {
+                    st.nextRunAt = ""
+                }
+            }
+        } catch {
+            // Keep prior state on disk write failure.
+        }
+        reloadBackupStateFromDisk()
+        if enable && shouldRunNow {
+            await runBackupNow(triggeredBySchedule: true)
+        }
+    }
+
+    func runBackupNow(triggeredBySchedule: Bool = false) async {
+        let name = backupServerName
+        guard !name.isEmpty, hasEndpoint, machineBackupClient.isConfigured else { return }
+        if backupRunning { return }
+
+        backupRunning = true
+        backupPhase = .running
+        let now = Date()
+        let dir = backupDirectory
+        let filename = BackupMenuFormatter.backupArchiveFilename(utc: now)
+        let dest = (dir as NSString).appendingPathComponent(filename)
+
+        do {
+            try PeriodicBackupStore.update(serverName: name) { st in
+                st.lastStartedAt = PeriodicBackupStore.formatRFC3339(now)
+                st.lastStatus = "running"
+                st.lastError = ""
+            }
+        } catch {}
+
+        do {
+            // Stream path + archive_token download (same as CLI machine backup).
+            let size = try await machineBackupClient.downloadBackupArchive(to: dest)
+            let finished = Date()
+            let next = finished.addingTimeInterval(TimeInterval(BackupMenuFormatter.backupIntervalSeconds))
+            try PeriodicBackupStore.update(serverName: name) { st in
+                st.lastFinishedAt = PeriodicBackupStore.formatRFC3339(finished)
+                st.lastStatus = "idle"
+                st.lastError = ""
+                st.lastOutputPath = dest
+                st.lastSizeBytes = size
+                if st.enabled {
+                    st.nextRunAt = PeriodicBackupStore.formatRFC3339(next)
+                }
+            }
+            PeriodicBackupStore.pruneBackupDir(dir: dir, now: finished)
+            backupRunning = false
+            backupPhase = backupEnabled ? .idle : .off
+            backupLastError = ""
+            reloadBackupStateFromDisk()
+        } catch {
+            let finished = Date()
+            let msg = error.localizedDescription
+            try? PeriodicBackupStore.update(serverName: name) { st in
+                st.lastFinishedAt = PeriodicBackupStore.formatRFC3339(finished)
+                st.lastStatus = "error"
+                st.lastError = msg
+                if st.enabled {
+                    st.nextRunAt = PeriodicBackupStore.formatRFC3339(
+                        finished.addingTimeInterval(TimeInterval(BackupMenuFormatter.backupIntervalSeconds))
+                    )
+                }
+            }
+            backupRunning = false
+            backupPhase = backupEnabled ? .error : .off
+            backupLastError = msg
+            reloadBackupStateFromDisk()
+        }
+    }
+
+    func revealBackupInFinder() {
+        let dir = backupDirectory
+        guard !dir.isEmpty else { return }
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(URL(fileURLWithPath: dir))
+    }
+
+    /// Timer while app running: check due schedule for the active server.
+    func startBackupTickLoopIfNeeded() {
+        guard backupTickTask == nil else { return }
+        backupTickTask = Task { @MainActor in
+            while !Task.isCancelled {
+                // Check more often than the 1h interval so due runs are not delayed too long.
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                await self.checkBackupDue()
+            }
+        }
+    }
+
+    func checkBackupDue() async {
+        reloadBackupStateFromDisk()
+        let interval = TimeInterval(BackupMenuFormatter.backupIntervalSeconds)
+        _ = interval
+        let due = BackupMenuFormatter.shouldRunDue(
+            enabled: backupEnabled,
+            running: backupRunning,
+            nextRunAt: backupNextRunAt,
+            now: Date()
+        )
+        if due {
+            await runBackupNow(triggeredBySchedule: true)
+        }
+    }
+}
 
     func refreshServices() async {
         guard serviceClient.isConfigured else {
@@ -409,6 +620,45 @@ private struct RemoteMenuBarDropdown: View {
                 .disabled(!state.hasEndpoint)
             }
             .accessibilityIdentifier("terminals-menu")
+
+            // Backup submenu: Status (Enable/Disable) · Backup Now · Recent · Reveal in Finder
+            Menu("Backup") {
+                Menu(state.backupStatusTitle) {
+                    Button("Enable") {
+                        Task { await state.setBackupEnabled(true) }
+                    }
+                    .disabled(!BackupMenuFormatter.backupEnableItemEnabled(state.backupEnabled))
+                    Button("Disable") {
+                        Task { await state.setBackupEnabled(false) }
+                    }
+                    .disabled(!BackupMenuFormatter.backupDisableItemEnabled(state.backupEnabled))
+                }
+                .accessibilityIdentifier("backup-status")
+
+                Button("Backup Now…") {
+                    Task { await state.runBackupNow() }
+                }
+                .disabled(!state.hasEndpoint || state.backupRunning)
+
+                Divider()
+
+                if state.backupRecent.isEmpty {
+                    Text(BackupMenuFormatter.formatBackupRecentEmptyLabel())
+                } else {
+                    ForEach(state.backupRecent.prefix(15)) { entry in
+                        Text(BackupMenuFormatter.formatBackupEntry(entry))
+                    }
+                }
+
+                Divider()
+
+                Button("Reveal in Finder…") {
+                    state.revealBackupInFinder()
+                }
+                .disabled(state.backupServerName.isEmpty)
+            }
+            .accessibilityIdentifier("backup-menu")
+            .disabled(!state.hasEndpoint && state.backupServerName.isEmpty)
 
             Divider()
 
