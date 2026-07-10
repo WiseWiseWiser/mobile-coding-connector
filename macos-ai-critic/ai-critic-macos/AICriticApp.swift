@@ -384,8 +384,10 @@ private struct MenuBarDropdownContent: View {
                             Divider()
                             Button("New Worktree…") {
                                 Task {
-                                    guard let prompt = promptNewWorktree() else { return }
-                                    await state.createWorktree(for: project, task: prompt.task)
+                                    // nil = cancelled; empty string = create with no task slug
+                                    guard let taskText = promptNewWorktree() else { return }
+                                    let task: String? = taskText.isEmpty ? nil : taskText
+                                    await state.createWorktree(for: project, task: task)
                                 }
                             }
                         }
@@ -473,8 +475,9 @@ private struct MenuBarDropdownContent: View {
         }
     }
 
-    /// Prompt for optional task. Returns nil on Cancel.
-    private func promptNewWorktree() -> (task: String?)? {
+    /// Prompt for optional task. Returns `nil` on Cancel; non-nil string is the
+    /// trimmed task (empty string means create with no task slug).
+    private func promptNewWorktree() -> String? {
         let alert = NSAlert()
         alert.messageText = "New Worktree"
         alert.informativeText = "Optional task description (used as a path/branch slug)."
@@ -488,7 +491,6 @@ private struct MenuBarDropdownContent: View {
         if response != .alertFirstButtonReturn {
             return nil
         }
-        let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (task: text.isEmpty ? nil : text)
+        return field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
