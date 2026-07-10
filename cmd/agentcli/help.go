@@ -45,6 +45,7 @@ Commands:
 
   Operations
     service              Managed services (start/stop/logs/upgrade)
+    cron                 Scheduled cron tasks (interval or UTC cron)
     server               Server lifecycle (build-next, restart, status)
     proxy                Configured HTTP proxies
     request              Call arbitrary API paths
@@ -101,6 +102,7 @@ Commands:
 
   Operations
     service              Managed services (start/stop/logs/upgrade)
+    cron                 Scheduled cron tasks (interval or UTC cron)
     server               Server lifecycle (build-next, restart, status)
     proxy                Configured HTTP proxies
     request              Call arbitrary API paths

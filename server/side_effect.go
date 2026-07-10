@@ -9,6 +9,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/domains"
 	"github.com/xhd2015/ai-critic/server/exposedurls"
 	"github.com/xhd2015/ai-critic/server/proxy/wsproxy"
+	"github.com/xhd2015/ai-critic/server/crontasks"
 	"github.com/xhd2015/ai-critic/server/services"
 	"github.com/xhd2015/ai-critic/server/startup"
 	"github.com/xhd2015/ai-critic/server/usage"
@@ -19,6 +20,7 @@ func RunBackgroundTasks() {
 	opencode_exposed.StartHealthCheck()
 	unified_tunnel.StartGlobalHealthChecks()
 	services.StartHealthCheck()
+	crontasks.Start()
 	usage.Start()
 }
 

@@ -58,6 +58,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/proxy/proxyconfig"
 	"github.com/xhd2015/ai-critic/server/proxy/wsproxy"
 	"github.com/xhd2015/ai-critic/server/quicktest"
+	"github.com/xhd2015/ai-critic/server/crontasks"
 	"github.com/xhd2015/ai-critic/server/services"
 	"github.com/xhd2015/ai-critic/server/settings"
 	"github.com/xhd2015/ai-critic/server/startup"
@@ -333,6 +334,10 @@ func Serve(port int, dev bool) error {
 			fmt.Println("Stopping managed services...")
 			services.Shutdown()
 
+			// Stop cron tasks
+			fmt.Println("Stopping cron tasks...")
+			crontasks.Shutdown()
+
 			// Stop all managed subprocesses
 			fmt.Println("Stopping all managed subprocesses...")
 			subprocess.GetManager().StopAll()
@@ -576,6 +581,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Services API
 	services.RegisterAPI(mux)
+
+	// Cron tasks API
+	crontasks.RegisterAPI(mux)
 
 	// Grok/codex usage and debug log APIs (business plane on main server port)
 	usage.RegisterAPI(mux)

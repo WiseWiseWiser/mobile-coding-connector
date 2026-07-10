@@ -103,6 +103,8 @@ func Run(profile Profile, args []string) error {
 		return runSettings(resolve, rest)
 	case "service":
 		return runService(resolve, rest)
+	case "cron":
+		return runCron(resolve, rest)
 	case "server":
 		return runServer(resolve, rest)
 	case "auth":
