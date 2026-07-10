@@ -293,3 +293,101 @@ func formatBackupHumanSize(n int64) string {
 		return fmt.Sprintf("%d B", n)
 	}
 }
+
+// CanRunBackupNow reports whether Backup Now can start.
+// Independent of periodic task enabled: one-shot is always allowed when ready.
+func CanRunBackupNow(hasEndpoint, running bool, serverName string) bool {
+	if !hasEndpoint || running {
+		return false
+	}
+	return strings.TrimSpace(serverName) != ""
+}
+
+// ShouldShowBackupProgressWindow is true for manual / enable-immediate runs;
+// false for hourly schedule ticks.
+func ShouldShowBackupProgressWindow(triggeredBySchedule bool) bool {
+	return !triggeredBySchedule
+}
+
+// FormatBackupProgressStartHeader returns "Machine backup — {server}".
+func FormatBackupProgressStartHeader(serverName string) string {
+	return "Machine backup — " + serverName
+}
+
+// FormatBackupProgressStartedAt returns "Started 2006-01-02 15:04:05" using t as-is (no Local convert).
+func FormatBackupProgressStartedAt(t time.Time) string {
+	return "Started " + t.Format("2006-01-02 15:04:05")
+}
+
+// FormatBackupProgressWindowTitle returns "Backup: {server}" or "Backup: (no server)".
+func FormatBackupProgressWindowTitle(serverName string) string {
+	if strings.TrimSpace(serverName) == "" {
+		return "Backup: (no server)"
+	}
+	return "Backup: " + serverName
+}
+
+// FormatBackupProgressSection returns "[section] {message}".
+func FormatBackupProgressSection(message string) string {
+	return "[section] " + message
+}
+
+// FormatBackupProgressFrame returns "[progress] {name} {status}" and optional " — {detail}".
+func FormatBackupProgressFrame(name, status, detail string) string {
+	line := "[progress] " + name + " " + status
+	if detail != "" {
+		line += " — " + detail
+	}
+	return line
+}
+
+// FormatBackupProgressLog returns the message verbatim (no [log] prefix).
+func FormatBackupProgressLog(message string) string {
+	return message
+}
+
+// FormatBackupProgressError returns "ERROR: {message}".
+func FormatBackupProgressError(message string) string {
+	return "ERROR: " + message
+}
+
+// FormatBackupProgressDone returns "[done] archive ready" when message is empty.
+func FormatBackupProgressDone(message string) string {
+	if strings.TrimSpace(message) == "" {
+		return "[done] archive ready"
+	}
+	return "[done] " + message
+}
+
+// FormatBackupProgressDownloadStart returns "Downloading archive…" (U+2026).
+func FormatBackupProgressDownloadStart() string {
+	return "Downloading archive…"
+}
+
+// FormatBackupProgressWrote returns "Wrote {path} ({human size})".
+func FormatBackupProgressWrote(path string, sizeBytes int64) string {
+	return fmt.Sprintf("Wrote %s (%s)", path, formatBackupHumanSize(sizeBytes))
+}
+
+// FormatBackupProgressStatusSuccess returns "Status: Success".
+func FormatBackupProgressStatusSuccess() string {
+	return "Status: Success"
+}
+
+// FormatBackupProgressStatusFailed returns "Status: Failed".
+func FormatBackupProgressStatusFailed() string {
+	return "Status: Failed"
+}
+
+// FormatBackupProgressGuardError maps guard reasons to ERROR lines.
+// "not_configured" → "ERROR: not configured"; "no_server" → "ERROR: no server selected".
+func FormatBackupProgressGuardError(reason string) string {
+	switch reason {
+	case "not_configured":
+		return "ERROR: not configured"
+	case "no_server":
+		return "ERROR: no server selected"
+	default:
+		return "ERROR: " + reason
+	}
+}

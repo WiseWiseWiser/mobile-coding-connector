@@ -200,18 +200,41 @@ final class RemoteAppState: ObservableObject {
         }
         reloadBackupStateFromDisk()
         if enable && shouldRunNow {
-            await runBackupNow(triggeredBySchedule: true)
+            // Enable-immediate: show progress window (not schedule-silent).
+            await runBackupNow(triggeredBySchedule: false)
         }
     }
 
+    /// Manual Backup Now and enable-immediate open a progress window; schedule ticks stay silent.
     func runBackupNow(triggeredBySchedule: Bool = false) async {
+        let showWindow = BackupMenuFormatter.shouldShowBackupProgressWindow(triggeredBySchedule: triggeredBySchedule)
         let name = backupServerName
-        guard !name.isEmpty, hasEndpoint, machineBackupClient.isConfigured else { return }
-        if backupRunning { return }
+        let now = Date()
+
+        var progressSession: BackupProgressWindow.ProgressSession?
+        if showWindow {
+            progressSession = BackupProgressWindow.openBackupProgress(serverName: name, startedAt: now)
+        }
+
+        // Guard failures: surface in window when open (not silent for interactive runs).
+        if name.isEmpty {
+            progressSession?.append(BackupMenuFormatter.formatBackupProgressGuardError(reason: "no_server"))
+            progressSession?.append(BackupMenuFormatter.formatBackupProgressStatusFailed())
+            return
+        }
+        if !hasEndpoint || !machineBackupClient.isConfigured {
+            progressSession?.append(BackupMenuFormatter.formatBackupProgressGuardError(reason: "not_configured"))
+            progressSession?.append(BackupMenuFormatter.formatBackupProgressStatusFailed())
+            return
+        }
+        if backupRunning {
+            progressSession?.append(BackupMenuFormatter.formatBackupProgressError(message: "already running"))
+            progressSession?.append(BackupMenuFormatter.formatBackupProgressStatusFailed())
+            return
+        }
 
         backupRunning = true
         backupPhase = .running
-        let now = Date()
         let dir = backupDirectory
         let filename = BackupMenuFormatter.backupArchiveFilename(utc: now)
         let dest = (dir as NSString).appendingPathComponent(filename)
@@ -225,8 +248,39 @@ final class RemoteAppState: ObservableObject {
         } catch {}
 
         do {
-            // Stream path + archive_token download (same as CLI machine backup).
-            let size = try await machineBackupClient.downloadBackupArchive(to: dest)
+            // Stream path + archive_token download; consume intermediate SSE frames for the progress window.
+            let size = try await machineBackupClient.downloadBackupArchive(to: dest) { event in
+                // onProgress callback: map section/progress/log/error/done (and download phase).
+                let line: String
+                switch event.type {
+                case "section":
+                    line = BackupMenuFormatter.formatBackupProgressSection(message: event.message)
+                case "progress":
+                    line = BackupMenuFormatter.formatBackupProgressFrame(
+                        name: event.name,
+                        status: event.status,
+                        detail: event.detail
+                    )
+                case "log":
+                    line = BackupMenuFormatter.formatBackupProgressLog(message: event.message)
+                case "error":
+                    line = BackupMenuFormatter.formatBackupProgressError(message: event.message)
+                case "done":
+                    line = BackupMenuFormatter.formatBackupProgressDone(message: event.message)
+                case "download":
+                    line = event.message.isEmpty
+                        ? BackupMenuFormatter.formatBackupProgressDownloadStart()
+                        : event.message
+                default:
+                    line = event.formatLine()
+                }
+                if !line.isEmpty {
+                    progressSession?.append(line)
+                }
+            }
+            progressSession?.append(BackupMenuFormatter.formatBackupProgressWrote(path: dest, sizeBytes: size))
+            progressSession?.append(BackupMenuFormatter.formatBackupProgressStatusSuccess())
+
             let finished = Date()
             let next = finished.addingTimeInterval(TimeInterval(BackupMenuFormatter.backupIntervalSeconds))
             try PeriodicBackupStore.update(serverName: name) { st in
@@ -235,6 +289,7 @@ final class RemoteAppState: ObservableObject {
                 st.lastError = ""
                 st.lastOutputPath = dest
                 st.lastSizeBytes = size
+                // One-shot when disabled: do not set nextRunAt unless enabled.
                 if st.enabled {
                     st.nextRunAt = PeriodicBackupStore.formatRFC3339(next)
                 }
@@ -247,6 +302,8 @@ final class RemoteAppState: ObservableObject {
         } catch {
             let finished = Date()
             let msg = error.localizedDescription
+            progressSession?.append(BackupMenuFormatter.formatBackupProgressError(message: msg))
+            progressSession?.append(BackupMenuFormatter.formatBackupProgressStatusFailed())
             try? PeriodicBackupStore.update(serverName: name) { st in
                 st.lastFinishedAt = PeriodicBackupStore.formatRFC3339(finished)
                 st.lastStatus = "error"
@@ -297,7 +354,6 @@ final class RemoteAppState: ObservableObject {
             await runBackupNow(triggeredBySchedule: true)
         }
     }
-}
 
     func refreshServices() async {
         guard serviceClient.isConfigured else {

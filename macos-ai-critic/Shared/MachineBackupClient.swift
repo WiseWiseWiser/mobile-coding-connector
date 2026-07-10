@@ -1,10 +1,54 @@
 import Foundation
 
+/// SSE progress event from machine backup stream (section/progress/log/error/done).
+public struct BackupProgressEvent: Sendable {
+    public var type: String
+    public var message: String
+    public var name: String
+    public var status: String
+    public var detail: String
+    public var archiveToken: String
+
+    public init(
+        type: String,
+        message: String = "",
+        name: String = "",
+        status: String = "",
+        detail: String = "",
+        archiveToken: String = ""
+    ) {
+        self.type = type
+        self.message = message
+        self.name = name
+        self.status = status
+        self.detail = detail
+        self.archiveToken = archiveToken
+    }
+
+    /// Human line for the progress window (uses BackupMenuFormatter).
+    public func formatLine() -> String {
+        switch type {
+        case "section":
+            return BackupMenuFormatter.formatBackupProgressSection(message: message)
+        case "progress":
+            return BackupMenuFormatter.formatBackupProgressFrame(name: name, status: status, detail: detail)
+        case "log":
+            return BackupMenuFormatter.formatBackupProgressLog(message: message)
+        case "error":
+            return BackupMenuFormatter.formatBackupProgressError(message: message.isEmpty ? "backup stream error" : message)
+        case "done":
+            return BackupMenuFormatter.formatBackupProgressDone(message: message)
+        default:
+            return message
+        }
+    }
+}
+
 /// Downloads remote machine backups via stream + `archive_token` (same path as CLI).
 ///
 /// Flow:
 /// 1. POST `/api/remote-agent/machine/backup/stream` with `{"archive":true,...}`
-/// 2. Read SSE frames until `done` with `archive_token`
+/// 2. Read SSE frames (section/progress/log/error/done) — surface via onProgress
 /// 3. GET `/api/remote-agent/machine/backup/archive?token=…` and write local `.tar.xz`
 public final class MachineBackupClient: @unchecked Sendable {
     public var baseURL: String
@@ -28,15 +72,22 @@ public final class MachineBackupClient: @unchecked Sendable {
     public static let backupArchivePath = "/api/remote-agent/machine/backup/archive"
 
     /// Stream backup with archive=true, extract archiveToken from done frame, download archive to destPath.
+    /// Intermediate SSE frames are reported via `onProgress` (not token-only).
     @discardableResult
-    public func downloadBackupArchive(to destPath: String) async throws -> Int64 {
+    public func downloadBackupArchive(
+        to destPath: String,
+        onProgress: ((BackupProgressEvent) -> Void)? = nil
+    ) async throws -> Int64 {
         guard isConfigured else { throw ServiceClientError.notConfigured }
-        let archiveToken = try await streamBackupForArchiveToken()
+        let archiveToken = try await streamBackupForArchiveToken(onProgress: onProgress)
+        onProgress?(BackupProgressEvent(type: "download", message: BackupMenuFormatter.formatBackupProgressDownloadStart()))
         return try await downloadArchiveByToken(archiveToken, to: destPath)
     }
 
-    /// POST machine/backup/stream and return archive_token from the done SSE frame.
-    public func streamBackupForArchiveToken() async throws -> String {
+    /// POST machine/backup/stream; yield progress events; return archive_token from the done SSE frame.
+    public func streamBackupForArchiveToken(
+        onProgress: ((BackupProgressEvent) -> Void)? = nil
+    ) async throws -> String {
         guard isConfigured else { throw ServiceClientError.notConfigured }
         guard let url = URL(string: baseURL + Self.backupStreamPath) else {
             throw ServiceClientError.unreachable("invalid backup stream url")
@@ -70,19 +121,42 @@ public final class MachineBackupClient: @unchecked Sendable {
                   let type = obj["type"] as? String else {
                 continue
             }
+
+            let message = (obj["message"] as? String) ?? ""
+            let name = (obj["name"] as? String) ?? ""
+            let status = (obj["status"] as? String) ?? ""
+            let detail = (obj["detail"] as? String) ?? ""
+
             if type == "error" {
-                let msg = (obj["message"] as? String) ?? "backup stream error"
+                let msg = message.isEmpty ? "backup stream error" : message
+                let event = BackupProgressEvent(type: "error", message: msg)
+                onProgress?(event)
                 throw ServiceClientError.unreachable(msg)
             }
+
             if type == "done" {
                 // Accept snake_case archive_token and camelCase archiveToken.
+                var token = ""
                 if let t = obj["archive_token"] as? String, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    archiveToken = t
+                    token = t
                 } else if let t = obj["archiveToken"] as? String, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    archiveToken = t
+                    token = t
                 }
+                let event = BackupProgressEvent(type: "done", message: message, archiveToken: token)
+                onProgress?(event)
+                archiveToken = token
                 break
             }
+
+            // Intermediate frames: section / progress / log / meta / etc.
+            let event = BackupProgressEvent(
+                type: type,
+                message: message,
+                name: name,
+                status: status,
+                detail: detail
+            )
+            onProgress?(event)
         }
         guard let token = archiveToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             throw ServiceClientError.unreachable("backup stream missing archive_token")

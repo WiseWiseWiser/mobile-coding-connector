@@ -175,6 +175,96 @@ public enum BackupMenuFormatter {
     public static func backupEnableItemEnabled(_ enabled: Bool) -> Bool { !enabled }
     public static func backupDisableItemEnabled(_ enabled: Bool) -> Bool { enabled }
 
+    // MARK: - Backup Now progress window (mirrors macosapp/menubar)
+
+    /// Backup Now is allowed independent of periodic task `enabled`.
+    public static func canRunBackupNow(hasEndpoint: Bool, running: Bool, serverName: String) -> Bool {
+        if !hasEndpoint || running { return false }
+        return !serverName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Whether this invocation should open the progress window (false for schedule ticks).
+    public static func shouldShowBackupProgressWindow(triggeredBySchedule: Bool) -> Bool {
+        !triggeredBySchedule
+    }
+
+    public static func formatBackupProgressStartHeader(serverName: String) -> String {
+        "Machine backup — \(serverName)"
+    }
+
+    /// Wall clock of the given date as `Started YYYY-MM-DD HH:MM:SS` (no Local convert).
+    public static func formatBackupProgressStartedAt(_ date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        // Use the date's absolute components via fixed UTC calendar so a UTC wall matches Go's t.Format.
+        // For non-UTC, mirror Go: format the instant in the date's representation by using
+        // a formatter that does not shift — Go Format uses t's location; for UTC inputs we need UTC.
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return "Started \(f.string(from: date))"
+    }
+
+    public static func formatBackupProgressWindowTitle(serverName: String) -> String {
+        let name = serverName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty { return "Backup: (no server)" }
+        return "Backup: \(name)"
+    }
+
+    public static func formatBackupProgressSection(message: String) -> String {
+        "[section] \(message)"
+    }
+
+    public static func formatBackupProgressFrame(name: String, status: String, detail: String = "") -> String {
+        var line = "[progress] \(name) \(status)"
+        if !detail.isEmpty {
+            line += " — \(detail)"
+        }
+        return line
+    }
+
+    public static func formatBackupProgressLog(message: String) -> String {
+        message
+    }
+
+    public static func formatBackupProgressError(message: String) -> String {
+        "ERROR: \(message)"
+    }
+
+    public static func formatBackupProgressDone(message: String = "") -> String {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "[done] archive ready" }
+        return "[done] \(message)"
+    }
+
+    public static func formatBackupProgressDownloadStart() -> String {
+        "Downloading archive…"
+    }
+
+    public static func formatBackupProgressWrote(path: String, sizeBytes: Int64) -> String {
+        "Wrote \(path) (\(formatHumanSize(sizeBytes)))"
+    }
+
+    public static func formatBackupProgressStatusSuccess() -> String {
+        "Status: Success"
+    }
+
+    public static func formatBackupProgressStatusFailed() -> String {
+        "Status: Failed"
+    }
+
+    public static func formatBackupProgressGuardError(reason: String) -> String {
+        switch reason {
+        case "not_configured":
+            return "ERROR: not configured"
+        case "no_server":
+            return "ERROR: no server selected"
+        default:
+            return "ERROR: \(reason)"
+        }
+    }
+
     // MARK: - Relative / size
 
     private static func formatRelPast(_ date: Date?, now: Date) -> String {
