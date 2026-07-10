@@ -42,13 +42,7 @@ struct DebugLogSettings: Codable {
     let path: String
 }
 
-// ServiceStatus / ServiceActionResponse live in AICriticMacShared.
-
-struct LogStreamEvent: Decodable {
-    let type: String
-    let message: String?
-    let status: String?
-}
+// ServiceStatus / ServiceActionResponse / CronTaskStatus / LogStreamEvent live in AICriticMacShared.
 
 // MARK: - wrk projects / worktrees (GET/POST /api/wrk/*)
 
@@ -161,6 +155,27 @@ final class ServerClient {
             throw ServerClientError.unreachable("services list request failed")
         }
         return try JSONDecoder().decode([ServiceStatus].self, from: data)
+    }
+
+    /// List cron tasks via GET /api/cron-tasks (no all=1).
+    func listCronTasks() async throws -> [CronTaskStatus] {
+        let (data, response) = try await get(path: "/api/cron-tasks")
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable("cron tasks list request failed")
+        }
+        return try JSONDecoder().decode([CronTaskStatus].self, from: data)
+    }
+
+    func runCronTask(id: String) async throws {
+        _ = try await postCronActionWithResponse(path: "/api/cron-tasks/run", id: id)
+    }
+
+    func enableCronTask(id: String) async throws -> CronTaskActionResponse {
+        try await postCronActionWithResponse(path: "/api/cron-tasks/enable", id: id)
+    }
+
+    func disableCronTask(id: String) async throws -> CronTaskActionResponse {
+        try await postCronActionWithResponse(path: "/api/cron-tasks/disable", id: id)
     }
 
     /// List terminal sessions via GET /api/terminal/sessions (paginated; all pages).
@@ -344,5 +359,18 @@ final class ServerClient {
             throw ServerClientError.unreachable("service action failed")
         }
         return try JSONDecoder().decode(ServiceActionResponse.self, from: data)
+    }
+
+    private func postCronActionWithResponse(path: String, id: String) async throws -> CronTaskActionResponse {
+        guard let url = URL(string: baseURL + path + "?id=" + id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!) else {
+            throw ServerClientError.unreachable("invalid url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable("cron action failed")
+        }
+        return try ServiceClient.decodeCronActionBody(data)
     }
 }

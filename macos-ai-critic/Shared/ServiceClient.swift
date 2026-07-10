@@ -144,6 +144,160 @@ public final class ServiceClient: @unchecked Sendable {
         try await postServiceActionWithResponse(action: "disable", id: id)
     }
 
+    // MARK: - Cron tasks (paths mirror macosapp/cronapi)
+
+    public static let listCronTasksPath = "/api/cron-tasks"
+
+    /// Pure request plan — same contract as Go `cronapi.BuildListCronTasksRequest`.
+    public static func buildListCronTasksRequest(baseURL: String, token: String) throws -> URLRequest {
+        let base = normalizeBaseURL(baseURL)
+        guard !base.isEmpty else { throw ServiceClientError.notConfigured }
+        guard let url = URL(string: base + listCronTasksPath) else {
+            throw ServiceClientError.unreachable("invalid list cron tasks url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuth(&request, token: token)
+        return request
+    }
+
+    /// Pure request plan — same contract as Go `cronapi.BuildCronActionRequest`.
+    public static func buildCronActionRequest(
+        baseURL: String,
+        token: String,
+        action: String,
+        id: String
+    ) throws -> URLRequest {
+        let base = normalizeBaseURL(baseURL)
+        guard !base.isEmpty else { throw ServiceClientError.notConfigured }
+        let trimmedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedID.isEmpty else {
+            throw ServiceClientError.unreachable("task id is required")
+        }
+        let allowed = ["run", "enable", "disable"]
+        guard allowed.contains(action) else {
+            throw ServiceClientError.unreachable("unknown cron action")
+        }
+        var components = URLComponents(string: base + "/api/cron-tasks/\(action)")
+        components?.queryItems = [URLQueryItem(name: "id", value: trimmedID)]
+        guard let url = components?.url else {
+            throw ServiceClientError.unreachable("invalid cron action url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        applyAuth(&request, token: token)
+        return request
+    }
+
+    public func listCronTasks() async throws -> [CronTaskStatus] {
+        let request = try Self.buildListCronTasksRequest(baseURL: baseURL, token: token)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServiceClientError.unreachable("cron tasks list request failed")
+        }
+        return try JSONDecoder().decode([CronTaskStatus].self, from: data)
+    }
+
+    public func runCronTask(id: String) async throws {
+        _ = try await postCronAction(action: "run", id: id)
+    }
+
+    public func enableCronTask(id: String) async throws -> CronTaskActionResponse {
+        try await postCronAction(action: "enable", id: id)
+    }
+
+    public func disableCronTask(id: String) async throws -> CronTaskActionResponse {
+        try await postCronAction(action: "disable", id: id)
+    }
+
+    private func postCronAction(action: String, id: String) async throws -> CronTaskActionResponse {
+        let request = try Self.buildCronActionRequest(
+            baseURL: baseURL,
+            token: token,
+            action: action,
+            id: id
+        )
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServiceClientError.unreachable("cron action failed")
+        }
+        return try Self.decodeCronActionBody(data)
+    }
+
+    /// Decode enable/disable/run body; bare CronTaskStatus has no message → client fallback.
+    public static func decodeCronActionBody(_ data: Data) throws -> CronTaskActionResponse {
+        if data.isEmpty {
+            return CronTaskActionResponse(status: "ok")
+        }
+        if let decoded = try? JSONDecoder().decode(CronTaskActionResponse.self, from: data),
+           decoded.message != nil {
+            return decoded
+        }
+        // Bare CronTaskStatus from run/enable/disable — success without message.
+        if (try? JSONDecoder().decode(CronTaskStatus.self, from: data)) != nil {
+            return CronTaskActionResponse(status: "ok")
+        }
+        if let decoded = try? JSONDecoder().decode(CronTaskActionResponse.self, from: data) {
+            return decoded
+        }
+        throw ServiceClientError.unreachable("cron action response decode failed")
+    }
+
+    /// Stream logs via GET /api/logs/stream?path=&lines= with optional Bearer auth.
+    public func streamLog(path: String, lines: Int = 1000) -> AsyncThrowingStream<LogStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else {
+                        throw ServiceClientError.unreachable("log path is required")
+                    }
+                    guard isConfigured else {
+                        throw ServiceClientError.notConfigured
+                    }
+
+                    var components = URLComponents(string: baseURL + "/api/logs/stream")!
+                    components.queryItems = [
+                        URLQueryItem(name: "path", value: trimmed),
+                        URLQueryItem(name: "lines", value: String(lines > 0 ? lines : 1000)),
+                    ]
+                    guard let url = components.url else {
+                        throw ServiceClientError.unreachable("invalid url")
+                    }
+
+                    var request = URLRequest(url: url)
+                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    Self.applyAuth(&request, token: token)
+
+                    let (bytes, response) = try await session.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                        throw ServiceClientError.unreachable("log stream request failed")
+                    }
+
+                    for try await line in bytes.lines {
+                        try Task.checkCancellation()
+                        let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmedLine.isEmpty, trimmedLine.hasPrefix("data: ") else { continue }
+
+                        let payload = String(trimmedLine.dropFirst("data: ".count))
+                        let data = Data(payload.utf8)
+                        let event = try JSONDecoder().decode(LogStreamEvent.self, from: data)
+                        continuation.yield(event)
+                        if event.type == "error" {
+                            throw ServiceClientError.unreachable(event.message ?? "log stream failed")
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+
     /// start/stop/restart: success is HTTP 200 only (body is ServiceStatus or {"status":"ok"}).
     private func postServiceAction(action: String, id: String) async throws {
         let request = try Self.buildServiceActionRequest(

@@ -13,12 +13,14 @@ final class RemoteAppState: ObservableObject {
     @Published var hasEndpoint = false
     @Published var token: String = ""
     @Published var services: [ServiceStatus] = []
+    @Published var cronTasks: [CronTaskStatus] = []
     @Published var terminals: [TerminalSession] = []
     @Published var domains: [RemoteDomain] = []
     @Published var defaultServer: String = ""
     @AppStorage("menuBarDisplayMode") var menuBarDisplayMode = "rotating"
 
-    /// Shared HTTP client for remote service APIs (base URL + Bearer token).
+    /// Shared HTTP client for remote service/cron APIs (base URL + Bearer token).
+    /// Uses configured server baseURL + Authorization Bearer — not keep-alive port 23312.
     let serviceClient = ServiceClient()
 
     /// Override for tests; empty means use default CLI path.
@@ -53,6 +55,7 @@ final class RemoteAppState: ObservableObject {
                     token = ""
                     serviceClient.configure(baseURL: "", token: "")
                     services = []
+                    cronTasks = []
                     terminals = []
                 }
             } else {
@@ -61,11 +64,13 @@ final class RemoteAppState: ObservableObject {
                 token = ""
                 serviceClient.configure(baseURL: "", token: "")
                 services = []
+                cronTasks = []
                 terminals = []
             }
 
             if hasEndpoint {
                 await refreshServices()
+                await refreshCronTasks()
                 await refreshTerminals()
             }
         } catch {
@@ -77,6 +82,7 @@ final class RemoteAppState: ObservableObject {
             defaultServer = ""
             serviceClient.configure(baseURL: "", token: "")
             services = []
+            cronTasks = []
             terminals = []
             menuLabel = "Remote …"
         }
@@ -89,6 +95,19 @@ final class RemoteAppState: ObservableObject {
         }
         do {
             services = try await serviceClient.listServices()
+        } catch {
+            // Keep prior list when server is temporarily unreachable.
+        }
+    }
+
+    func refreshCronTasks() async {
+        guard serviceClient.isConfigured else {
+            cronTasks = []
+            return
+        }
+        do {
+            // listCronTasks uses serviceClient baseURL + Bearer token (/api/cron-tasks)
+            cronTasks = try await serviceClient.listCronTasks()
         } catch {
             // Keep prior list when server is temporarily unreachable.
         }
@@ -150,13 +169,13 @@ class RemoteAppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    /// Periodic services + terminals refresh (PeriodicRefreshInterval = 30s).
+    /// Periodic services + cron + terminals refresh (PeriodicRefreshInterval = 30s).
     @MainActor
     private func startRefreshLoop() {
         Task { @MainActor in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: TerminalMenuFormatter.periodicRefreshIntervalNanoseconds)
-                await state?.refresh()
+                await state?.refresh() // includes listCronTasks / refreshCronTasks path
             }
         }
     }
@@ -321,6 +340,56 @@ private struct RemoteMenuBarDropdown: View {
             }
             .accessibilityIdentifier("services-menu")
 
+            Menu("Cron") {
+                if !state.hasEndpoint {
+                    Text(CronMenuFormatter.formatCronNotConfiguredLabel())
+                } else if state.cronTasks.isEmpty {
+                    Text(CronMenuFormatter.formatCronTasksEmptyLabel())
+                } else {
+                    ForEach(state.cronTasks) { task in
+                        Menu(CronMenuFormatter.formatCronTaskTitle(
+                            name: task.name,
+                            status: task.status,
+                            enabled: task.enabled,
+                            scheduleMode: task.scheduleMode,
+                            interval: task.interval,
+                            cronExpr: task.cronExpr
+                        )) {
+                            Button("Run Now") {
+                                Task {
+                                    await runCronAction {
+                                        try await state.serviceClient.runCronTask(id: task.id)
+                                    }
+                                }
+                            }
+                            .disabled(!CronMenuFormatter.canRunCronTask(status: task.status))
+
+                            if CronMenuFormatter.showEnableCronAction(enabled: task.enabled) {
+                                Button("Enable") {
+                                    Task { await runCronToggleEnable(task: task, enable: true) }
+                                }
+                            } else {
+                                Button("Disable") {
+                                    Task { await runCronToggleEnable(task: task, enable: false) }
+                                }
+                            }
+
+                            Button("View Logs…") {
+                                // SSE via configured baseURL + Bearer (/api/logs/stream), not keep-alive 23312
+                                LogStreamWindow.open(
+                                    logPath: task.logPath,
+                                    stream: state.serviceClient.streamLog(path: task.logPath, lines: 1000)
+                                )
+                            }
+
+                            Button("History…") {}
+                                .disabled(true)
+                        }
+                    }
+                }
+            }
+            .accessibilityIdentifier("cron-menu")
+
             Menu("Terminals") {
                 if !state.hasEndpoint {
                     Text("Not configured")
@@ -413,6 +482,35 @@ private struct RemoteMenuBarDropdown: View {
             alert.addButton(withTitle: "OK")
             alert.runModal()
             await state.refreshServices()
+        } catch {
+            // Ignore transient server errors.
+        }
+    }
+
+    private func runCronAction(_ action: @escaping () async throws -> Void) async {
+        do {
+            try await action()
+            await state.refreshCronTasks()
+        } catch {
+            // Ignore transient server errors; user can retry from the menu.
+        }
+    }
+
+    private func runCronToggleEnable(task: CronTaskStatus, enable: Bool) async {
+        do {
+            let response: CronTaskActionResponse
+            if enable {
+                response = try await state.serviceClient.enableCronTask(id: task.id)
+            } else {
+                response = try await state.serviceClient.disableCronTask(id: task.id)
+            }
+            let alert = NSAlert()
+            alert.messageText = enable ? "Enable Cron Task" : "Disable Cron Task"
+            alert.informativeText = response.displayMessage
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            await state.refreshCronTasks()
         } catch {
             // Ignore transient server errors.
         }

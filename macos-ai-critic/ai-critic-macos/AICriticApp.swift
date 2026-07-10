@@ -9,6 +9,7 @@ final class AppState: ObservableObject {
     @Published var grokUsage: GrokUsageResponse?
     @Published var codexUsage: CodexUsageResponse?
     @Published var services: [ServiceStatus] = []
+    @Published var cronTasks: [CronTaskStatus] = []
     @Published var terminals: [TerminalSession] = []
     @Published var projects: [WrkProjectStatus] = []
     @Published var daemonStatus: KeepAliveStatus?
@@ -40,6 +41,13 @@ final class AppState: ObservableObject {
                 return nil
             }
         }()
+        async let cronTasksTask: [CronTaskStatus]? = {
+            do {
+                return try await ServerClient.shared.listCronTasks()
+            } catch {
+                return nil
+            }
+        }()
         async let terminalsTask: [TerminalSession]? = {
             do {
                 return try await ServerClient.shared.listTerminalSessions()
@@ -59,6 +67,9 @@ final class AppState: ObservableObject {
         codexUsage = await codexTask
         if let listed = await servicesTask {
             services = listed
+        }
+        if let listed = await cronTasksTask {
+            cronTasks = listed
         }
         if let listed = await terminalsTask {
             terminals = listed
@@ -103,6 +114,14 @@ final class AppState: ObservableObject {
     func refreshServices() async {
         do {
             services = try await ServerClient.shared.listServices()
+        } catch {
+            // Keep prior list when server is temporarily unreachable.
+        }
+    }
+
+    func refreshCronTasks() async {
+        do {
+            cronTasks = try await ServerClient.shared.listCronTasks()
         } catch {
             // Keep prior list when server is temporarily unreachable.
         }
@@ -167,13 +186,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Periodic services + terminals (+ usage) refresh using PeriodicRefreshInterval (30s).
+    /// Periodic services + cron + terminals (+ usage) refresh using PeriodicRefreshInterval (30s).
     @MainActor
     private func startRefreshLoop() {
         Task { @MainActor in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: TerminalMenuFormatter.periodicRefreshIntervalNanoseconds)
-                await state?.refresh()
+                await state?.refresh() // includes listCronTasks / refreshCronTasks path
             }
         }
     }
@@ -329,6 +348,49 @@ private struct MenuBarDropdownContent: View {
                     }
                 }
             }
+
+            Menu("Cron") {
+                if state.cronTasks.isEmpty {
+                    Text(CronMenuFormatter.formatCronTasksEmptyLabel())
+                } else {
+                    ForEach(state.cronTasks) { task in
+                        Menu(CronMenuFormatter.formatCronTaskTitle(
+                            name: task.name,
+                            status: task.status,
+                            enabled: task.enabled,
+                            scheduleMode: task.scheduleMode,
+                            interval: task.interval,
+                            cronExpr: task.cronExpr
+                        )) {
+                            Button("Run Now") {
+                                Task { await runCronAction { try await ServerClient.shared.runCronTask(id: task.id) } }
+                            }
+                            .disabled(!CronMenuFormatter.canRunCronTask(status: task.status))
+
+                            if CronMenuFormatter.showEnableCronAction(enabled: task.enabled) {
+                                Button("Enable") {
+                                    Task { await runCronToggleEnable(task: task, enable: true) }
+                                }
+                            } else {
+                                Button("Disable") {
+                                    Task { await runCronToggleEnable(task: task, enable: false) }
+                                }
+                            }
+
+                            Button("View Logs…") {
+                                LogStreamWindow.open(
+                                    logPath: task.logPath,
+                                    stream: ServerClient.shared.streamLog(path: task.logPath, lines: 1000)
+                                )
+                            }
+
+                            Button("History…") {}
+                                .disabled(true)
+                        }
+                    }
+                }
+            }
+            .accessibilityIdentifier("cron-menu")
 
             // Terminals submenu (local — no domain/Server switcher)
             Menu("Terminals") {
@@ -492,5 +554,34 @@ private struct MenuBarDropdownContent: View {
             return nil
         }
         return field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func runCronAction(_ action: @escaping () async throws -> Void) async {
+        do {
+            try await action()
+            await state.refreshCronTasks()
+        } catch {
+            // Ignore transient server errors; user can retry from the menu.
+        }
+    }
+
+    private func runCronToggleEnable(task: CronTaskStatus, enable: Bool) async {
+        do {
+            let response: CronTaskActionResponse
+            if enable {
+                response = try await ServerClient.shared.enableCronTask(id: task.id)
+            } else {
+                response = try await ServerClient.shared.disableCronTask(id: task.id)
+            }
+            let alert = NSAlert()
+            alert.messageText = enable ? "Enable Cron Task" : "Disable Cron Task"
+            alert.informativeText = response.displayMessage
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            await state.refreshCronTasks()
+        } catch {
+            // Ignore transient server errors.
+        }
     }
 }
