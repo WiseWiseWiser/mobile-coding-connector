@@ -15,7 +15,7 @@ type Profile struct {
 func Local() Profile {
 	return Profile{
 		SpawnsDaemon:   true,
-		UsesAuthToken:  false,
+		UsesAuthToken:  true,
 		ConfigFileName: "local-agent-config.json",
 		BundleID:       "com.xhd2015.ai-critic-macos",
 		AppName:        "ai-critic-macos",

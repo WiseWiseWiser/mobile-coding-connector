@@ -116,12 +116,28 @@ final class ServerClient {
     // Main server business plane listens on 23712 by default.
     private let serverPort = 23712
     private let session: URLSession
+    /// Resolved Bearer token (config → credentials → empty). Applied on all API requests.
+    private var authToken: String
 
     init(session: URLSession = .shared) {
         self.session = session
+        self.authToken = LocalAuth.resolveLocalServerToken().token
+    }
+
+    /// Re-read token from disk (e.g. after credentials change).
+    func refreshAuthToken() {
+        authToken = LocalAuth.resolveLocalServerToken().token
     }
 
     private var baseURL: String { "http://127.0.0.1:\(serverPort)" }
+
+    /// Apply Authorization: Bearer <token> when token is non-empty; omit when empty.
+    private func applyAuth(_ request: inout URLRequest) {
+        let header = LocalAuth.authorizationHeader(token: authToken)
+        if !header.isEmpty {
+            request.setValue(header, forHTTPHeaderField: "Authorization")
+        }
+    }
 
     func grokUsage() async throws -> GrokUsageResponse {
         let (data, response) = try await get(path: "/api/grok/usage")
@@ -186,6 +202,7 @@ final class ServerClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(&request)
         let trimmedTask = task?.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = WrkCreateWorktreeRequest(
             projectPath: projectPath,
@@ -231,6 +248,7 @@ final class ServerClient {
         var request = URLRequest(url: URL(string: baseURL + "/api/debug/log")!)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(&request)
         request.httpBody = try JSONEncoder().encode(["enabled": enabled])
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -269,6 +287,7 @@ final class ServerClient {
 
                     var request = URLRequest(url: url)
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    self.applyAuth(&request)
 
                     let (bytes, response) = try await session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
@@ -303,7 +322,10 @@ final class ServerClient {
         guard let url = URL(string: baseURL + path) else {
             throw ServerClientError.unreachable("invalid url")
         }
-        return try await session.data(from: url)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuth(&request)
+        return try await session.data(for: request)
     }
 
     private func postServiceAction(path: String, id: String) async throws {
@@ -316,6 +338,7 @@ final class ServerClient {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        applyAuth(&request)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw ServerClientError.unreachable("service action failed")
