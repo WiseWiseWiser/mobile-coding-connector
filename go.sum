@@ -32,8 +32,8 @@ github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e h1:MRM5ITcdelLK2j1
 github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e/go.mod h1:XV66xRDqSt+GTGFMVlhk3ULuV0y9ZmzeVGR4mloJI3M=
 github.com/ulikunitz/xz v0.5.12 h1:37Nm15o69RwBkXM0J6A5OlE67RZTfzUxTj8fB3dfcsc=
 github.com/ulikunitz/xz v0.5.12/go.mod h1:nbz6k7qbPmH4IRqmfOplQw/tblSgqTqBwxkY0oWt/14=
-github.com/xhd2015/agent-pro v0.0.50 h1:xCNd6CNShOVE94EFiN7Ob/562P+JUmM6qcy2MiZGxLw=
-github.com/xhd2015/agent-pro v0.0.50/go.mod h1:ZQNRgBPxOw3yHfiOz/t1B9SasyBnfL41PS0n4785eQ4=
+github.com/xhd2015/agent-pro v0.0.52 h1:wEp29dHCiyXF3ziBCFyiXGuw69V6iR1vzIb99sIiUYo=
+github.com/xhd2015/agent-pro v0.0.52/go.mod h1:fE2qatE90pMon0bt/NuJjYDUK9Is13/rh1WnEFMmaGw=
 github.com/xhd2015/dot-pkgs/go-pkgs v0.0.56 h1:10TAQaHomBmpevDjsfe79edq9Ca1Al7X8pcSCYBgDUw=
 github.com/xhd2015/dot-pkgs/go-pkgs v0.0.56/go.mod h1:A4ul60XVmlEMpOQ+9rt8MpGp+DVGFc0dHQyHB19kN2w=
 github.com/xhd2015/gitops v0.0.24 h1:IEQbxN7iQTL8Z8jWtVJOBfIwiy+sfgolOQkXt+bQgew=
