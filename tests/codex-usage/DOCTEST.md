@@ -63,10 +63,7 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
  |    +-- user-script-early-status/    (LEAF)   user 5+5 snapshot script fails
  |
  +-- refresh/                         (GROUP)  cache refresh semantics
- |    +-- skips-overlap/              (LEAF)   concurrent refresh skipped
- |
- +-- update-modal-skip/               (NESTED ROOT) auto-Skip Update available menu
-      see tests/codex-usage/update-modal-skip/DOCTEST.md
+      +-- skips-overlap/              (LEAF)   concurrent refresh skipped
 ```
 
 ## Test Index
@@ -87,7 +84,6 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
 | 12 | `tty-watch/wait-idle-production-status` | Real CLI: idle then /status in ~16s (`slow && real-codex`) |
 | 13 | `tty-watch/user-script-early-status` | Manual early script: no fields (`slow && real-codex && negative`) |
 | 14 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
-| 15+ | `update-modal-skip/**` | Nested root: menu vs banner classify + auto-Skip fetch (see nested DOCTEST.md) |
 
 ## Parameter Coverage
 
@@ -136,10 +132,6 @@ doctest test --label negative ./tests/codex-usage/...
 ```sh
 doctest vet ./tests/codex-usage
 doctest test ./tests/codex-usage/...
-
-# Nested update-modal-skip tree (auto-Skip + menu/banner classify):
-doctest vet ./tests/codex-usage/update-modal-skip
-doctest test ./tests/codex-usage/update-modal-skip/...
 ```
 
 ```go
