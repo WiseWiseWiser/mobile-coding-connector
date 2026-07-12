@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/xhd2015/ai-critic/server/cmdjson"
-	"gopkg.in/yaml.v3"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/cloudflare"
 )
 
 // TunnelInfo represents a Cloudflare tunnel.
@@ -34,20 +34,9 @@ type IngressRule struct {
 }
 
 // IsUUID checks if a string looks like a UUID (8-4-4-4-12 hex format).
+// Delegates to the shared cloudflare package.
 func IsUUID(s string) bool {
-	if len(s) != 36 {
-		return false
-	}
-	for i, c := range s {
-		if i == 8 || i == 13 || i == 18 || i == 23 {
-			if c != '-' {
-				return false
-			}
-		} else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return false
-		}
-	}
-	return true
+	return cloudflare.IsUUID(s)
 }
 
 // FindTunnelIDAndCreds resolves the tunnel ID and credentials file for the given tunnel reference (name or ID).
@@ -172,20 +161,22 @@ func CreateDNSRoute(tunnelRef, hostname string) error {
 }
 
 // WriteCloudflaredConfig writes a cloudflared config YAML file.
+// Delegates to the shared cloudflare.WriteConfig.
 func WriteCloudflaredConfig(path string, cfg *CloudflaredConfig) error {
-	cfgDir := filepath.Dir(path)
-	if err := os.MkdirAll(cfgDir, 0755); err != nil {
-		return fmt.Errorf("failed to create config directory %s: %v", cfgDir, err)
+	if cfg == nil {
+		return fmt.Errorf("config is nil")
 	}
-
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %v", err)
+	shared := &cloudflare.Config{
+		Tunnel:          cfg.Tunnel,
+		CredentialsFile: cfg.CredentialsFile,
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return fmt.Errorf("failed to write config: %v", err)
+	for _, rule := range cfg.Ingress {
+		shared.Ingress = append(shared.Ingress, cloudflare.IngressRule{
+			Hostname: rule.Hostname,
+			Service:  rule.Service,
+		})
 	}
-	return nil
+	return cloudflare.WriteConfig(path, shared)
 }
 
 // DefaultConfigDir returns the default cloudflared config directory (~/.cloudflared).
