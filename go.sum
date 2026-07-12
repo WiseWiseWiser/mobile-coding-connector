@@ -32,10 +32,10 @@ github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e h1:MRM5ITcdelLK2j1
 github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e/go.mod h1:XV66xRDqSt+GTGFMVlhk3ULuV0y9ZmzeVGR4mloJI3M=
 github.com/ulikunitz/xz v0.5.12 h1:37Nm15o69RwBkXM0J6A5OlE67RZTfzUxTj8fB3dfcsc=
 github.com/ulikunitz/xz v0.5.12/go.mod h1:nbz6k7qbPmH4IRqmfOplQw/tblSgqTqBwxkY0oWt/14=
-github.com/xhd2015/agent-pro v0.0.54 h1:e970i1MCWlZ8Qc+64t7/qTUqLl6uuSPGvmrcpRze3HQ=
-github.com/xhd2015/agent-pro v0.0.54/go.mod h1:xY0ezcKjbMnOduFK5uy19TzZxvN/jjj9XRSsKjPGHEA=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.69 h1:+QpJqyhRRpyCMNCdVjs/afiXt2A8dG0Yb66mBKV6rAo=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.69/go.mod h1:GSLPqsH9VnATa1LdugdtTt4j12257i0pNUQjw1hjH6Y=
+github.com/xhd2015/agent-pro v0.0.52 h1:wEp29dHCiyXF3ziBCFyiXGuw69V6iR1vzIb99sIiUYo=
+github.com/xhd2015/agent-pro v0.0.52/go.mod h1:fE2qatE90pMon0bt/NuJjYDUK9Is13/rh1WnEFMmaGw=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.61 h1:PGgdqEtQ26AQUs4KNNNHTj+pNnpfgL2ga43WFdCT0qM=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.61/go.mod h1:m/nM4Wj/2N0MUZEPVTZkJl5c14z95Pjf7fyw/In7Yic=
 github.com/xhd2015/gitops v0.0.24 h1:IEQbxN7iQTL8Z8jWtVJOBfIwiy+sfgolOQkXt+bQgew=
 github.com/xhd2015/gitops v0.0.24/go.mod h1:KS8y6tZ3FG+myEaR+H6MvoR099YrP/ADIHZX9ROpZo8=
 github.com/xhd2015/go-coverage v1.0.41 h1:JjUcE93IMz0KHmdCYUKq9JN/EDC/5k0OEhsMAeVvL88=
@@ -46,8 +46,8 @@ github.com/xhd2015/go-objpath v0.0.0-20220820085723-d7e6bd98f5c7/go.mod h1:kr5we
 github.com/xhd2015/go-objpath v0.0.1/go.mod h1:kr5weGR7DdeWPHrZM/PIEU6UgjLMSqCOfiadbrUJ7tg=
 github.com/xhd2015/kool v0.0.122 h1:7Swvnpe7G284+6isbA9aXp6ZK1BUk/5uDZ7EijvBYEM=
 github.com/xhd2015/kool v0.0.122/go.mod h1:ne5VWpnOdQqu+OTZ92fbf81ZR/gUMFTvbmknMz64omo=
-github.com/xhd2015/less-flags v1.0.1 h1:rK8QmkIQPcsgwLP1k22BSVu/VxyxcWRCbjfE1oRz4CU=
-github.com/xhd2015/less-flags v1.0.1/go.mod h1:HGGM7JrrfZm/RvmxBQT96jF916m9UQE8vELpejQaoIo=
+github.com/xhd2015/less-flags v1.0.0 h1:ay8YG0WSXn59CAwBYUcAsq7l+mUwDEMUqaW/Fy0ZoCM=
+github.com/xhd2015/less-flags v1.0.0/go.mod h1:HGGM7JrrfZm/RvmxBQT96jF916m9UQE8vELpejQaoIo=
 github.com/xhd2015/less-gen v0.0.19 h1:JllrPhx3HzN+f2AB6cTvW9aRCpvuODJFx7affpa0zQY=
 github.com/xhd2015/less-gen v0.0.19/go.mod h1:Ym5HW/yfVnf2mgSo48QsuHAKnMTPv/u7oqty+raTnTQ=
 github.com/xhd2015/skills v0.0.16 h1:o1jpY2eOahSqE0RrMfPIq7a+DXzOWFL/L9QlkXW9gZ4=
