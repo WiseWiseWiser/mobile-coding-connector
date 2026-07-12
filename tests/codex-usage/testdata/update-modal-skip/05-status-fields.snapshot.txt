@@ -1,0 +1,17 @@
+│  Agents.md:                           AGENTS.md                              │
+│  Account:                             xhd2015@gmail.com (Enterprise)    │
+│  Collaboration mode:                  Default                                │
+│  Session:                             019f4c80-295c-7f61-9bb8-2bf40a6e3b98   │
+│                                                                              │
+│  Monthly credit limit:                [██████░░░░░░░░░░░░░░] 32% left        │
+│                                       (resets 08:00 on 1 Aug)                │
+│                                       7,698 of 11,250 credits used           │
+│  GPT-5.3-Codex-Spark-Preview limit:                                          │
+│  5h limit:                            [████████████████████] 100% left       │
+│                                       (resets 03:48 on 11 Jul)               │
+│  Weekly limit:                        [████████████████████] 100% left       │
+│                                       (resets 22:48 on 17 Jul)               │
+╰------------------------------------------------------------------------------╯
+⚠ MCP client for `computer-use` failed to start: MCP startup failed: No suchfile or directory (os error 2)
+• Starting MCP servers (2/4): codex_apps, openaiDeveloperDocs (0s • esc to inte…
+› Use /skills to list available skillsgpt-5.5 medium · ~/.wrk/worktrees/ai-critic-master-2026-07-10-fix-codex-usage…

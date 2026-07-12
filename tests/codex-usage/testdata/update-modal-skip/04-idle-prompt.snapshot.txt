@@ -1,0 +1,15 @@
+╭-------------------------------------------------╮
+│ ✨ Update available! 0.143.0 -> 0.144.0         │
+│ Run npm install -g @openai/codex to update.     │
+│                                                 │
+│ See full release notes:                         │
+│ https://github.com/openai/codex/releases/latest │
+╰-------------------------------------------------╯
+╭-------------------------------------------------------╮
+│ >_ OpenAI Codex (v0.143.0)                            │
+│                                                       │
+│ model:       loading   /model to change               │
+│ directory:   ~/…/external/agent-pro-master-2026-07-10 │
+│ permissions: YOLO mode                                │
+╰-------------------------------------------------------╯
+› Use /skills to list available skillsgpt-5.5 default · ~/.wrk/worktrees/ai-critic-master-2026-07-10-fix-codex-usag…

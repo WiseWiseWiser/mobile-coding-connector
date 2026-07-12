@@ -391,3 +391,22 @@ func FormatBackupProgressGuardError(reason string) string {
 		return "ERROR: " + reason
 	}
 }
+
+// BackupProgressFlushIntervalMilliseconds is the UI batch flush interval for the
+// Backup progress quiet console (low-CPU path). Allowed band: 100–200ms; canonical 150.
+const BackupProgressFlushIntervalMilliseconds = 150
+
+// JoinBackupProgressBatch joins pending progress lines for one textStorage write.
+// Empty/nil → ""; non-empty lines are joined with "\n" and a trailing newline.
+func JoinBackupProgressBatch(lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// ShouldScrollBackupProgressOnFlush reports whether the progress console should
+// scroll to end on each batch flush. v1 always scrolls.
+func ShouldScrollBackupProgressOnFlush() bool {
+	return true
+}
