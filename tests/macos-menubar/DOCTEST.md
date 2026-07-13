@@ -42,15 +42,22 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
 - `FormatCodexDropdownLine`: ready → `Codex: {pct}(Monthly) {used}/{total}, Reset {local}, {timeLeft}`;
   `error` → `Codex: Error: {msg}` (no reset suffix on error).
 - Compact menu-bar pill labels (`label/*`) remain unchanged — no reset or relative time.
+- **Compose-only dropdown** (Swift UI contract) lives in nested root
+  `compose/` (`ComposeGrokDropdownLine` / `ComposeCodexDropdownLine`) — structured
+  `reset_display` + `time_left` only; no re-parse of raw `next_reset`. Existing
+  `dropdown/*` leaves remain low-level tests of raw-parse producer helpers.
 
 ## Version
 
-0.0.4
+0.0.5
 
 ## Decision Tree
 
 ```
 [menubar formatting]
+ |
+ +-- compose/                         (NESTED ROOT) compose-only from structured fields
+ |                                     see tests/macos-menubar/compose/DOCTEST.md
  |
  +-- label/                           (GROUP)  menu-bar title labels (unchanged)
  |    +-- ready/                      (LEAF)   FormatGrokLabel ready + weekly_limit
@@ -131,6 +138,7 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
 | 30 | `dropdown/codex-error` | `Codex: Error: fork/exec ...` full message |
 | 31 | `dropdown/codex-timeout-error` | `Codex: Error: timeout waiting for status output` |
 | 32 | `client/swift-grok-codex-server-port` | AppState refresh uses ServerClient for grok/codex |
+| 33+ | `compose/**` | Nested root: compose-only dropdown from structured fields (see nested DOCTEST.md) |
 
 ## Parameter Coverage
 
@@ -174,6 +182,10 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
 ```sh
 doctest vet ./tests/macos-menubar
 doctest test ./tests/macos-menubar/...
+
+# Nested compose-only tree (structured fields; classic TDD RED until helpers exist):
+doctest vet ./tests/macos-menubar/compose
+doctest test ./tests/macos-menubar/compose/...
 ```
 
 ```go

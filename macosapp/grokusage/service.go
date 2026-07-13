@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/agent-pro/agent/grok/tty"
+	"github.com/xhd2015/ai-critic/macosapp/menubar"
 )
 
 const (
@@ -29,16 +30,20 @@ const (
 
 // GrokUsageResponse is the JSON shape for GET /api/grok/usage.
 type GrokUsageResponse struct {
-	Status      GrokUsageStatus `json:"status"`
-	WeeklyLimit string          `json:"weekly_limit,omitempty"`
-	NextReset   string          `json:"next_reset,omitempty"`
-	Error       string          `json:"error,omitempty"`
-	UpdatedAt   string          `json:"updated_at,omitempty"`
+	Status       GrokUsageStatus `json:"status"`
+	WeeklyLimit  string          `json:"weekly_limit,omitempty"`
+	NextReset    string          `json:"next_reset,omitempty"`
+	ResetAt      string          `json:"reset_at,omitempty"`
+	ResetDisplay string          `json:"reset_display,omitempty"`
+	TimeLeft     string          `json:"time_left,omitempty"`
+	Error        string          `json:"error,omitempty"`
+	UpdatedAt    string          `json:"updated_at,omitempty"`
 }
 
 // Service fetches and caches grok usage on a background refresh loop.
 type Service struct {
 	extraEnv map[string]string
+	nowFunc  func() time.Time
 
 	mu       sync.Mutex
 	fetching bool
@@ -63,6 +68,13 @@ func newService() *Service {
 	}
 }
 
+func (s *Service) now() time.Time {
+	if s.nowFunc != nil {
+		return s.nowFunc()
+	}
+	return time.Now()
+}
+
 // Start begins the 60s background refresh loop.
 func (s *Service) Start() {
 	go s.refreshLoop()
@@ -75,11 +87,17 @@ func (s *Service) Stop() {
 	})
 }
 
-// Get returns the current cached response.
+// Get returns the current cached response, recomputing time_left from reset_at + now.
 func (s *Service) Get() GrokUsageResponse {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.cached
+	out := s.cached
+	if out.Status == StatusReady && out.ResetAt != "" {
+		if resetAt, err := time.Parse(time.RFC3339, out.ResetAt); err == nil {
+			out.TimeLeft = menubar.FormatTimeLeftFromInstant(resetAt, s.now())
+		}
+	}
+	return out
 }
 
 // EnsureFetch triggers a fetch when no successful refresh has completed yet.
@@ -134,7 +152,8 @@ func (s *Service) fetchOnce() {
 	info, err := tty.FetchUsageWithOptions(ctx, tty.Options{
 		MaxAttempts: 1,
 	})
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := s.now()
+	nowStr := now.UTC().Format(time.RFC3339)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -143,16 +162,20 @@ func (s *Service) fetchOnce() {
 		s.cached = GrokUsageResponse{
 			Status:    StatusError,
 			Error:     strings.TrimSpace(err.Error()),
-			UpdatedAt: now,
+			UpdatedAt: nowStr,
 		}
 		return
 	}
 
+	resetAt, resetDisplay, timeLeft := menubar.ResolveStructuredReset(info.NextReset, now)
 	s.cached = GrokUsageResponse{
-		Status:      StatusReady,
-		WeeklyLimit: info.WeeklyLimit,
-		NextReset:   info.NextReset,
-		UpdatedAt:   now,
+		Status:       StatusReady,
+		WeeklyLimit:  info.WeeklyLimit,
+		NextReset:    info.NextReset,
+		ResetAt:      resetAt,
+		ResetDisplay: resetDisplay,
+		TimeLeft:     timeLeft,
+		UpdatedAt:    nowStr,
 	}
 }
 
@@ -209,4 +232,26 @@ func (s *Service) TestExported_SetEnv(key, val string) {
 // TestExported_TriggerRefresh starts an asynchronous refresh (skips if one is in flight).
 func (s *Service) TestExported_TriggerRefresh() {
 	go s.tryFetch()
+}
+
+// TestExported_SeedReady seeds a ready cache with fixed structured reset fields.
+func (s *Service) TestExported_SeedReady(resetAt, resetDisplay, nextReset, weekly string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cached = GrokUsageResponse{
+		Status:       StatusReady,
+		WeeklyLimit:  weekly,
+		NextReset:    nextReset,
+		ResetAt:      resetAt,
+		ResetDisplay: resetDisplay,
+		UpdatedAt:    s.now().UTC().Format(time.RFC3339),
+	}
+}
+
+// TestExported_SetNow injects a fixed wall clock for Get() time_left recompute.
+func (s *Service) TestExported_SetNow(now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fixed := now
+	s.nowFunc = func() time.Time { return fixed }
 }

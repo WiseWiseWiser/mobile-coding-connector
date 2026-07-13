@@ -13,6 +13,9 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
   `Monthly usage:`, `Credits used:`, and `Next reset:` lines from command stdout.
 - **Codex usage service (daemon)** — calls `agent/usage.Fetch(ctx, Codex)` in-process,
   caches `CodexUsageResponse`, refreshes every 60s, skips overlapping in-flight fetches.
+  On success derives structured reset fields (`reset_at` RFC3339, `reset_display`,
+  `time_left`); on each `Get()` recomputes `time_left` from cached `reset_at` + now
+  without re-fetch.
 - **Injectable fetch hook** — `TestExported_SetFetcher` replaces the default in-process
   fetch for deterministic service-layer tests (success, error, slow overlap).
 - **Fake Codex TUI (`CODEX_SHOW_STATUS_COMMAND`)** — env hook honored by
@@ -21,20 +24,24 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
   `23712` when API leaves run (started by keep-alive harness).
 - **Keep-alive daemon** — management port `23312` control plane only; spawns server.
 - **HTTP client** — asserts JSON `status`, `monthly_usage`, `credits_used`,
-  `credits_total`, `next_reset`, `error`, `updated_at` fields.
+  `credits_total`, `next_reset`, `reset_at`, `reset_display`, `time_left`,
+  `error`, `updated_at` fields.
 
 **Behaviors**
 
 - Standard and noisy stdout parses to `UsageInfo`; missing monthly line returns error.
 - Injected fetch success → service `status=ready` with parsed usage and formatted credits.
-- Injected fetch error → `status=error` with error message.
+- Injected fetch success also sets A+B structured fields from provider `Reset` string.
+- Injected fetch error → `status=error` with error message; structured fields empty.
+- `Get()` recomputes `time_left` from cached `reset_at` (harness: `TestExported_SeedReady`
+  + `TestExported_SetNow` when present).
 - API returns ready JSON after fake TUI fetch completes via env command hook.
 - Concurrent refresh while fetch in flight does not start a second in-process fetch (count=1).
 - No binary resolution (`resolve.go` removed); no bundled `codex-show-status` indirection.
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -47,12 +54,17 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
  |    +-- missing-monthly/            (LEAF)   parse error
  |
  +-- fetch/                           (GROUP)  service fetch via injectable hook
- |    +-- mock-command-success/       (LEAF)   status ready
+ |    +-- mock-command-success/       (LEAF)   status ready (raw fields)
  |    +-- mock-command-fails/          (LEAF)   status error
+ |    +-- structured-ready/           (LEAF)   A+B: reset_at, reset_display, time_left
+ |    +-- structured-error-empty/     (LEAF)   error → no invent structured fields
  |    +-- slow-boot-snapshot/         (LEAF)   synthetic slow TUI boot succeeds
  |    +-- timeout-slow-prompt/        (LEAF)   short timeout during 30s silent boot
  |    +-- timeout-no-status-response/ (LEAF)   short timeout when /status never renders
  |    +-- real-codex-inprocess/       (LEAF)   real codex CLI in-process fetch (slow)
+ |
+ +-- get/                             (GROUP)  cache Get() recompute
+ |    +-- time-left-recomputed/       (LEAF)   later Get → updated time_left, no re-fetch
  |
  +-- api/                             (GROUP)  HTTP surface
  |    +-- get-usage-ready/            (LEAF)   GET /api/codex/usage on server :23712
@@ -78,16 +90,19 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
 | 3 | `parse/missing-monthly` | Missing monthly line → error |
 | 4 | `fetch/mock-command-success` | Injected fetch → service ready |
 | 5 | `fetch/mock-command-fails` | Injected fetch error → service error |
-| 6 | `fetch/slow-boot-snapshot` | Synthetic slow TUI → in-process fetch ready |
-| 7 | `fetch/timeout-slow-prompt` | 30s silent boot → ready within service ctx (`slow`) |
-| 8 | `fetch/timeout-no-status-response` | Never-respond fake → error (`slow && negative`) |
-| 9 | `fetch/real-codex-inprocess` | Real codex CLI + daemon PATH → fetch ready |
-| 10 | `api/get-usage-ready` | HTTP API on server port returns ready JSON |
-| 11 | `api/get-usage-timeout` | HTTP API on server port returns timeout error (`slow && negative && requires-dist`) |
-| 12 | `tty-watch/wait-idle-production-status` | Real CLI: idle then /status in ~16s (`slow && real-codex`) |
-| 13 | `tty-watch/user-script-early-status` | Manual early script: no fields (`slow && real-codex && negative`) |
-| 14 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
-| 15+ | `update-modal-skip/**` | Nested root: menu vs banner classify + auto-Skip fetch (see nested DOCTEST.md) |
+| 6 | `fetch/structured-ready` | Injected success → structured A+B fields |
+| 7 | `fetch/structured-error-empty` | Injected error → empty structured fields |
+| 8 | `fetch/slow-boot-snapshot` | Synthetic slow TUI → in-process fetch ready |
+| 9 | `fetch/timeout-slow-prompt` | 30s silent boot → ready within service ctx (`slow`) |
+| 10 | `fetch/timeout-no-status-response` | Never-respond fake → error (`slow && negative`) |
+| 11 | `fetch/real-codex-inprocess` | Real codex CLI + daemon PATH → fetch ready |
+| 12 | `get/time-left-recomputed` | Seeded reset_at; second Get shortens time_left |
+| 13 | `api/get-usage-ready` | HTTP API on server port returns ready JSON |
+| 14 | `api/get-usage-timeout` | HTTP API on server port returns timeout error (`slow && negative && requires-dist`) |
+| 15 | `tty-watch/wait-idle-production-status` | Real CLI: idle then /status in ~16s (`slow && real-codex`) |
+| 16 | `tty-watch/user-script-early-status` | Manual early script: no fields (`slow && real-codex && negative`) |
+| 17 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
+| 18+ | `update-modal-skip/**` | Nested root: menu vs banner classify + auto-Skip fetch (see nested DOCTEST.md) |
 
 ## Parameter Coverage
 
@@ -98,6 +113,9 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
 | missing-monthly | parse | show-status-missing-monthly.txt | true |
 | mock-command-success | fetch | injectable success snapshot | false |
 | mock-command-fails | fetch | injectable fetch error | false (service error status) |
+| structured-ready | fetch | injectable success snapshot | false |
+| structured-error-empty | fetch | injectable fetch error | false (service error status) |
+| time-left-recomputed | get-recompute | SeedReady + SetNow (test hooks) | false |
 | slow-boot-snapshot | fetch-inprocess | slow CODEX_SHOW_STATUS_COMMAND | false |
 | timeout-slow-prompt | fetch-inprocess | 30s silent + 5s timeout | false |
 | timeout-no-status-response | fetch-inprocess | never-respond → error | false |
@@ -152,6 +170,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -187,6 +206,14 @@ type Request struct {
 	SessionID         string
 	FetchTimeoutSecs  int
 
+	// get-recompute: seed cache + controlled clock (TestExported hooks)
+	ResetAtRFC3339   string
+	ResetDisplaySeed string
+	NextResetSeed    string
+	MonthlyUsageSeed string
+	NowRFC3339       string
+	NowRFC3339Second string
+
 	ExpectParseError bool
 	WaitAPIReadySecs int
 	WaitAPIError     bool // api: return when cached status=error
@@ -204,6 +231,9 @@ type CodexUsageJSON struct {
 	CreditsUsed  string `json:"credits_used,omitempty"`
 	CreditsTotal string `json:"credits_total,omitempty"`
 	NextReset    string `json:"next_reset,omitempty"`
+	ResetAt      string `json:"reset_at,omitempty"`
+	ResetDisplay string `json:"reset_display,omitempty"`
+	TimeLeft     string `json:"time_left,omitempty"`
 	Error        string `json:"error,omitempty"`
 	UpdatedAt    string `json:"updated_at,omitempty"`
 }
@@ -218,6 +248,12 @@ type Response struct {
 	ServiceStatus string
 	ServiceError  string
 	UpdatedAt     string
+
+	// Structured A+B fields (service or API); empty until production implements them.
+	ResetAt        string
+	ResetDisplay   string
+	TimeLeft       string
+	TimeLeftSecond string // get-recompute: time_left after second Get
 
 	APIStatusCode int
 	APIBody       string
@@ -248,6 +284,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return runParse(t, req, doctestRoot, resp)
 	case "fetch":
 		return runFetch(t, req, resp)
+	case "get-recompute":
+		return runGetRecompute(t, req, resp)
 	case "fetch-inprocess":
 		return runFetchInProcess(t, req, resp)
 	case "api":
@@ -259,6 +297,32 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	default:
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}
+}
+
+// structStringField reads an exported string field by name without requiring
+// the production type to declare it yet (classic-TDD RED stays compile-safe).
+func structStringField(v any, name string) string {
+	rv := reflect.ValueOf(v)
+	for rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return ""
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return ""
+	}
+	f := rv.FieldByName(name)
+	if !f.IsValid() || f.Kind() != reflect.String {
+		return ""
+	}
+	return f.String()
+}
+
+func fillStructuredFromService(resp *Response, out any) {
+	resp.ResetAt = structStringField(out, "ResetAt")
+	resp.ResetDisplay = structStringField(out, "ResetDisplay")
+	resp.TimeLeft = structStringField(out, "TimeLeft")
 }
 
 func runParse(t *testing.T, req *Request, root string, resp *Response) (*Response, error) {
@@ -291,6 +355,58 @@ func runFetch(t *testing.T, req *Request, resp *Response) (*Response, error) {
 	resp.CreditsTotal = out.CreditsTotal
 	resp.NextReset = out.NextReset
 	resp.UpdatedAt = out.UpdatedAt
+	fillStructuredFromService(resp, out)
+	return resp, nil
+}
+
+// runGetRecompute seeds a ready cache with fixed reset_at and calls Get() at two
+// controlled clocks. Expected production hooks (implementer):
+//
+//	func (s *Service) TestExported_SeedReady(resetAt, resetDisplay, nextReset, monthly string)
+//	func (s *Service) TestExported_SetNow(now time.Time)
+//
+// Get() must recompute TimeLeft from cached ResetAt + now without re-fetch.
+// When hooks are missing, structured fields stay empty → leaf RED.
+func runGetRecompute(t *testing.T, req *Request, resp *Response) (*Response, error) {
+	t.Helper()
+	svc := codexusage.TestExported_NewService()
+	seedFn := reflect.ValueOf(svc).MethodByName("TestExported_SeedReady")
+	setNowFn := reflect.ValueOf(svc).MethodByName("TestExported_SetNow")
+	if !seedFn.IsValid() || !setNowFn.IsValid() {
+		return resp, nil
+	}
+	seedFn.Call([]reflect.Value{
+		reflect.ValueOf(req.ResetAtRFC3339),
+		reflect.ValueOf(req.ResetDisplaySeed),
+		reflect.ValueOf(req.NextResetSeed),
+		reflect.ValueOf(req.MonthlyUsageSeed),
+	})
+
+	now1, err := time.Parse(time.RFC3339, req.NowRFC3339)
+	if err != nil {
+		return nil, fmt.Errorf("parse NowRFC3339: %w", err)
+	}
+	setNowFn.Call([]reflect.Value{reflect.ValueOf(now1)})
+	out1 := svc.Get()
+	resp.ServiceStatus = string(out1.Status)
+	resp.MonthlyUsage = out1.MonthlyUsage
+	resp.NextReset = out1.NextReset
+	resp.UpdatedAt = out1.UpdatedAt
+	fillStructuredFromService(resp, out1)
+
+	now2, err := time.Parse(time.RFC3339, req.NowRFC3339Second)
+	if err != nil {
+		return nil, fmt.Errorf("parse NowRFC3339Second: %w", err)
+	}
+	setNowFn.Call([]reflect.Value{reflect.ValueOf(now2)})
+	out2 := svc.Get()
+	resp.TimeLeftSecond = structStringField(out2, "TimeLeft")
+	if at := structStringField(out2, "ResetAt"); at != "" {
+		resp.ResetAt = at
+	}
+	if disp := structStringField(out2, "ResetDisplay"); disp != "" {
+		resp.ResetDisplay = disp
+	}
 	return resp, nil
 }
 
@@ -732,10 +848,16 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 			if json.Unmarshal(body, &parsed) == nil {
 				if parsed.Status == "ready" {
 					resp.APIParsed = &parsed
+					resp.ResetAt = parsed.ResetAt
+					resp.ResetDisplay = parsed.ResetDisplay
+					resp.TimeLeft = parsed.TimeLeft
 					return resp, nil
 				}
 				if req.WaitAPIError && parsed.Status == "error" && parsed.UpdatedAt != "" {
 					resp.APIParsed = &parsed
+					resp.ResetAt = parsed.ResetAt
+					resp.ResetDisplay = parsed.ResetDisplay
+					resp.TimeLeft = parsed.TimeLeft
 					return resp, nil
 				}
 			}
@@ -753,6 +875,9 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 	var parsed CodexUsageJSON
 	_ = json.Unmarshal(body, &parsed)
 	resp.APIParsed = &parsed
+	resp.ResetAt = parsed.ResetAt
+	resp.ResetDisplay = parsed.ResetDisplay
+	resp.TimeLeft = parsed.TimeLeft
 	return resp, nil
 }
 

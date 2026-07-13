@@ -56,12 +56,17 @@ enum UsageLabelFormatter {
         }
     }
 
-    static func formatGrokDropdownLine(status: String, weekly: String, reset: String, errorMsg: String, now: Date = Date()) -> String {
+    /// Compose-only dropdown from structured API fields (no parse of next_reset).
+    static func composeGrokDropdownLine(
+        status: String,
+        weekly: String,
+        resetDisplay: String,
+        timeLeft: String,
+        errorMsg: String
+    ) -> String {
         switch status {
         case "ready":
-            let display = formatResetDisplay(reset: reset, now: now)
-            var line = "Grok: \(weekly)(Weekly), Reset \(display)"
-            let timeLeft = formatTimeLeft(reset: reset, now: now)
+            var line = "Grok: \(weekly)(Weekly), Reset \(resetDisplay)"
             if !timeLeft.isEmpty {
                 line += ", \(timeLeft)"
             }
@@ -75,6 +80,49 @@ enum UsageLabelFormatter {
         }
     }
 
+    /// Compose-only dropdown from structured API fields (no parse of next_reset).
+    static func composeCodexDropdownLine(
+        status: String,
+        monthly: String,
+        creditsUsed: String,
+        creditsTotal: String,
+        resetDisplay: String,
+        timeLeft: String,
+        errorMsg: String
+    ) -> String {
+        switch status {
+        case "ready":
+            var line = "Codex: \(monthly)(Monthly) \(creditsUsed)/\(creditsTotal), Reset \(resetDisplay)"
+            if !timeLeft.isEmpty {
+                line += ", \(timeLeft)"
+            }
+            return line
+        case "loading":
+            return "Codex: Loading..."
+        case "error":
+            return "Codex: Error: \(errorMsg)"
+        default:
+            return "Codex: Loading..."
+        }
+    }
+
+    /// Legacy path that re-parses raw next_reset. Prefer compose* with API A+B fields.
+    static func formatGrokDropdownLine(status: String, weekly: String, reset: String, errorMsg: String, now: Date = Date()) -> String {
+        switch status {
+        case "ready":
+            return composeGrokDropdownLine(
+                status: status,
+                weekly: weekly,
+                resetDisplay: formatResetDisplay(reset: reset, now: now),
+                timeLeft: formatTimeLeft(reset: reset, now: now),
+                errorMsg: errorMsg
+            )
+        default:
+            return composeGrokDropdownLine(status: status, weekly: weekly, resetDisplay: "", timeLeft: "", errorMsg: errorMsg)
+        }
+    }
+
+    /// Legacy path that re-parses raw next_reset. Prefer compose* with API A+B fields.
     static func formatCodexDropdownLine(
         status: String,
         monthly: String,
@@ -86,19 +134,25 @@ enum UsageLabelFormatter {
     ) -> String {
         switch status {
         case "ready":
-            let display = formatResetDisplay(reset: reset, now: now)
-            var line = "Codex: \(monthly)(Monthly) \(creditsUsed)/\(creditsTotal), Reset \(display)"
-            let timeLeft = formatTimeLeft(reset: reset, now: now)
-            if !timeLeft.isEmpty {
-                line += ", \(timeLeft)"
-            }
-            return line
-        case "loading":
-            return "Codex: Loading..."
-        case "error":
-            return "Codex: Error: \(errorMsg)"
+            return composeCodexDropdownLine(
+                status: status,
+                monthly: monthly,
+                creditsUsed: creditsUsed,
+                creditsTotal: creditsTotal,
+                resetDisplay: formatResetDisplay(reset: reset, now: now),
+                timeLeft: formatTimeLeft(reset: reset, now: now),
+                errorMsg: errorMsg
+            )
         default:
-            return "Codex: Loading..."
+            return composeCodexDropdownLine(
+                status: status,
+                monthly: monthly,
+                creditsUsed: creditsUsed,
+                creditsTotal: creditsTotal,
+                resetDisplay: "",
+                timeLeft: "",
+                errorMsg: errorMsg
+            )
         }
     }
 

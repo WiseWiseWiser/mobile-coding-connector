@@ -1,0 +1,9 @@
+[debug] connecting to xAI...
+scrollback line 1
+scrollback line 2
+Agent session ready.
+spinner: thinking...
+Weekly limit: 59%
+noise: ignored field
+Next reset: July 17, 08:55
+[debug] done

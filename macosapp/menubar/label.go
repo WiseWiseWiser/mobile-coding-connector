@@ -60,12 +60,44 @@ func FormatMenuBarLabel(
 }
 
 // FormatGrokDropdownLine formats a single-line grok usage row for the menu dropdown.
+// Parses raw provider reset strings (legacy path used by low-level doctests).
 func FormatGrokDropdownLine(status, weeklyLimit, reset, errorMsg string, now time.Time) string {
 	switch status {
 	case "ready":
 		display := FormatResetDisplay(reset, now)
-		line := fmt.Sprintf("Grok: %s(Weekly), Reset %s", weeklyLimit, display)
-		if timeLeft := FormatTimeLeft(reset, now); timeLeft != "" {
+		return ComposeGrokDropdownLine(status, weeklyLimit, display, FormatTimeLeft(reset, now), errorMsg)
+	case "loading":
+		return ComposeGrokDropdownLine(status, weeklyLimit, "", "", errorMsg)
+	case "error":
+		return ComposeGrokDropdownLine(status, weeklyLimit, "", "", errorMsg)
+	default:
+		return ComposeGrokDropdownLine(status, weeklyLimit, "", "", errorMsg)
+	}
+}
+
+// FormatCodexDropdownLine formats a single-line codex usage row for the menu dropdown.
+// Parses raw provider reset strings (legacy path used by low-level doctests).
+func FormatCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, reset, errorMsg string, now time.Time) string {
+	switch status {
+	case "ready":
+		display := FormatResetDisplay(reset, now)
+		return ComposeCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, display, FormatTimeLeft(reset, now), errorMsg)
+	case "loading":
+		return ComposeCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, "", "", errorMsg)
+	case "error":
+		return ComposeCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, "", "", errorMsg)
+	default:
+		return ComposeCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, "", "", errorMsg)
+	}
+}
+
+// ComposeGrokDropdownLine builds the dropdown line from structured API fields only.
+// Does not parse next_reset; time_left is appended only when non-empty.
+func ComposeGrokDropdownLine(status, weeklyLimit, resetDisplay, timeLeft, errorMsg string) string {
+	switch status {
+	case "ready":
+		line := fmt.Sprintf("Grok: %s(Weekly), Reset %s", weeklyLimit, resetDisplay)
+		if timeLeft != "" {
 			line += ", " + timeLeft
 		}
 		return line
@@ -78,13 +110,13 @@ func FormatGrokDropdownLine(status, weeklyLimit, reset, errorMsg string, now tim
 	}
 }
 
-// FormatCodexDropdownLine formats a single-line codex usage row for the menu dropdown.
-func FormatCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, reset, errorMsg string, now time.Time) string {
+// ComposeCodexDropdownLine builds the dropdown line from structured API fields only.
+// Does not parse next_reset; time_left is appended only when non-empty.
+func ComposeCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, resetDisplay, timeLeft, errorMsg string) string {
 	switch status {
 	case "ready":
-		display := FormatResetDisplay(reset, now)
-		line := fmt.Sprintf("Codex: %s(Monthly) %s/%s, Reset %s", monthlyUsage, creditsUsed, creditsTotal, display)
-		if timeLeft := FormatTimeLeft(reset, now); timeLeft != "" {
+		line := fmt.Sprintf("Codex: %s(Monthly) %s/%s, Reset %s", monthlyUsage, creditsUsed, creditsTotal, resetDisplay)
+		if timeLeft != "" {
 			line += ", " + timeLeft
 		}
 		return line

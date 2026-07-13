@@ -310,21 +310,21 @@ private struct MenuBarDropdownContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(UsageLabelFormatter.formatGrokDropdownLine(
+            Text(UsageLabelFormatter.composeGrokDropdownLine(
                 status: state.grokUsage?.status ?? "loading",
                 weekly: state.grokUsage?.weeklyLimit ?? "",
-                reset: state.grokUsage?.nextReset ?? "",
-                errorMsg: state.grokUsage?.error ?? "",
-                now: Date()
+                resetDisplay: state.grokUsage?.resetDisplay ?? "",
+                timeLeft: state.grokUsage?.timeLeft ?? "",
+                errorMsg: state.grokUsage?.error ?? ""
             ))
-            Text(UsageLabelFormatter.formatCodexDropdownLine(
+            Text(UsageLabelFormatter.composeCodexDropdownLine(
                 status: state.codexUsage?.status ?? "loading",
                 monthly: state.codexUsage?.monthlyUsage ?? "",
                 creditsUsed: state.codexUsage?.creditsUsed ?? "",
                 creditsTotal: state.codexUsage?.creditsTotal ?? "",
-                reset: state.codexUsage?.nextReset ?? "",
-                errorMsg: state.codexUsage?.error ?? "",
-                now: Date()
+                resetDisplay: state.codexUsage?.resetDisplay ?? "",
+                timeLeft: state.codexUsage?.timeLeft ?? "",
+                errorMsg: state.codexUsage?.error ?? ""
             ))
 
             Text(state.statusLine)

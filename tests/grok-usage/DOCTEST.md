@@ -17,41 +17,65 @@ deterministically without a live grok binary.
   to `tty` for API compatibility.
 - **Grok usage service (daemon)** — calls `tty.FetchUsageWithOptions` (no exec of
   `debug-grok-show-usage`), caches `GrokUsageResponse`, refreshes every 60s,
-  skips overlapping in-flight fetches.
+  skips overlapping in-flight fetches. On success derives structured reset fields
+  (`reset_at` RFC3339, `reset_display`, `time_left`); on each `Get()` recomputes
+  `time_left` from cached `reset_at` + now without re-PTY.
 - **Mock fake-TUI script** — shell fixtures under `testdata/`; mimic grok prompt,
-  read `/usage show`, emit usage lines; fail and slow variants for error/overlap.
+  read `/usage show`, emit usage lines; fail, slow, and no-TZ success variants.
 - **ai-critic-server subprocess** — serves `GET /api/grok/usage` on main server port
   `23712` when API leaves run (started by keep-alive harness).
 - **Keep-alive daemon** — management port `23312` control plane only; spawns server.
-- **HTTP client** — asserts JSON `status`, `weekly_limit`, `next_reset`, `error`,
-  `updated_at` fields.
+- **HTTP client** — asserts JSON `status`, `weekly_limit`, `next_reset`,
+  `reset_at`, `reset_display`, `time_left`, `error`, `updated_at` fields.
 
 **Behaviors**
 
-- Standard and noisy scrollback parses to `UsageInfo`; missing fields return error.
+- Standard (PT) and noisy scrollback parses to `UsageInfo`; missing fields return error.
+- Multi-format `Next reset` (first match wins): explicit `PT`, explicit `UTC`, then
+  no-timezone → bare wall clock (local time for consumers). Whitelist known TZs only
+  (no catch-all `[A-Z]{2,4}`).
+- No-TZ / junk-suffix fixtures must not invent a timezone from trailing scrollback.
 - `GROK_SHOW_USAGE_COMMAND=mock-success.sh` → service `status=ready` with parsed limits.
-- `GROK_SHOW_USAGE_COMMAND=mock-fail.sh` (exit 1) → `status=error` with message.
-- API returns ready JSON after library fetch completes.
+- `GROK_SHOW_USAGE_COMMAND=mock-success-no-tz.sh` → ready + structured `reset_at` /
+  `reset_display` / `time_left` from bare local wall clock (no invented PT).
+- `GROK_SHOW_USAGE_COMMAND=mock-fail.sh` (exit 1) → `status=error` with message;
+  structured reset fields empty (no inventing).
+- Successful fetch sets raw `next_reset` (back-compat) plus A/B fields:
+  `reset_at` (RFC3339 absolute), `reset_display` (UI token for `Reset {…}`),
+  `time_left` (`left Nd`, `left NdNh`, … per menubar unit policy).
+- `Get()` (and HTTP JSON serve) recomputes `time_left` from cached `reset_at` so
+  countdown advances between PTY refreshes; harness seeds cache + clock via
+  `TestExported_SeedReady` / `TestExported_SetNow` when present.
+- API returns ready JSON after library fetch completes (including structured fields).
 - Concurrent refresh while fetch in flight does not start a second PTY session (counter=1).
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
 ```
 [grok usage]
  |
- +-- parse/                           (GROUP)  ParseShowUsageOutput
- |    +-- standard-output/            (LEAF)   two canonical lines
- |    +-- extra-noise/                (LEAF)   lines buried in scrollback
+ +-- parse/                           (GROUP)  ParseShowUsageOutput (multi-format Next reset)
+ |    +-- standard-output/            (LEAF)   PT timezone (legacy)
+ |    +-- no-timezone/                (LEAF)   no TZ → bare local wall clock (current Grok)
+ |    +-- explicit-utc/               (LEAF)   UTC preserved
+ |    +-- extra-noise/                (LEAF)   PT lines buried in scrollback
+ |    +-- noisy-no-timezone/          (LEAF)   no TZ buried in scrollback → bare local
+ |    +-- junk-suffix/                (LEAF)   junk after date must not be TZ
  |    +-- missing-weekly/             (LEAF)   parse error
  |    +-- missing-reset/              (LEAF)   parse error
  |
  +-- fetch/                           (GROUP)  service fetch via tty + mock command
- |    +-- mock-command-success/       (LEAF)   status ready
- |    +-- mock-command-fails/          (LEAF)   status error
+ |    +-- mock-command-success/       (LEAF)   status ready (raw fields)
+ |    +-- mock-command-fails/         (LEAF)   status error
+ |    +-- structured-ready/           (LEAF)   A+B: reset_at, reset_display, time_left
+ |    +-- structured-error-empty/     (LEAF)   error → no invent structured fields
+ |
+ +-- get/                             (GROUP)  cache Get() recompute
+ |    +-- time-left-recomputed/       (LEAF)   later Get → updated time_left, no re-PTY
  |
  +-- api/                             (GROUP)  HTTP surface
  |    +-- get-usage-ready/            (LEAF)   GET /api/grok/usage on server :23712
@@ -64,25 +88,39 @@ deterministically without a live grok binary.
 
 | # | Leaf | Description |
 |---|------|-------------|
-| 1 | `parse/standard-output` | Parse canonical two-line output |
-| 2 | `parse/extra-noise` | Parse usage buried in noise |
-| 3 | `parse/missing-weekly` | Missing weekly line → error |
-| 4 | `parse/missing-reset` | Missing reset line → error |
-| 5 | `fetch/mock-command-success` | `GROK_SHOW_USAGE_COMMAND` mock → service ready |
-| 6 | `fetch/mock-command-fails` | Mock exit 1 → service error |
-| 7 | `api/get-usage-ready` | HTTP API on server port returns ready JSON |
-| 8 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
+| 1 | `parse/standard-output` | Parse canonical two-line output with PT |
+| 2 | `parse/no-timezone` | No-TZ Next reset → bare local wall clock |
+| 3 | `parse/explicit-utc` | Explicit UTC preserved |
+| 4 | `parse/extra-noise` | Parse PT usage buried in noise |
+| 5 | `parse/noisy-no-timezone` | No-TZ usage buried in noise → bare local |
+| 6 | `parse/junk-suffix` | Junk after date not treated as TZ; bare local |
+| 7 | `parse/missing-weekly` | Missing weekly line → error |
+| 8 | `parse/missing-reset` | Missing reset line → error |
+| 9 | `fetch/mock-command-success` | `GROK_SHOW_USAGE_COMMAND` mock → service ready |
+| 10 | `fetch/mock-command-fails` | Mock exit 1 → service error |
+| 11 | `fetch/structured-ready` | Bare local mock → ready + structured A+B fields |
+| 12 | `fetch/structured-error-empty` | Mock fail → empty reset_at/display/time_left |
+| 13 | `get/time-left-recomputed` | Seeded reset_at; second Get shortens time_left |
+| 14 | `api/get-usage-ready` | HTTP API on server port returns ready JSON |
+| 15 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
 
 ## Parameter Coverage
 
 | Leaf | Op | Mock command / fixture | Expect error |
 |------|-----|------------------------|--------------|
 | standard-output | parse | show-usage-standard.txt | false |
+| no-timezone | parse | show-usage-no-timezone.txt | false |
+| explicit-utc | parse | show-usage-utc.txt | false |
 | extra-noise | parse | show-usage-noisy.txt | false |
+| noisy-no-timezone | parse | show-usage-noisy-no-tz.txt | false |
+| junk-suffix | parse | show-usage-junk-suffix.txt | false |
 | missing-weekly | parse | show-usage-missing-weekly.txt | true |
 | missing-reset | parse | show-usage-missing-reset.txt | true |
 | mock-command-success | fetch | GROK_SHOW_USAGE_COMMAND=mock-success.sh | false |
 | mock-command-fails | fetch | GROK_SHOW_USAGE_COMMAND=mock-fail.sh | false (service error status) |
+| structured-ready | fetch | GROK_SHOW_USAGE_COMMAND=mock-success-no-tz.sh | false |
+| structured-error-empty | fetch | GROK_SHOW_USAGE_COMMAND=mock-fail.sh | false (service error status) |
+| time-left-recomputed | get-recompute | SeedReady + SetNow (test hooks) | false |
 | get-usage-ready | api | GROK_SHOW_USAGE_COMMAND=mock-success.sh | false |
 | skips-overlap | refresh | GROK_SHOW_USAGE_COMMAND=mock-slow.sh | false |
 
@@ -102,6 +140,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -126,16 +165,27 @@ type Request struct {
 	// Fetch/API/Refresh: mock script basename under testdata/
 	MockScript string
 
+	// get-recompute: seed cache + controlled clock (TestExported hooks)
+	ResetAtRFC3339     string
+	ResetDisplaySeed   string
+	NextResetSeed      string
+	WeeklyLimitSeed    string
+	NowRFC3339         string
+	NowRFC3339Second   string
+
 	ExpectParseError bool
 	WaitAPIReadySecs int
 }
 
 type GrokUsageJSON struct {
-	Status      string `json:"status"`
-	WeeklyLimit string `json:"weekly_limit,omitempty"`
-	NextReset   string `json:"next_reset,omitempty"`
-	Error       string `json:"error,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
+	Status       string `json:"status"`
+	WeeklyLimit  string `json:"weekly_limit,omitempty"`
+	NextReset    string `json:"next_reset,omitempty"`
+	ResetAt      string `json:"reset_at,omitempty"`
+	ResetDisplay string `json:"reset_display,omitempty"`
+	TimeLeft     string `json:"time_left,omitempty"`
+	Error        string `json:"error,omitempty"`
+	UpdatedAt    string `json:"updated_at,omitempty"`
 }
 
 type Response struct {
@@ -147,12 +197,19 @@ type Response struct {
 	ServiceError  string
 	UpdatedAt     string
 
+	// Structured A+B fields (service or API); empty until production implements them.
+	ResetAt      string
+	ResetDisplay string
+	TimeLeft     string
+	TimeLeftSecond string // get-recompute: time_left after second Get
+
 	APIStatusCode int
 	APIBody       string
 	APIParsed     *GrokUsageJSON
 
-	MockInvocationCount int
-	ConcurrentStarted   int
+	MockInvocationCount  int // back-compat alias of fetch counter
+	FetchInvocationCount int // sealed skips-overlap assert reads this
+	ConcurrentStarted    int
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
@@ -164,6 +221,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return runParse(t, req, doctestRoot, resp)
 	case "fetch":
 		return runFetch(t, req, doctestRoot, resp)
+	case "get-recompute":
+		return runGetRecompute(t, req, resp)
 	case "api":
 		return runAPI(t, req, doctestRoot, resp)
 	case "refresh":
@@ -171,6 +230,32 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	default:
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}
+}
+
+// structStringField reads an exported string field by name without requiring
+// the production type to declare it yet (classic-TDD RED stays compile-safe).
+func structStringField(v any, name string) string {
+	rv := reflect.ValueOf(v)
+	for rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return ""
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return ""
+	}
+	f := rv.FieldByName(name)
+	if !f.IsValid() || f.Kind() != reflect.String {
+		return ""
+	}
+	return f.String()
+}
+
+func fillStructuredFromService(resp *Response, out any) {
+	resp.ResetAt = structStringField(out, "ResetAt")
+	resp.ResetDisplay = structStringField(out, "ResetDisplay")
+	resp.TimeLeft = structStringField(out, "TimeLeft")
 }
 
 func runParse(t *testing.T, req *Request, root string, resp *Response) (*Response, error) {
@@ -201,6 +286,59 @@ func runFetch(t *testing.T, req *Request, root string, resp *Response) (*Respons
 	resp.WeeklyLimit = out.WeeklyLimit
 	resp.NextReset = out.NextReset
 	resp.UpdatedAt = out.UpdatedAt
+	fillStructuredFromService(resp, out)
+	return resp, nil
+}
+
+// runGetRecompute seeds a ready cache with fixed reset_at and calls Get() at two
+// controlled clocks. Expected production hooks (implementer):
+//
+//	func (s *Service) TestExported_SeedReady(resetAt, resetDisplay, nextReset, weekly string)
+//	func (s *Service) TestExported_SetNow(now time.Time)
+//
+// Get() must recompute TimeLeft from cached ResetAt + now without re-fetch.
+// When hooks are missing, structured fields stay empty → leaf RED.
+func runGetRecompute(t *testing.T, req *Request, resp *Response) (*Response, error) {
+	t.Helper()
+	svc := grokusage.TestExported_NewService()
+	seedFn := reflect.ValueOf(svc).MethodByName("TestExported_SeedReady")
+	setNowFn := reflect.ValueOf(svc).MethodByName("TestExported_SetNow")
+	if !seedFn.IsValid() || !setNowFn.IsValid() {
+		return resp, nil
+	}
+	seedFn.Call([]reflect.Value{
+		reflect.ValueOf(req.ResetAtRFC3339),
+		reflect.ValueOf(req.ResetDisplaySeed),
+		reflect.ValueOf(req.NextResetSeed),
+		reflect.ValueOf(req.WeeklyLimitSeed),
+	})
+
+	now1, err := time.Parse(time.RFC3339, req.NowRFC3339)
+	if err != nil {
+		return nil, fmt.Errorf("parse NowRFC3339: %w", err)
+	}
+	setNowFn.Call([]reflect.Value{reflect.ValueOf(now1)})
+	out1 := svc.Get()
+	resp.ServiceStatus = string(out1.Status)
+	resp.WeeklyLimit = out1.WeeklyLimit
+	resp.NextReset = out1.NextReset
+	resp.UpdatedAt = out1.UpdatedAt
+	fillStructuredFromService(resp, out1)
+
+	now2, err := time.Parse(time.RFC3339, req.NowRFC3339Second)
+	if err != nil {
+		return nil, fmt.Errorf("parse NowRFC3339Second: %w", err)
+	}
+	setNowFn.Call([]reflect.Value{reflect.ValueOf(now2)})
+	out2 := svc.Get()
+	resp.TimeLeftSecond = structStringField(out2, "TimeLeft")
+	// Prefer second Get's structured absolute fields for continuity asserts.
+	if at := structStringField(out2, "ResetAt"); at != "" {
+		resp.ResetAt = at
+	}
+	if disp := structStringField(out2, "ResetDisplay"); disp != "" {
+		resp.ResetDisplay = disp
+	}
 	return resp, nil
 }
 
@@ -282,6 +420,9 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 			var parsed GrokUsageJSON
 			if json.Unmarshal(body, &parsed) == nil && parsed.Status == "ready" {
 				resp.APIParsed = &parsed
+				resp.ResetAt = parsed.ResetAt
+				resp.ResetDisplay = parsed.ResetDisplay
+				resp.TimeLeft = parsed.TimeLeft
 				return resp, nil
 			}
 		}
@@ -298,6 +439,9 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 	var parsed GrokUsageJSON
 	_ = json.Unmarshal(body, &parsed)
 	resp.APIParsed = &parsed
+	resp.ResetAt = parsed.ResetAt
+	resp.ResetDisplay = parsed.ResetDisplay
+	resp.TimeLeft = parsed.TimeLeft
 	return resp, nil
 }
 
@@ -330,7 +474,9 @@ func runRefreshOverlap(t *testing.T, req *Request, root string, resp *Response) 
 	time.Sleep(500 * time.Millisecond)
 	data, _ := os.ReadFile(counterFile)
 	if len(data) > 0 {
-		resp.MockInvocationCount, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+		n, _ := strconv.Atoi(strings.TrimSpace(string(data)))
+		resp.MockInvocationCount = n
+		resp.FetchInvocationCount = n
 	}
 	resp.ConcurrentStarted = started
 	return resp, nil

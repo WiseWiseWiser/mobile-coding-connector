@@ -5,6 +5,9 @@ struct GrokUsageResponse: Decodable {
     let status: String
     let weeklyLimit: String?
     let nextReset: String?
+    let resetAt: String?
+    let resetDisplay: String?
+    let timeLeft: String?
     let error: String?
     let updatedAt: String?
 
@@ -12,6 +15,9 @@ struct GrokUsageResponse: Decodable {
         case status
         case weeklyLimit = "weekly_limit"
         case nextReset = "next_reset"
+        case resetAt = "reset_at"
+        case resetDisplay = "reset_display"
+        case timeLeft = "time_left"
         case error
         case updatedAt = "updated_at"
     }
@@ -23,6 +29,9 @@ struct CodexUsageResponse: Decodable {
     let creditsUsed: String?
     let creditsTotal: String?
     let nextReset: String?
+    let resetAt: String?
+    let resetDisplay: String?
+    let timeLeft: String?
     let error: String?
     let updatedAt: String?
 
@@ -32,6 +41,9 @@ struct CodexUsageResponse: Decodable {
         case creditsUsed = "credits_used"
         case creditsTotal = "credits_total"
         case nextReset = "next_reset"
+        case resetAt = "reset_at"
+        case resetDisplay = "reset_display"
+        case timeLeft = "time_left"
         case error
         case updatedAt = "updated_at"
     }

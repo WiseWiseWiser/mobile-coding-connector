@@ -9,7 +9,14 @@ import (
 )
 
 var (
-	grokResetRE  = regexp.MustCompile(`^(\w+)\s+(\d+),\s+(\d+):(\d+)(?::(\d+))?\s+PT$`)
+	// Explicit PT (legacy Grok); wall clock is America/Los_Angeles.
+	grokResetPTRE = regexp.MustCompile(`^(\w+)\s+(\d+),\s+(\d+):(\d+)(?::(\d+))?\s+PT$`)
+	// Explicit UTC.
+	grokResetUTCRE = regexp.MustCompile(`(?i)^(\w+)\s+(\d+),\s+(\d+):(\d+)(?::(\d+))?\s+UTC$`)
+	// No timezone: bare wall clock interpreted as machine local time.
+	grokResetLocalRE = regexp.MustCompile(`^(\w+)\s+(\d+),\s+(\d+):(\d+)(?::(\d+))?$`)
+	// Back-compat name used by FormatResetDisplay classification.
+	grokResetRE  = grokResetPTRE
 	codexResetRE = regexp.MustCompile(`^(\d+):(\d+)\s+on\s+(\d+)\s+(\w+)$`)
 )
 
@@ -56,43 +63,54 @@ func parseMonth(name string) (time.Month, bool) {
 	return month, ok
 }
 
+func parseGrokWallClock(matches []string, now time.Time, loc *time.Location) (time.Time, bool) {
+	month, ok := parseMonth(matches[1])
+	if !ok {
+		return time.Time{}, false
+	}
+	day, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return time.Time{}, false
+	}
+	hour, err := strconv.Atoi(matches[3])
+	if err != nil {
+		return time.Time{}, false
+	}
+	minute, err := strconv.Atoi(matches[4])
+	if err != nil {
+		return time.Time{}, false
+	}
+	second := 0
+	if len(matches) > 5 && matches[5] != "" {
+		second, err = strconv.Atoi(matches[5])
+		if err != nil {
+			return time.Time{}, false
+		}
+	}
+
+	year := now.In(loc).Year()
+	resetTime := time.Date(year, month, day, hour, minute, second, 0, loc)
+	if resetTime.Before(now) {
+		resetTime = resetTime.AddDate(1, 0, 0)
+	}
+	return resetTime, true
+}
+
 func parseResetTime(reset string, now time.Time) (time.Time, bool) {
 	reset = strings.TrimSpace(reset)
 	if reset == "" {
 		return time.Time{}, false
 	}
 
-	if matches := grokResetRE.FindStringSubmatch(reset); matches != nil {
-		month, ok := parseMonth(matches[1])
-		if !ok {
-			return time.Time{}, false
-		}
-		day, err := strconv.Atoi(matches[2])
-		if err != nil {
-			return time.Time{}, false
-		}
-		hour, err := strconv.Atoi(matches[3])
-		if err != nil {
-			return time.Time{}, false
-		}
-		minute, err := strconv.Atoi(matches[4])
-		if err != nil {
-			return time.Time{}, false
-		}
-		second := 0
-		if matches[5] != "" {
-			second, err = strconv.Atoi(matches[5])
-			if err != nil {
-				return time.Time{}, false
-			}
-		}
-
-		year := now.In(ptLocation).Year()
-		resetTime := time.Date(year, month, day, hour, minute, second, 0, ptLocation)
-		if resetTime.Before(now) {
-			resetTime = resetTime.AddDate(1, 0, 0)
-		}
-		return resetTime, true
+	// Ordered: explicit PT, explicit UTC, then bare local wall clock.
+	if matches := grokResetPTRE.FindStringSubmatch(reset); matches != nil {
+		return parseGrokWallClock(matches, now, ptLocation)
+	}
+	if matches := grokResetUTCRE.FindStringSubmatch(reset); matches != nil {
+		return parseGrokWallClock(matches, now, time.UTC)
+	}
+	if matches := grokResetLocalRE.FindStringSubmatch(reset); matches != nil {
+		return parseGrokWallClock(matches, now, now.Location())
 	}
 
 	if matches := codexResetRE.FindStringSubmatch(reset); matches != nil {
@@ -132,7 +150,9 @@ func FormatResetDisplay(reset string, now time.Time) string {
 		return reset
 	}
 
-	isGrok := grokResetRE.MatchString(reset)
+	isGrok := grokResetPTRE.MatchString(reset) ||
+		grokResetUTCRE.MatchString(reset) ||
+		grokResetLocalRE.MatchString(reset)
 	isCodex := codexResetRE.MatchString(reset)
 
 	resetTime, ok := parseResetTime(reset, now)
@@ -156,8 +176,16 @@ func FormatTimeLeft(reset string, now time.Time) string {
 	if !ok {
 		return ""
 	}
+	return FormatTimeLeftFromInstant(resetTime, now)
+}
 
-	remaining := resetTime.Sub(now)
+// FormatTimeLeftFromInstant formats a countdown from an absolute reset instant.
+// Unit policy matches FormatTimeLeft: left Nd, left NdNh, left NhNm, left Nm, left 0m.
+func FormatTimeLeftFromInstant(resetAt, now time.Time) string {
+	if resetAt.IsZero() {
+		return ""
+	}
+	remaining := resetAt.Sub(now)
 	if remaining <= 0 {
 		return "left 0m"
 	}
@@ -184,6 +212,22 @@ func FormatTimeLeft(reset string, now time.Time) string {
 		mins = 1
 	}
 	return fmt.Sprintf("left %dm", mins)
+}
+
+// ResolveStructuredReset derives A (reset_at) + B (reset_display, time_left) from a
+// raw provider next_reset string. Unparseable reset yields empty reset_at and time_left;
+// reset_display falls back to FormatResetDisplay (raw when unparseable).
+func ResolveStructuredReset(nextReset string, now time.Time) (resetAt, resetDisplay, timeLeft string) {
+	nextReset = strings.TrimSpace(nextReset)
+	if nextReset == "" {
+		return "", "", ""
+	}
+	resetDisplay = FormatResetDisplay(nextReset, now)
+	if resetTime, ok := parseResetTime(nextReset, now); ok {
+		resetAt = resetTime.Format(time.RFC3339)
+		timeLeft = FormatTimeLeftFromInstant(resetTime, now)
+	}
+	return resetAt, resetDisplay, timeLeft
 }
 
 // FormatResetSuffix returns a comma-prefixed relative suffix for dropdown parentheses.
