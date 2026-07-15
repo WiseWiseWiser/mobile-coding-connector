@@ -8,22 +8,22 @@ launch(grok, project_dir) -> opencode serve --port -> session agent_id=grok
 
 ## Preconditions
 
-- Fake opencode on PATH that serves /global/health on allocated port.
+- Prefer **real** `opencode` in PATH when installed; fake opencode only as fallback when absent.
+- Isolated `AI_CRITIC_HOME` per run (set in root `Run`).
 
 ## Steps
 
-1. `UseFakeOpenCode = true`, `Op = OpLaunchGrok`.
+1. `Op = OpLaunchGrok` (do not force `UseFakeOpenCode`).
 
 ## Context
 
-Happy path for POST /api/agents/sessions with agent_id grok.
+Happy path for POST /api/agents/sessions with agent_id grok; label `slow` when real binary starts.
 
 ```go
 import "testing"
 
 func Setup(t *testing.T, req *Request) error {
 	req.Op = OpLaunchGrok
-	req.UseFakeOpenCode = true
 	return nil
 }
 ```

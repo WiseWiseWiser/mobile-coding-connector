@@ -281,6 +281,19 @@ func Serve(port int, dev bool) error {
 		go RunExtensionStartup()
 	}
 
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		sig := <-c
+		// Kill agent children immediately so SIGTERM shutdown completes before test/process timeouts.
+		agents.Shutdown()
+		// SIGTERM from tests expects the process to exit promptly; avoid blocking on extension cleanup.
+		if sig == syscall.SIGTERM {
+			os.Exit(0)
+		}
+		ShutdownServer()
+	}()
+
 	serverErr := make(chan error, 1)
 	go func() {
 		serverErr <- server.Serve(listener)
@@ -304,6 +317,10 @@ func Serve(port int, dev bool) error {
 		cleanupDone := make(chan struct{})
 
 		go func() {
+			// Stop agent children first — highest priority for orphan cleanup on shutdown.
+			fmt.Println("Stopping agents module...")
+			agents.Shutdown()
+
 			// Stop all domain health check goroutines
 			fmt.Println("Stopping domain health check goroutines...")
 			domains.StopAllDomainHealthChecks()
@@ -311,10 +328,6 @@ func Serve(port int, dev bool) error {
 			// Stop unified tunnel health checks
 			fmt.Println("Stopping unified tunnel health checks...")
 			unified_tunnel.StopGlobalHealthChecks()
-
-			// Stop agents health checks (but leave opencode running)
-			fmt.Println("Stopping agents module...")
-			agents.Shutdown()
 
 			// Stop opencode web server if enabled
 			if opencode_exposed.IsWebServerEnabled() {

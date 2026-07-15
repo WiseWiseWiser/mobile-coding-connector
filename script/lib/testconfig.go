@@ -122,5 +122,6 @@ func AppendTestServerEnv(base []string, configHome string) []string {
 	}
 	env = append(env, EnvAI_CRITIC_HOME+"="+configHome)
 	env = append(env, envNoOpenBrowser())
+	env = append(env, "AI_CRITIC_TEST_SKIP_EXTENSION=1")
 	return env
 }

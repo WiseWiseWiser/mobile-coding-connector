@@ -16,7 +16,7 @@ Session manager -> opencode serve -> health -> session running
 
 ## Context
 
-MECE: success with fake opencode, missing binary, unknown id, invalid dir.
+MECE: success with real opencode (fake fallback), registry cleanup, missing binary, unknown id, invalid dir.
 
 ```go
 import "testing"

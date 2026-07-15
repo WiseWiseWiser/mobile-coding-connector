@@ -16,8 +16,10 @@ applyPreferredModel -> PATCH /config with grok* model when agent_id=grok
 ## Preconditions
 
 - Tests call `agents.TestExported_*` helpers (implementer provides in `export_test.go`).
-- Fake opencode binary built from `testdata/fake-opencode` when `UseFakeOpenCode` is set.
-- `AI_CRITIC_HOME` may use isolated config; agent list does not require a running server.
+- Fake opencode binary built from `testdata/fake-opencode` when `UseFakeOpenCode` is set or real binary absent.
+- `launch-grok-creates-session` prefers real opencode; install-check leaves still use fake.
+- `AI_CRITIC_HOME` isolated via `lib.CreateTestConfigHome()` for launch/registry leaves.
+- `t.Cleanup` uses `lib.CleanupOpencodeServe` + `TestExported_StopAgentSession` (no `pkill -f`).
 
 ## Steps
 

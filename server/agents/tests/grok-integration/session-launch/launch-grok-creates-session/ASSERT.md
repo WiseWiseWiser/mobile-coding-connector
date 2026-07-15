@@ -1,3 +1,8 @@
+---
+label: slow
+explanation: real opencode serve startup when binary is installed
+---
+
 ## Expected
 
 1. `LaunchErr` is nil.

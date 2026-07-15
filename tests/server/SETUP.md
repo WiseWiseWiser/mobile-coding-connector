@@ -233,7 +233,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			time.Sleep(200 * time.Millisecond)
 			cmd.Process.Kill()
 		}
-		killPort(wsCleanupPort)
+		_ = lib.CleanupOpencodeServe(configHome, wsCleanupPort)
 	}
 	t.Cleanup(stopServer)
 

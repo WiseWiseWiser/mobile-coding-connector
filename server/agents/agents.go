@@ -3,6 +3,7 @@ package agents
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -23,6 +24,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/agents/opencode/common_opencode"
 	opencode_exposed "github.com/xhd2015/ai-critic/server/agents/opencode/exposed_opencode"
 	opencode_internal "github.com/xhd2015/ai-critic/server/agents/opencode/internal_opencode"
+	"github.com/xhd2015/ai-critic/server/agents/opencode_serve_children"
 	"github.com/xhd2015/ai-critic/server/settings"
 )
 
@@ -175,13 +177,31 @@ func RegisterAPI(mux *http.ServeMux) {
 
 }
 
-// Shutdown stops the agents module (stops health checks, but leaves opencode running)
+// Shutdown stops the agents module and cleans up opencode serve children.
 func Shutdown() {
 	fmt.Println("Stopping opencode health check...")
 	opencode_exposed.StopHealthCheck()
+	if err := CleanupAllOpencodeServe(); err != nil {
+		fmt.Printf("Warning: failed to cleanup opencode serve children: %v\n", err)
+	}
 }
 
 // ------ Agent Session Manager ------
+
+func waitForHeadlessAgentHealth(port int, timeout time.Duration) {
+	healthURL := fmt.Sprintf("http://127.0.0.1:%d/global/health", port)
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(healthURL)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
 
 func findFreePort() (int, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -244,12 +264,26 @@ func (m *agentSessionManager) launch(agentID, projectDir, apiKey string) (*agent
 	cmd.Dir = projectDir
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	cmd.Env = tool_resolve.AppendExtraPaths(cmd.Env)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Do not inherit server stdout/stderr — children would keep parent pipe open after server exit.
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start agent: %w", err)
 	}
+
+	if cmd.Process != nil {
+		_ = opencode_serve_children.Add("", opencode_serve_children.ChildEntry{
+			Kind:       opencode_serve_children.KindHeadlessAgent,
+			SessionID:  id,
+			PID:        cmd.Process.Pid,
+			Port:       port,
+			ProjectDir: projectDir,
+			AgentID:    agentID,
+		})
+	}
+
+	waitForHeadlessAgentHealth(port, 10*time.Second)
 
 	// Create reverse proxy
 	targetURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", port))
@@ -301,6 +335,7 @@ func (m *agentSessionManager) launch(agentID, projectDir, apiKey string) (*agent
 			}
 		}
 		s.mu.Unlock()
+		_ = opencode_serve_children.Remove("", id)
 		close(s.done)
 	}()
 
@@ -544,8 +579,9 @@ func (m *agentSessionManager) stop(id string) {
 	s.mu.Unlock()
 
 	if s.cmd != nil && s.cmd.Process != nil {
-		s.cmd.Process.Kill()
+		opencode_serve_children.KillChild(s.cmd.Process.Pid, s.port)
 	}
+	_ = opencode_serve_children.Remove("", id)
 }
 
 func (s *agentSession) info() AgentSessionInfo {

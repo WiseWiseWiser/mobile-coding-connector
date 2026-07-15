@@ -50,6 +50,8 @@ var (
 	SSHServerFile                  = DataDir + "/ssh-servers.json"
 	OpencodeInternalServerRegistry = DataDir + "/opencode-internal-server.json"
 	OpencodeInternalServerLock     = DataDir + "/opencode-internal-server.lock"
+	OpencodeServeChildrenRegistry  = DataDir + "/opencode-serve-children.json"
+	OpencodeServeChildrenLock      = DataDir + "/opencode-serve-children.lock"
 	FileTransferDir                = DataDir + "/file-transfer"
 )
 

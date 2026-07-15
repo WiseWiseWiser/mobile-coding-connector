@@ -46,7 +46,8 @@ coding agents, headless session launch, and opencode-backed HTTP proxy.
  |         +-- both-present-installed/       (LEAF)  fake opencode → both true
  |
  +-- session-launch/                          (grouping)
- |    +-- launch-grok-creates-session/        (LEAF)  mock serve → running session
+ |    +-- launch-grok-creates-session/        (LEAF)  real opencode when installed → running session
+ |    +-- registry-tracks-launch-and-stop/    (LEAF)  registry pid/port; stop clears port
  |    +-- launch-grok-without-opencode-fails/ (LEAF)  empty PATH → error
  |    +-- unknown-agent-id-rejected/          (LEAF)  agent_id=not-real
  |    +-- invalid-project-dir-rejected/       (LEAF)  project_dir=file not dir
@@ -62,11 +63,12 @@ coding agents, headless session launch, and opencode-backed HTTP proxy.
 | 1 | `agent-list/includes-grok-entry` | List agents includes grok with headless and opencode command |
 | 2 | `agent-list/grok-installed-mirrors-opencode/both-absent-not-installed` | Without opencode, grok and opencode installed=false |
 | 3 | `agent-list/grok-installed-mirrors-opencode/both-present-installed` | With fake opencode on PATH, grok and opencode installed=true |
-| 4 | `session-launch/launch-grok-creates-session` | launch("grok", dir) returns session with agent_id grok |
-| 5 | `session-launch/launch-grok-without-opencode-fails` | launch fails when opencode not resolvable |
-| 6 | `session-launch/unknown-agent-id-rejected` | launch unknown agent returns error |
-| 7 | `session-launch/invalid-project-dir-rejected` | launch with file path returns error |
-| 8 | `model-preference/grok-substring-not-kimi` | Grok agent uses grok model substring, not default kimi |
+| 4 | `session-launch/launch-grok-creates-session` | launch("grok", dir) with real opencode when installed |
+| 5 | `session-launch/registry-tracks-launch-and-stop` | registry records launch; stop closes port and clears entry |
+| 6 | `session-launch/launch-grok-without-opencode-fails` | launch fails when opencode not resolvable |
+| 7 | `session-launch/unknown-agent-id-rejected` | launch unknown agent returns error |
+| 8 | `session-launch/invalid-project-dir-rejected` | launch with file path returns error |
+| 9 | `model-preference/grok-substring-not-kimi` | Grok agent uses grok model substring, not default kimi |
 
 ## How to Run
 
@@ -80,20 +82,24 @@ go run ./script/build
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/xhd2015/ai-critic/script/lib"
 	"github.com/xhd2015/ai-critic/server/agents"
 )
 
 const (
-	OpListAgents       = "list-agents"
-	OpLaunchGrok       = "launch-grok"
-	OpModelSubstring   = "model-substring"
+	OpListAgents         = "list-agents"
+	OpLaunchGrok         = "launch-grok"
+	OpRegistryLaunchStop = "registry-launch-stop"
+	OpModelSubstring     = "model-substring"
 )
 
 type Request struct {
@@ -127,8 +133,16 @@ type Response struct {
 	LaunchSession *agents.AgentSessionInfo
 	LaunchErr     error
 
+	RegistryChildren       []agents.OpencodeServeChildEntry
+	LaunchRegistryChildren []agents.OpencodeServeChildEntry
+	RegistryErr            error
+	PortListening    bool
+	RegistryEmpty    bool
+	ConfigHome       string
+
 	ModelSubstring string
 	FakeBinDir     string
+	UsedRealOpenCode bool
 }
 
 func prepStripPATH(t *testing.T) {
@@ -204,8 +218,47 @@ func runListAgents(t *testing.T, req *Request) (*Response, error) {
 	return resp, nil
 }
 
+func realOpenCodeOnPath() bool {
+	_, err := exec.LookPath("opencode")
+	return err == nil
+}
+
+func ensureConfigHome(t *testing.T) string {
+	home, err := lib.CreateTestConfigHome()
+	if err != nil {
+		t.Fatalf("CreateTestConfigHome: %v", err)
+	}
+	os.Setenv(lib.EnvAI_CRITIC_HOME, home)
+	t.Cleanup(func() {
+		lib.CleanupOpencodeServe(home)
+		os.Unsetenv(lib.EnvAI_CRITIC_HOME)
+		os.RemoveAll(home)
+	})
+	return home
+}
+
+func isPortListening(port int) bool {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+func cleanupSession(t *testing.T, configHome string, info agents.AgentSessionInfo) {
+	t.Helper()
+	t.Cleanup(func() {
+		agents.TestExported_StopAgentSession(info.ID)
+		_ = lib.CleanupOpencodeServe(configHome, info.Port)
+	})
+}
+
 func runLaunchGrok(t *testing.T, req *Request) (*Response, error) {
 	resp := &Response{}
+	configHome := ensureConfigHome(t)
+	resp.ConfigHome = configHome
+
 	projectDir := req.ProjectDir
 	if req.InvalidProject {
 		f, err := os.CreateTemp("", "not-a-dir-*")
@@ -236,14 +289,65 @@ func runLaunchGrok(t *testing.T, req *Request) (*Response, error) {
 		if err := installFakeOpenCodeServe(t, resp); err != nil {
 			return nil, err
 		}
+	} else if !req.StripOpenCode {
+		if realOpenCodeOnPath() {
+			resp.UsedRealOpenCode = true
+			agents.TestExported_StripOpencodeResolutionForDoctest(t)
+		} else if err := installFakeOpenCodeServe(t, resp); err != nil {
+			return nil, err
+		}
 	}
 
 	info, err := agents.TestExported_LaunchAgentSession(agentID, projectDir, "")
 	resp.LaunchErr = err
 	if err == nil {
 		resp.LaunchSession = &info
-		t.Cleanup(func() { agents.TestExported_StopAgentSession(info.ID) })
+		cleanupSession(t, configHome, info)
 	}
+	return resp, nil
+}
+
+func runRegistryLaunchStop(t *testing.T, req *Request) (*Response, error) {
+	resp := &Response{}
+	configHome := ensureConfigHome(t)
+	resp.ConfigHome = configHome
+
+	projectDir, err := os.MkdirTemp("", "grok-registry-*")
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() { os.RemoveAll(projectDir) })
+
+	agents.TestExported_StripOpencodeResolutionForDoctest(t)
+	if req.UseFakeOpenCode || !realOpenCodeOnPath() {
+		if err := installFakeOpenCodeServe(t, resp); err != nil {
+			return nil, err
+		}
+	} else {
+		resp.UsedRealOpenCode = true
+	}
+
+	info, err := agents.TestExported_LaunchAgentSession("grok", projectDir, "")
+	resp.LaunchErr = err
+	if err != nil {
+		return resp, nil
+	}
+	resp.LaunchSession = &info
+	resp.PortListening = isPortListening(info.Port)
+
+	children, regErr := agents.TestExported_ReadOpencodeServeChildrenRegistry()
+	resp.LaunchRegistryChildren = children
+	resp.RegistryErr = regErr
+
+	agents.TestExported_StopAgentSession(info.ID)
+	time.Sleep(300 * time.Millisecond)
+	_ = lib.CleanupOpencodeServe(configHome, info.Port)
+
+	childrenAfter, regErrAfter := agents.TestExported_ReadOpencodeServeChildrenRegistry()
+	resp.RegistryErr = regErrAfter
+	resp.RegistryChildren = childrenAfter
+	resp.RegistryEmpty = len(childrenAfter) == 0
+	resp.PortListening = isPortListening(info.Port)
 	return resp, nil
 }
 
@@ -263,6 +367,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return runListAgents(t, req)
 	case OpLaunchGrok:
 		return runLaunchGrok(t, req)
+	case OpRegistryLaunchStop:
+		return runRegistryLaunchStop(t, req)
 	case OpModelSubstring:
 		return runModelSubstring(t, req)
 	default:

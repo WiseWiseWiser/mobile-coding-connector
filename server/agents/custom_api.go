@@ -2,6 +2,8 @@ package agents
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"sync"
@@ -11,6 +13,7 @@ import (
 	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 	"github.com/xhd2015/ai-critic/server/agents/custom"
 	"github.com/xhd2015/ai-critic/server/agents/opencode/common_opencode"
+	"github.com/xhd2015/ai-critic/server/agents/opencode_serve_children"
 )
 
 type LaunchCustomAgentResult struct {
@@ -92,8 +95,8 @@ func LaunchCustomAgent(agentID string, projectDir string, resumeSessionID string
 
 	cmd.Cmd.Env = append(cmd.Cmd.Env, "TERM=xterm-256color")
 	cmd.Cmd.Env = tool_resolve.AppendExtraPaths(cmd.Cmd.Env)
-	cmd.Cmd.Stdout = os.Stdout
-	cmd.Cmd.Stderr = os.Stderr
+	cmd.Cmd.Stdout = io.Discard
+	cmd.Cmd.Stderr = io.Discard
 
 	if err := cmd.Cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start agent: %w", err)
@@ -105,6 +108,17 @@ func LaunchCustomAgent(agentID string, projectDir string, resumeSessionID string
 	}
 	if sessionID == "" {
 		sessionID = fmt.Sprintf("%s-%d", agentID, now.UnixMilli())
+	}
+
+	if cmd.Cmd.Process != nil {
+		_ = opencode_serve_children.Add("", opencode_serve_children.ChildEntry{
+			Kind:       opencode_serve_children.KindCustomAgent,
+			SessionID:  sessionID,
+			PID:        cmd.Cmd.Process.Pid,
+			Port:       port,
+			ProjectDir: projectDir,
+			AgentID:    agentID,
+		})
 	}
 
 	sessionMgr.mu.Lock()
@@ -141,6 +155,11 @@ func LaunchCustomAgent(agentID string, projectDir string, resumeSessionID string
 
 	go monitorCustomAgentProcess(session)
 
+	if err := waitForCustomAgentHealth(port, 10*time.Second); err != nil {
+		_ = StopCustomAgentSession(sessionID)
+		return nil, fmt.Errorf("custom agent server did not become ready: %w", err)
+	}
+
 	return &LaunchCustomAgentResult{
 		SessionID: sessionID,
 		Port:      port,
@@ -165,6 +184,7 @@ func monitorCustomAgentProcess(session *customAgentSession) {
 	delete(customAgentSessions, session.id)
 	sessionsMu.Unlock()
 
+	_ = opencode_serve_children.Remove("", session.id)
 	custom.UpdateSessionStatus(session.agentID, session.id, status, errMsg)
 }
 
@@ -196,8 +216,9 @@ func StopCustomAgentSession(sessionID string) error {
 	}
 
 	if session.cmd != nil && session.cmd.Process != nil {
-		session.cmd.Process.Kill()
+		opencode_serve_children.KillChild(session.cmd.Process.Pid, session.port)
 	}
+	_ = opencode_serve_children.Remove("", sessionID)
 
 	custom.UpdateSessionStatus(session.agentID, sessionID, "stopped", "")
 	return nil
@@ -254,6 +275,22 @@ func GetRunningCustomAgentSession(sessionID string) *AgentSessionInfo {
 		CreatedAt:  session.createdAt.Format(time.RFC3339),
 		Status:     "running",
 	}
+}
+
+func waitForCustomAgentHealth(port int, timeout time.Duration) error {
+	healthURL := fmt.Sprintf("http://127.0.0.1:%d/global/health", port)
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(healthURL)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for health on port %d", port)
 }
 
 func WaitForCustomAgentSessionReady(sessionID string, timeout time.Duration) error {
