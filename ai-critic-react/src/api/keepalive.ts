@@ -131,7 +131,9 @@ export async function getBuildableProjects(): Promise<BuildableProject[]> {
     // Use the main server's build API (not keep-alive daemon) for proper environment setup
     const res = await fetch(`${API_BASE}/api/build/buildable-projects`);
     if (!res.ok) throw new Error(`buildable-projects failed: ${res.status}`);
-    return res.json();
+    // Go encodes nil slices as JSON null — always return an array for callers.
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
 }
 
 export type { UploadProgress };

@@ -490,7 +490,7 @@ export function ManageServerView() {
                                 action={handleBuildAction}
                                 className="manage-server-btn manage-server-btn--upload"
                                 logMaxHeight={200}
-                                disabled={buildableProjects.length === 0}
+                                disabled={(buildableProjects ?? []).length === 0}
                                 onComplete={(result) => {
                                     if (result.ok) {
                                         fetchStatus();
@@ -507,7 +507,7 @@ export function ManageServerView() {
                                 </div>
                             )}
 
-                            {buildableProjects.length === 0 ? (
+                            {(buildableProjects ?? []).length === 0 ? (
                                 <p className="manage-server-upload-hint" style={{ color: '#dc2626' }}>
                                     No buildable projects found. Ensure the project has a script/server/build directory.
                                 </p>
@@ -533,22 +533,22 @@ export function ManageServerView() {
                     <div style={{ padding: 16, color: '#94a3b8' }}>Loading...</div>
                 ) : serverStatus ? (
                     <div className="manage-server-info">
-                        <InfoRow label="OS" value={serverStatus.os_info.os} />
-                        <InfoRow label="Arch" value={serverStatus.os_info.arch} />
-                        <InfoRow label="Kernel" value={serverStatus.os_info.kernel} />
-                        <InfoRow label="CPU Cores" value={String(serverStatus.cpu.num_cpu)} />
-                        <InfoRow label="CPU Usage" value={`${serverStatus.cpu.used_percent.toFixed(1)}%`} />
-                        <InfoRow label="Total Memory" value={formatBytes(serverStatus.memory.total)} />
-                        <InfoRow label="Used Memory" value={`${formatBytes(serverStatus.memory.used)} (${serverStatus.memory.used_percent.toFixed(1)}%)`} />
-                        {serverStatus.disk.map((d, i) => (
-                            <InfoRow key={i} label={`Disk ${d.mount_point}`} value={`${formatBytes(d.used)} / ${formatBytes(d.size)} (${d.use_percent.toFixed(1)}%)`} />
+                        <InfoRow label="OS" value={serverStatus.os_info?.os ?? 'N/A'} />
+                        <InfoRow label="Arch" value={serverStatus.os_info?.arch ?? 'N/A'} />
+                        <InfoRow label="Kernel" value={serverStatus.os_info?.kernel ?? 'N/A'} />
+                        <InfoRow label="CPU Cores" value={String(serverStatus.cpu?.num_cpu ?? 'N/A')} />
+                        <InfoRow label="CPU Usage" value={`${(serverStatus.cpu?.used_percent ?? 0).toFixed(1)}%`} />
+                        <InfoRow label="Total Memory" value={formatBytes(serverStatus.memory?.total ?? 0)} />
+                        <InfoRow label="Used Memory" value={`${formatBytes(serverStatus.memory?.used ?? 0)} (${(serverStatus.memory?.used_percent ?? 0).toFixed(1)}%)`} />
+                        {(serverStatus.disk ?? []).map((d, i) => (
+                            <InfoRow key={i} label={`Disk ${d.mount_point}`} value={`${formatBytes(d.used)} / ${formatBytes(d.size)} (${(d.use_percent ?? 0).toFixed(1)}%)`} />
                         ))}
                         <div style={{ marginTop: 12, fontWeight: 600, fontSize: 13, color: '#94a3b8' }}>Top CPU Processes</div>
-                        {serverStatus.top_cpu.map((p, i) => (
+                        {(serverStatus.top_cpu ?? []).map((p, i) => (
                             <InfoRow key={i} label={`${p.name} (PID: ${p.pid})`} value={`CPU: ${p.cpu} | Mem: ${p.mem}`} mono wrap />
                         ))}
                         <div style={{ marginTop: 12, fontWeight: 600, fontSize: 13, color: '#94a3b8' }}>Top Memory Processes</div>
-                        {serverStatus.top_mem.map((p, i) => (
+                        {(serverStatus.top_mem ?? []).map((p, i) => (
                             <InfoRow key={i} label={`${p.name} (PID: ${p.pid})`} value={`CPU: ${p.cpu} | Mem: ${p.mem}`} mono wrap />
                         ))}
                     </div>
@@ -575,7 +575,7 @@ export function ManageServerView() {
                                 maxWidth: '150px',
                             }}
                         >
-                            {logFiles.map((f) => (
+                            {(logFiles ?? []).map((f) => (
                                 <option key={f.name} value={f.name}>
                                     {f.name} ({f.path})
                                 </option>
@@ -668,13 +668,13 @@ export function ManageServerView() {
                     </div>
 
                     {/* List of configured log files */}
-                    {logFiles.length === 0 ? (
+                    {(logFiles ?? []).length === 0 ? (
                         <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 12 }}>
                             No log files configured
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {logFiles.map((f) => (
+                            {(logFiles ?? []).map((f) => (
                                 <div
                                     key={f.name}
                                     className="manage-server-log-item"

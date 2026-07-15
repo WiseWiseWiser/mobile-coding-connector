@@ -8,7 +8,9 @@ export interface LogFile {
 export async function fetchLogFiles(): Promise<LogFile[]> {
     const res = await fetch(`${API_BASE}/api/logs/files`);
     if (!res.ok) throw new Error(`fetch log files failed: ${res.status}`);
-    return res.json();
+    // Go encodes nil slices as JSON null — always return an array for callers.
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
 }
 
 export async function addLogFile(name: string, path: string): Promise<void> {
