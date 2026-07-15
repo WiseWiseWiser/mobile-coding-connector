@@ -81,6 +81,8 @@ func Run(profile Profile, args []string) error {
 			return err
 		}
 		return runDownload(cli, rest)
+	case "paste-bin":
+		return runPasteBin(resolve, rest)
 	case "local":
 		return runLocal(rest)
 	case "exec":
