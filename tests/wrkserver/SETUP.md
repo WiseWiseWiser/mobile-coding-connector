@@ -10,7 +10,7 @@ wrkserver.New(Options{WrkHome}) -> ListProjects | CreateWorktree | Register
 
 ## Preconditions
 
-1. Package `github.com/xhd2015/dot-pkgs/go-pkgs/wrkcli/wrkserver` exports
+1. Package `github.com/xhd2015/wrk/wrkcli/wrkserver` exports
    `Options`, `New`, `ListProjects`, `CreateWorktree`, and `Register`.
 2. `git` is available in PATH for leaves that seed real repositories.
 3. Each leaf uses an isolated temp `WrkHome` (never the developer's `~/.wrk`).
@@ -28,8 +28,7 @@ wrkserver.New(Options{WrkHome}) -> ListProjects | CreateWorktree | Register
 ## Context
 
 Implements REQUIREMENT-DESIGN-wrkserver-projects-menubar.md section A (handlers
-+ Register). Module path is under the local `replace` for
-`github.com/xhd2015/dot-pkgs/go-pkgs`.
++ Register). Module path is `github.com/xhd2015/wrk/wrkcli/wrkserver`.
 
 ```go
 import (

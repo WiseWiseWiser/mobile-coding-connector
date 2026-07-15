@@ -119,7 +119,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/xhd2015/dot-pkgs/go-pkgs/wrkcli/wrkserver"
+	"github.com/xhd2015/wrk/wrkcli/wrkserver"
 )
 
 // Request drives one wrkserver HTTP scenario.

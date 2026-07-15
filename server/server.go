@@ -68,7 +68,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/terminal"
 	"github.com/xhd2015/ai-critic/server/tools"
 	"github.com/xhd2015/ai-critic/server/usage"
-	"github.com/xhd2015/dot-pkgs/go-pkgs/wrkcli/wrkserver"
+	"github.com/xhd2015/wrk/wrkcli/wrkserver"
 	"github.com/xhd2015/kool/pkgs/web"
 )
 
