@@ -1,6 +1,6 @@
 module github.com/xhd2015/ai-critic
 
-go 1.25.0
+go 1.25.10
 
 require (
 	github.com/creack/pty v1.1.24
@@ -9,6 +9,7 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/ulikunitz/xz v0.5.12
 	github.com/xhd2015/agent-pro v0.0.75
+	github.com/xhd2015/bak-files v0.0.1
 	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.83
 	github.com/xhd2015/gitops v0.0.25
 	github.com/xhd2015/kool v0.0.122

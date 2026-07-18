@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/xhd2015/bak-files/pathflag"
 )
 
 const (
@@ -14,9 +16,10 @@ const (
 	uploadChunksRule     = "**/upload-chunks"
 	logSuffixRule        = "**/*.log"
 	binaryRule           = "**(binary)"
+	binaryRuleReason     = "executable binaries (reinstallable)"
 	exclusionConfigVer   = "1.1"
 	customExcludeReason  = "user excluded"
-	customIncludeReason = "user included"
+	customIncludeReason  = "user included"
 	fromUserConfigReason = "from user config"
 	backupMetaDir        = ".backup"
 	userBackupConfigRel  = ".ai-critic/backup-config.json"
@@ -42,30 +45,16 @@ type builtinExclude struct {
 	reason string
 }
 
-var builtinExclusionEntries = []builtinExclude{
-	{binaryRule, "executable binaries (reinstallable)"},
-	{logSuffixRule, "log files"},
-	{nodeModulesRule, "node_modules directories"},
-	{uploadChunksRule, "incomplete upload temp state"},
-	{".bun", "Bun install cache"},
-	{".grok/downloads", "Grok downloads cache"},
-	{".grok/marketplace-cache", "Grok plugin marketplace git cache"},
-	{".grok/vendor", "Grok vendored dependencies cache"},
-	{".grok/logs", "Grok application logs"},
-	{".config/chromium", "Chromium profile cache"},
-	{".cache", "temporary application cache"},
-	{".npm", "npm cache"},
-	{".cargo/registry", "Cargo registry cache"},
-	{".codex/.tmp", "Codex temporary plugin cache"},
-	{".codex/skills/.system", "Codex system skills cache"},
-	{".opencode/bin", "OpenCode binary (reinstallable)"},
-	{".local/share/cursor-agent/versions", "Cursor agent version cache"},
-	{".local/share/opencode/repos", "OpenCode repo clone cache"},
-	{".local/share/opencode/snapshot", "OpenCode snapshot cache"},
-	{".local/share/opencode/log", "OpenCode application logs"},
-	{".Trash", "macOS trash"},
-	{".local/share/Trash", "Linux trash"},
-	{backupMetaDir, "machine backup metadata (injected at pack time)"},
+// builtinExclusionEntries builds the default exclude set from pathflag.Catalog
+// plus the synthetic **(binary) row (content-based detect, not a Classify rule).
+func builtinExclusionEntries() []builtinExclude {
+	cat := pathflag.Catalog()
+	entries := make([]builtinExclude, 0, len(cat)+1)
+	entries = append(entries, builtinExclude{binaryRule, binaryRuleReason})
+	for _, c := range cat {
+		entries = append(entries, builtinExclude{c.Rule, c.Reason})
+	}
+	return entries
 }
 
 var specialExclusionRules = map[string]bool{
@@ -86,8 +75,9 @@ type ExclusionRules struct {
 
 // BuiltinExclusionConfig returns the default exclusion config JSON object.
 func BuiltinExclusionConfig() ExclusionConfig {
-	entries := make([]ExcludePathEntry, len(builtinExclusionEntries))
-	for i, e := range builtinExclusionEntries {
+	builtin := builtinExclusionEntries()
+	entries := make([]ExcludePathEntry, len(builtin))
+	for i, e := range builtin {
 		entries[i] = ExcludePathEntry{Path: e.path, Reason: e.reason}
 	}
 	return ExclusionConfig{Version: exclusionConfigVer, ExcludePaths: entries}
@@ -271,8 +261,9 @@ func ExcludePathsFromStrings(paths []string) []ExcludePathEntry {
 // builtin → user backup-config.json → (− include) ∪ exclude.
 // CLI exclude wins over include; include removes from the exclude set.
 func MergeExclusions(user *ExclusionConfig, customExclude, customInclude []string) ExclusionRules {
-	entries := make(map[string]string, len(builtinExclusionEntries))
-	for _, e := range builtinExclusionEntries {
+	builtin := builtinExclusionEntries()
+	entries := make(map[string]string, len(builtin))
+	for _, e := range builtin {
 		entries[normalizeRelPath(e.path)] = e.reason
 	}
 
@@ -363,6 +354,9 @@ func (r ExclusionRules) ReasonFor(rel string) string {
 }
 
 func (r ExclusionRules) pathReasonFor(rel string) string {
+	if r.isIncludedOverride(rel) {
+		return ""
+	}
 	key := r.ruleKeyForPath(rel)
 	if key == "" {
 		return ""
@@ -392,19 +386,27 @@ func (r ExclusionRules) ruleKeyForPath(rel string) string {
 			return prefix
 		}
 	}
-	for _, part := range strings.Split(rel, "/") {
-		switch part {
-		case "node_modules":
-			return nodeModulesRule
-		case "upload-chunks":
-			return uploadChunksRule
-		}
+	// pathflag catalog: segment rules, **/*.log, and any prefix rule still active
+	// in reasons (include may have removed a catalog entry such as .cache).
+	res, err := pathflag.Classify(rel)
+	if err != nil || res.Flags&pathflag.DefaultSkipMask == 0 {
+		return ""
 	}
-	return ""
+	if res.Rule == "" {
+		return ""
+	}
+	if _, ok := r.reasons[res.Rule]; !ok {
+		// Catalog rule removed via --include (e.g. include .cache).
+		return ""
+	}
+	return res.Rule
 }
 
 func (r ExclusionRules) IsExcluded(rel string) bool {
-	return r.pathReasonFor(rel) != ""
+	if r.isIncludedOverride(rel) {
+		return false
+	}
+	return r.ruleKeyForPath(rel) != ""
 }
 
 func (r ExclusionRules) isTopLevelExcluded(name string) bool {
