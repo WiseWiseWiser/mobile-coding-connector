@@ -17,7 +17,7 @@ Global options:
   -h, --help      Show this help
 
 Getting started:
-  local-agent config          # pick default server + token
+  local-agent config --web    # pick default server + token
   local-agent ping            # check reachability
   local-agent auth status     # verify token
 
@@ -75,7 +75,7 @@ Global options:
   -h, --help      Show this help
 
 Getting started:
-  remote-agent config          # pick default server + token
+  remote-agent config --web    # pick default server + token
   remote-agent ping            # check reachability
   remote-agent auth status     # verify token
 
