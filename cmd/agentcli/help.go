@@ -49,6 +49,7 @@ Commands:
     cron                 Scheduled cron tasks (interval or UTC cron)
     server               Server lifecycle (build-next, restart, status)
     proxy                Configured HTTP proxies
+    port                 List remote ports and open ad-hoc public visits
     request              Call arbitrary API paths
 
   Integrations
@@ -107,6 +108,7 @@ Commands:
     cron                 Scheduled cron tasks (interval or UTC cron)
     server               Server lifecycle (build-next, restart, status)
     proxy                Configured HTTP proxies
+    port                 List remote ports and open ad-hoc public visits
     request              Call arbitrary API paths
 
   Integrations

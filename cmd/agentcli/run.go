@@ -97,6 +97,8 @@ func Run(profile Profile, args []string) error {
 		return runGit(resolve, rest)
 	case "proxy":
 		return runProxy(resolve, rest)
+	case "port":
+		return runPort(resolve, rest)
 	case "project":
 		return runProject(resolve, rest)
 	case "machine":

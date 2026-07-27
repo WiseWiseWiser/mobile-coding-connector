@@ -516,6 +516,12 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	portforward.RegisterAPI(mux)
 
+	// Ad-hoc port visits (idle reverse-proxy hop + tunnel)
+	visitMgr := portforward.GetDefaultVisitSessionManager()
+	visitMgr.RegisterProvider(&pfcloudflare.QuickProvider{})
+	visitMgr.RegisterProvider(&pfcloudflare.OwnedProvider{})
+	visitMgr.RegisterAPI(mux)
+
 	// WS proxy API (Xray + Cloudflare Tunnel for iPhone access)
 	wsproxy.RegisterAPI(mux)
 
