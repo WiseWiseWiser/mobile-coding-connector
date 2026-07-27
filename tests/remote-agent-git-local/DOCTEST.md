@@ -1,25 +1,33 @@
 # Remote-Agent Git Local Commands Doctests
 
-End-to-end tests for `remote-agent git -C <dir> <subcommand> [args...]`:
-allowlisted read-only (or local-only) git subcommands run on `ai-critic-server` via
-`POST /api/remote-agent/git/run`, streaming stdout/stderr and mirroring the remote
-exit code.
+Doctests for `remote-agent git -C <dir> <subcommand> [args...]`: allowlisted
+read-only (or local-only) git subcommands run via `POST /api/remote-agent/git/run`,
+streaming stdout/stderr and mirroring the remote exit code.
+
+Most leaves are **L2 in-process** (`server/git.RegisterAPI` + `agentcli.Run`).
+Two sparse **L3 e2e** smokes keep the product binary path.
 
 # DSN (Domain Specific Notion)
 
-The harness exercises the remote profile of the shared agent CLI against a real
-`ai-critic-server` subprocess and temp git worktrees on the same host (the server's
-`dir` is an absolute path to those trees).
+Most leaves are **L2 in-process**: `server/git.RegisterAPI` on a local mux +
+`agentcli.Run` (no product binaries). Two sparse **L3 e2e** smokes keep the binary
+path (`UseCLI` + `label: heavy, e2e`): `allowlisted/status/clean-repo` and
+`server-rejected/denied-mutating/add`.
+
+**L2** serves git run/clone/fetch/pull/push APIs in-process via `git.RegisterAPI(mux)`.
+**L3 smokes** still run product binaries with `AI_CRITIC_HOME=configHome`.
 
 **Participants**
 
-- **remote-agent subprocess** — built from `./cmd/remote-agent`; parses `git -C <dir>`
-  and dispatches allowlisted subcommands to the client.
-- **HTTP client** — `POST /api/remote-agent/git/run` with JSON `{dir, args, ...}`.
-- **ai-critic-server subprocess** — validates `dir`, allowlists `args[0]`, spawns
-  `git` with NDJSON streaming (`stdout`, `stderr`, `heartbeat`, `exit`, `error`).
+- **L2: agentcli.Run** — in-process `git -C` CLI against the local mux
+  (stdout/stderr captured; serialized with a process mutex).
+- **L2: git HTTP** — `RegisterAPI` on ephemeral port; same wire path
+  (`POST /api/remote-agent/git/run` NDJSON stream).
+- **L3: remote-agent + ai-critic-server subprocesses** — sparse `UseCLI` smokes.
 - **Temp repository directories** — leaf `Setup` creates git repos (or plain dirs)
   on disk before the CLI runs; path is passed verbatim in `-C`.
+- **session cache** — doctest-injected `DOCTEST_SESSION_ID` keys
+  `$TMPDIR/remote-agent-git-local-doctest-<id>/` for L3 shared binaries (file lock).
 
 **Behaviors**
 
@@ -33,7 +41,7 @@ The harness exercises the remote profile of the shared agent CLI against a real
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -47,14 +55,14 @@ The harness exercises the remote profile of the shared agent CLI against a real
  +-- server-rejected/                      (GROUP) HTTP/API gate before git spawn
  |    +-- not-git-repo/                   (LEAF)  plain directory
  |    +-- denied-mutating/                 (GROUP) allowlist denies mutation
- |         +-- add/                       (LEAF)  git add
+ |         +-- add/                       (LEAF)  git add [L3 smoke]
  |         +-- config-set/                (LEAF)  git config --set
  |         +-- branch-delete/             (LEAF)  git branch -D
  |         +-- remote-add/                (LEAF)  git remote add
  |
  +-- allowlisted/                          (GROUP) /run succeeds
       +-- status/
-      |    +-- clean-repo/                (LEAF)
+      |    +-- clean-repo/                (LEAF) [L3 smoke]
       |    +-- dirty-repo/                (LEAF)
       +-- diff/
       |    +-- unstaged-hunk/             (LEAF)
@@ -82,11 +90,11 @@ The harness exercises the remote profile of the shared agent CLI against a real
 | 1 | `cli-rejected/missing-c-dir` | `git status` without `-C` → CLI requires `-C` |
 | 2 | `cli-rejected/unknown-subcommand` | `frobnicate` → unknown subcommand before HTTP |
 | 3 | `server-rejected/not-git-repo` | Plain dir → not a git repository |
-| 4 | `server-rejected/denied-mutating/add` | `git add` blocked |
+| 4 | `server-rejected/denied-mutating/add` | `git add` blocked (L3 smoke) |
 | 5 | `server-rejected/denied-mutating/config-set` | `git config --set` blocked |
 | 6 | `server-rejected/denied-mutating/branch-delete` | `git branch -D` blocked |
 | 7 | `server-rejected/denied-mutating/remote-add` | `git remote add` blocked |
-| 8 | `allowlisted/status/clean-repo` | Clean worktree on `main` |
+| 8 | `allowlisted/status/clean-repo` | Clean worktree on `main` (L3 smoke) |
 | 9 | `allowlisted/status/dirty-repo` | Modified + untracked paths in status |
 | 10 | `allowlisted/diff/unstaged-hunk` | Working tree diff hunk |
 | 11 | `allowlisted/diff/cached` | `diff --cached` shows staged change |
@@ -113,13 +121,15 @@ The harness exercises the remote profile of the shared agent CLI against a real
 ```sh
 go run ./script/build
 doctest vet ./tests/remote-agent-git-local
-doctest test ./tests/remote-agent-git-local/...
+doctest test ./tests/remote-agent-git-local/...          # unlabeled L2 mass
+doctest test --label e2e ./tests/remote-agent-git-local/...  # ~2 L3 smokes
 ```
 
 ```go
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -127,12 +137,20 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/xhd2015/ai-critic/cmd/agentcli"
 	"github.com/xhd2015/ai-critic/script/lib"
+	servergit "github.com/xhd2015/ai-critic/server/git"
+	"github.com/xhd2015/doctest/session"
 )
+
+// agentcliInProcessMu serializes in-process agentcli.Run (package-level active
+// profile + temporary stdout/stderr swaps are process-global).
+var agentcliInProcessMu sync.Mutex
 
 type Request struct {
 	Args   []string
@@ -141,6 +159,14 @@ type Request struct {
 
 	// RepoDir is the absolute path used with -C (set by leaf Setup).
 	RepoDir string
+
+	// UseCLI forces the L3 product-binary path. Default false → L2 in-process.
+	UseCLI bool
+	E2E    bool
+}
+
+func useBinaryPath(req *Request) bool {
+	return req != nil && (req.UseCLI || req.E2E)
 }
 
 type Response struct {
@@ -153,7 +179,7 @@ type Response struct {
 	RepoDir    string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	if len(req.Args) == 0 {
@@ -163,30 +189,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		req.Token = lib.TestPassword
 	}
 
-	moduleRoot, err := findModuleRoot()
-	if err != nil {
-		return nil, err
-	}
-
-	safeName := strings.ReplaceAll(t.Name(), "/", "_")
-	serverBin := filepath.Join(os.TempDir(), "ai-critic-server-git-local-"+safeName)
-	agentBin := filepath.Join(os.TempDir(), "remote-agent-git-local-"+safeName)
-
-	for _, spec := range []struct {
-		out string
-		pkg string
-	}{
-		{serverBin, "."},
-		{agentBin, "./cmd/remote-agent"},
-	} {
-		cmd := exec.Command("go", "build", "-o", spec.out, spec.pkg)
-		cmd.Dir = moduleRoot
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return nil, fmt.Errorf("build %s: %w\n%s", spec.pkg, err, string(out))
-		}
-		t.Cleanup(func() { os.Remove(spec.out) })
-	}
+	// DOCTEST_ROOT is tests/remote-agent-git-local; module root is two levels up.
+	// Do not walk from cwd: doctest runs under mapping-gen which has its own go.mod.
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
+	cacheDir := sessionCacheDir(d.DOCTEST_SESSION_ID)
 
 	configHome, err := lib.CreateTestConfigHome()
 	if err != nil {
@@ -194,6 +200,62 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	t.Cleanup(func() { os.RemoveAll(configHome) })
 	resp.ConfigHome = configHome
+
+	if req.RepoDir != "" {
+		absDir, err := filepath.Abs(req.RepoDir)
+		if err != nil {
+			return nil, fmt.Errorf("abs repo dir: %w", err)
+		}
+		req.RepoDir = absDir
+		resp.RepoDir = absDir
+	}
+
+	if useBinaryPath(req) {
+		return runBinaryE2E(t, d, req, resp, moduleRoot, cacheDir, configHome)
+	}
+	return runInProcessL2(t, d, req, resp)
+}
+
+func runInProcessL2(t *testing.T, d *session.Doctest, req *Request, resp *Response) (*Response, error) {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	servergit.RegisterAPI(mux)
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("listen in-process git server: %w", err)
+	}
+	serverPort := ln.Addr().(*net.TCPAddr).Port
+	resp.ServerPort = serverPort
+	srv := &http.Server{Handler: mux}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	serverURL := req.Server
+	if serverURL == "" {
+		serverURL = fmt.Sprintf("http://127.0.0.1:%d", serverPort)
+	}
+
+	pingURL := fmt.Sprintf("http://127.0.0.1:%d/ping", serverPort)
+	if err := waitHTTPReady(pingURL, 10*time.Second); err != nil {
+		return nil, err
+	}
+	t.Logf("L2 in-process git server on %s", serverURL)
+
+	return finishGitRun(t, req, resp, serverURL, func(argv []string) (int, string, string, error) {
+		return runAgentInProcess(argv)
+	}, true)
+}
+
+func runBinaryE2E(t *testing.T, d *session.Doctest, req *Request, resp *Response, moduleRoot, cacheDir, configHome string) (*Response, error) {
+	t.Helper()
+
+	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
 
 	credFile, err := lib.WriteTestCredentials(configHome)
 	if err != nil {
@@ -206,15 +268,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, err
 	}
 	resp.ServerPort = serverPort
-
-	if req.RepoDir != "" {
-		absDir, err := filepath.Abs(req.RepoDir)
-		if err != nil {
-			return nil, fmt.Errorf("abs repo dir: %w", err)
-		}
-		req.RepoDir = absDir
-		resp.RepoDir = absDir
-	}
 
 	serverCmd := exec.Command(serverBin, "--port", strconv.Itoa(serverPort), "--credentials-file", credFile)
 	serverCmd.Dir = configHome
@@ -240,47 +293,96 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		serverURL = fmt.Sprintf("http://localhost:%d", serverPort)
 	}
 
+	return finishGitRun(t, req, resp, serverURL, func(argv []string) (int, string, string, error) {
+		return runAgentBinary(agentBin, argv)
+	}, false)
+}
+
+func finishGitRun(
+	t *testing.T,
+	req *Request,
+	resp *Response,
+	serverURL string,
+	runCLI func(argv []string) (int, string, string, error),
+	inProcess bool,
+) (*Response, error) {
+	t.Helper()
+
 	argv := []string{"--server", serverURL, "--token", req.Token}
 	argv = append(argv, req.Args...)
-	t.Logf("remote-agent argv: %v", argv)
 
-	agentCmd := exec.Command(agentBin, argv...)
-	agentCmd.Env = os.Environ()
-
-	var stdout, stderr bytes.Buffer
-	agentCmd.Stdout = &stdout
-	agentCmd.Stderr = &stderr
-
-	runErr := agentCmd.Run()
-	if runErr != nil {
-		if exitErr, ok := runErr.(*exec.ExitError); ok {
-			resp.ExitCode = exitErr.ExitCode()
-		} else {
-			return nil, runErr
-		}
+	mode := "L2-inprocess"
+	if !inProcess {
+		mode = "L3-binary"
 	}
-	resp.Stdout = stdout.String()
-	resp.Stderr = stderr.String()
-	resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
+	t.Logf("%s remote-agent argv: %v", mode, argv)
 
+	exitCode, stdout, stderr, runErr := runCLI(argv)
+	if runErr != nil {
+		return nil, runErr
+	}
+	resp.ExitCode = exitCode
+	resp.Stdout = stdout
+	resp.Stderr = stderr
+	resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
 	return resp, nil
 }
 
-func findModuleRoot() (string, error) {
-	dir, err := os.Getwd()
+func runAgentInProcess(argv []string) (int, string, string, error) {
+	agentcliInProcessMu.Lock()
+	defer agentcliInProcessMu.Unlock()
+
+	stdoutR, stdoutW, err := os.Pipe()
 	if err != nil {
-		return "", err
+		return 0, "", "", err
 	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("go.mod not found")
-		}
-		dir = parent
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		stdoutR.Close()
+		stdoutW.Close()
+		return 0, "", "", err
 	}
+
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdoutW, stderrW
+
+	runErr := agentcli.Run(agentcli.RemoteProfile(), argv)
+
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+
+	outBytes, _ := io.ReadAll(stdoutR)
+	errBytes, _ := io.ReadAll(stderrR)
+	_ = stdoutR.Close()
+	_ = stderrR.Close()
+
+	stdout := string(outBytes)
+	stderr := string(errBytes)
+	exitCode := 0
+	if runErr != nil {
+		stderr += fmt.Sprintf("Error: %v\n", runErr)
+		exitCode = 1
+	}
+	return exitCode, stdout, stderr, nil
+}
+
+func runAgentBinary(bin string, argv []string) (int, string, string, error) {
+	cmd := exec.Command(bin, argv...)
+	cmd.Env = os.Environ()
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	runErr := cmd.Run()
+	exitCode := 0
+	if runErr != nil {
+		if exitErr, ok := runErr.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			return 0, "", "", runErr
+		}
+	}
+	return exitCode, outBuf.String(), errBuf.String(), nil
 }
 
 func portBaseFromTestName(name string) int {

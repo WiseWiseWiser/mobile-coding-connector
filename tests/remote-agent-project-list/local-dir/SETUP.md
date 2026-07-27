@@ -22,9 +22,13 @@ remote-agent project list|git-config get -> stdout with Local Dir after Dir
 REQUIREMENT: project list Local Dir + git-config get via `printProjectGitConfig`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if len(req.Args) == 0 {
 		req.Args = []string{"project", "list"}
 	}

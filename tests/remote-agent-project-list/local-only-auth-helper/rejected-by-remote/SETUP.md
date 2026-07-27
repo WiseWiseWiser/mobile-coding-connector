@@ -26,9 +26,13 @@ This leaf documents the concrete helper command name selected for the feature:
 `auth import-local`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Args = []string{"auth", "import-local"}
 	req.ServerCredentialContent = "remote-must-not-import-token\n"
 	req.WatchRemoteConfig = true

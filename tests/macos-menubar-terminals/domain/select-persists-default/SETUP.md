@@ -21,9 +21,13 @@ Two domains A and B; initial default is A; user selects B’s server URL.
 REQUIREMENT leaf: `domain/select-persists-default` (also covers same-endpoint for services/terminals via shared Resolve).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigJSON = `{
   "default": "https://a.example",
   "domains": [

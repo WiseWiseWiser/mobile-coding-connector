@@ -19,9 +19,13 @@ fake opencode serve --port N -> Collect(extraPorts=N) -> fake child PID
 Port discovery path used when registry is stale or for harness stopServer.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.StartFakeOpenCode = true
 	return nil
 }

@@ -151,6 +151,9 @@ type Manager struct {
 	healthStop         chan struct{}
 	healthStarted      bool
 	portForwardManager *portforward.Manager
+	// Optional isolation for L2 tests; empty → package defaults.
+	configPath string
+	dataDir    string
 }
 
 var (
@@ -167,18 +170,76 @@ func NewManager() *Manager {
 	return m
 }
 
+// NewManagerFromDefinitions builds an in-memory Manager that never loads or
+// saves services.json. Safe for parallel List/ListAll tests.
+func NewManagerFromDefinitions(defs []ServiceDefinition) *Manager {
+	normalized := make([]ServiceDefinition, 0, len(defs))
+	for _, d := range defs {
+		d.ProjectDir = normalizeProjectDir(d.ProjectDir)
+		d.WorkingDir = normalizeWorkingDir(d.WorkingDir)
+		d.ExtraEnv = normalizeExtraEnv(d.ExtraEnv)
+		d.UpgradeTarget = strings.TrimSpace(d.UpgradeTarget)
+		normalized = append(normalized, d)
+	}
+	return &Manager{
+		definitions:        normalized,
+		processes:          make(map[string]*serviceProcess),
+		portForwardManager: portforward.GetDefaultManager(),
+		bootAutostartSet:   true,
+	}
+}
+
+// NewManagerAt loads definitions from configDir/services.json and writes
+// process logs under configDir/services/. Isolated for L2 doctests.
+func NewManagerAt(configDir string) *Manager {
+	configDir = strings.TrimSpace(configDir)
+	if configDir == "" {
+		return NewManager()
+	}
+	m := &Manager{
+		processes:          make(map[string]*serviceProcess),
+		portForwardManager: portforward.GetDefaultManager(),
+		configPath:         filepath.Join(configDir, "services.json"),
+		dataDir:            configDir,
+	}
+	m.loadDefinitionsLocked()
+	return m
+}
+
 func GetDefaultManager() *Manager {
 	return defaultManager
 }
 
 func RegisterAPI(mux *http.ServeMux) {
-	mux.HandleFunc("/api/services", handleServices)
-	mux.HandleFunc("/api/services/start", handleStartService)
-	mux.HandleFunc("/api/services/stop", handleStopService)
-	mux.HandleFunc("/api/services/restart", handleRestartService)
-	mux.HandleFunc("/api/services/disable", handleDisableService)
-	mux.HandleFunc("/api/services/enable", handleEnableService)
-	mux.HandleFunc("/api/services/upgrade", handleUpgradeService)
+	RegisterAPIWithManager(mux, GetDefaultManager())
+}
+
+// RegisterAPIWithManager mounts service endpoints bound to m (L2 doctests).
+func RegisterAPIWithManager(mux *http.ServeMux, m *Manager) {
+	if m == nil {
+		m = GetDefaultManager()
+	}
+	mux.HandleFunc("/api/services", func(w http.ResponseWriter, r *http.Request) {
+		handleServicesWith(m, w, r)
+	})
+	mux.HandleFunc("/api/services/start", func(w http.ResponseWriter, r *http.Request) {
+		handleStartServiceWith(m, w, r)
+	})
+	mux.HandleFunc("/api/services/stop", func(w http.ResponseWriter, r *http.Request) {
+		handleStopServiceWith(m, w, r)
+	})
+	mux.HandleFunc("/api/services/restart", func(w http.ResponseWriter, r *http.Request) {
+		handleRestartServiceWith(m, w, r)
+	})
+	mux.HandleFunc("/api/services/disable", func(w http.ResponseWriter, r *http.Request) {
+		handleDisableServiceWith(m, w, r)
+	})
+	mux.HandleFunc("/api/services/enable", func(w http.ResponseWriter, r *http.Request) {
+		handleEnableServiceWith(m, w, r)
+	})
+	mux.HandleFunc("/api/services/upgrade", func(w http.ResponseWriter, r *http.Request) {
+		handleUpgradeServiceWith(m, w, r)
+	})
 }
 
 func StartHealthCheck() {
@@ -193,8 +254,22 @@ func Shutdown() {
 	defaultManager.Shutdown()
 }
 
+func (m *Manager) servicesFile() string {
+	if m != nil && m.configPath != "" {
+		return m.configPath
+	}
+	return servicesConfigPath
+}
+
+func (m *Manager) servicesDataDir() string {
+	if m != nil && m.dataDir != "" {
+		return m.dataDir
+	}
+	return config.DataDir
+}
+
 func (m *Manager) loadDefinitionsLocked() {
-	data, err := os.ReadFile(servicesConfigPath)
+	data, err := os.ReadFile(m.servicesFile())
 	if err != nil {
 		if os.IsNotExist(err) {
 			m.definitions = []ServiceDefinition{}
@@ -226,14 +301,15 @@ func (m *Manager) loadDefinitionsLocked() {
 }
 
 func (m *Manager) saveDefinitionsLocked() error {
-	if err := os.MkdirAll(config.DataDir, 0755); err != nil {
+	dir := m.servicesDataDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(m.definitions, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(servicesConfigPath, data, 0644)
+	return os.WriteFile(m.servicesFile(), data, 0644)
 }
 
 func (m *Manager) StartHealthCheck() {
@@ -332,7 +408,7 @@ func (m *Manager) buildStatusListLocked(defs []ServiceDefinition) []ServiceStatu
 	for _, def := range defs {
 		proc := m.processes[def.ID]
 		serviceEnv := buildServiceEnv(def)
-		logPath := serviceLogPath(def.ID)
+		logPath := m.serviceLogPath(def.ID)
 		status := StatusStopped
 		pid := 0
 		lastStartedAt := ""
@@ -582,7 +658,7 @@ func (m *Manager) Enable(id string) (*ServiceActionResponse, error) {
 			proc = &serviceProcess{
 				def:     def,
 				status:  StatusStopped,
-				logPath: serviceLogPath(id),
+				logPath: m.serviceLogPath(id),
 				desired: true,
 			}
 			m.processes[id] = proc
@@ -775,7 +851,7 @@ func (m *Manager) start(id string, force bool) error {
 		proc = &serviceProcess{
 			def:           def,
 			status:        StatusStopped,
-			logPath:       serviceLogPath(id),
+			logPath:       m.serviceLogPath(id),
 			desired:       true,
 			stopRequested: false,
 		}
@@ -785,7 +861,7 @@ func (m *Manager) start(id string, force bool) error {
 		proc.desired = true
 		proc.stopRequested = false
 		if proc.logPath == "" {
-			proc.logPath = serviceLogPath(id)
+			proc.logPath = m.serviceLogPath(id)
 		}
 	}
 
@@ -1350,8 +1426,19 @@ func processAlive(pid int) bool {
 	return syscall.Kill(pid, 0) == nil
 }
 
+func (m *Manager) serviceLogPath(id string) string {
+	return filepath.Join(m.servicesDataDir(), "services", id+".log")
+}
+
 func serviceLogPath(id string) string {
+	// Package default path (default manager / production).
 	return filepath.Join(config.DataDir, "services", id+".log")
+}
+
+// EnsureServiceWorkingDir creates workingDir (including parents) when non-empty.
+// Used by start and L2 doctests that isolate the mkdir contract.
+func EnsureServiceWorkingDir(workingDir string) error {
+	return ensureServiceWorkingDir(workingDir)
 }
 
 func ensureServiceWorkingDir(workingDir string) error {
@@ -1625,8 +1712,10 @@ func copyServiceUpgradeFile(src string, dst string) error {
 }
 
 func handleServices(w http.ResponseWriter, r *http.Request) {
-	manager := GetDefaultManager()
+	handleServicesWith(GetDefaultManager(), w, r)
+}
 
+func handleServicesWith(manager *Manager, w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		w.Header().Set("Content-Type", "application/json")
@@ -1686,6 +1775,10 @@ func serviceSaveShouldRestart(r *http.Request) bool {
 }
 
 func handleStartService(w http.ResponseWriter, r *http.Request) {
+	handleStartServiceWith(GetDefaultManager(), w, r)
+}
+
+func handleStartServiceWith(manager *Manager, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1695,7 +1788,7 @@ func handleStartService(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	status, err := GetDefaultManager().Start(id)
+	status, err := manager.Start(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1705,6 +1798,10 @@ func handleStartService(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleStopService(w http.ResponseWriter, r *http.Request) {
+	handleStopServiceWith(GetDefaultManager(), w, r)
+}
+
+func handleStopServiceWith(manager *Manager, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1714,7 +1811,7 @@ func handleStopService(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	if err := GetDefaultManager().stop(id, true, true); err != nil {
+	if err := manager.stop(id, true, true); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -1723,6 +1820,10 @@ func handleStopService(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleRestartService(w http.ResponseWriter, r *http.Request) {
+	handleRestartServiceWith(GetDefaultManager(), w, r)
+}
+
+func handleRestartServiceWith(manager *Manager, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1732,7 +1833,7 @@ func handleRestartService(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	if err := GetDefaultManager().Restart(id); err != nil {
+	if err := manager.Restart(id); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -1741,6 +1842,10 @@ func handleRestartService(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDisableService(w http.ResponseWriter, r *http.Request) {
+	handleDisableServiceWith(GetDefaultManager(), w, r)
+}
+
+func handleDisableServiceWith(manager *Manager, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1750,7 +1855,7 @@ func handleDisableService(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	result, err := GetDefaultManager().Disable(id)
+	result, err := manager.Disable(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1760,6 +1865,10 @@ func handleDisableService(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleEnableService(w http.ResponseWriter, r *http.Request) {
+	handleEnableServiceWith(GetDefaultManager(), w, r)
+}
+
+func handleEnableServiceWith(manager *Manager, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1769,7 +1878,7 @@ func handleEnableService(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	result, err := GetDefaultManager().Enable(id)
+	result, err := manager.Enable(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1779,6 +1888,10 @@ func handleEnableService(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleUpgradeService(w http.ResponseWriter, r *http.Request) {
+	handleUpgradeServiceWith(GetDefaultManager(), w, r)
+}
+
+func handleUpgradeServiceWith(manager *Manager, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1788,7 +1901,7 @@ func handleUpgradeService(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	result, err := GetDefaultManager().Upgrade(req)
+	result, err := manager.Upgrade(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

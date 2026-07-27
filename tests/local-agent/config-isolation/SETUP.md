@@ -20,9 +20,13 @@ Both config files may exist under the same `~/.ai-critic` directory.
 Q2 decision: separate config file per CLI binary.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.WatchRemoteConfig && req.SeedRemoteConfig == nil {
 		t.Logf("config-isolation: WatchRemoteConfig without SeedRemoteConfig in %s", t.Name())
 	}

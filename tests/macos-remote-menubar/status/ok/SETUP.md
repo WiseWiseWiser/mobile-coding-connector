@@ -19,9 +19,13 @@ Resolved remote server; network/auth probe succeeded.
 REQUIREMENT leaf: `status/ok`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConnectionState = "ok"
 	req.StatusServer = "https://example.com"
 	req.Token = "super-secret-token-xyz"

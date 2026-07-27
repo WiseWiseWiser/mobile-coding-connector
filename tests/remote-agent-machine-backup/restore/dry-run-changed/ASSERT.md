@@ -48,10 +48,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/doctest/assert"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
@@ -63,13 +65,14 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertRestoreStreamSections(t, combined, false)
 
 	classify := restoreClassifyingSection(combined)
+	// Default seed classifies 9 restore targets: .bashrc (update) + 8 identical skips.
 	assert.Output(t, classify, `---
 version: 2
 ---
 CLASSIFYING:
 ...0 lines omitted...
 update: .bashrc
-...9 lines omitted...`)
+...8 lines omitted...`)
 	if strings.Contains(classify, "skip (identical): .bashrc") {
 		t.Fatalf(".bashrc should not be identical after mutation; section:\n%s", classify)
 	}

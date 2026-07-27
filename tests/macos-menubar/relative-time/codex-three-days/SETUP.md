@@ -19,9 +19,13 @@ Codex reset string without timezone; uses `now.Location()`.
 REQUIREMENT leaf: `relative-time/codex-three-days`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Reset = "08:00 on 9 Jul"
 	req.NowRFC3339 = "2026-07-06T08:00:00-07:00"
 	return nil

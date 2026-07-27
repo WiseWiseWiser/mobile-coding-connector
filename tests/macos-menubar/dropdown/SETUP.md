@@ -22,9 +22,13 @@ usage: `Grok: {pct}(Weekly), Reset {local}, {timeLeft}` and
 Unparseable reset omits `{timeLeft}`; error/loading lines unchanged.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.WeeklyLimit = ""
 	req.GrokReset = ""
 	req.CodexStatus = ""

@@ -20,9 +20,13 @@ remote missing endpoint -> FormatCronNotConfiguredLabel
 REQUIREMENT empty: `No cron tasks configured`; remote: `Not configured`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "empty"
 	return nil
 }

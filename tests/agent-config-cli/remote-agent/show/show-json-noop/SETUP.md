@@ -21,9 +21,13 @@ Same seed as with-domains.
 T5; --json alone is rejected elsewhere.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedConfig = sampleRemoteConfig()
 	req.Args = []string{"config", "--show", "--json"}
 	return nil

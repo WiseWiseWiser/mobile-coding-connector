@@ -1,44 +1,51 @@
 # Remote-Agent Machine Backup & Restore Doctests
 
-End-to-end tests for `remote-agent machine backup` and `remote-agent machine restore`:
+Doctests for `remote-agent machine backup` and `remote-agent machine restore`:
 server-home dot-file/dot-dir discovery, built-in and custom exclusions, SSE
 streaming dry-run plans (per-entry sizes + summary), streamed `tar.xz` archives
 with `manifest.json`, and restore with identical skip reporting.
 
+Most leaves are **L2 in-process**: `machinebackup.RegisterAPIForHome` on a local
+mux + `agentcli.Run` (no `ai-critic-server` / `remote-agent` product binary).
+Three sparse **L3 e2e** smokes keep the binary path (`UseCLI` + `label: heavy, e2e`).
+
 # DSN (Domain Specific Notion)
 
-The harness models a remote machine as an isolated `serverHome` directory. The
-`ai-critic-server` subprocess runs with `HOME=serverHome` and working directory
-`serverHome`, so server `~` and backup scope align. The CLI runs in a separate
-`agentHome` with only `remote-agent-config.json`. Backup walks direct children of
-server home (dot-files and dot-dirs), applies built-in exclusions plus optional
-`--exclude`, archives symlinks without following, and streams `tar.xz` for real
-backups. With `--dry-run`, backup and restore use SSE `/stream` endpoints:
-incremental per-entry lines (with sizes on backup) followed by a human summary
-block after the `done` frame. Restore (dry-run and apply) uses
-`/restore/stream`: **CLASSIFYING** lists every classified entry (`skip` /
-`update` / `create`); apply also emits **APPLYING** for non-skip actions as
-they run, then a verbatim summary log (`dry-run: machine restore plan` or
-`machine restore summary`). Identical paths are skipped on disk; create/update
-entries are applied only on real restore.
+The harness models a remote machine as an isolated `serverHome` directory.
+**L2** serves machine backup APIs in-process via `RegisterAPIForHome(mux, serverHome)`
+on a localhost listener (no process `HOME` mutation). **L3 smokes** still run
+`ai-critic-server` with `HOME=serverHome` and `remote-agent` with isolated
+`agentHome`. Backup walks direct children of server home (dot-files and
+dot-dirs), applies built-in exclusions plus optional `--exclude`, archives
+symlinks without following, and streams `tar.xz` for real backups. With
+`--dry-run`, backup and restore use SSE `/stream` endpoints: incremental
+per-entry lines (with sizes on backup) followed by a human summary block after
+the `done` frame. Restore (dry-run and apply) uses `/restore/stream`:
+**CLASSIFYING** lists every classified entry (`skip` / `update` / `create`);
+apply also emits **APPLYING** for non-skip actions as they run, then a verbatim
+summary log (`dry-run: machine restore plan` or `machine restore summary`).
+Identical paths are skipped on disk; create/update entries are applied only on
+real restore.
 
 **Participants**
 
-- **remote-agent subprocess** — `./cmd/remote-agent`; subcommands `machine backup`
-  and `machine restore` with `--server` / `--token`.
-- **ai-critic-server subprocess** — ephemeral port; `POST /api/remote-agent/machine/backup`
-  (`application/x-xz` stream) and `POST /api/remote-agent/machine/backup/stream` (SSE
-  dry-run plan); `POST /api/remote-agent/machine/restore` (JSON apply API, not used by
-  CLI); `POST /api/remote-agent/machine/restore/stream` (SSE classify/apply progress;
-  `dry_run=true` plan only, `dry_run=false` classify + apply + summary).
+- **L2: agentcli.Run** — in-process `machine backup|restore` CLI against the
+  local mux (stdout/stderr captured; serialized with a process mutex).
+- **L2: machinebackup HTTP** — `RegisterAPIForHome` on ephemeral port; same
+  wire paths as production (`/backup`, `/backup/stream`, `/restore/stream`,
+  `/backup-config`, archive token download).
+- **L3: remote-agent + ai-critic-server subprocesses** — only for sparse
+  `UseCLI` smokes (`backup/stream`, `backup/dry-run`, `restore/apply`).
 - **serverHome** — temp fake machine home seeded with dot fixtures, built-in
   exclusion trees (`.cache`, `.npm`, `.cargo/registry`, etc.), and v1.1 extended
   fixtures (ELF stub, `.log` files, `upload-chunks/`, SQLite DB, JPEG image, new
   path-prefix trees).
-- **agentHome** — temp `HOME` for `~/.ai-critic/remote-agent-config.json` only.
+- **agentHome** — temp dir for archive outputs and (L3) agent config; L2 does not
+  require agent config when `--server`/`--token` are passed.
 - **session cache** — doctest-injected `DOCTEST_SESSION_ID` keys
-  `$TMPDIR/machine-backup-doctest-<id>/` for shared binaries and a default prereq
-  archive (file lock + flock). Helpers use the variable directly, not `os.Getenv`.
+  `$TMPDIR/machine-backup-doctest-<id>/` for L3 shared binaries and a default
+  prereq archive (file lock + flock). Helpers use the variable directly, not
+  `os.Getenv`.
 
 **Behaviors**
 
@@ -329,9 +336,9 @@ entries are applied only on real restore.
 ```sh
 go run ./script/build
 doctest vet ./tests/remote-agent-machine-backup
-doctest test -v ./tests/remote-agent-machine-backup/...
+doctest test ./tests/remote-agent-machine-backup/...          # unlabeled L2 mass
+doctest test --label e2e ./tests/remote-agent-machine-backup/...  # ~3 L3 smokes
 go test ./server/machinebackup/... -count=1
-go test ./dot-pkgs-with-critic/go-pkgs/file/detect/... -count=1
 ```
 
 ```go
@@ -347,12 +354,20 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/xhd2015/ai-critic/cmd/agentcli"
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/ai-critic/server/machinebackup"
+	"github.com/xhd2015/doctest/session"
 )
+
+// agentcliInProcessMu serializes in-process agentcli.Run (package-level active
+// profile + temporary stdout/stderr swaps are process-global).
+var agentcliInProcessMu sync.Mutex
 
 type PostSetConfigExcludeEntry struct {
 	Path   string
@@ -360,9 +375,16 @@ type PostSetConfigExcludeEntry struct {
 }
 
 type Request struct {
-	Args  []string
+	Args   []string
 	Server string
 	Token  string
+
+	// UseCLI forces the L3 product-binary path (ai-critic-server + remote-agent).
+	// Default false → L2 in-process mux + agentcli.Run.
+	UseCLI bool
+
+	// E2E is an alias for UseCLI (explicit L3 opt-in).
+	E2E bool
 
 	// OutputPath is the backup archive destination (backup leaves).
 	OutputPath string
@@ -466,13 +488,17 @@ type Request struct {
 	// files, .cloudflared/config.yml, and bash history; server subprocess PATH prepended.
 	SeedCloudflaredMock bool
 
-	// SeedSystemdMock writes serverHome/bin/systemctl mock CLI; server subprocess PATH
-	// is prepended with serverHome/bin.
+	// SeedSystemdMock writes serverHome/bin/systemctl mock CLI (PATH via home/bin).
 	SeedSystemdMock bool
 
-	// SeedSystemdMockEmpty sets SYSTEMD_MOCK_EMPTY=1 on the server subprocess so the
-	// mock systemctl returns empty running unit lists (requires SeedSystemdMock).
+	// SeedSystemdMockEmpty rewrites the mock so list-units returns [] (no process
+	// Setenv; requires SeedSystemdMock).
 	SeedSystemdMockEmpty bool
+}
+
+// useBinaryPath selects L3 product binaries. Default is L2 in-process.
+func useBinaryPath(req *Request) bool {
+	return req != nil && (req.UseCLI || req.E2E)
 }
 
 type Response struct {
@@ -496,16 +522,17 @@ type Response struct {
 	FollowUpStdout string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	if req.Token == "" {
 		req.Token = lib.TestPassword
 	}
 
-	moduleRoot := findModuleRoot()
-	cacheDir := sessionCacheDir()
-	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
+	// DOCTEST_ROOT is tests/remote-agent-machine-backup; module root is two levels up.
+	// Do not walk from cwd: doctest runs under mapping-gen which has its own go.mod.
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
+	cacheDir := sessionCacheDir(d.DOCTEST_SESSION_ID)
 
 	serverHome, err := os.MkdirTemp("", "machine-backup-server-home-*")
 	if err != nil {
@@ -558,7 +585,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		seedCloudflaredMock(t, serverHome)
 	}
 	if req.SeedSystemdMock {
-		seedSystemdMock(t, serverHome)
+		seedSystemdMock(t, serverHome, req.SeedSystemdMockEmpty)
 	}
 
 	agentHome, err := os.MkdirTemp("", "machine-backup-agent-home-*")
@@ -567,6 +594,63 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	t.Cleanup(func() { os.RemoveAll(agentHome) })
 	resp.AgentHome = agentHome
+
+	if useBinaryPath(req) {
+		return runBinaryE2E(t, d, req, resp, moduleRoot, cacheDir, serverHome, agentHome)
+	}
+	return runInProcessL2(t, d, req, resp, cacheDir, serverHome, agentHome)
+}
+
+func runInProcessL2(t *testing.T, d *session.Doctest, req *Request, resp *Response, cacheDir, serverHome, agentHome string) (*Response, error) {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	machinebackup.RegisterAPIForHome(mux, serverHome)
+	// Lightweight readiness probe (product server uses /ping).
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("listen in-process machine server: %w", err)
+	}
+	serverPort := ln.Addr().(*net.TCPAddr).Port
+	resp.ServerPort = serverPort
+	srv := &http.Server{Handler: mux}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() {
+		_ = srv.Close()
+	})
+
+	serverURL := req.Server
+	if serverURL == "" {
+		serverURL = fmt.Sprintf("http://127.0.0.1:%d", serverPort)
+	}
+	normalizedServer := strings.TrimRight(strings.TrimSpace(serverURL), "/")
+
+	pingURL := fmt.Sprintf("http://127.0.0.1:%d/ping", serverPort)
+	if err := waitHTTPReady(pingURL, 10*time.Second); err != nil {
+		return nil, err
+	}
+	if err := verifyServerHome(t, normalizedServer, req.Token, serverHome); err != nil {
+		return nil, err
+	}
+
+	t.Logf("L2 in-process machine server on %s home=%s", normalizedServer, serverHome)
+
+	runCLI := func(argv []string) (int, string, string, error) {
+		return runAgentInProcess(argv)
+	}
+
+	return finishMachineRun(t, d, req, resp, cacheDir, serverHome, agentHome, serverURL, runCLI, true)
+}
+
+func runBinaryE2E(t *testing.T, d *session.Doctest, req *Request, resp *Response, moduleRoot, cacheDir, serverHome, agentHome string) (*Response, error) {
+	t.Helper()
+
+	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
 
 	credDir := filepath.Join(serverHome, ".ai-critic")
 	if err := os.MkdirAll(credDir, 0755); err != nil {
@@ -607,9 +691,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if req.SeedTailscaleMock || req.SeedCloudflaredMock || req.SeedSystemdMock {
 		serverCmd.Env = prependPathToEnv(serverCmd.Env, filepath.Join(serverHome, "bin"))
 	}
-	if req.SeedSystemdMockEmpty {
-		serverCmd.Env = append(serverCmd.Env, "SYSTEMD_MOCK_EMPTY=1")
-	}
+	// SeedSystemdMockEmpty is baked into the mock script; no Setenv needed.
 	if err := serverCmd.Start(); err != nil {
 		return nil, fmt.Errorf("start server: %w", err)
 	}
@@ -632,6 +714,26 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
 	agentEnv = append(agentEnv, "HOME="+agentHome)
 
+	runCLI := func(argv []string) (int, string, string, error) {
+		return runAgent(agentBin, argv, agentEnv)
+	}
+
+	return finishMachineRun(t, d, req, resp, cacheDir, serverHome, agentHome, serverURL, runCLI, false)
+}
+
+// finishMachineRun runs prereq steps and the main machine CLI invocation.
+// inProcess=true uses library WriteArchive for session default archives (no product binaries).
+func finishMachineRun(
+	t *testing.T,
+	d *session.Doctest,
+	req *Request,
+	resp *Response,
+	cacheDir, serverHome, agentHome, serverURL string,
+	runCLI func(argv []string) (int, string, string, error),
+	inProcess bool,
+) (*Response, error) {
+	t.Helper()
+
 	if req.PrereqSetConfig {
 		setExcludes := req.SetConfigExcludePaths
 		if len(setExcludes) == 0 {
@@ -645,7 +747,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			setArgs = append(setArgs, "--large-dir-threshold", req.PrereqSetConfigLargeDirThreshold)
 		}
 		t.Logf("prereq set-config argv: %v", setArgs)
-		if code, out, errOut, runErr := runAgent(agentBin, setArgs, agentEnv); runErr != nil {
+		if code, out, errOut, runErr := runCLI(setArgs); runErr != nil {
 			return nil, runErr
 		} else if code != 0 {
 			return nil, fmt.Errorf("prereq set-config exit %d:\n%s\n%s", code, out, errOut)
@@ -659,7 +761,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	if req.PrereqBackup {
 		var backupPath string
-		if needsCustomPrereqArchive(req) {
+		// L2 always builds prereq via the same CLI/stream path as the leaf (agentcli +
+		// in-process handlers) so archive members match restore classify asserts.
+		// L3 reuses a session-default archive when seed is the default fixture set.
+		if inProcess || needsCustomPrereqArchive(req) {
 			backupPath = filepath.Join(agentHome, "prereq-backup.tar.xz")
 			backupArgs := []string{"--server", serverURL, "--token", req.Token, "machine", "backup", "--output", backupPath}
 			for _, ex := range req.ExcludePaths {
@@ -675,14 +780,16 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 				backupArgs = append(backupArgs, "--git-dirs-scan-max-depth", strconv.Itoa(req.GitDirsScanMaxDepth))
 			}
 			t.Logf("prereq backup argv: %v", backupArgs)
-			if code, out, errOut, runErr := runAgent(agentBin, backupArgs, agentEnv); runErr != nil {
+			if code, out, errOut, runErr := runCLI(backupArgs); runErr != nil {
 				return nil, runErr
 			} else if code != 0 {
 				return nil, fmt.Errorf("prereq backup exit %d:\n%s\n%s", code, out, errOut)
 			}
 		} else {
+			moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
+			serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
 			var err error
-			backupPath, err = ensureSessionDefaultArchive(t, moduleRoot, serverBin, agentBin, cacheDir, req.Token)
+			backupPath, err = ensureSessionDefaultArchive(t, moduleRoot, serverBin, agentBin, cacheDir, req.Token, d.DOCTEST_SESSION_ID)
 			if err != nil {
 				return nil, err
 			}
@@ -774,12 +881,16 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 
 	if req.DryRunThenArchive {
-		return runDryRunThenArchive(t, req, resp, agentBin, agentEnv, serverURL)
+		return runDryRunThenArchiveCLI(t, req, resp, serverURL, runCLI)
 	}
 
-	t.Logf("remote-agent argv: %v", argv)
+	mode := "L2-inprocess"
+	if !inProcess {
+		mode = "L3-binary"
+	}
+	t.Logf("%s remote-agent argv: %v", mode, argv)
 
-	exitCode, stdout, stderr, runErr := runAgent(agentBin, argv, agentEnv)
+	exitCode, stdout, stderr, runErr := runCLI(argv)
 	if runErr != nil {
 		return nil, runErr
 	}
@@ -796,7 +907,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if req.FollowUpShowConfig {
 		showArgv := []string{"--server", serverURL, "--token", req.Token, "machine", "backup", "--show-config"}
 		t.Logf("follow-up show-config argv: %v", showArgv)
-		code, stdout, stderr, runErr := runAgent(agentBin, showArgv, agentEnv)
+		code, stdout, stderr, runErr := runCLI(showArgv)
 		if runErr != nil {
 			return nil, runErr
 		}
@@ -807,6 +918,46 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 
 	return resp, nil
+}
+
+func runAgentInProcess(argv []string) (int, string, string, error) {
+	agentcliInProcessMu.Lock()
+	defer agentcliInProcessMu.Unlock()
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return 0, "", "", err
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		stdoutR.Close()
+		stdoutW.Close()
+		return 0, "", "", err
+	}
+
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdoutW, stderrW
+
+	runErr := agentcli.Run(agentcli.RemoteProfile(), argv)
+
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+
+	outBytes, _ := io.ReadAll(stdoutR)
+	errBytes, _ := io.ReadAll(stderrR)
+	_ = stdoutR.Close()
+	_ = stderrR.Close()
+
+	stdout := string(outBytes)
+	stderr := string(errBytes)
+	exitCode := 0
+	if runErr != nil {
+		// Match cmd/remote-agent main: print Error to stderr, exit 1.
+		stderr += fmt.Sprintf("Error: %v\n", runErr)
+		exitCode = 1
+	}
+	return exitCode, stdout, stderr, nil
 }
 
 func runAgent(bin string, argv, env []string) (int, string, string, error) {
@@ -826,6 +977,7 @@ func runAgent(bin string, argv, env []string) (int, string, string, error) {
 	}
 	return exitCode, outBuf.String(), errBuf.String(), nil
 }
+
 
 type remoteAgentConfigFile struct {
 	Default string            `json:"default,omitempty"`
@@ -847,23 +999,6 @@ func writeRemoteAgentConfig(path, server, token string) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
-}
-
-func findModuleRoot() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			panic("go.mod not found")
-		}
-		dir = parent
-	}
 }
 
 func portBaseFromTestName(name string) int {
@@ -1035,7 +1170,7 @@ func stripEnvPrefix(env []string, prefix string) []string {
 	return out
 }
 
-func ensureSessionDefaultArchive(t *testing.T, moduleRoot, serverBin, agentBin, cacheDir, token string) (string, error) {
+func ensureSessionDefaultArchive(t *testing.T, moduleRoot, serverBin, agentBin, cacheDir, token, sessionID string) (string, error) {
 	t.Helper()
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return "", err
@@ -1067,7 +1202,7 @@ func ensureSessionDefaultArchive(t *testing.T, moduleRoot, serverBin, agentBin, 
 			return err
 		}
 		defer os.RemoveAll(agentHome)
-		port := pickFreePort(27000 + portBaseFromTestName(DOCTEST_SESSION_ID)%500)
+		port := pickFreePort(27000 + portBaseFromTestName(sessionID)%500)
 		serverURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 		killPort(port)
 		serverCmd := exec.Command(serverBin, "--port", strconv.Itoa(port), "--credentials-file", credFile)

@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "L3 smoke: product binary upload-dir path"
+---
+
 ## Expected
 
 1. Non-zero exit.
@@ -22,9 +27,11 @@ Non-zero.
 import (
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

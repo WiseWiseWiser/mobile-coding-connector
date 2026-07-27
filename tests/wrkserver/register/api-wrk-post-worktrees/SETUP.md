@@ -24,9 +24,10 @@ REQUIREMENT scenario 10 (POST half). Validation 4xx proves the handler ran
 import (
 	"net/http"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Base = "/api/wrk"
 	req.Method = http.MethodPost
 	req.Path = "/api/wrk/worktrees"

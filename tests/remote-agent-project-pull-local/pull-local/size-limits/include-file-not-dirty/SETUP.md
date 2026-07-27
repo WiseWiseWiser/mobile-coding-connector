@@ -25,9 +25,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	pair := pairSameOriginRepos(t)
 	readme := filepath.Join(pair.RemoteDir, "README.md")
 	if err := os.WriteFile(readme, []byte("small dirty\n"), 0644); err != nil {

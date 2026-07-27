@@ -21,9 +21,13 @@ Server listens on the same port passed via `--port`.
 REQUIREMENT: `--port` is shorthand for `--server http://localhost:N`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.StartServer = true
 	req.SyncPortFlagFromServer = true
 	req.Args = []string{"ping"}

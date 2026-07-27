@@ -23,9 +23,11 @@ POST /api/cron-tasks with both|neither schedule or timeout≤0 -> error
 Priority leaf 12 (validation).
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.UseCLI = false
 	req.Action = "create"
 	return nil

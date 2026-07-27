@@ -19,9 +19,13 @@ No live PID and daemon is not trying to keep the service running.
 REQUIREMENT leaf: `action/stop-disabled`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.PID = 0
 	req.DesiredRunning = false
 	return nil

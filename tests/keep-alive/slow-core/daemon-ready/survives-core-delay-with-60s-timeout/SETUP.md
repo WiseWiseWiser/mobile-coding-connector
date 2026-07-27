@@ -20,9 +20,11 @@ keep-alive(60s) -> managed server (15s pre-listen) -> server_ready waited_ms∈[
 Primary fix validation for remote kill/restart loop under slow fork/I/O.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.CoreDelayMs = 15000
 	req.StartupTimeout = "60s"
 	req.ObserveSecs = 65

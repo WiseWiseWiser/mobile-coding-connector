@@ -21,9 +21,13 @@ destination path occupied by non-directory
 REQUIREMENT leaf #8 — dir-rejected/dst-is-file.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	localRoot := mkLocalWorkDir(t)
 	seedRejectLocalTree(t, localRoot)
 	req.ServerPreseedFiles = map[string]string{

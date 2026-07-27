@@ -1,33 +1,36 @@
 # Remote-Agent Project bind-local & pull-local Doctests
 
-End-to-end tests for `remote-agent project bind-local` and
-`remote-agent project pull-local`: origin validation, config bindings, dirty-state
-transfer into local git worktrees, flags, and submodule guards.
+Doctests for `remote-agent project bind-local` and `remote-agent project pull-local`:
+origin validation, config bindings, dirty-state transfer into local git worktrees,
+flags, and submodule guards.
+
+Most leaves are **L2 in-process** (`projects.RegisterAPIForFile` +
+`projectpull.RegisterAPI` + `agentcli.Run` with testhooks home override). Two
+sparse **L3 e2e** smokes keep the product binary path.
 
 # DSN (Domain Specific Notion)
 
-The harness exercises the remote profile against a live `ai-critic-server` with
-registered project directories (temp git repos on the test machine). For
-`pull-local`, the server exposes `POST /api/remote-agent/project/pull-local`
+Most leaves are **L2 in-process**: projects + projectpull HTTP handlers on a local
+mux + `agentcli.Run` with mutex-scoped home override (no product binaries, no
+process Setenv). Two sparse **L3 e2e** smokes keep the binary path
+(`UseCLI` + `label: heavy, e2e`): `pull-local/bound-dirty-success` and
+`pull-local/size-limits/oversized-file-rejected`.
+
+For `pull-local`, the server exposes `POST /api/remote-agent/project/pull-local`
 (dry-run JSON plan or streamed tar.gz package) and
-`POST /api/remote-agent/project/pull-local/truncate`; the CLI applies the
-package locally. `bind-local` remains local-config only. Local git operations run
-in an isolated `HOME` so `remote-agent-config.json` and `project-worktrees/`
-never touch the developer machine.
+`POST /api/remote-agent/project/pull-local/truncate`; the CLI applies the package
+locally. `bind-local` remains local-config only.
 
 **Participants**
 
-- **remote-agent subprocess** — `./cmd/remote-agent`; subcommands `project bind-local`
-  and `project pull-local` with `--server` / `--token`.
-- **ai-critic-server subprocess** — ephemeral port, `AI_CRITIC_HOME` with
-  `projects.json` and credentials; enforces pull-local guards (clean/dirty,
-  submodules, per-file 1MB cap, total package cap) and builds tar.gz payloads.
-- **Remote project directory** — temp clone registered as `ProjectInfo.Dir`; may
-  include a clean or dirty submodule tree.
-- **Local git repository** — separate temp clone sharing a `file://` bare origin
-  with the remote project repo.
-- **Isolated agent HOME** — temp `HOME` → `~/.ai-critic/remote-agent-config.json`
-  (`project_bindings`) and `~/.ai-critic/remote-agent/project-worktrees/…`.
+- **L2: agentcli.Run** — in-process `bind-local` / `pull-local` against the local mux.
+- **L2: projects + projectpull HTTP** — `RegisterAPIForFile` + `projectpull.RegisterAPI`
+  on ephemeral port (same wire paths as production).
+- **L3: remote-agent + ai-critic-server subprocesses** — sparse `UseCLI` smokes.
+- **Remote project directory** — temp clone registered as `ProjectInfo.Dir`.
+- **Local git repository** — separate temp clone sharing a `file://` bare origin.
+- **Isolated agent HOME** — config + `project-worktrees/` via testhooks override (L2)
+  or child `HOME=` (L3).
 
 **Behaviors**
 
@@ -47,7 +50,7 @@ never touch the developer machine.
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -130,7 +133,8 @@ never touch the developer machine.
 ```sh
 go run ./script/build
 doctest vet ./tests/remote-agent-project-pull-local
-doctest test -v --gen-dir /tmp/pull-local-server ./tests/remote-agent-project-pull-local/...
+doctest test ./tests/remote-agent-project-pull-local/...          # unlabeled L2 mass
+doctest test --label e2e ./tests/remote-agent-project-pull-local/...  # ~2 L3 smokes
 go test ./server/projectpull/... ./cmd/agentcli/... -count=1
 ```
 
@@ -149,12 +153,22 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/xhd2015/ai-critic/cmd/agentcli"
+	"github.com/xhd2015/ai-critic/cmd/agentcli/testhooks"
 	"github.com/xhd2015/ai-critic/script/lib"
+	serverexec "github.com/xhd2015/ai-critic/server/exec"
+	"github.com/xhd2015/ai-critic/server/projectpull"
+	"github.com/xhd2015/ai-critic/server/projects"
+	"github.com/xhd2015/doctest/session"
 )
+
+// agentcliInProcessMu serializes in-process agentcli.Run (profile + I/O + home override).
+var agentcliInProcessMu sync.Mutex
 
 // ProjectEntry is one row written to projects.json before the CLI runs.
 type ProjectEntry struct {
@@ -188,6 +202,14 @@ type Request struct {
 	WorktreeCollision bool
 
 	RemoteDirAfterSetup string
+
+	// UseCLI forces the L3 product-binary path. Default false → L2 in-process.
+	UseCLI bool
+	E2E    bool
+}
+
+func useBinaryPath(req *Request) bool {
+	return req != nil && (req.UseCLI || req.E2E)
 }
 
 type Response struct {
@@ -233,34 +255,15 @@ type bindingRow struct {
 	LocalPath string `json:"local_path"`
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	if req.Token == "" {
 		req.Token = lib.TestPassword
 	}
 
-	moduleRoot := findModuleRoot()
-
-	safeName := strings.ReplaceAll(t.Name(), "/", "_")
-	serverBin := filepath.Join(os.TempDir(), "ai-critic-server-pull-local-"+safeName)
-	agentBin := filepath.Join(os.TempDir(), "remote-agent-pull-local-"+safeName)
-
-	for _, spec := range []struct {
-		out string
-		pkg string
-	}{
-		{serverBin, "."},
-		{agentBin, "./cmd/remote-agent"},
-	} {
-		cmd := exec.Command("go", "build", "-o", spec.out, spec.pkg)
-		cmd.Dir = moduleRoot
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return nil, fmt.Errorf("build %s: %w\n%s", spec.pkg, err, string(out))
-		}
-		t.Cleanup(func() { os.Remove(spec.out) })
-	}
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
+	cacheDir := sessionCacheDir(d.DOCTEST_SESSION_ID)
 
 	configHome, err := lib.CreateTestConfigHome()
 	if err != nil {
@@ -282,43 +285,25 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	resp.RemoteConfigPath = filepath.Join(aiCriticAgent, "remote-agent-config.json")
 
-	credFile, err := lib.WriteTestCredentials(configHome)
-	if err != nil {
-		return nil, err
+	projectsList := req.Projects
+	if len(projectsList) == 0 && req.Project.Dir != "" {
+		projectsList = []ProjectEntry{req.Project}
 	}
-
-	portBase := portBaseFromTestName(t.Name())
-	serverPort := pickFreePort(portBase)
-	resp.ServerPort = serverPort
-
-	projects := req.Projects
-	if len(projects) == 0 && req.Project.Dir != "" {
-		projects = []ProjectEntry{req.Project}
-	}
-	if len(projects) > 0 {
-		for i := range projects {
-			absDir, err := filepath.Abs(projects[i].Dir)
+	if len(projectsList) > 0 {
+		for i := range projectsList {
+			absDir, err := filepath.Abs(projectsList[i].Dir)
 			if err != nil {
 				return nil, fmt.Errorf("abs project dir: %w", err)
 			}
-			projects[i].Dir = absDir
+			projectsList[i].Dir = absDir
 		}
-		req.Projects = projects
-		resp.ProjectDir = projects[0].Dir
-		req.RemoteDirAfterSetup = projects[0].Dir
-	}
-
-	if len(projects) > 0 {
-		if err := writeProjectsJSON(configHome, projects); err != nil {
+		req.Projects = projectsList
+		resp.ProjectDir = projectsList[0].Dir
+		req.RemoteDirAfterSetup = projectsList[0].Dir
+		if err := writeProjectsJSON(configHome, projectsList); err != nil {
 			return nil, err
 		}
 	}
-
-	serverURL := req.Server
-	if serverURL == "" {
-		serverURL = fmt.Sprintf("http://localhost:%d", serverPort)
-	}
-	normalizedServer := strings.TrimRight(strings.TrimSpace(serverURL), "/")
 
 	if req.LocalPath != "" {
 		absLocal, err := filepath.Abs(req.LocalPath)
@@ -328,6 +313,92 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		req.LocalPath = absLocal
 		resp.LocalPath = absLocal
 	}
+
+	if useBinaryPath(req) {
+		return runBinaryE2E(t, d, req, resp, moduleRoot, cacheDir, configHome, agentHome)
+	}
+	return runInProcessL2(t, d, req, resp, configHome, agentHome)
+}
+
+func withBearerAuth(validToken string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ping" || !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		authHeader := r.Header.Get("Authorization")
+		if !strings.HasPrefix(authHeader, "Bearer ") || strings.TrimPrefix(authHeader, "Bearer ") != validToken {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func runInProcessL2(t *testing.T, d *session.Doctest, req *Request, resp *Response, configHome, agentHome string) (*Response, error) {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	projects.RegisterAPIForFile(mux, filepath.Join(configHome, "projects.json"))
+	projectpull.RegisterAPI(mux)
+	// bind-local / pull-local resolve remote origin via POST /api/exec (git -C …).
+	serverexec.RegisterAPI(mux)
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	handler := withBearerAuth(lib.TestPassword, mux)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("listen in-process pull-local server: %w", err)
+	}
+	serverPort := ln.Addr().(*net.TCPAddr).Port
+	resp.ServerPort = serverPort
+	srv := &http.Server{Handler: handler}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	serverURL := req.Server
+	if serverURL == "" {
+		serverURL = fmt.Sprintf("http://127.0.0.1:%d", serverPort)
+	}
+	normalizedServer := strings.TrimRight(strings.TrimSpace(serverURL), "/")
+
+	if err := writeRemoteAgentConfig(resp.RemoteConfigPath, normalizedServer, req.Token, req.SeedBindings); err != nil {
+		return nil, err
+	}
+
+	pingURL := fmt.Sprintf("http://127.0.0.1:%d/ping", serverPort)
+	if err := waitHTTPReady(pingURL, 10*time.Second); err != nil {
+		return nil, err
+	}
+	t.Logf("L2 in-process pull-local server on %s", normalizedServer)
+
+	return finishPullRuns(t, req, resp, serverURL, agentHome, true, "")
+}
+
+func runBinaryE2E(t *testing.T, d *session.Doctest, req *Request, resp *Response, moduleRoot, cacheDir, configHome, agentHome string) (*Response, error) {
+	t.Helper()
+
+	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
+
+	credFile, err := lib.WriteTestCredentials(configHome)
+	if err != nil {
+		return nil, err
+	}
+
+	portBase := portBaseFromTestName(t.Name())
+	serverPort := pickFreePort(portBase)
+	resp.ServerPort = serverPort
+
+	serverURL := req.Server
+	if serverURL == "" {
+		serverURL = fmt.Sprintf("http://localhost:%d", serverPort)
+	}
+	normalizedServer := strings.TrimRight(strings.TrimSpace(serverURL), "/")
 
 	if err := writeRemoteAgentConfig(resp.RemoteConfigPath, normalizedServer, req.Token, req.SeedBindings); err != nil {
 		return nil, err
@@ -352,28 +423,22 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, err
 	}
 
+	return finishPullRuns(t, req, resp, serverURL, agentHome, false, agentBin)
+}
+
+func finishPullRuns(t *testing.T, req *Request, resp *Response, serverURL, agentHome string, inProcess bool, agentBin string) (*Response, error) {
+	t.Helper()
+
+	if len(req.Args) == 0 {
+		return nil, fmt.Errorf("Request.Args is required")
+	}
+
 	invocations := 1
 	if req.WorktreeCollision {
 		invocations = 2
 	}
 
-	argv := req.Args
-	if len(argv) == 0 {
-		return nil, fmt.Errorf("Request.Args is required")
-	}
-
-	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
-	agentEnv = stripEnvPrefix(agentEnv, "GIT_CONFIG_COUNT=")
-	agentEnv = stripEnvPrefix(agentEnv, "GIT_CONFIG_KEY_")
-	agentEnv = stripEnvPrefix(agentEnv, "GIT_CONFIG_VALUE_")
-	agentEnv = append(agentEnv, "HOME="+agentHome)
-	agentEnv = append(agentEnv,
-		"GIT_CONFIG_COUNT=1",
-		"GIT_CONFIG_KEY_0=protocol.file.allow",
-		"GIT_CONFIG_VALUE_0=always",
-	)
-
-	var lastStdout, lastStderr bytes.Buffer
+	var lastStdout, lastStderr string
 	var lastExit int
 
 	for i := 0; i < invocations; i++ {
@@ -384,47 +449,140 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		}
 
 		full := []string{"--server", serverURL, "--token", req.Token}
-		full = append(full, argv...)
-		t.Logf("remote-agent argv: %v", full)
-
-		agentCmd := exec.Command(agentBin, full...)
-		agentCmd.Env = agentEnv
-		if req.PipeStdin {
-			agentCmd.Stdin = strings.NewReader("")
+		full = append(full, req.Args...)
+		mode := "L2-inprocess"
+		if !inProcess {
+			mode = "L3-binary"
 		}
+		t.Logf("%s remote-agent argv: %v", mode, full)
 
-		var outBuf, errBuf bytes.Buffer
-		agentCmd.Stdout = &outBuf
-		agentCmd.Stderr = &errBuf
-
-		runErr := agentCmd.Run()
+		var exitCode int
+		var out, errOut string
+		var runErr error
+		if inProcess {
+			exitCode, out, errOut, runErr = runAgentInProcess(full, agentHome, req.PipeStdin)
+		} else {
+			exitCode, out, errOut, runErr = runAgentBinary(agentBin, full, agentHome, req.PipeStdin)
+		}
 		if runErr != nil {
-			if exitErr, ok := runErr.(*exec.ExitError); ok {
-				lastExit = exitErr.ExitCode()
-			} else {
-				return nil, runErr
-			}
+			return nil, runErr
 		}
-		lastStdout = outBuf
-		lastStderr = errBuf
+		lastExit = exitCode
+		lastStdout = out
+		lastStderr = errOut
 		resp.InvocationCount++
 
 		if req.WorktreeCollision && i == 0 && lastExit != 0 {
-			return nil, fmt.Errorf("first pull-local failed exit %d:\n%s\n%s", lastExit, outBuf.String(), errBuf.String())
+			return nil, fmt.Errorf("first pull-local failed exit %d:\n%s\n%s", lastExit, out, errOut)
 		}
 	}
 
 	resp.ExitCode = lastExit
-	resp.Stdout = lastStdout.String()
-	resp.Stderr = lastStderr.String()
+	resp.Stdout = lastStdout
+	resp.Stderr = lastStderr
 	resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
-
 	return resp, nil
 }
 
-func writeProjectsJSON(configHome string, projects []ProjectEntry) error {
-	rows := make([]projectsFileRow, 0, len(projects))
-	for _, project := range projects {
+func runAgentInProcess(argv []string, agentHome string, pipeStdin bool) (int, string, string, error) {
+	agentcliInProcessMu.Lock()
+	defer agentcliInProcessMu.Unlock()
+
+	testhooks.SetHomeOverride(agentHome)
+	defer testhooks.ResetInProcessOverrides()
+
+	oldIn := os.Stdin
+	var stdinFile *os.File
+	if pipeStdin {
+		r, w, err := os.Pipe()
+		if err != nil {
+			return 0, "", "", err
+		}
+		_ = w.Close()
+		stdinFile = r
+		os.Stdin = r
+	} else {
+		devNull, err := os.Open(os.DevNull)
+		if err != nil {
+			return 0, "", "", err
+		}
+		stdinFile = devNull
+		os.Stdin = devNull
+	}
+	defer func() {
+		os.Stdin = oldIn
+		_ = stdinFile.Close()
+	}()
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return 0, "", "", err
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		stdoutR.Close()
+		stdoutW.Close()
+		return 0, "", "", err
+	}
+
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdoutW, stderrW
+
+	runErr := agentcli.Run(agentcli.RemoteProfile(), argv)
+
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+
+	outBytes, _ := io.ReadAll(stdoutR)
+	errBytes, _ := io.ReadAll(stderrR)
+	_ = stdoutR.Close()
+	_ = stderrR.Close()
+
+	stdout := string(outBytes)
+	stderr := string(errBytes)
+	exitCode := 0
+	if runErr != nil {
+		stderr += fmt.Sprintf("Error: %v\n", runErr)
+		exitCode = 1
+	}
+	return exitCode, stdout, stderr, nil
+}
+
+func runAgentBinary(bin string, argv []string, agentHome string, pipeStdin bool) (int, string, string, error) {
+	cmd := exec.Command(bin, argv...)
+	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
+	agentEnv = stripEnvPrefix(agentEnv, "GIT_CONFIG_COUNT=")
+	agentEnv = stripEnvPrefix(agentEnv, "GIT_CONFIG_KEY_")
+	agentEnv = stripEnvPrefix(agentEnv, "GIT_CONFIG_VALUE_")
+	agentEnv = append(agentEnv, "HOME="+agentHome)
+	agentEnv = append(agentEnv,
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=protocol.file.allow",
+		"GIT_CONFIG_VALUE_0=always",
+	)
+	cmd.Env = agentEnv
+	if pipeStdin {
+		cmd.Stdin = strings.NewReader("")
+	}
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	runErr := cmd.Run()
+	exitCode := 0
+	if runErr != nil {
+		if exitErr, ok := runErr.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			return 0, "", "", runErr
+		}
+	}
+	return exitCode, outBuf.String(), errBuf.String(), nil
+}
+
+func writeProjectsJSON(configHome string, projectsList []ProjectEntry) error {
+	rows := make([]projectsFileRow, 0, len(projectsList))
+	for _, project := range projectsList {
 		if project.ID == "" || project.Name == "" || project.Dir == "" {
 			return fmt.Errorf("project id, name, and dir are required")
 		}
@@ -509,23 +667,6 @@ func worktreeBaseDir(agentHome string) string {
 	return filepath.Join(agentHome, ".ai-critic", "remote-agent", "project-worktrees")
 }
 
-func findModuleRoot() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			panic("go.mod not found")
-		}
-		dir = parent
-	}
-}
-
 func portBaseFromTestName(name string) int {
 	hash := 0
 	for _, c := range name {
@@ -538,6 +679,12 @@ func portBaseFromTestName(name string) int {
 }
 
 func pickFreePort(base int) int {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err == nil {
+		port := ln.Addr().(*net.TCPAddr).Port
+		ln.Close()
+		return port
+	}
 	for port := base; port < base+200; port++ {
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err == nil {
@@ -564,4 +711,6 @@ func waitHTTPReady(url string, timeout time.Duration) error {
 	}
 	return fmt.Errorf("timeout waiting for %s", url)
 }
+
+
 ```

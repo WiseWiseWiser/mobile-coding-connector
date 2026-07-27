@@ -21,9 +21,13 @@ Default `serverHome` fixtures; server serves GET /api/remote-agent/machine/backu
 REQUIREMENT leaf `backup/show-config`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ShowConfig = true
 	req.Args = []string{"machine", "backup"}
 	return nil

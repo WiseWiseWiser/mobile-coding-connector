@@ -1,3 +1,7 @@
+---
+label: e2e
+explanation: CleanupAllOpencodeServe kills remaining serve children
+---
 ## Expected
 
 1. Launch succeeded.

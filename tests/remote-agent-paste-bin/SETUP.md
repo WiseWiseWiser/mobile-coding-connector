@@ -1,29 +1,28 @@
 # Scenario
 
-**Feature**: remote-agent paste-bin integration harness
+**Feature**: remote-agent paste-bin doctest harness (L2 mass + L3 smokes)
 
 ```
-# configHome scratch.json + agentHome config + session-cached binaries
-leaf Setup -> seed/reset scratch -> remote-agent paste-bin -> stdout/stderr + API scratch
+# L2: RegisterAPIForDir + agentcli.Run | L3 UseCLI: product binaries
+leaf Setup -> seed/reset scratch -> paste-bin -> stdout/stderr + API scratch
 ```
 
 ## Preconditions
 
 1. Doctest injects `DOCTEST_SESSION_ID` to scope a file cache under
-   `$TMPDIR/remote-agent-paste-bin-doctest-<session>/` (binaries built once per run).
+   `$TMPDIR/remote-agent-paste-bin-doctest-<session>/` (L3 binaries when needed).
 2. Session file locks (`flock`) serialize first-time cache population across parallel leaves.
-3. Each leaf gets isolated `configHome` (server `AI_CRITIC_HOME`) and `agentHome`; only compiled
-   binaries are shared.
-4. Server runs with `lib.AppendTestServerEnv` so scratch resolves under
-   `{configHome}/file-transfer/scratch.json`.
-5. Read leaves use TTY stdin (no `PipedStdin`). Write leaves set `PipedStdin` and `StdinBytes`.
+3. Each leaf gets isolated `configHome` and `agentHome`; only compiled binaries are shared.
+4. **L2** (default): in-process mux with `filetransfer.RegisterAPIForDir(mux, configHome/file-transfer)`
+   + local bearer auth + `agentcli.Run` with mutex-scoped stdin swap (no process Setenv).
+5. **L3** (`UseCLI` smokes only): product binaries with `AI_CRITIC_HOME=configHome`.
+6. Read leaves use TTY stdin (no `PipedStdin` → L2 uses `/dev/null`). Write leaves set `PipedStdin` and `StdinBytes`.
 
 ## Steps
 
-1. Root `Run` builds binaries, creates `configHome`/`agentHome`, applies scratch seed/reset,
-   starts `ai-critic-server` on an ephemeral port, writes agent config.
-2. Leaf `Setup` sets `Request.Args`, scratch state, and stdin pipe mode.
-3. `Run` executes `remote-agent --server ... --token ... paste-bin ...` with optional stdin pipe.
+1. Root `Run` creates `configHome`/`agentHome`, applies scratch seed/reset; L2 starts in-process API, L3 builds/starts product binaries.
+2. Leaf `Setup` sets `Request.Args`, scratch state, and stdin pipe mode; smokes set `UseCLI`.
+3. `Run` executes `paste-bin` via agentcli (L2) or product binary (L3).
 4. `Run` fetches scratch via `GET /api/file-transfer/scratch` after CLI for side-effect checks.
 5. Leaf `Assert` checks exit code, CLI output, and scratch API state.
 
@@ -46,6 +45,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
 
 const (
@@ -61,8 +61,8 @@ const (
 	largePayloadSize     = 5000
 )
 
-func sessionCacheDir() string {
-	return filepath.Join(os.TempDir(), "remote-agent-paste-bin-doctest-"+DOCTEST_SESSION_ID)
+func sessionCacheDir(sessionID string) string {
+	return filepath.Join(os.TempDir(), "remote-agent-paste-bin-doctest-"+sessionID)
 }
 
 func withFileLock(t *testing.T, lockPath string, fn func() error) error {
@@ -123,12 +123,15 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if len(req.Args) == 0 {
 		req.Args = []string{"paste-bin"}
 	}
 	if req.Token == "" {
 		req.Token = lib.TestPassword
+	}
+	if d.DOCTEST_SESSION_ID == "" {
+		t.Fatal("session id empty on session.Doctest")
 	}
 	return nil
 }

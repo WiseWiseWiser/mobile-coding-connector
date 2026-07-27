@@ -1,8 +1,7 @@
 ---
-label: slow && negative
-explanation: stuck update menu; waits for error/timeout (~90s service ctx until early Skip failure)
+label: slow, negative, e2e
+explanation: fake TUI stuck on Update now; expects error / non-ready
 ---
-
 ## Expected
 
 1. `ServiceStatus` is `error` (not `ready`).
@@ -19,9 +18,11 @@ explanation: stuck update menu; waits for error/timeout (~90s service ctx until 
 import (
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

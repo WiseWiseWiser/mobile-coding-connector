@@ -19,9 +19,13 @@ New Terminal… for remote app uses remote-agent.
 REQUIREMENT leaf: `command/new-remote`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "new_cmd"
 	req.AgentBinary = "remote-agent"
 	return nil

@@ -21,9 +21,13 @@ Prereq backup; no post-backup mutation.
 REQUIREMENT leaf `restore/dry-run-identical`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.AfterBackupMutate = ""
 	req.Args = []string{"machine", "restore", "--dry-run"}
 	return nil

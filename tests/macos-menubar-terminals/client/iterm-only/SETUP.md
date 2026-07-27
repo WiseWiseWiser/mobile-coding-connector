@@ -26,9 +26,13 @@ REQUIREMENT leaf: iTerm-only + terminals refactor onto `/api/local/iterm2/open`.
 **Updated** from prior contract that only checked iTerm string presence.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "iterm-only"
 	return nil
 }

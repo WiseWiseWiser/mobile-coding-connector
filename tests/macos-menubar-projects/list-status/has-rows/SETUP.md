@@ -21,9 +21,13 @@ REQUIREMENT: success with rows → project menus only for the empty-area helper
 (returns empty string so callers do not replace rows with a status label).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Loading = true
 	req.ProjectCount = 2
 	req.ErrMsg = ""

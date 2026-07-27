@@ -23,9 +23,11 @@ HTTP GET|POST|DELETE /api/cron-tasks -> global list of CronTaskStatus
 Priority leaves 1 (CRUD). Global scope only — no projectDir.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.UseCLI = false
 	return nil
 }

@@ -22,9 +22,13 @@ Seed local sample; also write remote sentinel with different data.
 Isolation: remote file must not appear in dump.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedConfig = sampleLocalConfig()
 	req.AlsoSeedRemoteConfig = remoteOnlySentinel()
 	req.Args = []string{"config", "--show"}

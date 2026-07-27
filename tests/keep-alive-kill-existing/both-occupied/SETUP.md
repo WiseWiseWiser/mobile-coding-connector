@@ -19,9 +19,11 @@ occupiers (server + daemon) -> keep-alive --kill-existing -> both dead -> clean 
 Worst-case stale listeners on both ports (menu-bar respawn path).
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.KillExisting = true
 	req.OccupyServerPort = true
 	req.OccupyDaemonPort = true

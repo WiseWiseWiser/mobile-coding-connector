@@ -40,9 +40,11 @@ contracts live in `tests/macos-menubar-projects` and
 `tests/macos-menubar-terminals`.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req == nil {
 		t.Fatal("nil request")
 	}

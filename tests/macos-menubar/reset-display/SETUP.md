@@ -21,9 +21,13 @@ reset string + now -> FormatResetDisplay -> "{Month} {day}, {HH}:{mm}" | raw pas
 REQUIREMENT-DESIGN-menubar-display-v2.md `FormatResetDisplay` helper tests.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "reset-display"
 	return nil
 }

@@ -19,9 +19,13 @@ Task status is `error`.
 REQUIREMENT leaf: `action/run-when-error`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Status = "error"
 	return nil
 }

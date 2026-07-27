@@ -22,9 +22,13 @@ REQUIREMENT locked decision (orchestrator): **Open in iTerm2** under each projec
 opens `project.path` with mode reuse. Not Menu-title click alone.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "click-main-opens"
 	return nil
 }

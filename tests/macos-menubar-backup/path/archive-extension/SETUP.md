@@ -19,9 +19,13 @@ Filename matches CLI machine backup naming: `machine-backup-<YYYYMMDD-HHMMSS>.ta
 REQUIREMENT leaf: paths #10; CLI uses same pattern.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "path_archive_filename"
 	req.UTCTimeRFC3339 = "2026-07-10T12:00:00Z"
 	return nil

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -20,37 +21,71 @@ type FileInfo struct {
 	FileMode string `json:"file_mode,omitempty"`
 }
 
-// RegisterAPI registers the file upload/download endpoints
+// RegisterAPI registers the file upload/download endpoints using the process
+// user home (production path).
 func RegisterAPI(mux *http.ServeMux) {
+	RegisterAPIForHome(mux, "")
+}
+
+// RegisterAPIForHome registers the same endpoints as RegisterAPI, but reports
+// and scopes home-relative behaviour (GetHome + upload-cache root) to the given
+// home directory. When home is empty, handlers fall back to os.UserHomeDir /
+// os.Getwd like RegisterAPI.
+//
+// Intended for in-process tests that want an isolated fake machine home without
+// mutating process environment.
+func RegisterAPIForHome(mux *http.ServeMux, home string) {
 	mux.HandleFunc("/api/files/check", handleCheck)
 	mux.HandleFunc("/api/files/upload", handleUpload)
 	mux.HandleFunc("/api/files/download", handleDownload)
 	mux.HandleFunc("/api/files/browse", handleBrowse)
-	mux.HandleFunc("/api/files/home", handleHome)
+	mux.HandleFunc("/api/files/home", func(w http.ResponseWriter, r *http.Request) {
+		handleHome(w, r, home)
+	})
 
-	// Chunked upload endpoints
-	mux.HandleFunc("/api/files/upload/init", handleUploadInit)
-	mux.HandleFunc("/api/files/upload/chunk", handleUploadChunk)
-	mux.HandleFunc("/api/files/upload/complete", handleUploadComplete)
+	// Chunked upload endpoints (hash-backed cache root scoped to home).
+	mux.HandleFunc("/api/files/upload/init", func(w http.ResponseWriter, r *http.Request) {
+		handleUploadInit(w, r, home)
+	})
+	mux.HandleFunc("/api/files/upload/chunk", func(w http.ResponseWriter, r *http.Request) {
+		handleUploadChunk(w, r, home)
+	})
+	mux.HandleFunc("/api/files/upload/complete", func(w http.ResponseWriter, r *http.Request) {
+		handleUploadComplete(w, r, home)
+	})
 }
 
 // handleHome returns the server's user home directory and current working
 // directory. Clients can use these to resolve relative paths when the user
 // has not supplied an absolute destination.
-func handleHome(w http.ResponseWriter, r *http.Request) {
+//
+// When homeOverride is non-empty it is used for both home and cwd (matches
+// production servers started with HOME=serverHome and Dir=serverHome).
+func handleHome(w http.ResponseWriter, r *http.Request, homeOverride string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get home dir: %v", err))
-		return
+	var home string
+	var err error
+	if strings.TrimSpace(homeOverride) != "" {
+		home = homeOverride
+	} else {
+		home, err = os.UserHomeDir()
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get home dir: %v", err))
+			return
+		}
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get cwd: %v", err))
-		return
+	var cwd string
+	if strings.TrimSpace(homeOverride) != "" {
+		cwd = homeOverride
+	} else {
+		cwd, err = os.Getwd()
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get cwd: %v", err))
+			return
+		}
 	}
 	writeJSON(w, map[string]string{
 		"home":     home,

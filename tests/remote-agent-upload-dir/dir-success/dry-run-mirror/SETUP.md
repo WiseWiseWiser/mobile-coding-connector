@@ -21,9 +21,13 @@ localDir -> remote-agent upload --dry-run -> stdout plan only, no remote bytes
 REQUIREMENT-DESIGN-upload-download-dry-run.md — dir-success/dry-run-mirror.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	localRoot := mkLocalWorkDir(t)
 	seedStandardLocalTree(t, localRoot)
 	setUploadDryRunArgs(t, req, localRoot, "uploads/mirror")

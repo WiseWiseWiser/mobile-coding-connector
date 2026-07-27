@@ -23,9 +23,13 @@ REQUIREMENT leaf `backup/large-dir-detail-deep`. Detail threshold is fixed 10 MB
 `LARGE SIZE` still uses default 40 MB.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedLargeDirDetailDeep = true
 	req.Args = []string{"machine", "backup", "--dry-run"}
 	return nil

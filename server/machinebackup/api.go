@@ -10,15 +10,42 @@ import (
 	"strings"
 )
 
-// RegisterAPI registers machine backup/restore HTTP endpoints.
+// RegisterAPI registers machine backup/restore HTTP endpoints that use the
+// process HOME environment variable as the backup root (production path).
 func RegisterAPI(mux *http.ServeMux) {
-	mux.HandleFunc("/api/remote-agent/machine/backup", handleBackup)
-	mux.HandleFunc("/api/remote-agent/machine/backup/stream", handleBackupStream)
+	RegisterAPIForHome(mux, "")
+}
+
+// RegisterAPIForHome registers the same endpoints as RegisterAPI, but scopes
+// backup/restore/config operations to the given home directory. When home is
+// empty, handlers fall back to os.Getenv("HOME") like RegisterAPI.
+//
+// Intended for in-process tests and any caller that wants an explicit home
+// without mutating process environment.
+func RegisterAPIForHome(mux *http.ServeMux, home string) {
+	homeFn := func() string {
+		if strings.TrimSpace(home) != "" {
+			return home
+		}
+		return os.Getenv("HOME")
+	}
+	mux.HandleFunc("/api/remote-agent/machine/backup", func(w http.ResponseWriter, r *http.Request) {
+		handleBackup(w, r, homeFn())
+	})
+	mux.HandleFunc("/api/remote-agent/machine/backup/stream", func(w http.ResponseWriter, r *http.Request) {
+		handleBackupStream(w, r, homeFn())
+	})
 	mux.HandleFunc("/api/remote-agent/machine/backup/archive", handleBackupArchiveDownload)
-	mux.HandleFunc("/api/remote-agent/machine/restore", handleRestore)
-	mux.HandleFunc("/api/remote-agent/machine/restore/stream", handleRestoreStream)
+	mux.HandleFunc("/api/remote-agent/machine/restore", func(w http.ResponseWriter, r *http.Request) {
+		handleRestore(w, r, homeFn())
+	})
+	mux.HandleFunc("/api/remote-agent/machine/restore/stream", func(w http.ResponseWriter, r *http.Request) {
+		handleRestoreStream(w, r, homeFn())
+	})
 	mux.HandleFunc("/api/remote-agent/machine/config", handleBuiltinConfig)
-	mux.HandleFunc("/api/remote-agent/machine/backup-config", handleBackupConfig)
+	mux.HandleFunc("/api/remote-agent/machine/backup-config", func(w http.ResponseWriter, r *http.Request) {
+		handleBackupConfig(w, r, homeFn())
+	})
 }
 
 func handleBuiltinConfig(w http.ResponseWriter, r *http.Request) {
@@ -35,8 +62,7 @@ func handleBuiltinConfig(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func handleBackupConfig(w http.ResponseWriter, r *http.Request) {
-	home := os.Getenv("HOME")
+func handleBackupConfig(w http.ResponseWriter, r *http.Request, home string) {
 	switch r.Method {
 	case http.MethodGet:
 		exclude, include := parsePathRulesQuery(r)
@@ -88,7 +114,7 @@ func handleBackupConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleBackup(w http.ResponseWriter, r *http.Request) {
+func handleBackup(w http.ResponseWriter, r *http.Request, home string) {
 	if r.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -105,7 +131,6 @@ func handleBackup(w http.ResponseWriter, r *http.Request) {
 		req.Include = []string{}
 	}
 
-	home := os.Getenv("HOME")
 	gitOpts := GitScanOptions{
 		SkipGitDirsScan:     req.SkipGitDirsScan,
 		GitDirsScanMaxDepth: req.GitDirsScanMaxDepth,
@@ -128,7 +153,7 @@ func handleBackup(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleBackupStream(w http.ResponseWriter, r *http.Request) {
+func handleBackupStream(w http.ResponseWriter, r *http.Request, home string) {
 	if r.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -144,7 +169,6 @@ func handleBackupStream(w http.ResponseWriter, r *http.Request) {
 	if req.Include == nil {
 		req.Include = []string{}
 	}
-	home := os.Getenv("HOME")
 	thresholdBytes, err := ResolveLargeDirThresholdBytes(home, req.LargeDirThresholdBytes)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
@@ -182,7 +206,7 @@ func handleBackupArchiveDownload(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleRestore(w http.ResponseWriter, r *http.Request) {
+func handleRestore(w http.ResponseWriter, r *http.Request, home string) {
 	if r.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -194,7 +218,6 @@ func handleRestore(w http.ResponseWriter, r *http.Request) {
 	}
 	exclude, include := parsePathRulesQuery(r)
 
-	home := os.Getenv("HOME")
 	var plan *MachineRestorePlan
 	if dryRun {
 		plan, err = BuildRestorePlan(home, r.Body, exclude, include)
@@ -209,7 +232,7 @@ func handleRestore(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(plan)
 }
 
-func handleRestoreStream(w http.ResponseWriter, r *http.Request) {
+func handleRestoreStream(w http.ResponseWriter, r *http.Request, home string) {
 	if r.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -220,7 +243,7 @@ func handleRestoreStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	exclude, include := parsePathRulesQuery(r)
-	if err := RestorePlanStream(w, os.Getenv("HOME"), r.Body, exclude, include, dryRun); err != nil {
+	if err := RestorePlanStream(w, home, r.Body, exclude, include, dryRun); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

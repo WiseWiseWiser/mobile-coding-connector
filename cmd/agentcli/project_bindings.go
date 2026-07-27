@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/xhd2015/ai-critic/cmd/agentcli/testhooks"
 	"github.com/xhd2015/gitops/git"
 )
 
@@ -182,7 +183,7 @@ func projectSlug(projectName, projectDir string) string {
 }
 
 func projectWorktreesRoot() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := testhooks.UserHomeDir()
 	if err != nil {
 		return "", err
 	}

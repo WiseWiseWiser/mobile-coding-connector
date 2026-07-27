@@ -189,12 +189,19 @@ func fetchTimeoutFromEnv() time.Duration {
 	return time.Duration(timeoutSec) * time.Second
 }
 
+// extraEnvMu serializes process env apply around in-process fetch for parallel doctests.
+var extraEnvMu sync.Mutex
+
 func (s *Service) applyExtraEnv() func() {
+	if len(s.extraEnv) == 0 {
+		return func() {}
+	}
 	type saved struct {
 		key string
 		val string
 		set bool
 	}
+	extraEnvMu.Lock()
 	var savedVars []saved
 	for key, val := range s.extraEnv {
 		prev, had := os.LookupEnv(key)
@@ -209,6 +216,7 @@ func (s *Service) applyExtraEnv() func() {
 				_ = os.Unsetenv(item.key)
 			}
 		}
+		extraEnvMu.Unlock()
 	}
 }
 

@@ -1,3 +1,7 @@
+---
+label: e2e
+explanation: launch path with stripped PATH (process-boundary launch API)
+---
 ## Expected
 
 1. `LaunchErr` is non-nil.

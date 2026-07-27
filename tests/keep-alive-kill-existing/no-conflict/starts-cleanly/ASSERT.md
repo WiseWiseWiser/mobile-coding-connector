@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "keep-alive --kill-existing binary + port-occupier process-boundary integration"
+---
+
 ## Expected
 
 1. `Run` completes without error.
@@ -24,9 +29,10 @@ import (
 	"testing"
 
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

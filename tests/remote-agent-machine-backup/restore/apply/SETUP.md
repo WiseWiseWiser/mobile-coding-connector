@@ -21,9 +21,15 @@ Prereq backup; `.bashrc` mutated after backup.
 REQUIREMENT leaf `restore/apply`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
+	// L3 smoke: restore apply via product binaries.
+	req.UseCLI = true
 	req.AfterBackupMutate = "modify-bashrc"
 	req.Args = []string{"machine", "restore"}
 	return nil

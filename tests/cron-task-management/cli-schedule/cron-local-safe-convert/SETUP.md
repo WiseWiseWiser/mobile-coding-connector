@@ -23,9 +23,11 @@ CLI -> local 09:00 -> stored UTC "0 1 * * *"; stdout shows local + stored UTC
 Priority leaf: CLI `--cron` local convert. On success print both local and stored UTC.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.UseCLI = true
 	req.Action = "create"
 	req.TaskName = "local-morning"
@@ -37,6 +39,7 @@ func Setup(t *testing.T, req *Request) error {
 		"--cron", "0 9 * * *",
 		"--timeout", "1h",
 	}
+	req.UseBinary = true // L3 smoke
 	return nil
 }
 ```

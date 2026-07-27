@@ -20,9 +20,13 @@ Fake Codex TUI via `CODEX_SHOW_STATUS_COMMAND` and isolated `TTY_WATCH_HOME`.
 REQUIREMENT leaf: `api/get-usage-ready`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.WaitAPIReadySecs = 15
 	return nil
 }

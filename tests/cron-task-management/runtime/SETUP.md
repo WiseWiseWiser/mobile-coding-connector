@@ -25,9 +25,11 @@ Priority leaves 2–7, 11 (default timeout). Unit-style pure schedule math may
 also live in package tests during implementation; these leaves are the sealed E2E contract.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.UseCLI = false
 	if req.PollTimeoutSecs <= 0 {
 		req.PollTimeoutSecs = 25

@@ -21,9 +21,13 @@ Symbols such as `pendingLines`, `pending`, `lineBuffer`, `flushPending` /
 REQUIREMENT #5; RED on current direct `appendOnMain` without buffer.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "pending-buffer"
 	return nil
 }

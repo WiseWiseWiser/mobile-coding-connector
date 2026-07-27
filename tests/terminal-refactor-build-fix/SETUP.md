@@ -36,10 +36,11 @@ import (
 	"testing"
 
 	"github.com/xhd2015/ai-critic/tests/terminal-refactor-build-fix/testdata/buildfixtest"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
-	_ = buildfixtest.ModuleRoot(t)
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	_ = buildfixtest.ModuleRoot(t, d)
 	return nil
 }
 ```

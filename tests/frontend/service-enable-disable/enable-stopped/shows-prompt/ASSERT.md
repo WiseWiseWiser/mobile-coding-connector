@@ -1,6 +1,6 @@
 ---
-label: ui-automation
-explanation: Playwright drives /home/service Enable flow; quick-test compile ~25s
+label: ui-automation, e2e, heavy
+explanation: Playwright drives /home/service Enable flow; quick-test compile ~25s; true process/UI e2e (quick-test + Playwright)
 ---
 
 ## Expected
@@ -31,9 +31,10 @@ import (
 	"testing"
 
 	"github.com/xhd2015/doctest/assert"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		out := ""
 		if resp != nil {

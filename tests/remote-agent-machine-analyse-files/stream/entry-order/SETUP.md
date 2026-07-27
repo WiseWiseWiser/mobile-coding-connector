@@ -20,9 +20,13 @@ blocks appear as .codex, aaa-first, mmm-mid, notes.txt, zzz-last
 REQUIREMENT leaf `stream/entry-order`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedProfile = "entry-order"
 	req.Args = []string{"machine", "analyse-files"}
 	return nil

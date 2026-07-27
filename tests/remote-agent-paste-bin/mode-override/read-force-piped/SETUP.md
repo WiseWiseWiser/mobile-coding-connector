@@ -21,9 +21,13 @@ Scratch seeded; piped bytes must not overwrite seed.
 REQUIREMENT leaf: `read-force-piped`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	seedScratch(req, forceReadSeedContent, seededMetaUpdatedAt)
 	setReadForcePiped(t, req, []byte(forceReadIgnoredPipe))
 	return nil

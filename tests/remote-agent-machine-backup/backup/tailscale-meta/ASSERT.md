@@ -34,6 +34,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/doctest/assert"
 )
 
@@ -49,7 +51,7 @@ var (
 	tailscalePeerBRowRE       = regexp.MustCompile(regexp.QuoteMeta(tailscaleFixturePeerBName) + `.*` + regexp.QuoteMeta(tailscaleFixturePeerBIP) + `.*macOS`)
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

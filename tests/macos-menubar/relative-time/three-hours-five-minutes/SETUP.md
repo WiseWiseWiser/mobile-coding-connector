@@ -19,9 +19,13 @@ Remaining duration is 3 hours 5 minutes.
 REQUIREMENT-DESIGN-menubar-display-v2.md: ≥1h and <24h uses `h`+`m` compound.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Reset = "July 6, 20:00 PT"
 	req.NowRFC3339 = "2026-07-06T16:55:00-07:00"
 	return nil

@@ -22,12 +22,16 @@ Remote `uploads/mirror/big.bin` is 1024 bytes; local `local-mirror/big.bin` pre-
 REQUIREMENT leaf #5 — dir-success/resume-partial-file.
 
 ```go
-import "testing"
+import (
+	"testing"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 const partialFileSize = 1024
 const partialPrefill = 512
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	full := string(repeatBytePattern(partialFileSize, 42))
 	req.ServerPreseedFiles = map[string]string{
 		"uploads/mirror/big.bin": full,

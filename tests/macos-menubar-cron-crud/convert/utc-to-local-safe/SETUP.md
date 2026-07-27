@@ -23,9 +23,13 @@ REQUIREMENT: on edit open UTC→local when safe; pass-through if unsafe
 (covered by UI when convert errors).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConvertLeaf = "utc-to-local-safe"
 	req.UTCExpr = "0 1 * * *"
 	req.TZName = "Etc/GMT-8"

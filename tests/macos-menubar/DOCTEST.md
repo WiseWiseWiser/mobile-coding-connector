@@ -198,6 +198,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/ai-critic/macosapp/menubar"
 	"github.com/xhd2015/ai-critic/server/config"
 )
@@ -257,7 +258,7 @@ func parseNow(req *Request) (time.Time, error) {
 	return time.Parse(time.RFC3339, req.NowRFC3339)
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{
 		MaxLabelLen: menubar.TestExported_MaxLabelLen(),
 	}
@@ -268,7 +269,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	switch op {
 	case "client":
-		return runClientContract(t, resp)
+		return runClientContract(t, d, resp)
 	case "grok-label":
 		resp.Label = menubar.FormatGrokLabel(req.Status, req.WeeklyLimit, req.ErrorMsg)
 	case "menu-label":
@@ -318,11 +319,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	return resp, nil
 }
 
-func runClientContract(t *testing.T, resp *Response) (*Response, error) {
-	moduleRoot, err := findModuleRoot()
-	if err != nil {
-		return nil, err
-	}
+func runClientContract(t *testing.T, d *session.Doctest, resp *Response) (*Response, error) {
+	// DOCTEST_ROOT is the tree root under tests/; module root is two levels up.
+	// Do not walk from cwd: doctest runs under mapping-gen which has its own go.mod.
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
 	appPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "AICriticApp.swift")
 	serverPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "ServerClient.swift")
 	daemonPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "DaemonClient.swift")
@@ -354,30 +354,4 @@ func runClientContract(t *testing.T, resp *Response) (*Response, error) {
 	return resp, nil
 }
 
-func findModuleRoot() (string, error) {
-	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
-		for dir := root; ; dir = filepath.Dir(dir) {
-			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-				return dir, nil
-			}
-			if filepath.Dir(dir) == dir {
-				break
-			}
-		}
-	}
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("go.mod not found")
-		}
-		dir = parent
-	}
-}
 ```

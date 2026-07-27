@@ -123,6 +123,7 @@ import (
 
 	"github.com/xhd2015/ai-critic/script/lib"
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/doctest/session"
 )
 
 const (
@@ -154,7 +155,7 @@ type Response struct {
 	PingBeforeExt    bool
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	if req.ServerPort <= 0 {
@@ -173,7 +174,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	resp.ServerPort = req.ServerPort
 
-	buildDir, err := findModuleRoot()
+	buildDir, err := findModuleRoot(d)
 	if err != nil {
 		return nil, err
 	}
@@ -282,9 +283,13 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 func buildDaemonEnv(configHome string, req *Request) []string {
 	env := lib.AppendTestServerEnv(os.Environ(), configHome)
+	// AppendTestServerEnv forces SKIP_EXTENSION=1; re-apply leaf policy.
+	env = stripEnvPrefix(env, envSkipExtension+"=")
 	env = append(env, envSkipPortPrecheck+"=1")
 	if req.SkipExtensionStartup {
 		env = append(env, envSkipExtension+"=1")
+	} else {
+		env = append(env, envSkipExtension+"=0")
 	}
 	if req.CoreDelayMs > 0 {
 		env = append(env, fmt.Sprintf("%s=%d", envCoreDelayMs, req.CoreDelayMs))
@@ -295,9 +300,20 @@ func buildDaemonEnv(configHome string, req *Request) []string {
 	return env
 }
 
-func findModuleRoot() (string, error) {
-	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
-		for dir := root; ; dir = filepath.Dir(dir) {
+func stripEnvPrefix(env []string, prefix string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+func findModuleRoot(d *session.Doctest) (string, error) {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		for dir := d.DOCTEST_ROOT; ; dir = filepath.Dir(dir) {
 			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 				return dir, nil
 			}

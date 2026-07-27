@@ -19,9 +19,13 @@ Both products expose New Terminal… (or New Terminal) without cwd prompt for v1
 REQUIREMENT: New Terminal present on both apps.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "new-terminal"
 	return nil
 }

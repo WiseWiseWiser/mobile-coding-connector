@@ -19,9 +19,13 @@ Empty server name early failure surfaces in progress lines.
 REQUIREMENT goal 5; guard table.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "format_guard"
 	req.GuardReason = "no_server"
 	return nil

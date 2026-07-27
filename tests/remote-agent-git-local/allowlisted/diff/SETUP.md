@@ -18,10 +18,12 @@ Requirement: diff includes `--cached` and path args.
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/ai-critic/script/lib"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.Token == "" {
 		req.Token = lib.TestPassword
 	}

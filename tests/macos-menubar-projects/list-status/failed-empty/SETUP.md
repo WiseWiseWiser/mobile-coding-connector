@@ -19,9 +19,13 @@ Load finished with error; no prior projects to keep showing.
 REQUIREMENT: `!loading && empty && error!=nil` → `Failed to load projects`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Loading = false
 	req.ProjectCount = 0
 	req.ErrMsg = "timeout"

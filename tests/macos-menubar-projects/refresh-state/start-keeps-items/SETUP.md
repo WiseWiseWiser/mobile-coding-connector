@@ -22,9 +22,13 @@ Last successful list is non-empty; a new list fetch is starting.
 REQUIREMENT: start → `projectsLoading=true`; do **not** clear projects.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.PriorProjects = []string{"dot-pkgs"}
 	req.PriorLoading = false
 	req.PriorError = ""

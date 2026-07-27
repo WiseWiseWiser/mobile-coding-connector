@@ -21,9 +21,13 @@ Pure parser tests; no daemon, network, or PTY fetch.
 Covers multi-format Next reset (REQUIREMENT-DESIGN-grok-usage-next-reset-multi-format).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "parse"
 	return nil
 }

@@ -1,3 +1,7 @@
+---
+explanation: "L2 Manager.ListAll cross-project"
+---
+
 ## Expected
 
 1. `HTTPStatus` is `200`.
@@ -5,12 +9,16 @@
 
 ## Errors
 
-- `?all=1` still filters to server project scope only.
+- ListAll still filters to server project scope only.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

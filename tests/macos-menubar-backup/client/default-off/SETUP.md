@@ -20,9 +20,13 @@ Default OFF until the user chooses Enable.
 REQUIREMENT #26 and runtime policy Default: Off.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "default-off"
 	return nil
 }

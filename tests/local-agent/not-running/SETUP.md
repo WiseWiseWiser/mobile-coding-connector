@@ -20,9 +20,13 @@ Leaves control mock reachability and whether the server process runs.
 Start hint must appear only when the server is not listening, not on auth failure.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.Args == nil {
 		req.Args = []string{}
 	}

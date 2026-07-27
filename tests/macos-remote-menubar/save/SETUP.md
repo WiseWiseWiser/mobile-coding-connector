@@ -21,9 +21,13 @@ Config + mutation -> remoteconfig.Save(path) -> file mode 0600, project_bindings
 REQUIREMENT group: `save/`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "save"
 	return nil
 }

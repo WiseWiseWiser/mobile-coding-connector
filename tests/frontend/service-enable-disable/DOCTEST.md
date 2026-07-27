@@ -83,6 +83,7 @@ import (
 
 	"github.com/xhd2015/ai-critic/script/lib"
 	envpkg "github.com/xhd2015/ai-critic/server/env"
+	"github.com/xhd2015/doctest/session"
 )
 
 type ServiceSeed struct {
@@ -113,7 +114,7 @@ type Response struct {
 	SeedError      string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	headless := true
@@ -135,14 +136,14 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if hash < 0 {
 		hash = -hash
 	}
-	port := basePort + (hash % 100)
+	port := chromeSafePort(basePort + (hash % 100))
 	resp.ServerPort = port
 
 	if req.TimeoutSecs <= 0 {
 		req.TimeoutSecs = 120
 	}
 
-	projectRoot, err := findGoModuleRoot()
+	projectRoot, err := findGoModuleRoot(d)
 	if err != nil {
 		return nil, fmt.Errorf("find repo root: %w", err)
 	}
@@ -150,9 +151,16 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, fmt.Errorf("load env: %w", err)
 	}
 
-	caseDir, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("get case dir: %w", err)
+	caseDir := ""
+	if d != nil {
+		caseDir = d.DOCTEST_CASE
+	}
+	if caseDir == "" {
+		var err error
+		caseDir, err = os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("get case dir: %w", err)
+		}
 	}
 	scriptPath := req.ScriptPath
 	if !filepath.IsAbs(scriptPath) {

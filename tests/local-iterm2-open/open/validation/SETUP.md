@@ -21,9 +21,11 @@ Injected Open records calls; validation rejects before Open.
 REQUIREMENT scenarios 3–4 + locked decision: client/validation → 4xx only.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.OmitMode = true
 	req.OmitSend = true
 	return nil

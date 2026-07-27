@@ -82,6 +82,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
 
 const (
@@ -230,30 +231,34 @@ func pidOnPort(port int) (int, error) {
 	return strconv.Atoi(fields[0])
 }
 
-func fakeOpenCodeSrcDir() string {
-	root := DOCTEST_ROOT
+func fakeOpenCodeSrcDir(d *session.Doctest) string {
+	root := ""
+	if d != nil {
+		root = d.DOCTEST_ROOT
+	}
 	if root == "" {
 		root = "."
 	}
+	// tests/opencode-cleanup → module root two levels up.
 	return filepath.Join(root, "..", "..", "server", "agents", "tests", "grok-integration", "testdata", "fake-opencode")
 }
 
-func buildFakeOpenCodeBin(t *testing.T, binDir string) string {
+func buildFakeOpenCodeBin(t *testing.T, d *session.Doctest, binDir string) string {
 	t.Helper()
 	binPath := filepath.Join(binDir, "opencode")
 	build := exec.Command("go", "build", "-o", binPath, ".")
-	build.Dir = fakeOpenCodeSrcDir()
+	build.Dir = fakeOpenCodeSrcDir(d)
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build fake opencode: %v\n%s", err, out)
 	}
 	return binPath
 }
 
-func startFakeOpenCodeServe(t *testing.T, port int) *exec.Cmd {
+func startFakeOpenCodeServe(t *testing.T, d *session.Doctest, port int) *exec.Cmd {
 	t.Helper()
 	binDir := filepath.Join(t.TempDir(), "fake-oc-bin")
 	_ = os.MkdirAll(binDir, 0755)
-	bin := buildFakeOpenCodeBin(t, binDir)
+	bin := buildFakeOpenCodeBin(t, d, binDir)
 	cmd := exec.Command(bin, "serve", "--port", strconv.Itoa(port))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -307,16 +312,15 @@ func ensureConfigHome(t *testing.T, req *Request) string {
 	if err != nil {
 		t.Fatalf("CreateTestConfigHome: %v", err)
 	}
-	os.Setenv(lib.EnvAI_CRITIC_HOME, home)
+	// Library APIs take configHome as argument; never process Setenv.
 	t.Cleanup(func() {
-		os.Unsetenv(lib.EnvAI_CRITIC_HOME)
 		os.RemoveAll(home)
 	})
 	req.ConfigHome = home
 	return home
 }
 
-func runCollect(t *testing.T, req *Request) (*Response, error) {
+func runCollect(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 	home := ensureConfigHome(t, req)
 	resp.ConfigHome = home
@@ -336,7 +340,7 @@ func runCollect(t *testing.T, req *Request) (*Response, error) {
 	ports := req.ExtraPorts
 	if req.StartFakeOpenCode {
 		port := findFreePort(t)
-		cmd := startFakeOpenCodeServe(t, port)
+		cmd := startFakeOpenCodeServe(t, d, port)
 		resp.FakeOpenCodePort = port
 		if cmd.Process != nil {
 			resp.FakeOpenCodePID = cmd.Process.Pid
@@ -358,7 +362,7 @@ func runCollect(t *testing.T, req *Request) (*Response, error) {
 	return resp, nil
 }
 
-func runKill(t *testing.T, req *Request) (*Response, error) {
+func runKill(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 	home := ensureConfigHome(t, req)
 	resp.ConfigHome = home
@@ -378,7 +382,7 @@ func runKill(t *testing.T, req *Request) (*Response, error) {
 			writeFixtureRegistry(t, home, pid, port)
 		}
 	} else if req.StartFakeOpenCode {
-		cmd := startFakeOpenCodeServe(t, port)
+		cmd := startFakeOpenCodeServe(t, d, port)
 		if cmd.Process != nil {
 			targetPID = cmd.Process.Pid
 			resp.FakeOpenCodePID = targetPID
@@ -418,14 +422,14 @@ func runKill(t *testing.T, req *Request) (*Response, error) {
 	return resp, nil
 }
 
-func runCleanup(t *testing.T, req *Request) (*Response, error) {
+func runCleanup(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 	home := ensureConfigHome(t, req)
 	resp.ConfigHome = home
 
 	port := findFreePort(t)
 	resp.FakeOpenCodePort = port
-	cmd := startFakeOpenCodeServe(t, port)
+	cmd := startFakeOpenCodeServe(t, d, port)
 	if cmd.Process != nil {
 		resp.FakeOpenCodePID = cmd.Process.Pid
 	}
@@ -443,17 +447,17 @@ func runCleanup(t *testing.T, req *Request) (*Response, error) {
 	return resp, nil
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	if req.Op == "" {
 		return nil, fmt.Errorf("Op is required")
 	}
 	switch req.Op {
 	case OpCollect:
-		return runCollect(t, req)
+		return runCollect(t, d, req)
 	case OpKill:
-		return runKill(t, req)
+		return runKill(t, d, req)
 	case OpCleanup:
-		return runCleanup(t, req)
+		return runCleanup(t, d, req)
 	default:
 		return nil, fmt.Errorf("unknown Op: %q", req.Op)
 	}

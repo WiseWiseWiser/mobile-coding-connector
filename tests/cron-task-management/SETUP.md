@@ -49,17 +49,18 @@ import (
 	"time"
 
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.Token == "" {
 		req.Token = lib.TestPassword
 	}
 	return nil
 }
 
-func sessionCacheDir() string {
-	return filepath.Join(os.TempDir(), "cron-task-management-doctest-"+DOCTEST_SESSION_ID)
+func sessionCacheDir(d *session.Doctest) string {
+	return filepath.Join(os.TempDir(), "cron-task-management-doctest-"+d.DOCTEST_SESSION_ID)
 }
 
 func withFileLock(t *testing.T, lockPath string, fn func() error) error {
@@ -373,9 +374,9 @@ func urlQueryEscape(id string) string {
 	return strings.ReplaceAll(id, " ", "%20")
 }
 
-func findModuleRoot() (string, error) {
-	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
-		for dir := root; ; dir = filepath.Dir(dir) {
+func findModuleRoot(d *session.Doctest) (string, error) {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		for dir := d.DOCTEST_ROOT; ; dir = filepath.Dir(dir) {
 			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 				return dir, nil
 			}

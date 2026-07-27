@@ -20,9 +20,15 @@ Default `serverHome` fixtures.
 REQUIREMENT leaf `backup/dry-run`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
+	// L3 smoke: backup --dry-run plan via product binaries.
+	req.UseCLI = true
 	req.Args = []string{"machine", "backup", "--dry-run"}
 	return nil
 }

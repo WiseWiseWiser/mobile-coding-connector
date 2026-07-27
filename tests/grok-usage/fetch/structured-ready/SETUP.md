@@ -25,9 +25,13 @@ structured fields). Classic TDD: RED until service populates `ResetAt`,
 `ResetDisplay`, and `TimeLeft`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.MockScript = "mock-success-no-tz.sh"
 	return nil
 }

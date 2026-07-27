@@ -19,9 +19,13 @@ Server returned an empty sessions array for the active endpoint.
 REQUIREMENT leaf: `empty/label`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "empty"
 	return nil
 }

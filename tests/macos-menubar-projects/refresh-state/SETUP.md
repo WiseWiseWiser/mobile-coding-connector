@@ -24,9 +24,13 @@ Project tokens are basename strings for test simplicity (not full status structs
 REQUIREMENT scenarios 8–10 (refresh start / fail / success).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "refresh_state"
 	return nil
 }

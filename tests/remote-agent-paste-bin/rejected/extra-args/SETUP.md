@@ -21,9 +21,13 @@ Any scratch state; error occurs at CLI parse layer.
 REQUIREMENT leaf: `reject-extra-args`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	seedScratch(req, seededUTF8Content, "")
 	req.Args = []string{"paste-bin", "foo"}
 	req.PipedStdin = nil

@@ -20,9 +20,13 @@ PROTOCOL step `detect_modal`. Default selection is **1. Update now** — Enter w
 Down would upgrade; production must detect before injecting `/status`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.FixtureFile = "01-update-modal-default.snapshot.txt"
 	return nil
 }

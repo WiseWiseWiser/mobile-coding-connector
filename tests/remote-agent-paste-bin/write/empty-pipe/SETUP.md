@@ -21,9 +21,13 @@ Scratch pre-seeded with stale content.
 REQUIREMENT leaf: `write-empty-pipe`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	seedScratch(req, staleScratchContent, seededMetaUpdatedAt)
 	setWritePipe(t, req, []byte{})
 	return nil

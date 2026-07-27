@@ -34,12 +34,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
-	unlock := acquireKeepAliveLock(t)
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	unlock := acquireKeepAliveLock(t, d)
 	t.Cleanup(unlock)
 
 	if req.ServerPort <= 0 {
@@ -51,19 +54,30 @@ func Setup(t *testing.T, req *Request) error {
 	return nil
 }
 
-func acquireKeepAliveLock(t *testing.T) func() {
-	session := DOCTEST_SESSION_ID
-	if session == "" {
-		session = fmt.Sprintf("%d", time.Now().UnixNano())
+func acquireKeepAliveLock(t *testing.T, d *session.Doctest) func() {
+	// Port 23312 is a process-wide singleton. Wait for exclusive flock so
+	// parallel leaves serialize instead of t.Skip.
+	sid := ""
+	if d != nil {
+		sid = d.DOCTEST_SESSION_ID
 	}
-	lockPath := filepath.Join(os.TempDir(), "ai-critic-keepalive-"+session+".lock")
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if sid == "" {
+		sid = "default"
+	}
+	_ = sid
+	lockPath := filepath.Join(os.TempDir(), "ai-critic-keepalive-doctest-global.lock")
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
-		t.Skipf("another keep-alive doctest holds lock %s: %v", lockPath, err)
-		return func() {}
+		t.Fatalf("open keep-alive lock %s: %v", lockPath, err)
 	}
-	_, _ = f.WriteString(fmt.Sprintf("%d\n", os.Getpid()))
-	_ = f.Close()
-	return func() { os.Remove(lockPath) }
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		_ = f.Close()
+		t.Fatalf("flock keep-alive lock %s: %v", lockPath, err)
+	}
+	_, _ = f.WriteAt([]byte(fmt.Sprintf("%d\n", os.Getpid())), 0)
+	return func() {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = f.Close()
+	}
 }
 ```

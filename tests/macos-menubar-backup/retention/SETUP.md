@@ -21,9 +21,13 @@ Defaults: keepTodayN=10, dailyDays=7.
 REQUIREMENT retention scenarios 17–20.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "retention"
 	if req.NowRFC3339 == "" {
 		req.NowRFC3339 = "2026-07-10T15:00:00Z"

@@ -26,9 +26,13 @@ never renders usage. Happy path covered by `slow-boot-snapshot` and
 `real-codex-inprocess`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "fetch-inprocess"
 	req.StripDaemonPATH = true
 	req.ShowStatusCommand = neverRespondFakeCodexTUI()

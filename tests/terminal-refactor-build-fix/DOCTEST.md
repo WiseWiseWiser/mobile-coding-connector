@@ -116,12 +116,13 @@ import (
 	"testing"
 
 	"github.com/xhd2015/ai-critic/tests/terminal-refactor-build-fix/testdata/buildfixtest"
+	"github.com/xhd2015/doctest/session"
 )
 
 type Request = buildfixtest.Request
 type Response = buildfixtest.Response
 
-func Run(t *testing.T, req *Request) (*Response, error) {
-	return buildfixtest.Run(t, req)
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
+	return buildfixtest.Run(t, d, req)
 }
 ```

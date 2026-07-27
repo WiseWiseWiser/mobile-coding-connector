@@ -15,9 +15,10 @@ run.TestExported_OutputKeepAliveScript -> script with quoted spaced paths -> sh 
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Phase = "keep-alive-script"
 	req.KeepAlivePort = 14099
 	req.KeepAliveBinPath = filepath.Join(t.TempDir(), "ai critic", "ai-critic")

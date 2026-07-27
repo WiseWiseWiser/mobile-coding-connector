@@ -21,9 +21,13 @@ Same bulk layout as `total-over-max`; CLI passes `--max-size 100M`.
 REQUIREMENT leaf `max-size-override`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	pair := pairSameOriginRepos(t)
 	dirtyWithManyOneMiBFiles(t, pair.RemoteDir, bulkFileCountOver64)
 	seedSizeLimitPullProject(t, req, "pull-size-max-001", "pull-size-max", pair)

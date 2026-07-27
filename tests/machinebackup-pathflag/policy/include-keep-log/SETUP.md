@@ -24,9 +24,11 @@ MergeExclusions(nil, nil, [".ai-critic/keep.log"])
 - Secondary assertion is RED until IsExcluded honors pathflag `**/*.log`.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Include = []string{".ai-critic/keep.log"}
 	req.Exclude = nil
 	req.RelPath = ".ai-critic/keep.log"

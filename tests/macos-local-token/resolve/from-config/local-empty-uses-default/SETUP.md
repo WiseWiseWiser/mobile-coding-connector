@@ -23,9 +23,13 @@ default, before credentials.
 REQUIREMENT: prefer local match, else default domain (still source=config).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Local loopback domain present but empty; default points at a *remote*
 	// domain so success must come from the default-domain branch (not another
 	// loopback match).

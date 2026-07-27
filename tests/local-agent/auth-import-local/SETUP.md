@@ -26,9 +26,13 @@ credential file under the isolated user home.
 Split factor: local credential import command, distinct from normal API-call auth failures.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Args = []string{"auth", "import-local"}
 	req.WatchLocalConfig = true
 	return nil

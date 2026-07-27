@@ -19,9 +19,13 @@ Firefox selected in Settings.
 REQUIREMENT leaf: `label/firefox`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Browser = "firefox"
 	return nil
 }

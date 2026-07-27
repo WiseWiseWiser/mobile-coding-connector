@@ -19,9 +19,13 @@ Local app opens iTerm and runs local-agent attach for session id.
 REQUIREMENT leaf: `command/attach-local`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "attach_cmd"
 	req.AgentBinary = "local-agent"
 	req.SessionID = "web1"

@@ -1,42 +1,118 @@
 # Scenario
 
-**Feature**: remote-agent project bind-local and pull-local integration harness
+**Feature**: remote-agent project bind-local and pull-local harness (L2 mass + L3 smokes)
 
 ```
-# bare origin, remote + local clones, server + isolated HOME, run bind-local or pull-local
-leaf Setup -> git repos + projects.json -> remote-agent -> worktree / config / remote porcelain
+# L2: projects + projectpull RegisterAPI + agentcli.Run | L3 UseCLI: product binaries
+leaf Setup -> git repos + projects.json -> bind-local|pull-local -> worktree / config / porcelain
 ```
 
 ## Preconditions
 
-1. Module builds `ai-critic-server` and `remote-agent`.
-2. `git` is available for bare repos, clones, submodules, and porcelain checks.
-3. Server uses isolated `AI_CRITIC_HOME`; agent uses isolated `HOME` for config and worktrees.
+1. Doctest injects `DOCTEST_SESSION_ID` to scope a file cache under
+   `$TMPDIR/remote-agent-project-pull-local-doctest-<session>/` (L3 binaries when needed).
+2. Session file locks (`flock`) serialize first-time cache population across parallel leaves.
+3. `git` is available for bare repos, clones, submodules, and porcelain checks.
+4. **L2** (default): in-process mux with `projects.RegisterAPIForFile` +
+   `projectpull.RegisterAPI` + `agentcli.Run` with testhooks home override (no Setenv).
+5. **L3** (`UseCLI` smokes only): product binaries with isolated `AI_CRITIC_HOME` / agent `HOME`.
+6. Server-side package limits and guards run in-process for L2 (same handlers as production).
 
 ## Steps
 
-1. Root `Run` builds binaries, starts server, writes `projects.json` and `remote-agent-config.json`.
-2. Leaf `Setup` creates remote project repo (and local repo or plain dir) with shared or divergent origins.
-3. `Run` executes `remote-agent` with optional piped stdin or two-phase pull for worktree collision.
-4. Leaf `Assert` checks exit code, output, config bindings, worktree paths, and remote cleanliness.
+1. Root `Run` creates config/agent homes, writes `projects.json` and `remote-agent-config.json`.
+2. Leaf `Setup` creates remote project repo (and local repo or plain dir); smokes set `UseCLI`.
+3. L2 starts in-process APIs; L3 starts product server.
+4. `Run` executes `bind-local` / `pull-local` via agentcli or product binary (optional piped stdin / two-phase).
+5. Leaf `Assert` checks exit code, output, config bindings, worktree paths, and remote cleanliness.
 
 ## Context
 
-Implements REQUIREMENT-DESIGN-remote-agent-project-pull-local.md. Tests are expected to
-fail until `bind-local` and `pull-local` are implemented in `cmd/agentcli/project.go`.
+Implements REQUIREMENT-DESIGN-remote-agent-project-pull-local.md. L2 covers binding,
+guards, and package transfer; two L3 smokes keep the product binary path.
 
 ```go
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+
+func sessionCacheDir(sessionID string) string {
+	return filepath.Join(os.TempDir(), "remote-agent-project-pull-local-doctest-"+sessionID)
+}
+
+func withFileLock(t *testing.T, lockPath string, fn func() error) error {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("flock %s: %w", lockPath, err)
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return fn()
+}
+
+func buildSessionBinariesOnce(t *testing.T, moduleRoot, cacheDir string) (serverBin, agentBin string) {
+	t.Helper()
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	serverBin = filepath.Join(cacheDir, "ai-critic-server")
+	agentBin = filepath.Join(cacheDir, "remote-agent")
+	ready := filepath.Join(cacheDir, "binaries.ready")
+	lock := filepath.Join(cacheDir, "build.lock")
+	err := withFileLock(t, lock, func() error {
+		if fileExists(ready) && fileExists(serverBin) && fileExists(agentBin) {
+			return nil
+		}
+		for _, spec := range []struct {
+			out string
+			pkg string
+		}{
+			{serverBin, "."},
+			{agentBin, "./cmd/remote-agent"},
+		} {
+			cmd := exec.Command("go", "build", "-o", spec.out, spec.pkg)
+			cmd.Dir = moduleRoot
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("build %s: %w\n%s", spec.pkg, err, string(out))
+			}
+		}
+		return os.WriteFile(ready, []byte(time.Now().UTC().Format(time.RFC3339)), 0644)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("session binaries cache: %s", cacheDir)
+	return serverBin, agentBin
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	if d.DOCTEST_SESSION_ID == "" {
+		t.Fatal("session id empty on session.Doctest")
+	}
 	if req.Token == "" {
 		req.Token = lib.TestPassword
 	}
@@ -73,10 +149,44 @@ func mkBareDir(t *testing.T) string {
 	return dir
 }
 
+func gitAllowFileProtocolEnv() []string {
+	env := append([]string{}, os.Environ()...)
+	// Strip any prior GIT_CONFIG_* so we fully control protocol.file.allow for
+	// file:// clones/submodules used by leaf Setup (modern git blocks file by default).
+	out := make([]string, 0, len(env)+3)
+	for _, e := range env {
+		if strings.HasPrefix(e, "GIT_CONFIG_COUNT=") ||
+			strings.HasPrefix(e, "GIT_CONFIG_KEY_") ||
+			strings.HasPrefix(e, "GIT_CONFIG_VALUE_") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return append(out,
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=protocol.file.allow",
+		"GIT_CONFIG_VALUE_0=always",
+	)
+}
+
+func gitArgsWithHookBypass(args []string) []string {
+	// Global pre-commit hooks in some developer environments reject submodule
+	// gitlinks; doctest fixtures must still commit them.
+	if len(args) > 0 && args[0] == "commit" {
+		out := make([]string, 0, len(args)+1)
+		out = append(out, "commit", "--no-verify")
+		out = append(out, args[1:]...)
+		return out
+	}
+	return args
+}
+
 func gitRun(t *testing.T, dir string, args ...string) {
 	t.Helper()
+	args = gitArgsWithHookBypass(args)
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = gitAllowFileProtocolEnv()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
@@ -85,8 +195,10 @@ func gitRun(t *testing.T, dir string, args ...string) {
 
 func gitRunC(t *testing.T, dir string, args ...string) {
 	t.Helper()
+	args = gitArgsWithHookBypass(args)
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.Command("git", full...)
+	cmd.Env = gitAllowFileProtocolEnv()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git -C %s %v: %v\n%s", dir, args, err, out)
@@ -125,6 +237,7 @@ func seedBareOrigin(t *testing.T, bareDir string) string {
 func cloneFromOrigin(t *testing.T, dest, originURL string) {
 	t.Helper()
 	cmd := exec.Command("git", "clone", originURL, dest)
+	cmd.Env = gitAllowFileProtocolEnv()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git clone %s -> %s: %v\n%s", originURL, dest, err, out)

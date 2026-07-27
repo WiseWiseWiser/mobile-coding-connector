@@ -21,9 +21,11 @@ Valid temp dir.
 REQUIREMENT scenario 7: send[] → FollowUpCommands.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Mode = "reuse"
 	req.OmitSend = false
 	req.Send = []string{"echo hi", "ls"}

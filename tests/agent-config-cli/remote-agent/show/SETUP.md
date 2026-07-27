@@ -20,9 +20,13 @@ Optional seed under isolated HOME.
 T3–T5.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Group default: --show path; leaves may append --json or set seed.
 	if len(req.Args) == 0 {
 		req.Args = []string{"config", "--show"}

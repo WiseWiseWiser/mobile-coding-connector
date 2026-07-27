@@ -19,9 +19,13 @@ Name is non-empty only by whitespace; TrimSpace treats it as empty; status runni
 REQUIREMENT: empty **or whitespace** name → id; running → no `[EXITED]` suffix.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Name = "  \t  "
 	req.SessionID = "sess-1"
 	req.Status = "running"

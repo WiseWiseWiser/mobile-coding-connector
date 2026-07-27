@@ -19,9 +19,11 @@ Valid dir from parent.
 REQUIREMENT scenario 5 inverse (failure).
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.InjectOpenError = "osascript boom"
 	return nil
 }

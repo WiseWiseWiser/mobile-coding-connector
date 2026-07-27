@@ -21,9 +21,13 @@ Default `serverHome` fixtures with `.cache/junk`.
 REQUIREMENT leaf `backup/include`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.IncludePaths = []string{".cache"}
 	req.Args = []string{"machine", "backup", "--dry-run"}
 	return nil

@@ -19,9 +19,13 @@ launch grok -> SIGTERM ai-critic-server -> CleanupAll -> port closed
 Mirrors production `agents.Shutdown()` extended with CleanupAllOpencodeServe.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Scenario = ScenarioShutdown
 	return nil
 }

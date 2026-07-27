@@ -27,11 +27,13 @@ None.
 import (
 	"regexp"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
 var nodeModulesDirsRE = regexp.MustCompile(`(?m)^\s*node_modules\s+2\s+dirs\s*$`)
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

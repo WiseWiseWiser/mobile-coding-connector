@@ -24,9 +24,11 @@ Parent `enable-stopped` setup disables auto-management and leaves service stoppe
 REQUIREMENT leaf: `enable-stopped/schedules-daemon`.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.WaitAfterSecs < 7 {
 		req.WaitAfterSecs = 7
 	}

@@ -30,10 +30,20 @@ func isFileHash(id string) bool {
 	return err == nil
 }
 
+// uploadCacheRoot returns ~/.ai-critic/upload-cache for the process user home.
 func uploadCacheRoot() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+	return uploadCacheRootIn("")
+}
+
+// uploadCacheRootIn returns <home>/.ai-critic/upload-cache. When home is empty,
+// falls back to os.UserHomeDir (production path).
+func uploadCacheRootIn(home string) (string, error) {
+	if strings.TrimSpace(home) == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
 	}
 	root := filepath.Join(home, ".ai-critic", "upload-cache")
 	if err := os.MkdirAll(root, 0755); err != nil {
@@ -43,10 +53,14 @@ func uploadCacheRoot() (string, error) {
 }
 
 func uploadCacheDir(fileHash string) (string, error) {
+	return uploadCacheDirIn("", fileHash)
+}
+
+func uploadCacheDirIn(home, fileHash string) (string, error) {
 	if !isFileHash(fileHash) {
 		return "", fmt.Errorf("invalid file hash")
 	}
-	root, err := uploadCacheRoot()
+	root, err := uploadCacheRootIn(home)
 	if err != nil {
 		return "", err
 	}

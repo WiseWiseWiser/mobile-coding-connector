@@ -24,9 +24,11 @@ Complements `slow-extension/` (delay after core bind). Models remote PH host
 fork/exec + I/O pressure where port never opens within 10s.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.WriteExtensionConfig = false
 	req.SkipExtensionStartup = true
 	req.ExtensionDelayMs = 0

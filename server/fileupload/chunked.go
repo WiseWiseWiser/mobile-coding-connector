@@ -64,7 +64,8 @@ func generateUploadID() string {
 // handleUploadInit starts a new chunked upload session.
 // POST /api/files/upload/init
 // Body: { "path": "/dest/path", "total_chunks": 5, "total_size": 10485760 }
-func handleUploadInit(w http.ResponseWriter, r *http.Request) {
+// home scopes hash-backed upload cache (empty → process user home).
+func handleUploadInit(w http.ResponseWriter, r *http.Request, home string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -97,7 +98,7 @@ func handleUploadInit(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusBadRequest, "invalid file_hash")
 			return
 		}
-		dir, err := uploadCacheDir(req.FileHash)
+		dir, err := uploadCacheDirIn(home, req.FileHash)
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to prepare cache dir: %v", err))
 			return
@@ -153,7 +154,8 @@ func handleUploadInit(w http.ResponseWriter, r *http.Request) {
 
 // handleUploadChunk receives a single chunk.
 // POST /api/files/upload/chunk (multipart form: upload_id, chunk_index, chunk)
-func handleUploadChunk(w http.ResponseWriter, r *http.Request) {
+// home scopes hash-backed upload cache (empty → process user home).
+func handleUploadChunk(w http.ResponseWriter, r *http.Request, home string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -180,7 +182,7 @@ func handleUploadChunk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isFileHash(uploadID) {
-		handleHashUploadChunk(w, uploadID, chunkIndex, r)
+		handleHashUploadChunk(w, home, uploadID, chunkIndex, r)
 		return
 	}
 
@@ -237,7 +239,8 @@ func handleUploadChunk(w http.ResponseWriter, r *http.Request) {
 // handleUploadComplete combines all chunks into the final file.
 // POST /api/files/upload/complete
 // Body: { "upload_id": "..." }
-func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
+// home scopes hash-backed upload cache (empty → process user home).
+func handleUploadComplete(w http.ResponseWriter, r *http.Request, home string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -252,7 +255,7 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isFileHash(req.UploadID) {
-		handleHashUploadComplete(w, req.UploadID)
+		handleHashUploadComplete(w, home, req.UploadID)
 		return
 	}
 
@@ -342,8 +345,8 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func handleHashUploadChunk(w http.ResponseWriter, uploadID string, chunkIndex int, r *http.Request) {
-	dir, err := uploadCacheDir(uploadID)
+func handleHashUploadChunk(w http.ResponseWriter, home, uploadID string, chunkIndex int, r *http.Request) {
+	dir, err := uploadCacheDirIn(home, uploadID)
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "upload session not found")
 		return
@@ -392,8 +395,8 @@ func handleHashUploadChunk(w http.ResponseWriter, uploadID string, chunkIndex in
 	})
 }
 
-func handleHashUploadComplete(w http.ResponseWriter, uploadID string) {
-	dir, err := uploadCacheDir(uploadID)
+func handleHashUploadComplete(w http.ResponseWriter, home, uploadID string) {
+	dir, err := uploadCacheDirIn(home, uploadID)
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "upload session not found")
 		return

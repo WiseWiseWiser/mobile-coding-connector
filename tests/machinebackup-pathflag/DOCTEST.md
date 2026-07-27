@@ -128,6 +128,7 @@ import (
 	"testing"
 
 	"github.com/xhd2015/ai-critic/server/machinebackup"
+	"github.com/xhd2015/doctest/session"
 )
 
 // Op values for Request.Op.
@@ -202,7 +203,7 @@ type Response struct {
 	Err string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	t.Helper()
 	if req == nil {
 		return nil, fmt.Errorf("nil request")
@@ -212,7 +213,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		op = OpIsExcluded
 	}
 	resp := &Response{}
-	root := moduleRoot()
+	root := moduleRoot(d)
 
 	switch op {
 	case OpIsExcluded, OpReason, OpIncludeOverride:
@@ -278,11 +279,11 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 }
 
 // moduleRoot returns the ai-critic module root (directory with go.mod).
-// DOCTEST_ROOT is tests/machinebackup-pathflag → two levels up.
-func moduleRoot() string {
-	root, err := filepath.Abs(filepath.Join(DOCTEST_ROOT, "../.."))
+// d.DOCTEST_ROOT is tests/machinebackup-pathflag → two levels up.
+func moduleRoot(d *session.Doctest) string {
+	root, err := filepath.Abs(filepath.Join(d.DOCTEST_ROOT, "../.."))
 	if err != nil {
-		return filepath.Join(DOCTEST_ROOT, "../..")
+		return filepath.Join(d.DOCTEST_ROOT, "../..")
 	}
 	return root
 }

@@ -8,9 +8,11 @@ HTTP 401 + JSON body -> WS dial fails -> error mentions status and body
 ```
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Phase = "ws-dial-http-error"
 	req.WSDialHTTPStatus = 401
 	req.WSDialHTTPBody = `{"error":"unauthorized"}`

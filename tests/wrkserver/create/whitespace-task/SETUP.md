@@ -23,9 +23,11 @@ REQUIREMENT scenario 7. HTTP API treats whitespace as empty → no slug
 (differs from CLI which may reject empty task text).
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ProjectPath = mkCleanMainRepo(t)
 	req.Task = "   "
 	req.OmitTask = false

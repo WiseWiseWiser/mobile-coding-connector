@@ -22,9 +22,13 @@ CLI-set path -> from user config; hand-edited reason preserved
 Effective merged display reasons for user-authored backup-config.json.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedKnowledgeHub = true
 	req.PrereqSetConfig = true
 	req.SetConfigExcludePaths = []string{".knowledge-hub"}

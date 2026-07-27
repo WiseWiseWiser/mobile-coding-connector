@@ -20,9 +20,13 @@ Endpoint resolved to a remote HTTPS base URL.
 REQUIREMENT leaf: `browser/resolved-remote-url`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.BrowserServer = "https://remote.example"
 	req.BrowserToken = "tok"
 	req.BrowserOK = true

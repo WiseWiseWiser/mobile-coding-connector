@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "L3 smoke: product binary service start creates workingDir"
+---
+
 ## Expected
 
 1. `Run` completes without error and `Response.StartResult` is non-nil.
@@ -26,9 +31,10 @@
 import (
 	"syscall"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

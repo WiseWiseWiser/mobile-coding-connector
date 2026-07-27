@@ -22,9 +22,13 @@ remote-agent machine analyse-files -> home line + > blocks + analyse-files summa
 Grouping node for streamed analyse-files scenarios from REQUIREMENT-DESIGN-machine-analyse-files.md.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if len(req.Args) >= 2 && req.Args[0] == "machine" && req.Args[1] != "analyse-files" {
 		t.Fatalf("stream group: unexpected subcommand argv %v", req.Args)
 	}

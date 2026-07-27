@@ -21,9 +21,13 @@ Endpoint configured, not already running, non-empty server name. Task is off
 REQUIREMENT #1, #14 — one-shot independent of Enable.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.HasEndpoint = true
 	req.Running = false
 	req.ServerName = "foo.example.com"

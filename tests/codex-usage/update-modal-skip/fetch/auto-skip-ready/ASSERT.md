@@ -1,3 +1,7 @@
+---
+label: e2e
+explanation: fake TUI auto-Skip protocol via CODEX_SHOW_STATUS_COMMAND process
+---
 ## Expected
 
 In-process fetch must auto-Skip the update menu and return ready usage:
@@ -21,9 +25,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

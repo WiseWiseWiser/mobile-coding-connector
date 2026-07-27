@@ -19,9 +19,13 @@ Sealed style: **no** `[log]` prefix (verbatim message body).
 REQUIREMENT log row — pick verbatim sealed style.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "format_log"
 	req.Message = "dry-run: machine backup plan"
 	return nil

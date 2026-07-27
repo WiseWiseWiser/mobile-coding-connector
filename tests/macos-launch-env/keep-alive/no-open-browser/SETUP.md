@@ -19,9 +19,13 @@ Server opens browser only when `AI_CRITIC_NO_OPEN_BROWSER` is unset.
 REQUIREMENT leaf: `keep-alive/no-open-browser`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.BinaryDir = "/app/Contents/MacOS"
 	return nil
 }

@@ -24,11 +24,14 @@ already work today; new retry/resume/streaming refinements are not asserted here
 ```go
 import (
 	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
-	content, err := os.ReadFile("testdata/hello.txt")
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	content, err := os.ReadFile(filepath.Join(d.DOCTEST_CASE, "testdata", "hello.txt"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}

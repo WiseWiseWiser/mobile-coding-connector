@@ -23,9 +23,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.NowRFC3339 = "2026-07-10T15:00:00Z"
 	type e struct {
 		Path      string `json:"path"`

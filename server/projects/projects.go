@@ -87,12 +87,19 @@ func gitStatusDirty(status GitStatusInfo) bool {
 
 var mu sync.RWMutex
 
-func ensureDir() error {
-	return os.MkdirAll(filepath.Dir(projectsFile), 0755)
+func ensureDirFor(file string) error {
+	return os.MkdirAll(filepath.Dir(file), 0755)
 }
 
-func loadAll() ([]Project, error) {
-	data, err := os.ReadFile(projectsFile)
+func ensureDir() error {
+	return ensureDirFor(projectsFile)
+}
+
+func loadAllFrom(file string) ([]Project, error) {
+	if strings.TrimSpace(file) == "" {
+		file = projectsFile
+	}
+	data, err := os.ReadFile(file)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []Project{}, nil
@@ -106,15 +113,26 @@ func loadAll() ([]Project, error) {
 	return list, nil
 }
 
-func saveAll(list []Project) error {
-	if err := ensureDir(); err != nil {
+func loadAll() ([]Project, error) {
+	return loadAllFrom(projectsFile)
+}
+
+func saveAllTo(file string, list []Project) error {
+	if strings.TrimSpace(file) == "" {
+		file = projectsFile
+	}
+	if err := ensureDirFor(file); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(list, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(projectsFile, data, 0644)
+	return os.WriteFile(file, data, 0644)
+}
+
+func saveAll(list []Project) error {
+	return saveAllTo(projectsFile, list)
 }
 
 func Add(p Project) (string, error) {
@@ -146,6 +164,12 @@ func List() ([]Project, error) {
 	mu.RLock()
 	defer mu.RUnlock()
 	return loadAll()
+}
+
+func listFrom(file string) ([]Project, error) {
+	mu.RLock()
+	defer mu.RUnlock()
+	return loadAllFrom(file)
 }
 
 func Remove(id string) error {
@@ -226,7 +250,25 @@ func Update(id string, updates ProjectUpdate) (*Project, error) {
 }
 
 func RegisterAPI(mux *http.ServeMux) {
-	mux.HandleFunc("/api/projects", handleProjects)
+	RegisterAPIForFile(mux, "")
+}
+
+// RegisterAPIForFile registers the same project endpoints as RegisterAPI, but
+// scopes projects.json reads/writes to the given file path. When file is empty,
+// handlers use the package default (config.ProjectsFile).
+//
+// Intended for in-process tests that want isolated project storage without
+// mutating process environment (AI_CRITIC_HOME).
+func RegisterAPIForFile(mux *http.ServeMux, file string) {
+	fileFn := func() string {
+		if strings.TrimSpace(file) != "" {
+			return file
+		}
+		return projectsFile
+	}
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		handleProjects(w, r, fileFn())
+	})
 	mux.HandleFunc("/api/projects/resolve-dir", handleResolveDir)
 	mux.HandleFunc("/api/projects/todos", handleTodos)
 	mux.HandleFunc("/api/projects/readme", handleReadme)
@@ -318,10 +360,13 @@ func handleReadme(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleProjects(w http.ResponseWriter, r *http.Request) {
+func handleProjects(w http.ResponseWriter, r *http.Request, file string) {
+	if strings.TrimSpace(file) == "" {
+		file = projectsFile
+	}
 	switch r.Method {
 	case http.MethodGet:
-		list, err := List()
+		list, err := listFrom(file)
 		if err != nil {
 			respondErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -403,20 +448,78 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 			Dir:      absDir,
 			ParentID: req.ParentID,
 		}
-		projectID, err := Add(p)
+		// Add always uses the package default file; for explicit file paths,
+		// perform the same upsert against the override.
+		if file == projectsFile {
+			projectID, err := Add(p)
+			if err != nil {
+				respondErr(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			respondJSON(w, http.StatusOK, map[string]string{"status": "ok", "id": projectID, "dir": absDir, "name": name})
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		list, err := loadAllFrom(file)
 		if err != nil {
 			respondErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		respondJSON(w, http.StatusOK, map[string]string{"status": "ok", "id": projectID, "dir": absDir, "name": name})
+		for _, existing := range list {
+			if existing.Dir == p.Dir {
+				respondJSON(w, http.StatusOK, map[string]string{"status": "ok", "id": existing.ID, "dir": absDir, "name": name})
+				return
+			}
+		}
+		if p.ID == "" {
+			p.ID = fmt.Sprintf("%d", time.Now().UnixMilli())
+		}
+		if p.CreatedAt == "" {
+			p.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		list = append(list, p)
+		if err := saveAllTo(file, list); err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]string{"status": "ok", "id": p.ID, "dir": absDir, "name": name})
 	case http.MethodDelete:
 		id := r.URL.Query().Get("id")
 		if id == "" {
 			respondErr(w, http.StatusBadRequest, "id is required")
 			return
 		}
-		if err := Remove(id); err != nil {
-			respondErr(w, http.StatusNotFound, err.Error())
+		if file == projectsFile {
+			if err := Remove(id); err != nil {
+				respondErr(w, http.StatusNotFound, err.Error())
+				return
+			}
+			respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		list, err := loadAllFrom(file)
+		if err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		filtered := make([]Project, 0, len(list))
+		found := false
+		for _, p := range list {
+			if p.ID == id {
+				found = true
+				continue
+			}
+			filtered = append(filtered, p)
+		}
+		if !found {
+			respondErr(w, http.StatusNotFound, "project not found: "+id)
+			return
+		}
+		if err := saveAllTo(file, filtered); err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -431,12 +534,55 @@ func handleProjects(w http.ResponseWriter, r *http.Request) {
 			respondErr(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		project, err := Update(id, updates)
-		if err != nil {
-			respondErr(w, http.StatusNotFound, err.Error())
+		if file == projectsFile {
+			project, err := Update(id, updates)
+			if err != nil {
+				respondErr(w, http.StatusNotFound, err.Error())
+				return
+			}
+			respondJSON(w, http.StatusOK, project)
 			return
 		}
-		respondJSON(w, http.StatusOK, project)
+		mu.Lock()
+		defer mu.Unlock()
+		list, err := loadAllFrom(file)
+		if err != nil {
+			respondErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		for i := range list {
+			if list[i].ID != id {
+				continue
+			}
+			if updates.SSHKeyID != nil {
+				list[i].SSHKeyID = *updates.SSHKeyID
+			}
+			if updates.UseSSH != nil {
+				list[i].UseSSH = *updates.UseSSH
+			}
+			if updates.GitUserConfigID != nil {
+				list[i].GitUserConfigID = *updates.GitUserConfigID
+			}
+			if updates.GitUserName != nil {
+				list[i].GitUserName = *updates.GitUserName
+			}
+			if updates.GitUserEmail != nil {
+				list[i].GitUserEmail = *updates.GitUserEmail
+			}
+			if updates.ParentID != nil {
+				list[i].ParentID = *updates.ParentID
+			}
+			if updates.Readme != nil {
+				list[i].Readme = *updates.Readme
+			}
+			if err := saveAllTo(file, list); err != nil {
+				respondErr(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			respondJSON(w, http.StatusOK, list[i])
+			return
+		}
+		respondErr(w, http.StatusNotFound, "project not found: "+id)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}

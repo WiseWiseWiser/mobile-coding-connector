@@ -22,9 +22,13 @@ Source shows a flush timer or interval constant in band (e.g. `0.15`, `150`,
 REQUIREMENT #4; RED until interval/timer exists (current immediate append has none).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "flush-interval"
 	return nil
 }

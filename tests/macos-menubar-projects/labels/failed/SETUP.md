@@ -19,9 +19,13 @@ Load finished with error and the registry has no rows to show.
 REQUIREMENT: failed label → `Failed to load projects`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.LabelKind = "failed"
 	return nil
 }

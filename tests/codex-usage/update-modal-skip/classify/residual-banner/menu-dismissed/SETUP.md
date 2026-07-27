@@ -20,9 +20,13 @@ Still has `model: loading` — writable may remain loading for **model** reason 
 PROTOCOL `confirm_skip` success predicate + writable narrow gate.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.FixtureFile = "03b-menu-dismissed.snapshot.txt"
 	return nil
 }

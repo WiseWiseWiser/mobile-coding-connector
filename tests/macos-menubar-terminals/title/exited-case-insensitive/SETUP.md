@@ -19,9 +19,13 @@ Status is a mixed-case / padded form of `exited` (not the literal lowercase toke
 REQUIREMENT: match status with trim + equal fold to `exited`; suffix still exact ` [EXITED]`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Name = "demo"
 	req.SessionID = "abc"
 	req.Status = " Exited "

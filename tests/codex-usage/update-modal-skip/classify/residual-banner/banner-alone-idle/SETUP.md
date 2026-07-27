@@ -22,9 +22,13 @@ Documents PROTOCOL note: banner is non-blocking; still honor real `model:loading
 (covered by menu-dismissed leaf without strip).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.FixtureFile = "04-idle-prompt.snapshot.txt"
 	req.StripModelLoading = true
 	return nil

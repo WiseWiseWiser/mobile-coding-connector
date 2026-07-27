@@ -26,9 +26,13 @@ This extends the auth-failure branch from `auth status` to a user-facing command
 performs an API call and should print actionable local-agent authorization guidance.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	up := true
 	req.MockReachability = &up
 	req.StartServer = true

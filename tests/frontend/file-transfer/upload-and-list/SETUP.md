@@ -31,9 +31,10 @@ The upload uses the hidden `<input type="file">` exposed by the upload area.
 ```go
 import (
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ScriptPath = "script.js"
 	req.FileTransferReset = true
 	req.TimeoutSecs = 120

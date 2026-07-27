@@ -20,9 +20,13 @@ Leaf sets the stored browser preference value.
 REQUIREMENT group: `label/`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Leaves supply browser-specific inputs; reset shared field first.
 	req.Browser = ""
 	return nil

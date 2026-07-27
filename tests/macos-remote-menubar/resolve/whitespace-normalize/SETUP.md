@@ -19,9 +19,13 @@ Normalize = trim space then trim trailing `/`.
 REQUIREMENT leaf: `resolve/whitespace-normalize` (extends normalize rules).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigJSON = `{
   "default": "  https://x.com/  ",
   "domains": [

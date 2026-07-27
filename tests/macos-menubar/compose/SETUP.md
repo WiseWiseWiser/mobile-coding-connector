@@ -29,9 +29,13 @@ REQUIREMENT-DESIGN-usage-structured-reset-ab.md scenarios 5–6. Existing
 (`FormatGrokDropdownLine` / `FormatResetDisplay` / `FormatTimeLeft`).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.Status == "" {
 		req.Status = "ready"
 	}

@@ -22,9 +22,11 @@ keep-alive -> server core_ready (fast) -> /ping; no tunnel/extension task logs
 Baseline for fast startup when extension path is inactive.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SkipExtensionStartup = true
 	req.ExtensionDelayMs = 0
 	req.WriteExtensionConfig = false

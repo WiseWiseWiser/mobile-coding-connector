@@ -1,3 +1,7 @@
+---
+label: e2e
+explanation: stop kills opencode serve child and clears registry
+---
 ## Expected
 
 1. Launch succeeded (`LaunchErr` nil).

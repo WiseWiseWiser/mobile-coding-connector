@@ -19,9 +19,13 @@ Existing top-level Refresh must be kept when Terminals is added.
 REQUIREMENT: keep existing top-level Refresh.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "top-level-refresh"
 	return nil
 }

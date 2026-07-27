@@ -22,9 +22,13 @@ legacy FormatProjectTitle -> Leading + "  " + Trailing
 REQUIREMENT scenarios 1–3 (project clean / dirty / error).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "project_title"
 	return nil
 }

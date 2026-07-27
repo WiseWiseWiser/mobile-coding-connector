@@ -1,3 +1,7 @@
+---
+explanation: "L2 library opencode cleanup helpers"
+---
+
 ## Expected
 
 1. `KillErr` is nil.
@@ -10,9 +14,13 @@
 - Child survives or port still open fails the test.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

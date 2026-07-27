@@ -23,9 +23,11 @@ MergeExclusions(nil, nil, nil) -> IsExcluded(rel) / ReasonFor(rel)
 - After refactor, log suffix is path-classifiable; IsExcluded must honor it.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = OpIsExcluded
 	req.Exclude = nil
 	req.Include = nil

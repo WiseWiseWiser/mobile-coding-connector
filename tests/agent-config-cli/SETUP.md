@@ -3,28 +3,24 @@
 **Feature**: shared agent `config` CLI flag contract (remote + local)
 
 ```
-# isolated HOME + session-built remote-agent/local-agent
+# Wave C: help / validation → in-process agentcli.Run (L2)
+# --show (loadConfig) → binary + cmd.Env HOME (isolated; not e2e-labeled)
 # leaf Setup sets Profile + config args + optional seed file
-# Run -> CLI subprocess (timeout) -> stdout/stderr/exit
-test harness -> remote-agent|local-agent config [...] -> help | JSON | error
-HOME/.ai-critic/*-agent-config.json <- seed / loadConfig for --show
+test harness -> agentcli.Run | remote-agent|local-agent config [...] -> help | JSON | error
 ```
 
 ## Preconditions
 
-1. Doctest injects `DOCTEST_SESSION_ID` for
-   `$TMPDIR/agent-config-cli-doctest-<session>/` (binaries built once per run).
-2. Session file locks serialize first-time `go build` of both agent binaries.
-3. Each leaf uses a fresh temp `HOME`; only compiled binaries are shared.
-4. CLI invocations use a default 4s kill timer so the legacy bare-UI path cannot hang the suite.
-5. No `ai-critic-server` is required for this tree.
+1. Doctest injects `DOCTEST_SESSION_ID` for binary session cache when `--show` leaves run.
+2. In-process path uses a suite mutex (profile + stdout capture); no `Setenv`/`Chdir`.
+3. Binary path: temp `HOME` via `cmd.Env` only; 4s kill timer; no server.
+4. No `ai-critic-server` is required for this tree.
 
 ## Steps
 
-1. Root `Run` builds binaries (session cache), creates isolated `HOME`, seeds config when requested.
-2. Group/leaf `Setup` sets `Profile` and `Args` for the scenario.
-3. `Run` executes the binary with `HOME` overridden; captures exit, stdout, stderr, timeout.
-4. Leaf `Assert` checks exit code, help/JSON/error text, and absence of UI banners.
+1. Group/leaf `Setup` sets `Profile` and `Args` (and seed for `--show`).
+2. `Run` chooses in-process vs binary (`needsIsolatedHOME` / `UseCLI`).
+3. Leaf `Assert` checks exit code, help/JSON/error text, and absence of UI banners.
 
 ## Context
 
@@ -46,7 +42,7 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 		req.Args = []string{}
 	}
 	if d.DOCTEST_SESSION_ID == "" {
-		t.Fatal("DOCTEST_SESSION_ID empty on session.Doctest")
+		t.Fatal("session id empty on session.Doctest")
 	}
 	return nil
 }

@@ -243,6 +243,7 @@ func systemctlCommandEnv(home string) []string {
 	if home == "" {
 		return env
 	}
+	env = replaceEnvHome(env, home)
 	binDir := filepath.Join(home, "bin")
 	if st, err := os.Stat(filepath.Join(binDir, "systemctl")); err != nil || st.IsDir() {
 		return env
@@ -272,23 +273,16 @@ func marshalSystemdServicesSnapshot(snap *SystemdServicesSnapshot) ([]byte, erro
 }
 
 func formatSystemdServicesSummaryLinesForHome(home string) []string {
-	for _, candidate := range tailscaleHomeCandidates(home) {
-		if snap, included, err := buildSystemdServicesSnapshotFn(candidate); err == nil && included && snap != nil {
-			return formatSystemdServicesSummaryLines(snap)
-		}
+	// Scope to the backup home only — do not fall back to process HOME (L2 isolation).
+	snap, included, err := buildSystemdServicesSnapshotFn(home)
+	if err != nil || !included || snap == nil {
+		return nil
 	}
-	return nil
+	return formatSystemdServicesSummaryLines(snap)
 }
 
 func captureSystemdServicesForHome(home string) (*SystemdServicesSnapshot, bool, error) {
-	for _, candidate := range tailscaleHomeCandidates(home) {
-		if snap, included, err := buildSystemdServicesSnapshotFn(candidate); err != nil {
-			return nil, false, err
-		} else if included && snap != nil {
-			return snap, true, nil
-		}
-	}
-	return nil, false, nil
+	return buildSystemdServicesSnapshotFn(home)
 }
 
 func formatSystemdServicesSummaryLines(snap *SystemdServicesSnapshot) []string {

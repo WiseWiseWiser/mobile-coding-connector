@@ -20,9 +20,13 @@ Documents menu-bar screenshot: `Codex: Error: timeout waiting for status output`
 Formatting is correct; fetch layer must not produce this error (see codex-usage leaves).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "codex-dropdown"
 	req.CodexStatus = "error"
 	req.CodexMonthly = ""

@@ -1,3 +1,7 @@
+---
+explanation: "L2 Manager / agentcli enable-disable"
+---
+
 ## Expected Output
 
 CLI stdout contains the stopped-service enable prompt mentioning daemon check.
@@ -27,9 +31,10 @@ import (
 	"testing"
 
 	"github.com/xhd2015/doctest/assert"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		combined := ""
 		if resp != nil {

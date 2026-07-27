@@ -23,9 +23,13 @@ REQUIREMENT leaf: `client/macos-menu-contract`. RED until Swift implementer upda
 menu label, `DaemonClient.restartDaemon()`, and wires the button.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "client-restart"
 	return nil
 }

@@ -25,10 +25,12 @@ Negative contract: never silent upgrade. Prefer clear error
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
-	req.ShowStatusCommand = stuckUpdateNowFakeCommand()
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	req.ShowStatusCommand = stuckUpdateNowFakeCommand(d)
 	req.SessionID = "codex-update-modal-stuck"
 	req.MarkerDir = filepath.Join(t.TempDir(), "markers")
 	req.FetchTimeoutSecs = 15

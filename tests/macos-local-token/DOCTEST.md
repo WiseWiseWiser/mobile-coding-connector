@@ -147,6 +147,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/ai-critic/macosapp/appprofile"
 	"github.com/xhd2015/ai-critic/macosapp/localauth"
 )
@@ -200,7 +201,7 @@ type Response struct {
 	SpawnsDaemon   bool
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 	switch req.Op {
 	case "resolve":
@@ -209,7 +210,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		resp.AuthHeader = localauth.AuthorizationHeader(req.Token)
 		return resp, nil
 	case "client":
-		return runClientContract(t, req, resp)
+		return runClientContract(t, d, req, resp)
 	case "profile":
 		return runProfile(t, req, resp)
 	default:
@@ -269,11 +270,10 @@ func runProfile(t *testing.T, req *Request, resp *Response) (*Response, error) {
 	return resp, nil
 }
 
-func runClientContract(t *testing.T, req *Request, resp *Response) (*Response, error) {
-	moduleRoot, err := findModuleRoot()
-	if err != nil {
-		return nil, err
-	}
+func runClientContract(t *testing.T, d *session.Doctest, req *Request, resp *Response) (*Response, error) {
+	// DOCTEST_ROOT is the tree root under tests/; module root is two levels up.
+	// Do not walk from cwd: doctest runs under mapping-gen which has its own go.mod.
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
 
 	switch req.ClientLeaf {
 	case "serverclient-sets-bearer":
@@ -325,31 +325,4 @@ func runClientContract(t *testing.T, req *Request, resp *Response) (*Response, e
 	}
 }
 
-func findModuleRoot() (string, error) {
-	// Prefer walking from DOCTEST_ROOT when the harness injects it as a variable.
-	if DOCTEST_ROOT != "" {
-		for dir := DOCTEST_ROOT; ; dir = filepath.Dir(dir) {
-			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-				return dir, nil
-			}
-			if filepath.Dir(dir) == dir {
-				break
-			}
-		}
-	}
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("go.mod not found")
-		}
-		dir = parent
-	}
-}
 ```

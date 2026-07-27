@@ -25,9 +25,13 @@ SeedReady(reset_at) -> Get@now1 => time_left "left 4d2h"
 REQUIREMENT scenario 2 parity for Codex service Get recompute.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ResetAtRFC3339 = "2026-08-01T10:00:00-07:00"
 	req.ResetDisplaySeed = "Aug 1, 10:00"
 	req.NextResetSeed = "10:00 on 1 Aug"

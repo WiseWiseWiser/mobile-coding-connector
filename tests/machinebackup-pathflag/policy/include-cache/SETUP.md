@@ -21,9 +21,11 @@ MergeExclusions(nil, nil, [".cache"]) -> IsExcluded(".cache/x") == false
 - Policy layer must survive pathflag catalog wiring.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Include = []string{".cache"}
 	req.Exclude = nil
 	req.RelPath = ".cache/x"

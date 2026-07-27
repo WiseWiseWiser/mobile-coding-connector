@@ -33,6 +33,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
 func assertPathsNotInExcluded(t *testing.T, combined string, paths ...string) {
@@ -48,7 +50,7 @@ func assertPathsNotInExcluded(t *testing.T, combined string, paths ...string) {
 	}
 }
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

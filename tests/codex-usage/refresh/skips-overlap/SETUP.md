@@ -19,9 +19,13 @@ Slow injectable fetcher increments an atomic counter and sleeps 2s.
 REQUIREMENT leaf: `refresh/skips-overlap`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.FetchMode = "slow"
 	return nil
 }

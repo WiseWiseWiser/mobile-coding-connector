@@ -21,9 +21,13 @@ serverHome uploads/mirror -> remote-agent download --dry-run -> stdout plan only
 REQUIREMENT-DESIGN-upload-download-dry-run.md — dir-success/dry-run-mirror.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	seedStandardRemoteTree(req)
 	setDownloadDryRunArgs(t, req, "uploads/mirror", "./local-mirror")
 	req.LocalDir = localDirRel("uploads/mirror", "./local-mirror")

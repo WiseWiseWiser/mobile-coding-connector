@@ -24,9 +24,13 @@ No local-only credential guidance applies to the remote profile.
 This leaf covers the remote-agent half of profile-specific friendly auth failures.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Token = "definitely-wrong-token"
 	req.Args = []string{"project", "list"}
 	return nil

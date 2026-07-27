@@ -25,9 +25,13 @@ SeedReady(reset_at) -> Get@now1 => time_left "left 4d2h"
 REQUIREMENT scenario 2: countdown advances between PTY refreshes.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ResetAtRFC3339 = "2026-07-17T10:55:00-07:00"
 	req.ResetDisplaySeed = "July 17, 10:55"
 	req.NextResetSeed = "July 17, 10:55"

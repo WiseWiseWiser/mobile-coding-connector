@@ -22,14 +22,17 @@ create -> GET /api/cron-tasks includes name, command, scheduleMode=interval
 CRUD priority: create + list.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Action = "create"
 	req.TaskName = "echo-every-5m"
 	req.Command = "echo hello-cron"
 	req.ScheduleMode = "interval"
 	req.Interval = "5m"
+	req.UseBinary = true // L3 smoke
 	return nil
 }
 ```

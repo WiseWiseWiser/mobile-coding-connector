@@ -24,14 +24,17 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	dir := mkDeniedRepo(t)
 	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("x\n"), 0644); err != nil {
 		return err
 	}
 	setGitLocalArgs(t, req, dir, "add", "new.txt")
+	req.UseCLI = true
 	return nil
 }
 ```

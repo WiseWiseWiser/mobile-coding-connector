@@ -14,12 +14,14 @@ const (
 var (
 	defaultPortOverride int
 	reachabilityMode    string // "", "up", "down"
+	homeOverride        string
 )
 
 // ApplyFromEnv reads test-only environment variables. Call at process startup.
 func ApplyFromEnv() {
 	defaultPortOverride = 0
 	reachabilityMode = ""
+	homeOverride = ""
 	if v := strings.TrimSpace(os.Getenv(envDefaultPort)); v != "" {
 		if p, err := strconv.Atoi(v); err == nil && p > 0 {
 			defaultPortOverride = p
@@ -60,4 +62,41 @@ func ReachabilityForced() (forced bool, up bool) {
 	default:
 		return false, false
 	}
+}
+
+// SetHomeOverride scopes agentcli config and worktree roots to dir for in-process
+// tests. Empty clears. Must be paired with agentcli.Run under a process mutex;
+// does not call os.Setenv.
+func SetHomeOverride(dir string) {
+	homeOverride = strings.TrimSpace(dir)
+}
+
+// SetDefaultPortForTest sets the in-process default port override (0 clears).
+func SetDefaultPortForTest(port int) {
+	if port < 0 {
+		port = 0
+	}
+	defaultPortOverride = port
+}
+
+// SetReachabilityForTest sets in-process reachability mock: "", "up", or "down".
+func SetReachabilityForTest(mode string) {
+	reachabilityMode = strings.ToLower(strings.TrimSpace(mode))
+}
+
+// ResetInProcessOverrides clears home/port/reachability overrides after an
+// in-process agentcli.Run. Safe to call from defer under the suite mutex.
+func ResetInProcessOverrides() {
+	homeOverride = ""
+	defaultPortOverride = 0
+	reachabilityMode = ""
+}
+
+// UserHomeDir returns the home override when set, otherwise os.UserHomeDir.
+// Used by agentcli for config paths and project worktree roots without Setenv.
+func UserHomeDir() (string, error) {
+	if homeOverride != "" {
+		return homeOverride, nil
+	}
+	return os.UserHomeDir()
 }

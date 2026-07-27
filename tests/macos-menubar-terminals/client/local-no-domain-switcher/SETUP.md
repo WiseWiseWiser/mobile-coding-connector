@@ -19,9 +19,13 @@ Local app talks to the local server; domain switcher is remote-only.
 REQUIREMENT: local has no domain switcher.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "local-no-domain-switcher"
 	return nil
 }

@@ -19,9 +19,13 @@ Mock fake-TUI scripts in `testdata/`; `TestExported_SetEnv` sets `GROK_SHOW_USAG
 Service-layer tests without full daemon HTTP; no `GROK_SHOW_USAGE_BIN` exec.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "fetch"
 	return nil
 }

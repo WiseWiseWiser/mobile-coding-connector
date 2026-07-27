@@ -22,9 +22,13 @@ Binary is `./cmd/remote-agent`; CLI name in help is `remote-agent`.
 Shared `runConfig` with remote profile defaults.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Profile = ProfileRemote
 	return nil
 }

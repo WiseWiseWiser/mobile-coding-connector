@@ -23,9 +23,13 @@ locked order prefers local match first.
 REQUIREMENT: "Prefer domain matching local server … else default domain".
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigJSON = `{
   "default": "https://remote.example.com",
   "domains": [

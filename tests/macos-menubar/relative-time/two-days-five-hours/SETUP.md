@@ -19,9 +19,13 @@ Remaining duration is 53 hours (2 days 5 hours).
 REQUIREMENT-DESIGN-menubar-display-v2.md scenario: 53h → `left 2d5h`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Reset = "July 8, 21:55 PT"
 	req.NowRFC3339 = "2026-07-06T16:55:00-07:00"
 	return nil

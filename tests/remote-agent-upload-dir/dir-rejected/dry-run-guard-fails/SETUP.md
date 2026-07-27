@@ -22,9 +22,13 @@ pre-seeded file blocks dry-run plan before any would-upload lines
 REQUIREMENT-DESIGN-upload-download-dry-run.md — dir-rejected/dry-run-guard-fails.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	localRoot := mkLocalWorkDir(t)
 	seedRejectLocalTree(t, localRoot)
 	req.ServerPreseedFiles = map[string]string{

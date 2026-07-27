@@ -24,9 +24,11 @@ REQUIREMENT leaf: `clean-repo/` — clean repo with "Initial commit".
 ```go
 import (
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	dir := mkProjectDir(t)
 	gitInitWithMain(t, dir)
 	gitInitialCommit(t, dir, "Initial commit")
@@ -36,6 +38,7 @@ func Setup(t *testing.T, req *Request) error {
 		Name: "clean-repo-test",
 		Dir:  dir,
 	}
+	req.UseCLI = true
 	return nil
 }
 ```

@@ -20,9 +20,13 @@ entry shows > node_modules child line AND node_modules N dirs aggregate (N>=2)
 REQUIREMENT leaf `stream/node-modules`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedProfile = "node-modules"
 	req.Args = []string{"machine", "analyse-files"}
 	return nil

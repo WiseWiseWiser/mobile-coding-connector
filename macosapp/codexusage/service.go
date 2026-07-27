@@ -2,6 +2,7 @@ package codexusage
 
 import (
 	"context"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,8 +43,9 @@ type fetchFunc func(context.Context) (*agentusage.Snapshot, error)
 
 // Service fetches and caches codex usage on a background refresh loop.
 type Service struct {
-	fetcher fetchFunc
-	nowFunc func() time.Time
+	fetcher  fetchFunc
+	nowFunc  func() time.Time
+	extraEnv map[string]string
 
 	mu       sync.Mutex
 	fetching bool
@@ -53,6 +55,10 @@ type Service struct {
 	stopOnce sync.Once
 }
 
+// extraEnvMu serializes process env apply around in-process fetch so parallel
+// doctest leaves with TestExported_SetEnv do not race on os.Environ.
+var extraEnvMu sync.Mutex
+
 // NewService creates a codex usage service with in-process fetch.
 func NewService() *Service {
 	return newService(defaultFetcher)
@@ -60,7 +66,8 @@ func NewService() *Service {
 
 func newService(fetcher fetchFunc) *Service {
 	return &Service{
-		fetcher: fetcher,
+		fetcher:  fetcher,
+		extraEnv: make(map[string]string),
 		cached: CodexUsageResponse{
 			Status: StatusLoading,
 		},
@@ -163,6 +170,9 @@ func (s *Service) fetchOnce() {
 		},
 	})
 
+	restore := s.applyExtraEnv()
+	defer restore()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	snap, err := s.fetcher(ctx)
@@ -213,14 +223,14 @@ func (s *Service) fetchOnce() {
 			"phase":     "service",
 		},
 		Fields: map[string]any{
-			"status":         string(StatusReady),
-			"monthly_usage":  s.cached.MonthlyUsage,
-			"credits_used":   s.cached.CreditsUsed,
-			"credits_total":  s.cached.CreditsTotal,
-			"next_reset":     s.cached.NextReset,
-			"reset_at":       s.cached.ResetAt,
-			"reset_display":  s.cached.ResetDisplay,
-			"time_left":      s.cached.TimeLeft,
+			"status":        string(StatusReady),
+			"monthly_usage": s.cached.MonthlyUsage,
+			"credits_used":  s.cached.CreditsUsed,
+			"credits_total": s.cached.CreditsTotal,
+			"next_reset":    s.cached.NextReset,
+			"reset_at":      s.cached.ResetAt,
+			"reset_display": s.cached.ResetDisplay,
+			"time_left":     s.cached.TimeLeft,
 		},
 	})
 }
@@ -237,6 +247,34 @@ func formatCreditAmount(raw string) string {
 	return formatWithCommas(n)
 }
 
+func (s *Service) applyExtraEnv() func() {
+	if len(s.extraEnv) == 0 {
+		return func() {}
+	}
+	type saved struct {
+		key string
+		val string
+		set bool
+	}
+	extraEnvMu.Lock()
+	var savedVars []saved
+	for key, val := range s.extraEnv {
+		prev, had := os.LookupEnv(key)
+		savedVars = append(savedVars, saved{key: key, val: prev, set: had})
+		_ = os.Setenv(key, val)
+	}
+	return func() {
+		for _, item := range savedVars {
+			if item.set {
+				_ = os.Setenv(item.key, item.val)
+			} else {
+				_ = os.Unsetenv(item.key)
+			}
+		}
+		extraEnvMu.Unlock()
+	}
+}
+
 // TestExported_NewService creates a service with the default in-process fetcher.
 func TestExported_NewService() *Service {
 	return newService(defaultFetcher)
@@ -245,6 +283,16 @@ func TestExported_NewService() *Service {
 // TestExported_SetFetcher replaces the default in-process fetch for doctest harness.
 func TestExported_SetFetcher(s *Service, fn fetchFunc) {
 	s.fetcher = fn
+}
+
+// TestExported_SetEnv sets an extra environment variable applied only around
+// the in-process tty/usage fetch (child processes inherit via process env for
+// the duration of FetchOnce). Harness must not call os.Setenv itself.
+func (s *Service) TestExported_SetEnv(key, val string) {
+	if s.extraEnv == nil {
+		s.extraEnv = make(map[string]string)
+	}
+	s.extraEnv[key] = val
 }
 
 // TestExported_FetchOnce performs a single synchronous fetch for doctest harness.

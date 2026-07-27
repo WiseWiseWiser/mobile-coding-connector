@@ -20,9 +20,13 @@ ComposeGrokDropdownLine(61%, "July 17, 08:55", "")
 REQUIREMENT scenario 6: no trailing `, left …` when time_left is empty.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "grok-compose"
 	req.Status = "ready"
 	req.WeeklyLimit = "61%"

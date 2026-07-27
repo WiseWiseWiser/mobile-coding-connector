@@ -21,9 +21,13 @@ persisted threshold overrides 40MB default
 Runtime threshold resolution from persisted user config.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedLargeDir = true
 	req.PrereqSetConfig = true
 	req.PrereqSetConfigLargeDirThreshold = "100MB"

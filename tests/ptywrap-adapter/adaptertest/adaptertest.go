@@ -19,6 +19,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
 
 // Request is the doctest harness request for ai-critic adapter tests.
@@ -40,21 +41,21 @@ type Response struct {
 }
 
 // Run executes an adapter regression phase.
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	switch req.Phase {
 	case "ws-create":
-		return runWSCreateRegression(t, req)
+		return runWSCreateRegression(t, d, req)
 	case "list-shape":
-		return runListShapeRegression(t, req)
+		return runListShapeRegression(t, d, req)
 	default:
 		return nil, fmt.Errorf("unknown phase %q", req.Phase)
 	}
 }
 
 // StartAICriticServer builds and starts ai-critic-server for adapter tests.
-func StartAICriticServer(t *testing.T) (base string, port int, cleanup func()) {
+func StartAICriticServer(t *testing.T, d *session.Doctest) (base string, port int, cleanup func()) {
 	t.Helper()
-	moduleRoot, err := findModuleRoot()
+	moduleRoot, err := findModuleRoot(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +104,7 @@ func StartAICriticServer(t *testing.T) (base string, port int, cleanup func()) {
 	return base, port, cleanup
 }
 
-func runWSCreateRegression(t *testing.T, req *Request) (*Response, error) {
+func runWSCreateRegression(t *testing.T, _ *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 	base := req.ServerURL
 	if base == "" {
@@ -133,7 +134,7 @@ func runWSCreateRegression(t *testing.T, req *Request) (*Response, error) {
 	return resp, nil
 }
 
-func runListShapeRegression(t *testing.T, req *Request) (*Response, error) {
+func runListShapeRegression(t *testing.T, _ *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 	base := req.ServerURL
 	if base == "" {
@@ -148,7 +149,12 @@ func runListShapeRegression(t *testing.T, req *Request) (*Response, error) {
 	_, _ = readSessionID(ws)
 	ws.Close()
 
-	httpResp, err := http.Get(base + "/api/terminal/sessions")
+	httpReq, err := http.NewRequest(http.MethodGet, base+"/api/terminal/sessions", nil)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+lib.TestPassword)
+	httpResp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +177,9 @@ func wsDial(base, query string) (*websocket.Conn, error) {
 	u.Scheme = "ws"
 	u.Path = "/api/terminal"
 	u.RawQuery = query
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	hdr := http.Header{}
+	hdr.Set("Authorization", "Bearer "+lib.TestPassword)
+	conn, _, err := websocket.DefaultDialer.Dial(u.String(), hdr)
 	return conn, err
 }
 
@@ -210,9 +218,9 @@ func collectWS(conn *websocket.Conn, wait time.Duration) (string, error) {
 	return buf.String(), nil
 }
 
-func findModuleRoot() (string, error) {
-	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
-		for dir := root; ; dir = filepath.Dir(dir) {
+func findModuleRoot(d *session.Doctest) (string, error) {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		for dir := d.DOCTEST_ROOT; ; dir = filepath.Dir(dir) {
 			if isAICriticModuleRoot(dir) {
 				return dir, nil
 			}

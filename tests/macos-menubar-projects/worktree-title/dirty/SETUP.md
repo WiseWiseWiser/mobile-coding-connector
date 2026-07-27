@@ -20,9 +20,13 @@ Linked worktree basename `feat-login` is dirty.
 REQUIREMENT: worktree dirty → `○ Dirty`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Name = "feat-login"
 	req.Clean = false
 	return nil

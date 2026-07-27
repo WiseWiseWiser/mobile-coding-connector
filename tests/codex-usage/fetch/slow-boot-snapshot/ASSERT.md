@@ -1,8 +1,7 @@
 ---
-label: slow
-explanation: synthetic fake TUI silent 12s then prints status; ~20s wall time
+label: slow, e2e
+explanation: in-process fetch drives fake TUI subprocess (slow boot)
 ---
-
 ## Expected
 
 In-process fetch must wait through slow silent boot and return ready usage:
@@ -21,9 +20,13 @@ In-process fetch must wait through slow silent boot and return ready usage:
 - Any non-ready service status.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

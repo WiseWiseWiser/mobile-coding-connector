@@ -1,3 +1,7 @@
+---
+explanation: "L2 crontasks.Manager / agentcli"
+---
+
 ## Expected
 
 1. Create succeeds.
@@ -24,9 +28,10 @@
 import (
 	"testing"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v body=%s", err, resp.Body)
 	}

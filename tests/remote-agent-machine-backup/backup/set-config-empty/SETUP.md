@@ -21,9 +21,13 @@ Default `serverHome` fixtures.
 Validation leaf: set-config requires at least one input flag.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SetConfig = true
 	req.Args = []string{"machine", "backup"}
 	return nil

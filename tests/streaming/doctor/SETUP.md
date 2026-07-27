@@ -20,9 +20,13 @@ Server running with seeded ws-proxy config and stubbed external checks.
 Groups all doctor integration leaves.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.RecordLineTimes = true
 	return nil
 }

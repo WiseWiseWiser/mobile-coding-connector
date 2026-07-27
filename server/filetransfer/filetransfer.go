@@ -33,35 +33,61 @@ type ScratchEntry struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-// RegisterAPI registers dedicated file-transfer inbox endpoints.
+// RegisterAPI registers dedicated file-transfer inbox endpoints using the
+// process config.FileTransferDir (production path).
 func RegisterAPI(mux *http.ServeMux) {
-	mux.HandleFunc("/api/file-transfer", handleRoot)
-	mux.HandleFunc("/api/file-transfer/upload", handleUpload)
-	mux.HandleFunc("/api/file-transfer/download", handleDownload)
-	mux.HandleFunc("/api/file-transfer/scratch", handleScratch)
+	RegisterAPIForDir(mux, "")
 }
 
-func handleRoot(w http.ResponseWriter, r *http.Request) {
+// RegisterAPIForDir registers the same endpoints as RegisterAPI, but scopes
+// inbox/scratch storage to the given directory. When dir is empty, handlers
+// fall back to config.FileTransferDir like RegisterAPI.
+//
+// Intended for in-process tests that want isolated scratch storage without
+// mutating process environment (AI_CRITIC_HOME).
+func RegisterAPIForDir(mux *http.ServeMux, dir string) {
+	mux.HandleFunc("/api/file-transfer", func(w http.ResponseWriter, r *http.Request) {
+		handleRoot(w, r, dir)
+	})
+	mux.HandleFunc("/api/file-transfer/upload", func(w http.ResponseWriter, r *http.Request) {
+		handleUpload(w, r, dir)
+	})
+	mux.HandleFunc("/api/file-transfer/download", func(w http.ResponseWriter, r *http.Request) {
+		handleDownload(w, r, dir)
+	})
+	mux.HandleFunc("/api/file-transfer/scratch", func(w http.ResponseWriter, r *http.Request) {
+		handleScratch(w, r, dir)
+	})
+}
+
+func handleRoot(w http.ResponseWriter, r *http.Request, transferDir string) {
 	switch r.Method {
 	case http.MethodGet:
-		handleList(w, r)
+		handleList(w, r, transferDir)
 	case http.MethodDelete:
-		handleDelete(w, r)
+		handleDelete(w, r, transferDir)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func ensureDir() (string, error) {
-	dir := config.FileTransferDir
+func resolveTransferDir(override string) string {
+	if strings.TrimSpace(override) != "" {
+		return override
+	}
+	return config.FileTransferDir
+}
+
+func ensureDir(transferDir string) (string, error) {
+	dir := resolveTransferDir(transferDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create file-transfer dir: %w", err)
 	}
 	return dir, nil
 }
 
-func handleList(w http.ResponseWriter, r *http.Request) {
-	dir, err := ensureDir()
+func handleList(w http.ResponseWriter, r *http.Request, transferDir string) {
+	dir, err := ensureDir(transferDir)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -96,7 +122,7 @@ func handleList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"files": files})
 }
 
-func handleUpload(w http.ResponseWriter, r *http.Request) {
+func handleUpload(w http.ResponseWriter, r *http.Request, transferDir string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -115,7 +141,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	dir, err := ensureDir()
+	dir, err := ensureDir(transferDir)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -156,7 +182,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func handleDownload(w http.ResponseWriter, r *http.Request) {
+func handleDownload(w http.ResponseWriter, r *http.Request, transferDir string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -168,7 +194,7 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dir, err := ensureDir()
+	dir, err := ensureDir(transferDir)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -195,7 +221,7 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filePath)
 }
 
-func handleDelete(w http.ResponseWriter, r *http.Request) {
+func handleDelete(w http.ResponseWriter, r *http.Request, transferDir string) {
 	var req struct {
 		Name string `json:"name"`
 	}
@@ -210,7 +236,7 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dir, err := ensureDir()
+	dir, err := ensureDir(transferDir)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -272,12 +298,12 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
-func scratchPath() string {
-	return filepath.Join(config.FileTransferDir, scratchFile)
+func scratchPath(transferDir string) string {
+	return filepath.Join(resolveTransferDir(transferDir), scratchFile)
 }
 
-func readScratch() (ScratchEntry, error) {
-	path := scratchPath()
+func readScratch(transferDir string) (ScratchEntry, error) {
+	path := scratchPath(transferDir)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -292,19 +318,19 @@ func readScratch() (ScratchEntry, error) {
 	return entry, nil
 }
 
-func handleScratch(w http.ResponseWriter, r *http.Request) {
+func handleScratch(w http.ResponseWriter, r *http.Request, transferDir string) {
 	switch r.Method {
 	case http.MethodGet:
-		handleScratchGet(w, r)
+		handleScratchGet(w, r, transferDir)
 	case http.MethodPut:
-		handleScratchPut(w, r)
+		handleScratchPut(w, r, transferDir)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func handleScratchGet(w http.ResponseWriter, r *http.Request) {
-	entry, err := readScratch()
+func handleScratchGet(w http.ResponseWriter, r *http.Request, transferDir string) {
+	entry, err := readScratch(transferDir)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -312,7 +338,7 @@ func handleScratchGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, entry)
 }
 
-func handleScratchPut(w http.ResponseWriter, r *http.Request) {
+func handleScratchPut(w http.ResponseWriter, r *http.Request, transferDir string) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxScratchSize+1024)
 	var req struct {
 		Content string `json:"content"`
@@ -326,7 +352,7 @@ func handleScratchPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := ensureDir(); err != nil {
+	if _, err := ensureDir(transferDir); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -341,7 +367,7 @@ func handleScratchPut(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("marshal scratch: %v", err))
 		return
 	}
-	if err := os.WriteFile(scratchPath(), data, 0o644); err != nil {
+	if err := os.WriteFile(scratchPath(transferDir), data, 0o644); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("write scratch: %v", err))
 		return
 	}

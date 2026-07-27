@@ -29,9 +29,13 @@ Negative contract: early `/status\r` while model may still load does not produce
 usage fields. Production path is `wait-idle-production-status` + `FetchStatus`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "ttywatch-real"
 	req.TTYWatchMode = "user-script"
 	req.BootPollCount = 5

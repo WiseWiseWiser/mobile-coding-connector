@@ -21,9 +21,13 @@ remote-agent machine backup --dry-run -> branch, short sha, clean, commit msg
 REQUIREMENT leaf `backup/git-repos-non-dot-path` (HOME-wide git scan).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	requireGit(t)
 	req.SeedGitReposNonDot = true
 	req.Args = []string{"machine", "backup", "--dry-run"}

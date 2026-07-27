@@ -26,9 +26,11 @@ End-to-end contract for production Skip keys (CSI Down + Enter). RED until
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "fetch-inprocess"
 	req.StripDaemonPATH = true
 	if req.TTYWatchHome == "" {

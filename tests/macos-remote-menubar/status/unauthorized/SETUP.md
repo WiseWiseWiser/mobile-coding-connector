@@ -19,9 +19,13 @@ Server reachable but auth check rejected the token.
 REQUIREMENT leaf: `status/unauthorized`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConnectionState = "unauthorized"
 	req.StatusServer = "https://example.com"
 	req.Token = "bad-token-value"

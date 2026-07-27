@@ -22,9 +22,11 @@ Unit-level registry read before production launch wiring.
 import (
 	"os"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.WriteFixture = true
 	req.FixturePID = os.Getpid()
 	req.FixturePort = 50776

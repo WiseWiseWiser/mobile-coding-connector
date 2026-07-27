@@ -19,9 +19,13 @@ Codex reset is already in `now.Location()`; output uses `{Mon} {day}, {HH}:{mm}`
 REQUIREMENT suggested leaf: `08:00 on 1 Aug` → `Aug 1, 08:00`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Reset = "08:00 on 1 Aug"
 	req.NowRFC3339 = "2026-07-06T08:00:00-07:00"
 	return nil

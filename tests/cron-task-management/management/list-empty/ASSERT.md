@@ -1,3 +1,7 @@
+---
+explanation: "L2 crontasks.Manager / agentcli"
+---
+
 ## Expected
 
 1. `Run` returns without harness error.
@@ -18,9 +22,11 @@
 0 from `Run`.
 
 ```go
-import "testing"
-
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

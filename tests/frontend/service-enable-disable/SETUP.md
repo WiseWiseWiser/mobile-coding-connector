@@ -42,11 +42,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
 const defaultQuickTestPort = 3680
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.ScriptPath == "" {
 		req.ScriptPath = "script.js"
 	}
@@ -165,7 +166,29 @@ func prepareServiceSeed(baseURL string, seed *ServiceSeed) (map[string]any, erro
 	return fetchServiceByID(baseURL, id)
 }
 
-func findGoModuleRoot() (string, error) {
+func chromeSafePort(port int) int {
+	blocked := map[int]struct{}{
+		2049: {}, 3659: {}, 4045: {}, 6000: {}, 6665: {}, 6666: {}, 6667: {}, 6668: {}, 6669: {},
+	}
+	for {
+		if _, bad := blocked[port]; !bad {
+			return port
+		}
+		port++
+	}
+}
+
+func findGoModuleRoot(d *session.Doctest) (string, error) {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		for dir := d.DOCTEST_ROOT; ; dir = filepath.Dir(dir) {
+			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+				return dir, nil
+			}
+			if filepath.Dir(dir) == dir {
+				break
+			}
+		}
+	}
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", err

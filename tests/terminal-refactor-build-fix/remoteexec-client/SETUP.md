@@ -19,9 +19,11 @@ remoteexec/client.RunInteractive -> dial /api/exec/ws -> fake server messages
 2. Harness starts fake server and runs `Client.RunInteractive`.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if len(req.WSExecArgv) == 0 {
 		req.WSExecArgv = []string{"true"}
 	}

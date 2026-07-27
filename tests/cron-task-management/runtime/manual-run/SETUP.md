@@ -22,9 +22,11 @@ POST /api/cron-tasks/run?id= -> history gains a run quickly
 Priority leaf: manual run. Still skip if already running (not covered here — task is idle).
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedTasks = []TaskSeed{
 		{
 			ID:           "manual-target",

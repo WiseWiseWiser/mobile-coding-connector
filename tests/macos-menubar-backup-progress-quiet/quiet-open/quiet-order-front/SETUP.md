@@ -23,9 +23,13 @@ Source must show `orderFrontRegardless` or bare `orderFront(` after stripping
 REQUIREMENT #1; current code only uses `makeKeyAndOrderFront` → RED until quiet front.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "quiet-order-front"
 	return nil
 }

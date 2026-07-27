@@ -19,9 +19,13 @@ Three synthetic entries with distinct mod times.
 REQUIREMENT #15.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "recent_list"
 	req.EntriesJSON = `[
   {"path":"old.tar.xz","mod_time":"2026-07-10T10:00:00Z","size_bytes":1},

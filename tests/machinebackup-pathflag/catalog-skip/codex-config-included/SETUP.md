@@ -21,9 +21,11 @@ MergeExclusions(nil,nil,nil) -> IsExcluded(".codex/config.toml") == false
 - Negative control next to `.codex/.tmp` skip.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.RelPath = ".codex/config.toml"
 	req.WantExcluded = false
 	req.WantExcludedSet = true

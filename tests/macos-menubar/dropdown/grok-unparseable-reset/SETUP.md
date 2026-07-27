@@ -19,9 +19,13 @@ Reset string `soon` cannot be parsed for relative countdown.
 REQUIREMENT scenario 8: unparseable reset → show `Reset {raw}` only, no `left`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "grok-dropdown"
 	req.GrokStatus = "ready"
 	req.WeeklyLimit = "6%"

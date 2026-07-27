@@ -19,9 +19,13 @@ Daemon surfaces fetch timeout in `error` field; menu bar hides full message.
 REQUIREMENT leaf: `label/error` (amended). Full message appears in dropdown only.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Status = "error"
 	req.WeeklyLimit = ""
 	req.ErrorMsg = "timeout waiting for usage"

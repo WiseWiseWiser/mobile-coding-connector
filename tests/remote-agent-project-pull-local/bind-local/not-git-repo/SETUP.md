@@ -24,9 +24,11 @@ REQUIREMENT leaf `bind-local/not-git-repo`.
 import (
 	"os"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	remoteDir := pairSameOriginRepos(t).RemoteDir
 	localPlain := mkLocalDir(t)
 	if err := os.WriteFile(localPlain+"/note.txt", []byte("not git\n"), 0644); err != nil {

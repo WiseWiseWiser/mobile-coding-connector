@@ -19,9 +19,13 @@ Spec: `no_default` when >1 domain and no usable default match (not first-domain)
 REQUIREMENT leaf: `resolve/multi-domain-no-default`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigJSON = `{
   "default": "",
   "domains": [

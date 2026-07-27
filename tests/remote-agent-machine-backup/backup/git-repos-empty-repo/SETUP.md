@@ -21,9 +21,13 @@ remote-agent machine backup --dry-run -> exit 0; error: no commits (HEAD unborn)
 REQUIREMENT leaf `backup/git-repos-empty-repo`; reproduces `.openclaw/workspace` HEAD unborn failure.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	requireGit(t)
 	req.SeedGitReposEmpty = true
 	req.Args = []string{"machine", "backup", "--dry-run"}

@@ -97,6 +97,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/ai-critic/script/lib"
 	"github.com/xhd2015/ai-critic/server/config"
 )
@@ -153,27 +154,26 @@ type Response struct {
 	ServerPingOK    bool
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 	switch req.Op {
 	case "client", "client-restart":
-		return runClientContract(t, resp)
+		return runClientContract(t, d, resp)
 	case "client-business-port":
-		return runClientBusinessPortContract(t, resp)
+		return runClientBusinessPortContract(t, d, resp)
 	case "api-restart-server":
-		return runAPIRestartServer(t, req, resp)
+		return runAPIRestartServer(t, d, req, resp)
 	case "api-restart-daemon":
-		return runAPIRestartDaemon(t, req, resp)
+		return runAPIRestartDaemon(t, d, req, resp)
 	default:
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}
 }
 
-func runClientBusinessPortContract(t *testing.T, resp *Response) (*Response, error) {
-	moduleRoot, err := findModuleRoot()
-	if err != nil {
-		return nil, err
-	}
+func runClientBusinessPortContract(t *testing.T, d *session.Doctest, resp *Response) (*Response, error) {
+	// DOCTEST_ROOT is the tree root under tests/; module root is two levels up.
+	// Do not walk from cwd: doctest runs under mapping-gen which has its own go.mod.
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
 	serverPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "ServerClient.swift")
 	daemonPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "DaemonClient.swift")
 	resp.SwiftSourcesChecked = []string{serverPath, daemonPath}
@@ -198,11 +198,10 @@ func runClientBusinessPortContract(t *testing.T, resp *Response) (*Response, err
 	return resp, nil
 }
 
-func runClientContract(t *testing.T, resp *Response) (*Response, error) {
-	moduleRoot, err := findModuleRoot()
-	if err != nil {
-		return nil, err
-	}
+func runClientContract(t *testing.T, d *session.Doctest, resp *Response) (*Response, error) {
+	// DOCTEST_ROOT is the tree root under tests/; module root is two levels up.
+	// Do not walk from cwd: doctest runs under mapping-gen which has its own go.mod.
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
 
 	appPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "AICriticApp.swift")
 	clientPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "DaemonClient.swift")
@@ -263,8 +262,8 @@ func extractMenuRestartCall(appSrc string) string {
 	return m[1]
 }
 
-func runAPIRestartServer(t *testing.T, req *Request, resp *Response) (*Response, error) {
-	daemon, port, cleanup, err := startTestDaemon(t, req)
+func runAPIRestartServer(t *testing.T, d *session.Doctest, req *Request, resp *Response) (*Response, error) {
+	daemon, port, cleanup, err := startTestDaemon(t, d, req)
 	if err != nil {
 		return nil, err
 	}
@@ -311,8 +310,8 @@ func runAPIRestartServer(t *testing.T, req *Request, resp *Response) (*Response,
 	return resp, nil
 }
 
-func runAPIRestartDaemon(t *testing.T, req *Request, resp *Response) (*Response, error) {
-	daemon, port, cleanup, err := startTestDaemon(t, req)
+func runAPIRestartDaemon(t *testing.T, d *session.Doctest, req *Request, resp *Response) (*Response, error) {
+	daemon, port, cleanup, err := startTestDaemon(t, d, req)
 	if err != nil {
 		return nil, err
 	}
@@ -360,17 +359,16 @@ func runAPIRestartDaemon(t *testing.T, req *Request, resp *Response) (*Response,
 	return resp, nil
 }
 
-func startTestDaemon(t *testing.T, req *Request) (*exec.Cmd, int, func(), error) {
+func startTestDaemon(t *testing.T, d *session.Doctest, req *Request) (*exec.Cmd, int, func(), error) {
 	if req.ServerPort <= 0 {
 		req.ServerPort = config.DefaultServerPort
 	}
 	hash := portHash(t.Name())
 	req.ServerPort += hash % 200
 
-	moduleRoot, err := findModuleRoot()
-	if err != nil {
-		return nil, 0, nil, err
-	}
+	// DOCTEST_ROOT is the tree root under tests/; module root is two levels up.
+	// Do not walk from cwd: doctest runs under mapping-gen which has its own go.mod.
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
 
 	safeName := strings.ReplaceAll(t.Name(), "/", "_")
 	binPath := filepath.Join(os.TempDir(), "ai-critic-restart-menu-"+safeName)
@@ -586,32 +584,6 @@ func portHash(name string) int {
 	return h
 }
 
-func findModuleRoot() (string, error) {
-	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
-		for dir := root; ; dir = filepath.Dir(dir) {
-			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-				return dir, nil
-			}
-			if filepath.Dir(dir) == dir {
-				break
-			}
-		}
-	}
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("go.mod not found")
-		}
-		dir = parent
-	}
-}
 
 var _ = bytes.Buffer{}
 ```

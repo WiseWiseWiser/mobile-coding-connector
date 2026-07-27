@@ -21,9 +21,13 @@ any directory entry disqualifies destination
 REQUIREMENT leaf #7 — dir-rejected/dst-has-subdir.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	localRoot := mkLocalWorkDir(t)
 	seedRejectLocalTree(t, localRoot)
 	req.ServerPreseedDirs = []string{"uploads/mirror/child"}

@@ -21,9 +21,13 @@ Binding; bulk untracked files summing above 64 MiB, each file under per-file cap
 REQUIREMENT leaf `total-over-max`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	pair := pairSameOriginRepos(t)
 	dirtyWithManyOneMiBFiles(t, pair.RemoteDir, bulkFileCountOver64)
 	seedSizeLimitPullProject(t, req, "pull-size-total-001", "pull-size-total", pair)

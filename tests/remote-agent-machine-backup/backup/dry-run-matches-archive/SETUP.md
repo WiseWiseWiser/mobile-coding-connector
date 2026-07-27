@@ -22,9 +22,13 @@ REQUIREMENT leaf `backup/dry-run-matches-archive`. `Run` executes dry-run, fetch
 plan `included` via JSON API with matching exclude/include flags, then runs backup.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.DryRunThenArchive = true
 	req.OutputPath = "dry-run-matches-archive.tar.xz"
 	req.Args = []string{"machine", "backup", "--dry-run"}

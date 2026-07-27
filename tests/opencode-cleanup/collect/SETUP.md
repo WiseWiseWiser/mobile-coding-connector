@@ -20,9 +20,13 @@ lsof tcp:PORT (fake opencode) -> Collect -> PID list
 MECE: file-based discovery vs port-based discovery.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = OpCollect
 	return nil
 }

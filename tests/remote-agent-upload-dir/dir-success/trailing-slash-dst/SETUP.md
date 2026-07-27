@@ -24,9 +24,11 @@ REQUIREMENT leaf #5 — dir-success/trailing-slash-dst.
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	localRoot := mkLocalWorkDir(t)
 	projDir := filepath.Join(localRoot, "proj")
 	writeLocalFile(t, projDir, "file.txt", "proj payload\n", 0644)

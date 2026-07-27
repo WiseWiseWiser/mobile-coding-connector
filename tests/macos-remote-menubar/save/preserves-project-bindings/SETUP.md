@@ -20,9 +20,13 @@ Initial config includes one domain and one project binding.
 REQUIREMENT leaf: `save/preserves-project-bindings`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigJSON = `{
   "default": "https://example.com",
   "domains": [

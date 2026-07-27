@@ -22,9 +22,13 @@ Local match targets include both `http://localhost:23712` and
 REQUIREMENT leaf: loopback variant of scenario 5 (127.0.0.1 form).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigJSON = `{
   "default": "",
   "domains": [

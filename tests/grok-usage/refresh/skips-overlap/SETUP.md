@@ -19,9 +19,13 @@ two concurrent refresh -> GROK_MOCK_COUNTER_FILE == 1
 REQUIREMENT leaf: `refresh/skips-overlap`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.MockScript = "mock-slow.sh"
 	return nil
 }

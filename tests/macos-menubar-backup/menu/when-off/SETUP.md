@@ -19,9 +19,13 @@ User has not enabled periodic backup (default or after Disable).
 REQUIREMENT #22.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "menu_gating"
 	req.Enabled = false
 	return nil

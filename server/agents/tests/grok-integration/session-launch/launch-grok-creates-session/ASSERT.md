@@ -1,8 +1,7 @@
 ---
-label: slow
-explanation: real opencode serve startup when binary is installed
+label: slow, e2e
+explanation: launches opencode serve (real or fake) for grok session
 ---
-
 ## Expected
 
 1. `LaunchErr` is nil.

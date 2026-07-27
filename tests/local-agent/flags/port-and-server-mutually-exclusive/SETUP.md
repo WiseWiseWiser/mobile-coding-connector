@@ -21,9 +21,13 @@ No server required; reachability must not run before flag validation.
 REQUIREMENT: mutually exclusive globals with a clear usage message.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Port = 8080
 	req.Server = "http://example.com"
 	req.Args = []string{"ping"}

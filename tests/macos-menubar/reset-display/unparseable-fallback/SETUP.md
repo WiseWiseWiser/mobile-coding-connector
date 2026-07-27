@@ -19,9 +19,13 @@ Reset string cannot be parsed; formatter must not crash.
 REQUIREMENT rule: unparseable reset → return raw string unchanged.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Reset = "soon"
 	req.NowRFC3339 = "2026-07-06T16:55:00-07:00"
 	return nil

@@ -25,9 +25,11 @@ remote-agent service enable <name> -> exit 0 + daemon prompt
 Sibling `cli-disable/` covers disable subcommand.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Services = []ServiceSeed{
 		sleepService("svc-cli-en-001", "cli-enable-target", boolPtr(false)),
 	}

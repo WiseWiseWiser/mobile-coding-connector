@@ -19,9 +19,13 @@ Session name is the empty string; id is stable; status empty (same as running fo
 REQUIREMENT leaf: `title/empty-name` (empty/unknown status → no suffix).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Name = ""
 	req.SessionID = "sess-1"
 	req.Status = ""

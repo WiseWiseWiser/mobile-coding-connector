@@ -1,3 +1,11 @@
+# Scenario
+
+**Feature**: decision/auto-start-via-settings
+
+```
+decision/auto-start-via-settings
+```
+
 ## Preconditions
 
 1. A temporary config home directory exists
@@ -14,7 +22,7 @@
 
 1. Validate `Request.OpenCodeSettings` is not nil and has required fields
 2. Create a temporary directory for the config home
-3. Set `AI_CRITIC_HOME` environment variable pointing to the temp directory
+3. Store path on `Request.ConfigHome` (child-only via Run `cmd.Env`)
 4. Write `opencode.json` with settings: `{"default_domain":"<domain>","web_server":{"enabled":true,"port":<port>,"auth_proxy_enabled":false}}`
 5. Ensure the temp directory is created before writing the file
 6. Log the written settings for debugging
@@ -40,9 +48,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.OpenCodeSettings == nil {
 		req.OpenCodeSettings = &OpenCodeSettings{
 			WebServerEnabled: true,
@@ -57,10 +68,10 @@ func Setup(t *testing.T, req *Request) error {
 		return fmt.Errorf("WebServerEnabled must be true for auto-start test")
 	}
 
-	configHome := os.Getenv("AI_CRITIC_HOME")
+	configHome := req.ConfigHome
 	if configHome == "" {
 		var err error
-		configHome, err = os.MkdirTemp("", "ai-critic-test-*")
+		configHome, err = lib.CreateTestConfigHome()
 		if err != nil {
 			return fmt.Errorf("failed to create temp config home: %w", err)
 		}
@@ -68,10 +79,7 @@ func Setup(t *testing.T, req *Request) error {
 		t.Cleanup(func() {
 			os.RemoveAll(configHome)
 		})
-		os.Setenv("AI_CRITIC_HOME", configHome)
-		t.Cleanup(func() {
-			os.Unsetenv("AI_CRITIC_HOME")
-		})
+		req.ConfigHome = configHome
 	}
 
 	if err := os.MkdirAll(configHome, 0755); err != nil {

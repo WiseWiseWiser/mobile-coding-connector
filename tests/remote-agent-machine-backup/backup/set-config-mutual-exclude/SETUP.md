@@ -21,9 +21,13 @@ Default `serverHome` fixtures.
 Validation leaf: set-config cannot combine with backup operation flags.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SetConfig = true
 	req.ExcludePaths = []string{".cache"}
 	req.Args = []string{"machine", "backup", "--dry-run"}

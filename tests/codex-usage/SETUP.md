@@ -34,14 +34,16 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.WaitAPIReadySecs <= 0 {
 		req.WaitAPIReadySecs = 12
 	}
 	if req.Op == "api" {
-		unlock := acquireKeepAliveLock(t)
+		unlock := acquireKeepAliveLock(t, d)
 		t.Cleanup(unlock)
 		if req.TTYWatchHome == "" {
 			req.TTYWatchHome = filepath.Join(t.TempDir(), ".tty-watch")
@@ -50,12 +52,15 @@ func Setup(t *testing.T, req *Request) error {
 	return nil
 }
 
-func acquireKeepAliveLock(t *testing.T) func() {
-	session := DOCTEST_SESSION_ID
-	if session == "" {
-		session = fmt.Sprintf("%d", time.Now().UnixNano())
+func acquireKeepAliveLock(t *testing.T, d *session.Doctest) func() {
+	sid := ""
+	if d != nil {
+		sid = d.DOCTEST_SESSION_ID
 	}
-	lockPath := filepath.Join(os.TempDir(), "ai-critic-codex-usage-"+session+".lock")
+	if sid == "" {
+		sid = fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	lockPath := filepath.Join(os.TempDir(), "ai-critic-codex-usage-"+sid+".lock")
 	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		t.Skipf("another keep-alive doctest holds lock %s: %v", lockPath, err)

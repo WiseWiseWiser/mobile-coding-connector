@@ -8,9 +8,11 @@ go build ./ -> exit 0 (run/* uses dot-pkgs ptywrap.ShellQuote)
 ```
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Phase = "server-build"
 	return nil
 }

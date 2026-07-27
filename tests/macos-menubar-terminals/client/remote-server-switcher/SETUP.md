@@ -20,9 +20,13 @@ Remote multi-domain UX requires a top-level domain switcher.
 REQUIREMENT leaf: `client/remote-server-switcher`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "remote-server-switcher"
 	return nil
 }

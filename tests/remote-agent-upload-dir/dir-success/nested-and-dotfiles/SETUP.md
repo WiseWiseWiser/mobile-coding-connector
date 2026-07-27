@@ -21,9 +21,13 @@ Remote destination `uploads/dot-mirror` absent.
 REQUIREMENT leaf #4 — dir-success/nested-and-dotfiles.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	localRoot := mkLocalWorkDir(t)
 	writeLocalFile(t, localRoot, ".hidden", "dotfile\n", 0644)
 	writeLocalFile(t, localRoot, "sub/.keep", "", 0644)

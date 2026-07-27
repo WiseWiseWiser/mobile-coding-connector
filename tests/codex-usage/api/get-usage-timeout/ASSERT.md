@@ -1,8 +1,7 @@
 ---
-label: slow && negative && requires-dist
-explanation: builds keep-alive daemon (needs ai-critic-react/dist); polls until error JSON cached
+label: slow, negative, requires-dist, e2e
+explanation: keep-alive + never-respond fake; needs dist for daemon build
 ---
-
 ## Expected
 
 Daemon must surface fetch failure as error JSON (not stuck loading):
@@ -21,9 +20,11 @@ Daemon must surface fetch failure as error JSON (not stuck loading):
 import (
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

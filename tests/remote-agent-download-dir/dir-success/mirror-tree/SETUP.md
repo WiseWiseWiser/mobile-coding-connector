@@ -21,9 +21,13 @@ serverHome uploads/mirror -> remote-agent download -> local-mirror/{a.txt,sub/b.
 REQUIREMENT leaf #2 — dir-success/mirror-tree.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	seedStandardRemoteTree(req)
 	setDownloadArgs(t, req, "uploads/mirror", "./local-mirror")
 	req.LocalDir = localDirRel("uploads/mirror", "./local-mirror")

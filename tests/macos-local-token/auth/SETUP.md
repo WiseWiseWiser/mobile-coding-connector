@@ -21,9 +21,13 @@ a single space; empty token returns empty string (caller omits header).
 REQUIREMENT group: `auth/` (scenario 8 pure helper).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "auth"
 	return nil
 }

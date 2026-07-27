@@ -42,9 +42,10 @@ import (
 	"time"
 
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.Token == "" {
 		req.Token = lib.TestPassword
 	}
@@ -220,7 +221,17 @@ func stripEnvPrefix(env []string, prefix string) []string {
 	return out
 }
 
-func findModuleRoot() (string, error) {
+func findModuleRoot(d *session.Doctest) (string, error) {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		for dir := d.DOCTEST_ROOT; ; dir = filepath.Dir(dir) {
+			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+				return dir, nil
+			}
+			if filepath.Dir(dir) == dir {
+				break
+			}
+		}
+	}
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", err

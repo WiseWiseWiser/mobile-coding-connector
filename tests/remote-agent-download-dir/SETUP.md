@@ -1,27 +1,28 @@
 # Scenario
 
-**Feature**: remote-agent download directory integration harness
+**Feature**: remote-agent download directory doctest harness (L2 mass + L3 smokes)
 
 ```
-# serverHome + agentHome + agentWorkDir + session-cached binaries
-leaf Setup -> seed serverHome and optional localDir -> remote-agent download -> local files + stdout
+# L2: RegisterAPIForHome + agentcli.Run | L3 UseCLI: product binaries
+leaf Setup -> seed serverHome and optional localDir -> download -> local files + stdout
 ```
 
 ## Preconditions
 
 1. Doctest injects `DOCTEST_SESSION_ID` to scope a file cache under
-   `$TMPDIR/remote-agent-download-dir-doctest-<session>/` (binaries built once per run).
+   `$TMPDIR/remote-agent-download-dir-doctest-<session>/` (L3 binaries when needed).
 2. Session file locks (`flock`) serialize first-time cache population across parallel leaves.
 3. Each leaf gets isolated `serverHome`, `agentHome`, and `agentWorkDir`; only compiled binaries are shared.
-4. Server runs with `HOME=serverHome` and cwd `serverHome` so remote paths resolve there.
-5. CLI runs with cwd `agentWorkDir` so relative local destinations land in an isolated work dir.
+4. **L2** (default): in-process mux with `fileupload.RegisterAPIForHome(mux, serverHome)`
+   + `agentcli.Run`; mutex-scoped `Chdir(agentWorkDir)` only for relative local destinations
+   (restored after CLI; not process HOME isolation).
+5. **L3** (`UseCLI` smokes only): product binaries with `cmd.Dir = agentWorkDir`.
 
 ## Steps
 
-1. Root `Run` builds binaries, creates `serverHome`/`agentHome`/`agentWorkDir`, applies `ServerPreseed*`
-   and optional `LocalPreseed*`, starts `ai-critic-server` on an ephemeral port, writes agent config.
-2. Leaf `Setup` seeds remote fixtures, sets `Request.Args`, `LocalDir`, and pre-seed maps.
-3. `Run` executes `remote-agent --server ... --token ... download ...` with cwd `agentWorkDir`.
+1. Root `Run` seeds homes; L2 starts in-process API, L3 builds/starts product binaries.
+2. Leaf `Setup` seeds remote fixtures, sets `Request.Args`, `LocalDir`, and pre-seed maps; smokes set `UseCLI`.
+3. `Run` executes `download` via agentcli (L2) or product binary (L3).
 4. Leaf `Assert` checks exit code, CLI output, and files under `LocalDir` or `agentWorkDir`.
 
 ## Context
@@ -47,10 +48,11 @@ import (
 	"time"
 
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
 
-func sessionCacheDir() string {
-	return filepath.Join(os.TempDir(), "remote-agent-download-dir-doctest-"+DOCTEST_SESSION_ID)
+func sessionCacheDir(sessionID string) string {
+	return filepath.Join(os.TempDir(), "remote-agent-download-dir-doctest-"+sessionID)
 }
 
 func withFileLock(t *testing.T, lockPath string, fn func() error) error {
@@ -111,9 +113,12 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.Token == "" {
 		req.Token = lib.TestPassword
+	}
+	if d.DOCTEST_SESSION_ID == "" {
+		t.Fatal("session id empty on session.Doctest")
 	}
 	return nil
 }

@@ -20,9 +20,13 @@ Client or app code yields/handles section|progress|log|error for the window.
 REQUIREMENT #19; problem 3 (frames discarded).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "stream-progress-consumed"
 	return nil
 }

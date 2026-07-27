@@ -1,3 +1,7 @@
+---
+explanation: "L2 crontasks.Manager / agentcli"
+---
+
 ## Expected Output
 
 Error text mentions `--cron-utc` so the user can pass an explicit UTC expression.
@@ -27,9 +31,10 @@ import (
 	"testing"
 
 	"github.com/xhd2015/doctest/assert"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run harness error: %v", err)
 	}

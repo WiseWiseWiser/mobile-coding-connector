@@ -30,6 +30,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/doctest/assert"
 )
 
@@ -38,7 +40,7 @@ var (
 	gitReposNonDotRowRE  = regexp.MustCompile(`repo\s+projects/demo\s+main\s+[0-9a-f]{7}\s+clean\s+.*` + regexp.QuoteMeta(gitNonDotFixtureCommitMsg))
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

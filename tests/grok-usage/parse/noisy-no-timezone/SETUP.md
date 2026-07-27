@@ -20,9 +20,13 @@ REQUIREMENT leaf: `parse/noisy-no-timezone`.
 Classic TDD: RED until no-TZ candidate matches inside noisy corpus.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.FixtureFile = "show-usage-noisy-no-tz.txt"
 	req.ExpectParseError = false
 	return nil

@@ -1,8 +1,7 @@
 ---
-label: slow && negative
-explanation: never-respond fake TUI; waits for service ctx timeout (~90s) then expects error JSON
+label: slow, negative, e2e
+explanation: never-respond fake TUI subprocess; expects error
 ---
-
 ## Expected
 
 When the fake TUI never renders parseable `/status` output, fetch must fail cleanly:
@@ -20,9 +19,11 @@ When the fake TUI never renders parseable `/status` output, fetch must fail clea
 import (
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

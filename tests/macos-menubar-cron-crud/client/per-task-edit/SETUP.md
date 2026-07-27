@@ -19,9 +19,13 @@ Edit is per-task only (not a top-level Cron action).
 REQUIREMENT leaf: `client/per-task-edit` (scenario 5).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "per-task-edit"
 	return nil
 }

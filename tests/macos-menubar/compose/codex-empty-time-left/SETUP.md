@@ -20,9 +20,13 @@ ComposeCodexDropdownLine(58%, 6,519/11,250, "Aug 1, 08:00", "")
 REQUIREMENT scenario 6 (Codex analog).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "codex-compose"
 	req.Status = "ready"
 	req.MonthlyUsage = "58%"

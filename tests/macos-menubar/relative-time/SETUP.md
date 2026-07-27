@@ -23,9 +23,13 @@ minutes floor to at least 1 when 0 < duration < 1h; duration ≤ 0 → `left 0m`
 unparseable → empty.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "time-left"
 	return nil
 }

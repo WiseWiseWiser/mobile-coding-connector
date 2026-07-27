@@ -21,9 +21,15 @@ Scratch reset before write.
 REQUIREMENT leaf: `write-small-echo`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
+	// L3 smoke: paste-bin write echo via product binaries.
+	req.UseCLI = true
 	resetScratch(req)
 	setWritePipe(t, req, []byte(smallEchoPayload))
 	return nil

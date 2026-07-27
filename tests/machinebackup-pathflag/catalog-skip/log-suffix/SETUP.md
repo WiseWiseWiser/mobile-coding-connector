@@ -23,9 +23,11 @@ MergeExclusions(nil,nil,nil) -> IsExcluded(".ai-critic/service.log") == true
 - Forces wiring of pathflag log suffix into ExclusionRules public API.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.RelPath = ".ai-critic/service.log"
 	req.WantExcluded = true
 	req.WantExcludedSet = true

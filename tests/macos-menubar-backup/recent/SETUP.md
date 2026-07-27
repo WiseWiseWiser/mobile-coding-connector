@@ -19,9 +19,13 @@ Pure entry structs (no filesystem required for these leaves).
 REQUIREMENT recent list scenarios 14–16.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.NowRFC3339 == "" {
 		req.NowRFC3339 = defaultNowRFC3339
 	}

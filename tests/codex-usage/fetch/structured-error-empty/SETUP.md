@@ -21,9 +21,13 @@ REQUIREMENT-DESIGN-usage-structured-reset-ab.md scenario 3 (error path parity fo
 Codex): do not invent `reset_at` / `reset_display` / `time_left`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.FetchMode = "error"
 	return nil
 }

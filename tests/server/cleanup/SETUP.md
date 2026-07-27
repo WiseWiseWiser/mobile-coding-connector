@@ -24,9 +24,13 @@ ai-critic-server -> POST launch grok -> stop or SIGTERM -> zero session port lis
 Classic TDD: RED until registry persistence, CleanupAll on shutdown, and harness fix land.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.UseFakeOpenCode = true
 	if req.TimeoutSecs <= 0 {
 		req.TimeoutSecs = 45

@@ -120,6 +120,7 @@ import (
 	codextty "github.com/xhd2015/agent-pro/agent/codex/tty"
 	"github.com/xhd2015/agent-pro/pkgs/agenttty"
 	"github.com/xhd2015/ai-critic/macosapp/codexusage"
+	"github.com/xhd2015/doctest/session"
 )
 
 // Request drives classify + fetch leaves for the update-modal-skip protocol.
@@ -163,26 +164,33 @@ type Response struct {
 	MarkerFiles   []string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 	switch strings.TrimSpace(req.Op) {
 	case "classify":
-		return runClassify(t, req, resp)
+		return runClassify(t, d, req, resp)
 	case "fetch-inprocess":
-		return runFetchInProcess(t, req, resp)
+		return runFetchInProcess(t, d, req, resp)
 	default:
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}
 }
 
-func fixturesDir() string {
+func fixturesDir(d *session.Doctest) string {
 	// Nested DOCTEST root is tests/codex-usage/update-modal-skip.
 	// Shared signed fixtures live at ../testdata/update-modal-skip.
+	var injectRoot string
+	if d != nil {
+		injectRoot = d.DOCTEST_ROOT
+	}
 	candidates := []string{
-		filepath.Join(DOCTEST_ROOT, "..", "testdata", "update-modal-skip"),
-		filepath.Join(DOCTEST_ROOT, "testdata", "update-modal-skip"),
+		filepath.Join(injectRoot, "..", "testdata", "update-modal-skip"),
+		filepath.Join(injectRoot, "testdata", "update-modal-skip"),
 	}
 	for _, c := range candidates {
+		if injectRoot == "" {
+			continue
+		}
 		if st, err := os.Stat(c); err == nil && st.IsDir() {
 			return c
 		}
@@ -202,15 +210,18 @@ func fixturesDir() string {
 			break
 		}
 	}
-	return filepath.Join(DOCTEST_ROOT, "..", "testdata", "update-modal-skip")
+	if injectRoot != "" {
+		return filepath.Join(injectRoot, "..", "testdata", "update-modal-skip")
+	}
+	return filepath.Join(wd, "tests", "codex-usage", "testdata", "update-modal-skip")
 }
 
-func runClassify(t *testing.T, req *Request, resp *Response) (*Response, error) {
+func runClassify(t *testing.T, d *session.Doctest, req *Request, resp *Response) (*Response, error) {
 	t.Helper()
 	if strings.TrimSpace(req.FixtureFile) == "" {
 		return nil, fmt.Errorf("FixtureFile required for classify")
 	}
-	path := filepath.Join(fixturesDir(), req.FixtureFile)
+	path := filepath.Join(fixturesDir(d), req.FixtureFile)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -261,12 +272,10 @@ func runClassify(t *testing.T, req *Request, resp *Response) (*Response, error) 
 	return resp, nil
 }
 
-func runFetchInProcess(t *testing.T, req *Request, resp *Response) (*Response, error) {
+func runFetchInProcess(t *testing.T, d *session.Doctest, req *Request, resp *Response) (*Response, error) {
 	t.Helper()
-	restore := applyInProcessFetchEnv(t, req)
-	defer restore()
-
 	svc := codexusage.TestExported_NewService()
+	applyInProcessFetchEnv(t, d, svc, req)
 	out := svc.TestExported_FetchOnce(t)
 	resp.ServiceStatus = string(out.Status)
 	resp.ServiceError = out.Error
@@ -287,74 +296,57 @@ func runFetchInProcess(t *testing.T, req *Request, resp *Response) (*Response, e
 	return resp, nil
 }
 
-func applyInProcessFetchEnv(t *testing.T, req *Request) func() {
+// applyInProcessFetchEnv installs library hooks via Service.TestExported_SetEnv
+// only (no os.Setenv / t.Setenv in harness). Parallel-safe with service mutex.
+func applyInProcessFetchEnv(t *testing.T, d *session.Doctest, svc *codexusage.Service, req *Request) {
 	t.Helper()
-	keys := []string{
-		"PATH",
-		"TTY_WATCH_HOME",
-		"CODEX_SHOW_STATUS_COMMAND",
-		"CODEX_SHOW_STATUS_SESSION_ID",
-		"CODEX_SHOW_STATUS_TIMEOUT",
-		"FAKE_CODEX_MARKER_DIR",
-	}
-	prev := make(map[string]string, len(keys))
-	for _, k := range keys {
-		prev[k] = os.Getenv(k)
-	}
 
 	if req.StripDaemonPATH {
-		_ = os.Setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+		svc.TestExported_SetEnv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
 	}
 	ttyHome := req.TTYWatchHome
 	if ttyHome == "" {
 		ttyHome = filepath.Join(t.TempDir(), ".tty-watch")
 	}
-	_ = os.Setenv("TTY_WATCH_HOME", ttyHome)
+	svc.TestExported_SetEnv("TTY_WATCH_HOME", ttyHome)
+	// Neutralize ambient agent-run pollution (serve vs wait subdir mismatch).
+	svc.TestExported_SetEnv("TTY_WATCH_REGISTRY_SUBDIR", "registry")
+	svc.TestExported_SetEnv("TTY_WATCH_KEEP_ALIVE", "")
 
 	showCmd := strings.TrimSpace(req.ShowStatusCommand)
 	if showCmd == "" {
-		showCmd = autoSkipFakeCommand()
+		showCmd = autoSkipFakeCommand(d)
 	}
-	_ = os.Setenv("CODEX_SHOW_STATUS_COMMAND", showCmd)
+	svc.TestExported_SetEnv("CODEX_SHOW_STATUS_COMMAND", showCmd)
 
 	sid := strings.TrimSpace(req.SessionID)
 	if sid == "" {
 		sid = "codex-update-modal-skip"
 	}
-	_ = os.Setenv("CODEX_SHOW_STATUS_SESSION_ID", sid)
+	svc.TestExported_SetEnv("CODEX_SHOW_STATUS_SESSION_ID", sid)
 
 	timeout := req.FetchTimeoutSecs
 	if timeout <= 0 {
 		timeout = 60
 	}
-	_ = os.Setenv("CODEX_SHOW_STATUS_TIMEOUT", strconv.Itoa(timeout))
+	svc.TestExported_SetEnv("CODEX_SHOW_STATUS_TIMEOUT", strconv.Itoa(timeout))
 
 	if req.MarkerDir != "" {
 		_ = os.MkdirAll(req.MarkerDir, 0o755)
-		_ = os.Setenv("FAKE_CODEX_MARKER_DIR", req.MarkerDir)
-	}
-
-	return func() {
-		for _, k := range keys {
-			if v, ok := prev[k]; ok {
-				_ = os.Setenv(k, v)
-			} else {
-				_ = os.Unsetenv(k)
-			}
-		}
+		svc.TestExported_SetEnv("FAKE_CODEX_MARKER_DIR", req.MarkerDir)
 	}
 }
 
-func autoSkipFakeCommand() string {
-	return fakePythonCommand("fake-tui-auto-skip.py")
+func autoSkipFakeCommand(d *session.Doctest) string {
+	return fakePythonCommand(d, "fake-tui-auto-skip.py")
 }
 
-func stuckUpdateNowFakeCommand() string {
-	return fakePythonCommand("fake-tui-stuck-update-now.py")
+func stuckUpdateNowFakeCommand(d *session.Doctest) string {
+	return fakePythonCommand(d, "fake-tui-stuck-update-now.py")
 }
 
-func fakePythonCommand(scriptName string) string {
-	script := filepath.Join(fixturesDir(), scriptName)
+func fakePythonCommand(d *session.Doctest, scriptName string) string {
+	script := filepath.Join(fixturesDir(d), scriptName)
 	// Prefer absolute path so daemon-stripped PATH still finds the script via
 	// explicit python3 argv[0] from /usr/bin when StripDaemonPATH is set.
 	if abs, err := filepath.Abs(script); err == nil {

@@ -19,9 +19,13 @@ Size is exact `42 * 1024 * 1024` bytes; same unit style as recent list (`MB`).
 REQUIREMENT #12.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "format_wrote"
 	req.Path = "/Users/u/.backup/ai-critic/foo.example.com/machine-backup-20260710-150000.tar.xz"
 	req.SizeBytes = 42 * 1024 * 1024

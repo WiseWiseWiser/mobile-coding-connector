@@ -21,9 +21,13 @@ Service-layer tests without shell `codex-show-status` binary.
 `slow-boot-snapshot` uses `Op=fetch-inprocess` (real `agent/usage.Fetch`, no mock).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.Op == "" {
 		req.Op = "fetch"
 	}

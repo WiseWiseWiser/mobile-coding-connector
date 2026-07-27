@@ -41,9 +41,11 @@ daemon that accepts the WebSocket but never delivers a `session_id` frame.
    as `resp.AttachPaniced` instead of crashing the test process.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Phase = "ws-attach-no-session-id"
 	req.WSAttachSilent = true
 	return nil

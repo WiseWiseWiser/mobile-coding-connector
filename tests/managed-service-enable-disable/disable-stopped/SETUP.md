@@ -25,9 +25,11 @@ POST /api/services/disable -> enabled=false, already-stopped prompt
 Sibling `disable-running/` covers the running variant.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Services = []ServiceSeed{
 		sleepService("svc-stop-001", "sleep-stopped", boolPtr(true)),
 	}

@@ -19,9 +19,13 @@ launch grok -> SIGTERM server (no DELETE) -> child port closed, registry cleared
 Primary production fix: abrupt test end no longer leaves launchd orphans.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.AgentID == "" {
 		req.AgentID = "grok"
 	}

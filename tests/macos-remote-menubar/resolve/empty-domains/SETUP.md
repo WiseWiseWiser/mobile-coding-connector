@@ -19,9 +19,13 @@ Config JSON present with empty `domains` array.
 REQUIREMENT leaf: `resolve/empty-domains`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigJSON = `{"default":"","domains":[]}`
 	return nil
 }

@@ -19,9 +19,13 @@ Projects submenu lists worktrees.
 REQUIREMENT: click worktree → open worktree.path reuse.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "click-worktree-opens"
 	return nil
 }

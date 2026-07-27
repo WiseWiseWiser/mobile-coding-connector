@@ -20,9 +20,13 @@ Remote app opens the configured remote server, not the local keep-alive port.
 REQUIREMENT group: `browser/`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "browser"
 	return nil
 }

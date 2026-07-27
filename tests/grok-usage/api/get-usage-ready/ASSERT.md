@@ -1,8 +1,7 @@
 ---
-label: slow
+label: slow, e2e
 explanation: keep-alive subprocess + server port poll
 ---
-
 ## Expected
 
 1. `APIStatusCode` is `200`.
@@ -16,9 +15,13 @@ explanation: keep-alive subprocess + server port poll
 - API stuck in loading or returns error status.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

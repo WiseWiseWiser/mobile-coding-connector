@@ -21,9 +21,11 @@ MergeExclusions(nil,nil,nil) -> IsExcluded("a/upload-chunks/1") == true
 - pathflag FlagTmp under DefaultSkipMask.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.RelPath = "a/upload-chunks/1"
 	req.WantExcluded = true
 	req.WantExcludedSet = true

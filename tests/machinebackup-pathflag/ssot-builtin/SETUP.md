@@ -23,9 +23,11 @@ BuiltinExclusionConfig() -> exclude_paths
 - May be GREEN if dual tables stay hand-synced; RED-forcing is module/import + log API.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// SSoT leaves inspect BuiltinExclusionConfig only.
 	req.RelPath = ""
 	return nil

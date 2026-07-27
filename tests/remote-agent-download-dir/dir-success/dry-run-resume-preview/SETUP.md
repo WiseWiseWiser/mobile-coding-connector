@@ -23,12 +23,16 @@ Local `local-mirror/` has complete copies of `a.txt` and `sub/b.txt` plus first 
 REQUIREMENT-DESIGN-upload-download-dry-run.md — dir-success/dry-run-resume-preview.
 
 ```go
-import "testing"
+import (
+	"testing"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 const resumePreviewFileSize = 1024
 const resumePreviewPrefill = 512
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	full := string(repeatBytePattern(resumePreviewFileSize, 42))
 	seedStandardRemoteTree(req)
 	req.ServerPreseedFiles["uploads/mirror/big.bin"] = full

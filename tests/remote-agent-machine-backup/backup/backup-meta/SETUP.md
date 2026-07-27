@@ -21,9 +21,13 @@ seeded ~/.backup/config.json -> .backup/config.json.machine.bak in archive
 REQUIREMENT leaf `backup/backup-meta`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedBackupMeta = true
 	req.OutputPath = "backup-meta.tar.xz"
 	req.Args = []string{"machine", "backup", "--output", "__OUTPUT_PATH__"}

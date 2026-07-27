@@ -19,9 +19,13 @@ No successful finish recorded for this server.
 REQUIREMENT #2.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.LastFinishedRFC3339 = ""
 	req.NowRFC3339 = "2026-07-10T15:00:00Z"
 	req.IntervalSeconds = 3600

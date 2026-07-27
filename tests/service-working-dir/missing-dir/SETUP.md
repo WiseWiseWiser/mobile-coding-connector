@@ -27,9 +27,11 @@ ensureServiceWorkingDir -> bash -lc sleep 300 -> pid > 0
 Sibling `existing-dir/` covers the pre-existing directory case.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.TempBase = t.TempDir()
 	return nil
 }

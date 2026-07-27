@@ -22,9 +22,13 @@ resolved local token on loopback API requests. Leaves stay RED until wiring exis
 REQUIREMENT group: `client/` (scenario 8 Swift contract).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "client"
 	return nil
 }

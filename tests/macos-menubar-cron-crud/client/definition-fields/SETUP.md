@@ -21,9 +21,13 @@ Shared models extended beyond operate-only title fields; no extraEnv in UI.
 REQUIREMENT: definition body fields; CronTaskDefinition + status for prefill.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "definition-fields"
 	return nil
 }

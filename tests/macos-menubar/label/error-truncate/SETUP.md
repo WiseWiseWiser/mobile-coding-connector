@@ -19,9 +19,13 @@ Error longer than menu-bar max; label uses fixed short text.
 REQUIREMENT leaf: `label/error-truncate` (amended).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Status = "error"
 	req.WeeklyLimit = ""
 	req.ErrorMsg = "connection reset by peer while waiting for grok usage API response from daemon"

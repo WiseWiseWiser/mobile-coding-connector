@@ -25,9 +25,13 @@ real home; `Run` writes fixtures into a temp `DataDir`.
 REQUIREMENT group: `resolve/`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "resolve"
 	return nil
 }

@@ -19,9 +19,13 @@ Non-empty detail appended after em dash separator.
 REQUIREMENT #10 (+ detail if present).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "format_progress"
 	req.ProgressName = "home"
 	req.ProgressStatus = "ok"

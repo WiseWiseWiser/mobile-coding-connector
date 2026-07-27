@@ -19,9 +19,13 @@ Yesterday is within the 7-day window; no today files needed.
 REQUIREMENT #18.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.NowRFC3339 = "2026-07-10T15:00:00Z"
 	req.EntriesJSON = `[
   {"path":"y-early.tar.xz","mod_time":"2026-07-09T10:00:00Z","size_bytes":1},

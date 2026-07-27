@@ -20,9 +20,13 @@ summary shows codex lines but not grok sessions/projects/skills
 REQUIREMENT leaf `stream/topic-absent`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedProfile = "topic-absent"
 	req.Args = []string{"machine", "analyse-files"}
 	return nil

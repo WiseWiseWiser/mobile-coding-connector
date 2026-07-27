@@ -20,9 +20,15 @@ missing remote path -> remote-agent download -> non-zero exit
 REQUIREMENT leaf #7 — dir-rejected/remote-is-missing.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
+	// L3 smoke: missing remote reject via product binaries.
+	req.UseCLI = true
 	setDownloadArgs(t, req, "uploads/missing", "./local-missing")
 	return nil
 }

@@ -20,9 +20,11 @@ ptywrap/client.AttachWithIO -> dial /api/terminal -> readSessionID handshake
    recovering goroutine so panics are captured as response fields.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.Phase == "" {
 		req.Phase = "ws-attach-no-session-id"
 	}

@@ -19,9 +19,13 @@ POST control path for `run` with query id.
 REQUIREMENT leaf: `cronapi/run-path`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.CronAPILeaf = "run-path"
 	req.CronAction = "run"
 	req.TaskID = "task-1"

@@ -21,9 +21,13 @@ BuildDeleteCronTaskRequest(base, token, "task-1")
 REQUIREMENT leaf: `cronapi/delete-path`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.CronAPILeaf = "delete-path"
 	req.BaseURL = "https://agent.example.com/"
 	req.Token = "secret-token"

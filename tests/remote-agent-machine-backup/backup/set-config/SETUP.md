@@ -21,9 +21,13 @@ remote-agent machine backup --set-config --exclude .knowledge-hub -> persisted J
 Persisted backup config leaf.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedKnowledgeHub = true
 	req.SetConfig = true
 	req.ExcludePaths = []string{".knowledge-hub"}

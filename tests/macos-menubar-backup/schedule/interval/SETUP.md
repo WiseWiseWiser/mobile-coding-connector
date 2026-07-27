@@ -19,9 +19,13 @@ BackupIntervalSeconds -> 3600
 REQUIREMENT: interval 1 hour.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "schedule_interval"
 	return nil
 }

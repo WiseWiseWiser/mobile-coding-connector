@@ -19,9 +19,13 @@ BackupTaskStatus + now -> "Status: Off" | "Status: On · …"
 REQUIREMENT status title scenarios 11–13 (+ error preferred).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "status_title"
 	if req.NowRFC3339 == "" {
 		req.NowRFC3339 = defaultNowRFC3339

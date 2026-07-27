@@ -23,9 +23,11 @@ POST /api/local/iterm2/open {dir, mode, send}
 REQUIREMENT scenarios 1–5, 7 (handler paths).
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "open"
 	return nil
 }

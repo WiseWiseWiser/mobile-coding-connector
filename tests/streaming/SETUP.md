@@ -26,9 +26,13 @@ unit trees under `server/proxy/wsproxy/tests/streaming-doctor/`,
 `client/tests/streaming/`, and `cmd/agentcli/streamcmd/tests/`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.UpstreamFetchDelayMs < 0 {
 		req.UpstreamFetchDelayMs = 0
 	}

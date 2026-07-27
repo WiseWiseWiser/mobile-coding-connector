@@ -21,9 +21,13 @@
 REQUIREMENT leaf `backup/custom-exclude`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedDocker = true
 	req.ExcludePaths = []string{".docker"}
 	req.OutputPath = "custom-exclude.tar.xz"

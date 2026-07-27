@@ -19,9 +19,13 @@ Name is whitespace-only (treated as empty); status `exited`.
 REQUIREMENT leaf: whitespace name + exited → `sess-1 [EXITED]`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Name = "  \t  "
 	req.SessionID = "sess-1"
 	req.Status = "exited"

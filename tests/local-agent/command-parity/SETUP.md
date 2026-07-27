@@ -20,9 +20,13 @@ Server optional depending on leaf.
 Command parity requirement with local-specific help strings.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.Args == nil {
 		req.Args = []string{}
 	}

@@ -21,9 +21,11 @@ Parent `disable-stopped` setup leaves the service stopped.
 REQUIREMENT leaf: `disable-stopped/already-stopped`.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.WaitAfterSecs = 0
 	req.PreStartID = ""
 	return nil

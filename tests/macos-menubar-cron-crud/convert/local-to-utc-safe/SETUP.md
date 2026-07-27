@@ -22,9 +22,13 @@ ConvertLocalCronToUTC -> "0 1 * * *" (9 - 8 = 1)
 REQUIREMENT leaf: `convert/local-to-utc-safe` (optional).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConvertLeaf = "local-to-utc-safe"
 	req.LocalExpr = "0 9 * * *"
 	req.TZName = "Etc/GMT-8"

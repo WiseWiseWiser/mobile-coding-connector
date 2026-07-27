@@ -1,3 +1,11 @@
+# Scenario
+
+**Feature**: decision
+
+```
+decision
+```
+
 ## Preconditions
 
 This grouping node covers auto-start behaviour of the server. Future children
@@ -19,13 +27,14 @@ is started with a custom config home directory via `AI_CRITIC_HOME`.
 import (
 	"os"
 	"testing"
+
+	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
-	configHome := os.Getenv("AI_CRITIC_HOME")
-	if configHome == "" {
-		var err error
-		configHome, err = os.MkdirTemp("", "ai-critic-test-*")
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
+	if req.ConfigHome == "" {
+		configHome, err := lib.CreateTestConfigHome()
 		if err != nil {
 			return err
 		}
@@ -33,10 +42,7 @@ func Setup(t *testing.T, req *Request) error {
 		t.Cleanup(func() {
 			os.RemoveAll(configHome)
 		})
-		os.Setenv("AI_CRITIC_HOME", configHome)
-		t.Cleanup(func() {
-			os.Unsetenv("AI_CRITIC_HOME")
-		})
+		req.ConfigHome = configHome
 	}
 	return nil
 }

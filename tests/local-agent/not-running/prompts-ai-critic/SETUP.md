@@ -22,14 +22,19 @@ Reachability mocked to false; built-in default port injected so resolution is de
 REQUIREMENT: non-listening server shows `ai-critic` start suggestion.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	down := false
 	req.MockReachability = &down
 	req.InjectedDefaultPort = 23712
 	req.Args = []string{"ping"}
 	req.StartServer = false
+	req.UseCLI = true
 	return nil
 }
 ```

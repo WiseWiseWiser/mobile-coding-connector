@@ -21,9 +21,13 @@ Swift sources exist under `macos-ai-critic/ai-critic-macos/` including
 Pure source inspection — no subprocess or HTTP. RED before ServerClient migration.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "client"
 	return nil
 }

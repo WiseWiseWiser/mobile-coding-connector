@@ -22,9 +22,15 @@ Scratch seeded; token intentionally invalid.
 REQUIREMENT leaf: `auth-failure`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
+	// L3 smoke: paste-bin auth failure via product binaries.
+	req.UseCLI = true
 	seedScratch(req, seededUTF8Content, "")
 	setReadTTY(t, req)
 	req.Token = "definitely-not-the-test-password"

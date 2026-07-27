@@ -1,26 +1,34 @@
 # Remote-Agent Paste-Bin Doctests
 
-End-to-end tests for `remote-agent paste-bin`: read/write the File Transfer Quick
+Doctests for `remote-agent paste-bin`: read/write the File Transfer Quick
 Transfer scratch pad via `GET/PUT /api/file-transfer/scratch`.
+
+Most leaves are **L2 in-process** (`filetransfer.RegisterAPIForDir` +
+`agentcli.Run` with stdin swap). Two sparse **L3 e2e** smokes keep the product
+binary path.
 
 # DSN (Domain Specific Notion)
 
-The harness exercises the remote-agent CLI against a real `ai-critic-server`
-subprocess with scratch storage under isolated `AI_CRITIC_HOME/file-transfer/scratch.json`.
+Most leaves are **L2 in-process**: `filetransfer.RegisterAPIForDir` on a local mux
++ `agentcli.Run` with mutex-scoped stdin swap (no product binaries). Two sparse
+**L3 e2e** smokes keep the binary path (`UseCLI` + `label: heavy, e2e`):
+`write/small-echo` and `rejected/auth-failure`.
+
+**L2** serves scratch APIs in-process via `RegisterAPIForDir(mux, configHome/file-transfer)`
+plus a local bearer middleware (valid token = `lib.TestPassword`). **L3 smokes**
+still run product binaries with `AI_CRITIC_HOME=configHome`.
 
 **Participants**
 
-- **remote-agent subprocess** — built from `./cmd/remote-agent`; `paste-bin` reads
-  or writes scratch via the HTTP client.
-- **HTTP client** — `GET/PUT /api/file-transfer/scratch` for scratch content and metadata.
-- **ai-critic-server subprocess** — ephemeral port; `AI_CRITIC_HOME=configHome`; serves
-  scratch API against `{configHome}/file-transfer/scratch.json`.
+- **L2: agentcli.Run** — in-process `paste-bin` CLI; stdin is either a pipe
+  (`PipedStdin`) or `/dev/null` (TTY/read mode; char device → not piped).
+- **L2: filetransfer HTTP** — `RegisterAPIForDir` on ephemeral port.
+- **L3: remote-agent + ai-critic-server subprocesses** — sparse `UseCLI` smokes.
 - **configHome** — temp isolated server config; leaf setup seeds or deletes scratch.json.
-- **agentHome** — temp `HOME` with `~/.ai-critic/remote-agent-config.json` only.
-- **stdin pipe** — write leaves attach piped stdin (`os.Stdin` not a character device);
-  read leaves use TTY (no stdin attachment) unless testing `--read` override.
+- **agentHome** — temp dir for (L3) agent config.
+- **stdin pipe** — write leaves attach piped stdin; read leaves use DevNull as TTY stand-in.
 - **session cache** — doctest-injected `DOCTEST_SESSION_ID` keys
-  `$TMPDIR/remote-agent-paste-bin-doctest-<id>/` for shared binaries (file lock).
+  `$TMPDIR/remote-agent-paste-bin-doctest-<id>/` for L3 shared binaries (file lock).
 
 **Behaviors**
 
@@ -40,7 +48,7 @@ subprocess with scratch storage under isolated `AI_CRITIC_HOME/file-transfer/scr
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -105,7 +113,8 @@ subprocess with scratch storage under isolated `AI_CRITIC_HOME/file-transfer/scr
 ```sh
 go run ./script/build
 doctest vet ./tests/remote-agent-paste-bin
-doctest test ./tests/remote-agent-paste-bin/...
+doctest test ./tests/remote-agent-paste-bin/...          # unlabeled L2 mass
+doctest test --label e2e ./tests/remote-agent-paste-bin/...  # ~2 L3 smokes
 ```
 
 ```go
@@ -121,12 +130,19 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/xhd2015/ai-critic/cmd/agentcli"
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/ai-critic/server/filetransfer"
+	"github.com/xhd2015/doctest/session"
 )
+
+// agentcliInProcessMu serializes in-process agentcli.Run (stdout/stderr/stdin swaps).
+var agentcliInProcessMu sync.Mutex
 
 // ScratchSeed configures scratch.json before the CLI runs.
 type ScratchSeed struct {
@@ -139,13 +155,21 @@ type Request struct {
 	Server string
 	Token  string
 
+	// UseCLI forces the L3 product-binary path. Default false → L2 in-process.
+	UseCLI bool
+	E2E    bool
+
 	ScratchReset bool
 	ScratchSeed  *ScratchSeed
 
-	// PipedStdin nil = TTY (stdin not attached). Non-nil = pipe stdin using StdinBytes
+	// PipedStdin nil = TTY (stdin is DevNull / not attached). Non-nil = pipe stdin using StdinBytes
 	// (may be empty slice for empty-pipe clears).
 	PipedStdin *bool
 	StdinBytes []byte
+}
+
+func useBinaryPath(req *Request) bool {
+	return req != nil && (req.UseCLI || req.E2E)
 }
 
 type ScratchEntry struct {
@@ -167,7 +191,7 @@ type Response struct {
 	ScratchAfter ScratchEntry
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	if len(req.Args) == 0 {
@@ -178,9 +202,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	resp.Token = req.Token
 
-	moduleRoot := findModuleRoot()
-	cacheDir := sessionCacheDir()
-	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
+	cacheDir := sessionCacheDir(d.DOCTEST_SESSION_ID)
 
 	configHome, err := lib.CreateTestConfigHome()
 	if err != nil {
@@ -199,6 +222,80 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	t.Cleanup(func() { os.RemoveAll(agentHome) })
 	resp.AgentHome = agentHome
+
+	if useBinaryPath(req) {
+		return runBinaryE2E(t, d, req, resp, moduleRoot, cacheDir, configHome, agentHome)
+	}
+	return runInProcessL2(t, d, req, resp, configHome)
+}
+
+func transferDir(configHome string) string {
+	return filepath.Join(configHome, "file-transfer")
+}
+
+func withBearerAuth(validToken string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ping" || !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		authHeader := r.Header.Get("Authorization")
+		if !strings.HasPrefix(authHeader, "Bearer ") || strings.TrimPrefix(authHeader, "Bearer ") != validToken {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func runInProcessL2(t *testing.T, d *session.Doctest, req *Request, resp *Response, configHome string) (*Response, error) {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	filetransfer.RegisterAPIForDir(mux, transferDir(configHome))
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	// Auth against fixed test password so auth-failure leaves (bad req.Token) still work
+	// and post-CLI scratch fetch can use lib.TestPassword.
+	handler := withBearerAuth(lib.TestPassword, mux)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("listen in-process paste-bin server: %w", err)
+	}
+	serverPort := ln.Addr().(*net.TCPAddr).Port
+	resp.ServerPort = serverPort
+	srv := &http.Server{Handler: handler}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	serverURL := req.Server
+	if serverURL == "" {
+		serverURL = fmt.Sprintf("http://127.0.0.1:%d", serverPort)
+	}
+	normalizedServer := strings.TrimRight(strings.TrimSpace(serverURL), "/")
+	resp.ServerURL = normalizedServer
+
+	pingURL := fmt.Sprintf("http://127.0.0.1:%d/ping", serverPort)
+	if err := waitHTTPReady(pingURL, 10*time.Second); err != nil {
+		return nil, err
+	}
+	t.Logf("L2 in-process paste-bin server on %s configHome=%s", normalizedServer, configHome)
+
+	return finishPasteRun(t, req, resp, serverURL, func(argv []string) (int, string, string, error) {
+		return runAgentInProcess(argv, req.PipedStdin, req.StdinBytes)
+	}, true)
+}
+
+func runBinaryE2E(t *testing.T, d *session.Doctest, req *Request, resp *Response, moduleRoot, cacheDir, configHome, agentHome string) (*Response, error) {
+	t.Helper()
+
+	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
 
 	credFile, err := lib.WriteTestCredentials(configHome)
 	if err != nil {
@@ -240,44 +337,137 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, err
 	}
 
-	argv := []string{"--server", serverURL, "--token", req.Token}
-	argv = append(argv, req.Args...)
-	t.Logf("remote-agent argv: %v", argv)
-
-	agentCmd := exec.Command(agentBin, argv...)
 	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
 	agentEnv = append(agentEnv, "HOME="+agentHome)
-	agentCmd.Env = agentEnv
 
-	if req.PipedStdin != nil {
-		agentCmd.Stdin = bytes.NewReader(req.StdinBytes)
+	return finishPasteRun(t, req, resp, serverURL, func(argv []string) (int, string, string, error) {
+		return runAgent(agentBin, argv, agentEnv, req.PipedStdin, req.StdinBytes)
+	}, false)
+}
+
+func finishPasteRun(
+	t *testing.T,
+	req *Request,
+	resp *Response,
+	serverURL string,
+	runCLI func(argv []string) (int, string, string, error),
+	inProcess bool,
+) (*Response, error) {
+	t.Helper()
+
+	argv := []string{"--server", serverURL, "--token", req.Token}
+	argv = append(argv, req.Args...)
+
+	mode := "L2-inprocess"
+	if !inProcess {
+		mode = "L3-binary"
 	}
+	t.Logf("%s remote-agent argv: %v", mode, argv)
 
-	var stdout, stderr bytes.Buffer
-	agentCmd.Stdout = &stdout
-	agentCmd.Stderr = &stderr
-
-	runErr := agentCmd.Run()
+	exitCode, stdout, stderr, runErr := runCLI(argv)
 	if runErr != nil {
-		if exitErr, ok := runErr.(*exec.ExitError); ok {
-			resp.ExitCode = exitErr.ExitCode()
-		} else {
-			return nil, runErr
-		}
+		return nil, runErr
 	}
-	resp.Stdout = stdout.String()
-	resp.Stderr = stderr.String()
+	resp.ExitCode = exitCode
+	resp.Stdout = stdout
+	resp.Stderr = stderr
 	resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
 
 	// Post-CLI verification always uses server credentials so auth-failure leaves
 	// can still assert scratch state was not mutated.
-	entry, err := fetchScratchEntry(normalizedServer, lib.TestPassword)
+	entry, err := fetchScratchEntry(strings.TrimRight(serverURL, "/"), lib.TestPassword)
 	if err != nil {
 		return nil, fmt.Errorf("fetch scratch after CLI: %w", err)
 	}
 	resp.ScratchAfter = entry
-
 	return resp, nil
+}
+
+func runAgentInProcess(argv []string, pipedStdin *bool, stdinBytes []byte) (int, string, string, error) {
+	agentcliInProcessMu.Lock()
+	defer agentcliInProcessMu.Unlock()
+
+	// Stdin: pipe for write mode; /dev/null (char device) for TTY/read mode.
+	oldIn := os.Stdin
+	var stdinFile *os.File
+	if pipedStdin != nil {
+		r, w, err := os.Pipe()
+		if err != nil {
+			return 0, "", "", err
+		}
+		go func() {
+			_, _ = w.Write(stdinBytes)
+			_ = w.Close()
+		}()
+		stdinFile = r
+		os.Stdin = r
+	} else {
+		devNull, err := os.Open(os.DevNull)
+		if err != nil {
+			return 0, "", "", err
+		}
+		stdinFile = devNull
+		os.Stdin = devNull
+	}
+	defer func() {
+		os.Stdin = oldIn
+		_ = stdinFile.Close()
+	}()
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return 0, "", "", err
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		stdoutR.Close()
+		stdoutW.Close()
+		return 0, "", "", err
+	}
+
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdoutW, stderrW
+
+	runErr := agentcli.Run(agentcli.RemoteProfile(), argv)
+
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+
+	outBytes, _ := io.ReadAll(stdoutR)
+	errBytes, _ := io.ReadAll(stderrR)
+	_ = stdoutR.Close()
+	_ = stderrR.Close()
+
+	stdout := string(outBytes)
+	stderr := string(errBytes)
+	exitCode := 0
+	if runErr != nil {
+		stderr += fmt.Sprintf("Error: %v\n", runErr)
+		exitCode = 1
+	}
+	return exitCode, stdout, stderr, nil
+}
+
+func runAgent(bin string, argv, env []string, pipedStdin *bool, stdinBytes []byte) (int, string, string, error) {
+	cmd := exec.Command(bin, argv...)
+	cmd.Env = env
+	if pipedStdin != nil {
+		cmd.Stdin = bytes.NewReader(stdinBytes)
+	}
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	runErr := cmd.Run()
+	exitCode := 0
+	if runErr != nil {
+		if exitErr, ok := runErr.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			return 0, "", "", runErr
+		}
+	}
+	return exitCode, outBuf.String(), errBuf.String(), nil
 }
 
 type remoteAgentConfigFile struct {
@@ -303,23 +493,6 @@ func writeRemoteAgentConfig(path, server, token string) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
-}
-
-func findModuleRoot() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			panic("go.mod not found")
-		}
-		dir = parent
-	}
 }
 
 func portBaseFromTestName(name string) int {
@@ -382,15 +555,15 @@ func fetchScratchEntry(serverURL, token string) (ScratchEntry, error) {
 		return ScratchEntry{}, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return ScratchEntry{}, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return ScratchEntry{}, fmt.Errorf("GET scratch status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return ScratchEntry{}, fmt.Errorf("scratch GET status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
 	}
 	var entry ScratchEntry
-	if err := json.Unmarshal(body, &entry); err != nil {
+	if err := json.Unmarshal(data, &entry); err != nil {
 		return ScratchEntry{}, err
 	}
 	return entry, nil

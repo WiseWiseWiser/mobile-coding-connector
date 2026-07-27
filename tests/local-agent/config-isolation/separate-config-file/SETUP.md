@@ -22,9 +22,13 @@ local-agent ping -> reads local-agent-config.json only
 Ensures profile-specific config path; remote file is not written or migrated.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedRemoteConfig = []byte(`{
   "default": "https://sentinel.remote.example.com",
   "domains": [

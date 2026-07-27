@@ -21,9 +21,13 @@ that capability (parallel to remote profile).
 REQUIREMENT group: `profile/` (optional scenario 9 / UsesAuthToken).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "profile"
 	return nil
 }

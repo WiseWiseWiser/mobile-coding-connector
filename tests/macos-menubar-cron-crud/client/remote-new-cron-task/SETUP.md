@@ -20,9 +20,13 @@ Remote Swift app sources present under `macos-ai-critic/ai-critic-remote-macos/`
 REQUIREMENT leaf: `client/remote-new-cron-task` (scenario 4).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "remote-new-cron-task"
 	return nil
 }

@@ -1,3 +1,7 @@
+---
+label: e2e
+explanation: opencode serve child process exit clears registry
+---
 ## Expected
 
 1. Launch succeeded.

@@ -33,12 +33,14 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/doctest/assert"
 )
 
 var reCreatedEmptyDir = regexp.MustCompile(`\[[0-9]+/3\] created emptydir/ — [0-9]+% overall`)
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
@@ -66,7 +68,7 @@ __PCT__: type=number
 ---
 Uploading __LOCAL__/ (3 items, __SIZE__) -> uploads/dot-mirror
 ...2 lines omitted...
-  [__IDX__/3] created emptydir/ — __PCT__% overall
+  \[__IDX__/3\] created emptydir/ — __PCT__% overall
 ...2 lines omitted...
 Upload complete: uploads/dot-mirror (2 files, __SIZE__)
 `)

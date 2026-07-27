@@ -24,9 +24,11 @@ run starts -> timeout fires -> process dead; history/status has timeout error
 Priority leaf: timeout enforce.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Action = "create"
 	req.TaskName = "timeout-sleep"
 	req.Command = "sleep 60"

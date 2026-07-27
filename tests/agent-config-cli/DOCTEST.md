@@ -1,30 +1,28 @@
 # Agent Config CLI Flags Doctests
 
-End-to-end tests for the shared `config` subcommand on `remote-agent` and
+Scenario tests for the shared `config` subcommand on `remote-agent` and
 `local-agent`: bare help, `--show` / `--json`, mutual exclusion with `--web`,
 and profile-specific config paths under an isolated `HOME`.
 
-Classic TDD: production still opens the web UI on bare `config` and lacks
-`--web` / `--show` / `--json`. Leaves express the **target** contract and are
-expected **RED** until implementation lands.
+Wave C: **short paths** (help, unknown flag, mutual-exclusion / validation
+errors that do not load config) run **in-process** via `agentcli.Run` (L2).
+**`--show` paths** that must isolate `HOME` / seed config files keep a **binary
+subprocess** with `cmd.Env` only (no process `Setenv`/`Chdir`) — short-path
+binary debt until a Parallel-safe home inject exists; **not** labeled `e2e`.
 
 # DSN (Domain Specific Notion)
 
-The harness runs the real agent CLI binaries against a temp user home so config
-files never touch the developer machine. No server is required for these leaves.
-
 **Participants**
 
-- **remote-agent / local-agent subprocess** — built from `./cmd/remote-agent` and
-  `./cmd/local-agent`; both share `cmd/agentcli` `runConfig` with a profile
-  (`active`) that selects CLI name and config filename.
-- **Isolated user HOME** — temp directory; agent config lives under
+- **In-process agentcli** — `agentcli.Run(RemoteProfile|LocalProfile, args)` for
+  help / rejected leaves; stdout/stderr captured via temporary `os.Stdout`/
+  `os.Stderr` swap under a suite mutex (`active` profile is package-global).
+- **remote-agent / local-agent subprocess** — built only when a leaf needs
+  isolated `HOME` for `--show` (seed or empty-file dump).
+- **Isolated user HOME** — temp directory on the binary path; agent config under
   `~/.ai-critic/remote-agent-config.json` or `local-agent-config.json`.
-- **Config file seed** — optional pretty JSON written before the CLI runs for
-  `--show` content assertions; missing file exercises empty-ish dump.
-- **Harness timer** — CLI runs under a short wall-clock timeout so bare `config`
-  (current UI path blocks forever) fails fast instead of hanging the suite.
-- **session cache** — doctest-injected `DOCTEST_SESSION_ID` keys
+- **Config file seed** — optional pretty JSON for `--show` content assertions.
+- **session cache** — `DOCTEST_SESSION_ID` keys
   `$TMPDIR/agent-config-cli-doctest-<id>/` for shared binaries (file lock).
 
 **Behaviors (target)**
@@ -128,16 +126,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/xhd2015/ai-critic/cmd/agentcli"
 	"github.com/xhd2015/doctest/session"
 )
+
+// agentcliInProcessMu serializes in-process agentcli.Run: package-level
+// `active` profile and temporary stdout/stderr swaps are process-global.
+var agentcliInProcessMu sync.Mutex
 
 // AgentConfigFile is the persisted agent config JSON shape.
 type AgentConfigFile struct {
@@ -181,7 +186,11 @@ type Request struct {
 	// so isolation leaves can prove the wrong file is not read.
 	AlsoSeedRemoteConfig *AgentConfigFile
 
-	// Timeout overrides the default CLI kill timer (0 = default).
+	// UseCLI forces the product binary path (cmd.Env HOME). Default: automatic —
+	// binary when HOME isolation is required for --show; else in-process L2.
+	UseCLI bool
+
+	// Timeout overrides the default CLI kill timer (0 = default). Binary path only.
 	Timeout time.Duration
 }
 
@@ -200,6 +209,42 @@ type Response struct {
 	LocalConfigPath string
 }
 
+// needsIsolatedHOME is true when the leaf exercises config load under a temp
+// HOME (--show dump / seed). Help and validation-only rejects do not.
+func needsIsolatedHOME(req *Request) bool {
+	if req.SeedConfig != nil || req.AlsoSeedRemoteConfig != nil {
+		return true
+	}
+	hasShow, hasWeb := false, false
+	for _, a := range req.Args {
+		switch a {
+		case "--show":
+			hasShow = true
+		case "--web":
+			hasWeb = true
+		}
+	}
+	// Successful --show loads UserHomeDir; --show --web fails before load.
+	return hasShow && !hasWeb
+}
+
+// wantsFlagHelp is true when argv includes -h/--help. less-gen flags.Help
+// calls os.Exit(0), which panics under testing — keep those on the binary path.
+func wantsFlagHelp(args []string) bool {
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			return true
+		}
+	}
+	return false
+}
+
+// useBinaryPath selects L3-ish subprocess when HOME isolation or os.Exit help
+// is required. Remaining short paths (bare help, validation rejects) are L2.
+func useBinaryPath(req *Request) bool {
+	return req.UseCLI || needsIsolatedHOME(req) || wantsFlagHelp(req.Args)
+}
+
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
@@ -210,6 +255,65 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 		req.Args = []string{"config"}
 	}
 
+	if !useBinaryPath(req) {
+		return runConfigInProcess(t, req, resp)
+	}
+	return runConfigCLI(t, d, req, resp)
+}
+
+func runConfigInProcess(t *testing.T, req *Request, resp *Response) (*Response, error) {
+	t.Helper()
+	var profile agentcli.Profile
+	switch req.Profile {
+	case ProfileLocal:
+		profile = agentcli.LocalProfile()
+	default:
+		profile = agentcli.RemoteProfile()
+	}
+
+	agentcliInProcessMu.Lock()
+	defer agentcliInProcessMu.Unlock()
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		stdoutR.Close()
+		stdoutW.Close()
+		return nil, err
+	}
+
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdoutW, stderrW
+
+	t.Logf("in-process %s argv: %v", req.Profile, req.Args)
+	runErr := agentcli.Run(profile, req.Args)
+
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+
+	outBytes, _ := io.ReadAll(stdoutR)
+	errBytes, _ := io.ReadAll(stderrR)
+	_ = stdoutR.Close()
+	_ = stderrR.Close()
+
+	resp.Stdout = string(outBytes)
+	resp.Stderr = string(errBytes)
+	if runErr != nil {
+		// Match cmd/remote-agent and cmd/local-agent main: print Error to stderr, exit 1.
+		msg := fmt.Sprintf("Error: %v\n", runErr)
+		resp.Stderr += msg
+		resp.ExitCode = 1
+	}
+	resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
+	return resp, nil
+}
+
+func runConfigCLI(t *testing.T, d *session.Doctest, req *Request, resp *Response) (*Response, error) {
+	t.Helper()
 	// DOCTEST_ROOT is tests/agent-config-cli; module root is two levels up.
 	// Do not walk from cwd: doctest runs under mapping-gen which has its own go.mod.
 	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
@@ -259,11 +363,16 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	t.Logf("%s argv: %v (HOME=%s)", req.Profile, req.Args, agentHome)
+	t.Logf("%s argv: %v (HOME=%s) [binary]", req.Profile, req.Args, agentHome)
 
 	cmd := exec.CommandContext(ctx, agentBin, req.Args...)
 	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
+	agentEnv = stripEnvPrefix(agentEnv, "PATH=")
 	agentEnv = append(agentEnv, "HOME="+agentHome)
+	// tool_resolve init runs `npm bin -g` (and node probes). Under an empty
+	// temp HOME that can hang forever; use a minimal PATH so probes fail fast.
+	// Config leaves do not need npm/node on PATH.
+	agentEnv = append(agentEnv, "PATH="+minimalAgentPATH())
 	// Avoid GUI/browser side effects if an old bare path is hit.
 	agentEnv = append(agentEnv, "BROWSER=true", "DISPLAY=")
 	cmd.Env = agentEnv
@@ -315,6 +424,19 @@ func stripEnvPrefix(env []string, prefix string) []string {
 		out = append(out, e)
 	}
 	return out
+}
+
+// minimalAgentPATH is enough for the Go-built agent binary to run config help /
+// show without tool_resolve init hanging on npm under empty HOME.
+func minimalAgentPATH() string {
+	// Keep go toolchain bin if present (not required for config, harmless).
+	parts := []string{"/usr/bin", "/bin", "/usr/sbin", "/sbin"}
+	if home, err := os.UserHomeDir(); err == nil {
+		// Prefer the parent process home's go/bin only for locating nothing
+		// critical; empty agent HOME is separate.
+		_ = home
+	}
+	return strings.Join(parts, string(os.PathListSeparator))
 }
 
 func sessionCacheDir(sessionID string) string {

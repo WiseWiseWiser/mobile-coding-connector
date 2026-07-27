@@ -22,9 +22,11 @@ test env (delay ms) -> server extension_start (delayed) -> keep-alive still sees
 Uses test hooks only — no live Cloudflare tunnel provisioning in doctests.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.WriteExtensionConfig = true
 	req.SkipExtensionStartup = false
 	if req.StartupTimeout == "" {

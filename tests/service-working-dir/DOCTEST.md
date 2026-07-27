@@ -1,43 +1,31 @@
 # Service Working Directory Doctests
 
-End-to-end tests for managed service `workingDir` auto-creation: when the
-configured directory is missing on disk, `POST /api/services/start` must create
-it (including parents) before launching the shell command.
+Managed service `workingDir` auto-creation: when the configured directory is
+missing on disk, start must create it (including parents) before launching the
+shell command.
 
 # DSN (Domain Specific Notion)
 
-The harness exercises managed services against a real `ai-critic-server`
-subprocess with isolated `AI_CRITIC_HOME`, seeded `services.json` rows that
-include `workingDir`, and HTTP start/status checks.
+Most leaves are **L2 in-process**: `services.NewManagerAt` + `Manager.Start`
+(isolated config dir; no product binary). One sparse **L3 e2e** smoke keeps the
+product binary path (`UseCLI` + `label: heavy, e2e`): `missing-dir/creates-and-runs`.
 
 **Participants**
 
-- **ai-critic-server subprocess** — loads `services.json`, runs
-  `ensureServiceWorkingDir` before `exec.Command`, and tracks service PIDs.
-- **Service definitions** — persisted rows in `{AI_CRITIC_HOME}/services.json`
-  with `id`, `name`, `command`, and optional `workingDir`.
-- **Service processes** — long-running `sleep 300` commands launched with
-  `cmd.Dir` set to `workingDir`.
-- **Service log** — append-only file at `{AI_CRITIC_HOME}/services/{id}.log`
-  with start markers and failure lines.
-- **HTTP client** — authenticated `POST /api/services/start` and
-  `GET /api/services` for status and PID.
-- **Test credentials** — `lib.TestPassword` token in `server-credentials`.
+- **L2: services.Manager** — `NewManagerAt(configHome)` + `Start` after seeded JSON.
+- **L3: ai-critic-server subprocess** — sparse `UseCLI` smoke with HTTP start.
+- **Service definitions** — `workingDir` rows; long-running `sleep 300` for PID checks.
+- **Service log** — `{configHome}/services/{id}.log` with start markers.
 
 **Behaviors**
 
-- **Missing workingDir** — `os.MkdirAll` creates the path (including nested
-  parents) before `bash -lc` runs; start succeeds with `status=running` and
-  `pid>0`.
-- **Missing workingDir without fix** — `cmd.Start()` fails with misleading
-  `fork/exec /bin/bash: no such file or directory` when `cmd.Dir` is absent.
-- **Existing workingDir** — no error; service starts normally with the same
-  running checks.
-- **Start API** — returns `{ status, message, service }` on success.
+- **Missing workingDir** — `os.MkdirAll` creates the path before `bash -lc` runs.
+- **Existing workingDir** — start succeeds unchanged.
+- Log contains `starting service`, not `fork/exec /bin/bash`.
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -45,7 +33,7 @@ include `workingDir`, and HTTP start/status checks.
 [service working dir on start]
  |
  +-- missing-dir/                    (GROUP)  workingDir absent on disk
- |    +-- creates-and-runs/          (LEAF)   mkdir → start succeeds, pid > 0
+ |    +-- creates-and-runs/          (LEAF)   mkdir → start succeeds, pid > 0  [L3 smoke]
  |    +-- no-bash-fork-error/        (LEAF)   log lacks fork/exec /bin/bash
  |    +-- nested-path/               (LEAF)   deep nested dir created
  |
@@ -57,37 +45,22 @@ include `workingDir`, and HTTP start/status checks.
 
 | # | Leaf | Description |
 |---|------|-------------|
-| 1 | `missing-dir/creates-and-runs` | Missing flat `workingDir` → created on disk, service running with `pid>0` |
-| 2 | `missing-dir/no-bash-fork-error` | Service log contains `starting service`, not `fork/exec /bin/bash` |
-| 3 | `missing-dir/nested-path` | Missing nested `a/b/c` path → created, service running |
-| 4 | `existing-dir/start-unchanged` | Pre-created `workingDir` → start succeeds unchanged |
-
-## Parameter Coverage
-
-| Factor | Leaves |
-|--------|--------|
-| `workingDir` missing on disk | missing-dir/* |
-| `workingDir` pre-existing | existing-dir/start-unchanged |
-| Flat vs nested path depth | creates-and-runs vs nested-path |
-| Log error surface | no-bash-fork-error |
-| Disk creation verified | creates-and-runs, nested-path |
-| PID / status running | all leaves |
+| 1 | `missing-dir/creates-and-runs` | L3 smoke: missing flat workingDir → created, pid>0 |
+| 2 | `missing-dir/no-bash-fork-error` | L2: log lacks fork/exec /bin/bash |
+| 3 | `missing-dir/nested-path` | L2: nested path created |
+| 4 | `existing-dir/start-unchanged` | L2: pre-created workingDir still starts |
 
 ## How to Run
 
 ```sh
-go run ./script/build
 doctest vet ./tests/service-working-dir
 doctest test ./tests/service-working-dir/...
+doctest test --label e2e ./tests/service-working-dir/...  # 1 L3 smoke
 ```
 
 ```go
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -98,6 +71,8 @@ import (
 	"time"
 
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/ai-critic/server/services"
+	"github.com/xhd2015/doctest/session"
 )
 
 // ServiceSeed is one row written to services.json before the server starts.
@@ -115,6 +90,10 @@ type Request struct {
 	TempBase   string
 	Token      string
 	ServerPort int
+
+	// UseCLI forces L3 product-binary path. Default false → L2 Manager.
+	UseCLI bool
+	E2E    bool
 }
 
 type serviceStatus struct {
@@ -150,7 +129,11 @@ type servicesFileRow struct {
 	UpdatedAt  string `json:"updatedAt"`
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func useBinaryPath(req *Request) bool {
+	return req != nil && (req.UseCLI || req.E2E)
+}
+
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	if req.Token == "" {
@@ -164,7 +147,83 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	resp.WorkingDir = req.WorkingDir
 
-	moduleRoot, err := findModuleRoot()
+	configHome, err := lib.CreateTestConfigHome()
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() { os.RemoveAll(configHome) })
+	resp.ConfigHome = configHome
+
+	if len(req.Services) > 0 {
+		if err := writeServicesJSON(configHome, req.Services); err != nil {
+			return nil, err
+		}
+	}
+
+	if useBinaryPath(req) {
+		return runBinaryE2E(t, d, req, resp, configHome)
+	}
+	return runInProcessL2(t, req, resp, configHome)
+}
+
+func runInProcessL2(t *testing.T, req *Request, resp *Response, configHome string) (*Response, error) {
+	m := services.NewManagerAt(configHome)
+	t.Cleanup(func() { m.Shutdown() })
+
+	st, err := m.Start(req.TargetID)
+	if err != nil {
+		resp.StartError = err.Error()
+	} else if st != nil {
+		resp.StartResult = &serviceStatus{
+			ID:             st.ID,
+			Name:           st.Name,
+			Command:        st.Command,
+			WorkingDir:     st.WorkingDir,
+			Status:         st.Status,
+			PID:            st.PID,
+			DesiredRunning: st.DesiredRunning,
+		}
+	}
+
+	time.Sleep(300 * time.Millisecond)
+
+	listed := m.ListAll()
+	after := make([]serviceStatus, 0, len(listed))
+	for _, svc := range listed {
+		after = append(after, serviceStatus{
+			ID:             svc.ID,
+			Name:           svc.Name,
+			Command:        svc.Command,
+			WorkingDir:     svc.WorkingDir,
+			Status:         svc.Status,
+			PID:            svc.PID,
+			DesiredRunning: svc.DesiredRunning,
+		})
+		if svc.ID == req.TargetID {
+			resp.TargetPID = svc.PID
+			resp.TargetRunning = svc.Status == "running" || svc.Status == "starting"
+		}
+	}
+	resp.ServicesAfterStart = after
+
+	if req.WorkingDir != "" {
+		info, statErr := os.Stat(req.WorkingDir)
+		if statErr == nil {
+			resp.WorkingDirExists = true
+			resp.WorkingDirIsDir = info.IsDir()
+		}
+	}
+
+	logPath := filepath.Join(configHome, "services", req.TargetID+".log")
+	if data, readErr := os.ReadFile(logPath); readErr == nil {
+		resp.ServiceLog = string(data)
+	}
+	t.Logf("L2 Manager.Start workingDir=%s pid=%d", req.WorkingDir, resp.TargetPID)
+	return resp, nil
+}
+
+func runBinaryE2E(t *testing.T, d *session.Doctest, req *Request, resp *Response, configHome string) (*Response, error) {
+	moduleRoot, err := findModuleRoot(d)
 	if err != nil {
 		return nil, err
 	}
@@ -178,22 +237,9 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	t.Cleanup(func() { os.Remove(serverBin) })
 
-	configHome, err := lib.CreateTestConfigHome()
-	if err != nil {
-		return nil, err
-	}
-	t.Cleanup(func() { os.RemoveAll(configHome) })
-	resp.ConfigHome = configHome
-
 	credFile, err := lib.WriteTestCredentials(configHome)
 	if err != nil {
 		return nil, err
-	}
-
-	if len(req.Services) > 0 {
-		if err := writeServicesJSON(configHome, req.Services); err != nil {
-			return nil, err
-		}
 	}
 
 	portBase := portBaseFromTestName(t.Name())
@@ -226,18 +272,19 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if err != nil {
 		resp.StartError = err.Error()
 	} else {
+		// postServiceStart in SETUP may decode top-level or nested service fields.
 		resp.StartResult = startResult
 	}
 
 	time.Sleep(500 * time.Millisecond)
 
-	services, err := getServices(baseURL, req.Token)
+	svcs, err := getServices(baseURL, req.Token)
 	if err != nil {
 		return nil, err
 	}
-	resp.ServicesAfterStart = services
+	resp.ServicesAfterStart = svcs
 
-	for _, svc := range services {
+	for _, svc := range svcs {
 		if svc.ID == req.TargetID {
 			resp.TargetPID = svc.PID
 			resp.TargetRunning = serviceIsRunning(svc)
@@ -257,7 +304,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if data, readErr := os.ReadFile(logPath); readErr == nil {
 		resp.ServiceLog = string(data)
 	}
-
 	return resp, nil
 }
 ```

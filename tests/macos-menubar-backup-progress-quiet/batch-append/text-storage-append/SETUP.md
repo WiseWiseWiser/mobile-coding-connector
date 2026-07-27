@@ -24,9 +24,13 @@ Per-line-only `string +=` without textStorage is insufficient.
 REQUIREMENT #6; RED on current `textView.string += line + "\n"`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "text-storage-append"
 	return nil
 }

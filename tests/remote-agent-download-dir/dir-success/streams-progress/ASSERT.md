@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "L3 smoke: product binary download-dir path"
+---
+
 ## Expected Output
 
 ```
@@ -37,6 +42,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/doctest/assert"
 )
 
@@ -46,7 +53,7 @@ var (
 	reOverallLine    = regexp.MustCompile(`(?m) — [0-9]+% overall`)
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
@@ -72,9 +79,9 @@ __PCT2__: type=number
 __PCT3__: type=number
 ---
 Downloading uploads/stream-mirror -> ./local-stream/ (2 items, __SIZE__)
-  [1/2] a.txt (__SIZE_A__) — __PCT__% overall
+  \[1/2\] a.txt (__SIZE_A__) — __PCT__% overall
     downloaded __SIZE_A__ / __SIZE_A__ (100%) — __PCT2__% overall
-  [2/2] sub/b.txt (__SIZE_B__) — __PCT3__% overall
+  \[2/2\] sub/b.txt (__SIZE_B__) — __PCT3__% overall
     downloaded __SIZE_B__ / __SIZE_B__ (100%) — 100% overall
 
 Download complete: ./local-stream/ (2 files, __SIZE__)

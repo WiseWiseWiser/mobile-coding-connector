@@ -25,9 +25,13 @@ use it for config bootstrapping.
 Split factor: local-only command rejection for the remote profile.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.WatchRemoteConfig = true
 	return nil
 }

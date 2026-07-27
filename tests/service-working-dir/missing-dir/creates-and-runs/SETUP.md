@@ -24,15 +24,17 @@ REQUIREMENT leaf: `missing-dir/creates-and-runs`.
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	workingDir := filepath.Join(req.TempBase, "my-svc-wd")
 	req.WorkingDir = workingDir
 	req.Services = []ServiceSeed{
 		workingDirService("svc-wd-create-001", "sleep-missing-wd", workingDir),
 	}
 	req.TargetID = "svc-wd-create-001"
+	req.UseCLI = true // L3 product-binary smoke
 	return nil
 }
 ```

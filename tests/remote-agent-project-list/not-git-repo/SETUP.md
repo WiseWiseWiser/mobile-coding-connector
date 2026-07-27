@@ -25,9 +25,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	dir := mkProjectDir(t)
 	if err := os.WriteFile(filepath.Join(dir, "plain.txt"), []byte("not a git repo\n"), 0644); err != nil {
 		return err

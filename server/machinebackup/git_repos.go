@@ -27,10 +27,15 @@ func ScanGitRepos(home string, opts GitScanOptions) (*GitRepoWorktreesSnapshot, 
 	}
 
 	ctx := context.Background()
+	// NoCache: backup scans must not share ~/.cache/git-repo-scan warm mirrors
+	// (warm path ignores MaxDepth and can leak origin/remotes across homes).
+	// ListRemotes: required for origin_url in meta + dry-run ORIGIN column.
 	result, err := scan_repo.Scan(ctx, scan_repo.Options{
 		Roots:         []string{home},
 		MaxDepth:      opts.GitDirsScanMaxDepth,
 		ListWorktrees: true,
+		ListRemotes:   true,
+		NoCache:       true,
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("scan git repos under HOME: %w", err)

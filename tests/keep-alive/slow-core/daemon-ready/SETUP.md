@@ -21,9 +21,11 @@ Inherited slow-core config: `CoreDelayMs=15000`, extension skipped.
 Daemon-focused assertions: `ServerReady`, `PortReadyMs`, `RestartLoopSeen`.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.CoreDelayMs <= 0 {
 		req.CoreDelayMs = 15000
 	}

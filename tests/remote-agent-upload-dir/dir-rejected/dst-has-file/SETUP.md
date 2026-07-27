@@ -22,9 +22,15 @@ pre-seeded file blocks mirror
 REQUIREMENT leaf #6 — dir-rejected/dst-has-file.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
+	// L3 smoke: destination guard reject via product binaries.
+	req.UseCLI = true
 	localRoot := mkLocalWorkDir(t)
 	seedRejectLocalTree(t, localRoot)
 	req.ServerPreseedFiles = map[string]string{

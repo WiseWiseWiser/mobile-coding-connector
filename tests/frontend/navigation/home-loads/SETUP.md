@@ -27,9 +27,10 @@ still render its shell UI.
 ```go
 import (
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ScriptPath = "script.js"
 	if req.TimeoutSecs <= 0 {
 		req.TimeoutSecs = 90

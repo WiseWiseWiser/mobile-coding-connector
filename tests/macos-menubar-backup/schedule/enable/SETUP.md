@@ -19,9 +19,13 @@ never ran | finish within 1h | finish older than 1h -> bool
 REQUIREMENT scenarios 2–4.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "schedule_on_enable"
 	return nil
 }

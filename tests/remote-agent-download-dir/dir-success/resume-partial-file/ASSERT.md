@@ -34,10 +34,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/doctest/assert"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
@@ -64,7 +66,7 @@ __HALF__: type=string
 __PCT__: type=number
 ---
 Downloading uploads/mirror -> ./local-mirror/ (1 items, __SIZE__)
-  [1/1] big.bin (__SIZE__) — 0% overall
+  \[1/1\] big.bin (__SIZE__) — 0% overall
     resumed at __HALF__ / __SIZE__ (50%) — __PCT__% overall
     downloaded __SIZE__ / __SIZE__ (100%) — 100% overall
 

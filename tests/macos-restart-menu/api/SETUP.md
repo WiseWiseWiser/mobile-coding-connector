@@ -20,9 +20,13 @@ Session lock held (root `Setup`). Isolated `AI_CRITIC_HOME` with test credential
 API-level contract for macOS client parity with web Manage Server **Restart Daemon**.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.StartupWaitSecs <= 0 {
 		req.StartupWaitSecs = 15
 	}

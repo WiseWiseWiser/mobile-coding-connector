@@ -19,9 +19,13 @@ Prefer: default match, else if exactly one domain use it.
 REQUIREMENT leaf: `resolve/first-domain-fallback`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigJSON = `{
   "default": "",
   "domains": [

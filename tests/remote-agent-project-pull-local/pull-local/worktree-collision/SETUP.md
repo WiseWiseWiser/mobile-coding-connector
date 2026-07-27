@@ -21,9 +21,13 @@ Binding; first pull succeeds and truncates remote; remote re-dirtied; second pul
 REQUIREMENT leaf `pull-local/worktree-collision`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	pair := pairSameOriginRepos(t)
 	remoteDir, localDir := pair.RemoteDir, pair.LocalDir
 	dirtyTopLevelModifiedAndUntracked(t, remoteDir)

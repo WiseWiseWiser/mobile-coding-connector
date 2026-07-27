@@ -309,11 +309,25 @@ func tailscaleCommandEnv(home string) []string {
 	if home == "" {
 		return env
 	}
+	env = replaceEnvHome(env, home)
 	binDir := filepath.Join(home, "bin")
 	if st, err := os.Stat(filepath.Join(binDir, "tailscale")); err != nil || st.IsDir() {
 		return env
 	}
 	return prependPathEnv(env, binDir)
+}
+
+// replaceEnvHome sets HOME in env to home (strip prior HOME=). Child mock CLIs
+// that read ${HOME} then align with the backup root, not the process home.
+func replaceEnvHome(env []string, home string) []string {
+	out := make([]string, 0, len(env)+1)
+	for _, e := range env {
+		if strings.HasPrefix(e, "HOME=") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return append(out, "HOME="+home)
 }
 
 func prependPathEnv(env []string, dir string) []string {
@@ -515,23 +529,16 @@ func marshalTailscaleConfigSnapshot(snap *TailscaleConfigSnapshot) ([]byte, erro
 }
 
 func formatTailscaleSummaryLinesForHome(home string) []string {
-	for _, candidate := range tailscaleHomeCandidates(home) {
-		if snap, included, err := buildTailscaleConfigSnapshotFn(candidate); err == nil && included && snap != nil {
-			return formatTailscaleSummaryLines(snap)
-		}
+	// Scope to the backup home only — do not fall back to process HOME (L2 isolation).
+	snap, included, err := buildTailscaleConfigSnapshotFn(home)
+	if err != nil || !included || snap == nil {
+		return nil
 	}
-	return nil
+	return formatTailscaleSummaryLines(snap)
 }
 
 func captureTailscaleConfigForHome(home string) (*TailscaleConfigSnapshot, bool, error) {
-	for _, candidate := range tailscaleHomeCandidates(home) {
-		if snap, included, err := buildTailscaleConfigSnapshotFn(candidate); err != nil {
-			return nil, false, err
-		} else if included && snap != nil {
-			return snap, true, nil
-		}
-	}
-	return nil, false, nil
+	return buildTailscaleConfigSnapshotFn(home)
 }
 
 func formatTailscaleSummaryLines(snap *TailscaleConfigSnapshot) []string {

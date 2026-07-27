@@ -1,8 +1,7 @@
 ---
-label: slow && real-codex && negative
-explanation: real codex CLI via tty-watch; manual early /status\r script must not show usage fields
+label: slow, real-codex, negative, e2e
+explanation: real codex via early-status user script; expects no fields
 ---
-
 ## Expected
 
 The user-script pattern must **not** surface parseable usage (documents anti-pattern):
@@ -15,9 +14,13 @@ The user-script pattern must **not** surface parseable usage (documents anti-pat
 - `StatusFieldsSeen=true` (would falsely imply early `/status\r` is sufficient).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

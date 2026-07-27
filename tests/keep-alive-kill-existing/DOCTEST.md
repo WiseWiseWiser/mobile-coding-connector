@@ -101,6 +101,7 @@ import (
 	"github.com/xhd2015/ai-critic/run/daemon"
 	"github.com/xhd2015/ai-critic/script/lib"
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/doctest/session"
 )
 
 type Request struct {
@@ -135,7 +136,7 @@ type Response struct {
 	CombinedOutput       string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{
 		DaemonPort:   config.KeepAlivePort,
 		KillExisting: req.KillExisting,
@@ -152,7 +153,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		req.StartupWaitSecs = 15
 	}
 
-	moduleRoot, err := findModuleRoot()
+	moduleRoot, err := findModuleRoot(d)
 	if err != nil {
 		return nil, err
 	}
@@ -348,9 +349,9 @@ func portHash(name string) int {
 	return hash
 }
 
-func findModuleRoot() (string, error) {
-	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
-		for dir := root; ; dir = filepath.Dir(dir) {
+func findModuleRoot(d *session.Doctest) (string, error) {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		for dir := d.DOCTEST_ROOT; ; dir = filepath.Dir(dir) {
 			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 				return dir, nil
 			}

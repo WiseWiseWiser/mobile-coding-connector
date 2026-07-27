@@ -19,9 +19,13 @@ Empty message uses sealed default `archive ready`.
 REQUIREMENT format table done row.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "format_done"
 	req.Message = ""
 	return nil

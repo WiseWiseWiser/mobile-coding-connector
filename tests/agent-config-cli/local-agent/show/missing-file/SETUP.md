@@ -21,9 +21,13 @@ No local seed. Optional remote sentinel must not be read as local content.
 Proves empty local dump even when remote file exists.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedConfig = nil
 	req.AlsoSeedRemoteConfig = remoteOnlySentinel()
 	req.Args = []string{"config", "--show"}

@@ -9,9 +9,11 @@
 - Hardcoded different prefix ignoring `Register` base.
 
 ```go
-import "testing"
-
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

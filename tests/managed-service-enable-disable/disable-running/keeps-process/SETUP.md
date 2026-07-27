@@ -24,13 +24,18 @@ Parent `disable-running` setup has started the service and issued disable.
 REQUIREMENT leaf: `disable-running/keeps-process`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.WaitAfterSecs = 0
 	if req.Action != "disable" {
 		req.Action = "disable"
 	}
+	req.UseBinary = true // L3 product-binary smoke
 	return nil
 }
 ```

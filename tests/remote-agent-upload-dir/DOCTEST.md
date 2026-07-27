@@ -1,31 +1,39 @@
 # Remote-Agent Upload Directory Doctests
 
-End-to-end tests for `remote-agent upload <LOCAL_PATH> [REMOTE_PATH]` when the
-local source is a file or directory. Directory uploads mirror a local tree onto
-the server via client-orchestrated per-file chunked uploads, with a pre-flight
+Doctests for `remote-agent upload <LOCAL_PATH> [REMOTE_PATH]` when the local
+source is a file or directory. Directory uploads mirror a local tree onto the
+server via client-orchestrated per-file chunked uploads, with a pre-flight
 guard that accepts only missing or completely empty remote destinations.
+
+Most leaves are **L2 in-process** (`fileupload.RegisterAPIForHome` +
+`agentcli.Run`). Two sparse **L3 e2e** smokes keep the product binary path.
 
 # DSN (Domain Specific Notion)
 
-The harness exercises the remote-agent CLI against a real `ai-critic-server`
-subprocess. The server runs with `HOME=serverHome` so remote paths resolve under
-an isolated fake machine home. The CLI runs in a separate `agentHome` with only
-`remote-agent-config.json`. Leaf setup seeds `localDir` fixtures on the test host
-and optionally pre-seeds `serverHome` to model destination states.
+Most leaves are **L2 in-process**: `fileupload.RegisterAPIForHome` + `server/exec`
+on a local mux + `agentcli.Run` (no `ai-critic-server` / `remote-agent` product
+binary). Two sparse **L3 e2e** smokes keep the binary path (`UseCLI` +
+`label: heavy, e2e`): dir success stream + reject guard.
+
+**L2** serves file upload/browse/home APIs in-process via
+`RegisterAPIForHome(mux, serverHome)` plus `/api/exec` for remote `mkdir -p`
+(directory mirrors). **L3 smokes** still run `ai-critic-server` with
+`HOME=serverHome` and `remote-agent` with isolated `agentHome`.
 
 **Participants**
 
-- **remote-agent subprocess** — built from `./cmd/remote-agent`; parses `upload`
-  and dispatches file or directory uploads through the HTTP client.
-- **HTTP client** — existing chunked upload API (`/api/files/upload/{init,chunk,complete}`)
-  plus browse/check helpers for destination guards.
-- **ai-critic-server subprocess** — ephemeral port; `HOME=serverHome`; serves
-  upload and browse APIs against the fake machine home.
+- **L2: agentcli.Run** — in-process `upload` CLI against the local mux
+  (stdout/stderr captured; serialized with a process mutex).
+- **L2: fileupload + exec HTTP** — `RegisterAPIForHome` on ephemeral port; same
+  wire paths as production (`/api/files/*`, `/api/exec`).
+- **L3: remote-agent + ai-critic-server subprocesses** — only for sparse
+  `UseCLI` smokes (`dir-success/streams-progress`, `dir-rejected/dst-has-file`).
 - **localDir / local file** — leaf `Setup` creates temp trees or files on the CLI host.
 - **serverHome** — temp fake server home; leaf setup may pre-create destination paths.
-- **agentHome** — temp `HOME` for `~/.ai-critic/remote-agent-config.json` only.
+- **agentHome** — temp dir for (L3) agent config; L2 does not require agent config
+  when `--server`/`--token` are passed.
 - **session cache** — doctest-injected `DOCTEST_SESSION_ID` keys
-  `$TMPDIR/remote-agent-upload-dir-doctest-<id>/` for shared binaries (file lock).
+  `$TMPDIR/remote-agent-upload-dir-doctest-<id>/` for L3 shared binaries (file lock).
 
 **Behaviors**
 
@@ -47,7 +55,7 @@ and optionally pre-seeds `serverHome` to model destination states.
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -107,7 +115,8 @@ and optionally pre-seeds `serverHome` to model destination states.
 ```sh
 go run ./script/build
 doctest vet ./tests/remote-agent-upload-dir
-doctest test ./tests/remote-agent-upload-dir/...
+doctest test ./tests/remote-agent-upload-dir/...          # unlabeled L2 mass
+doctest test --label e2e ./tests/remote-agent-upload-dir/...  # ~2 L3 smokes
 ```
 
 ```go
@@ -123,17 +132,33 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/xhd2015/ai-critic/cmd/agentcli"
 	"github.com/xhd2015/ai-critic/script/lib"
+	serverexec "github.com/xhd2015/ai-critic/server/exec"
+	"github.com/xhd2015/ai-critic/server/fileupload"
+	"github.com/xhd2015/doctest/session"
 )
+
+// agentcliInProcessMu serializes in-process agentcli.Run (package-level active
+// profile + temporary stdout/stderr swaps are process-global).
+var agentcliInProcessMu sync.Mutex
 
 type Request struct {
 	Args   []string
 	Server string
 	Token  string
+
+	// UseCLI forces the L3 product-binary path (ai-critic-server + remote-agent).
+	// Default false → L2 in-process mux + agentcli.Run.
+	UseCLI bool
+
+	// E2E is an alias for UseCLI (explicit L3 opt-in).
+	E2E bool
 
 	// LocalPath is the absolute local file or directory passed to upload.
 	LocalPath string
@@ -146,6 +171,11 @@ type Request struct {
 	ServerPreseedFiles map[string]string
 	// ServerPreseedDirs lists empty directories to create under serverHome.
 	ServerPreseedDirs []string
+}
+
+// useBinaryPath selects L3 product binaries. Default is L2 in-process.
+func useBinaryPath(req *Request) bool {
+	return req != nil && (req.UseCLI || req.E2E)
 }
 
 type Response struct {
@@ -166,7 +196,7 @@ type Response struct {
 	ServerFilesAfterCLI  map[string]string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	if len(req.Args) == 0 {
@@ -176,9 +206,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		req.Token = lib.TestPassword
 	}
 
-	moduleRoot := findModuleRoot()
-	cacheDir := sessionCacheDir()
-	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
+	// DOCTEST_ROOT is tests/remote-agent-upload-dir; module root is two levels up.
+	// Do not walk from cwd: doctest runs under mapping-gen which has its own go.mod.
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
+	cacheDir := sessionCacheDir(d.DOCTEST_SESSION_ID)
 
 	serverHome, err := os.MkdirTemp("", "upload-dir-server-home-*")
 	if err != nil {
@@ -197,6 +228,73 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	t.Cleanup(func() { os.RemoveAll(agentHome) })
 	resp.AgentHome = agentHome
+
+	if req.LocalPath != "" {
+		absLocal, err := filepath.Abs(req.LocalPath)
+		if err != nil {
+			return nil, fmt.Errorf("abs local path: %w", err)
+		}
+		req.LocalPath = absLocal
+		resp.LocalPath = absLocal
+	}
+	resp.RemotePath = req.RemotePath
+	resp.RemoteDir = req.RemoteDir
+
+	if useBinaryPath(req) {
+		return runBinaryE2E(t, d, req, resp, moduleRoot, cacheDir, serverHome, agentHome)
+	}
+	return runInProcessL2(t, d, req, resp, serverHome, agentHome)
+}
+
+func runInProcessL2(t *testing.T, d *session.Doctest, req *Request, resp *Response, serverHome, agentHome string) (*Response, error) {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	fileupload.RegisterAPIForHome(mux, serverHome)
+	// Directory uploads call remote mkdir -p via /api/exec.
+	serverexec.RegisterAPI(mux)
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("listen in-process upload server: %w", err)
+	}
+	serverPort := ln.Addr().(*net.TCPAddr).Port
+	resp.ServerPort = serverPort
+	srv := &http.Server{Handler: mux}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() {
+		_ = srv.Close()
+	})
+
+	serverURL := req.Server
+	if serverURL == "" {
+		serverURL = fmt.Sprintf("http://127.0.0.1:%d", serverPort)
+	}
+	normalizedServer := strings.TrimRight(strings.TrimSpace(serverURL), "/")
+
+	pingURL := fmt.Sprintf("http://127.0.0.1:%d/ping", serverPort)
+	if err := waitHTTPReady(pingURL, 10*time.Second); err != nil {
+		return nil, err
+	}
+	if err := verifyServerHome(t, normalizedServer, req.Token, serverHome); err != nil {
+		return nil, err
+	}
+
+	t.Logf("L2 in-process upload server on %s home=%s", normalizedServer, serverHome)
+
+	return finishUploadRun(t, req, resp, serverURL, func(argv []string) (int, string, string, error) {
+		return runAgentInProcess(argv)
+	}, true)
+}
+
+func runBinaryE2E(t *testing.T, d *session.Doctest, req *Request, resp *Response, moduleRoot, cacheDir, serverHome, agentHome string) (*Response, error) {
+	t.Helper()
+
+	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
 
 	credDir := filepath.Join(serverHome, ".ai-critic")
 	if err := os.MkdirAll(credDir, 0755); err != nil {
@@ -252,52 +350,109 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, err
 	}
 
-	if req.LocalPath != "" {
-		absLocal, err := filepath.Abs(req.LocalPath)
-		if err != nil {
-			return nil, fmt.Errorf("abs local path: %w", err)
-		}
-		req.LocalPath = absLocal
-		resp.LocalPath = absLocal
-	}
-	resp.RemotePath = req.RemotePath
-	resp.RemoteDir = req.RemoteDir
-
-	argv := []string{"--server", serverURL, "--token", req.Token}
-	argv = append(argv, req.Args...)
-	t.Logf("remote-agent argv: %v", argv)
-
 	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
 	agentEnv = append(agentEnv, "HOME="+agentHome)
 
+	return finishUploadRun(t, req, resp, serverURL, func(argv []string) (int, string, string, error) {
+		return runAgent(agentBin, argv, agentEnv)
+	}, false)
+}
+
+func finishUploadRun(
+	t *testing.T,
+	req *Request,
+	resp *Response,
+	serverURL string,
+	runCLI func(argv []string) (int, string, string, error),
+	inProcess bool,
+) (*Response, error) {
+	t.Helper()
+
+	argv := []string{"--server", serverURL, "--token", req.Token}
+	argv = append(argv, req.Args...)
+
+	mode := "L2-inprocess"
+	if !inProcess {
+		mode = "L3-binary"
+	}
+	t.Logf("%s remote-agent argv: %v", mode, argv)
+
 	if argsHasDryRun(req.Args) {
-		resp.ServerFilesBeforeCLI = snapshotDataTree(t, serverHome)
+		resp.ServerFilesBeforeCLI = snapshotDataTree(t, resp.ServerHome)
 	}
 
-	agentCmd := exec.Command(agentBin, argv...)
-	agentCmd.Env = agentEnv
-
-	var stdout, stderr bytes.Buffer
-	agentCmd.Stdout = &stdout
-	agentCmd.Stderr = &stderr
-
-	runErr := agentCmd.Run()
+	exitCode, stdout, stderr, runErr := runCLI(argv)
+	if runErr != nil {
+		return nil, runErr
+	}
 
 	if argsHasDryRun(req.Args) {
-		resp.ServerFilesAfterCLI = snapshotDataTree(t, serverHome)
+		resp.ServerFilesAfterCLI = snapshotDataTree(t, resp.ServerHome)
 	}
+
+	resp.ExitCode = exitCode
+	resp.Stdout = stdout
+	resp.Stderr = stderr
+	resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
+	return resp, nil
+}
+
+func runAgentInProcess(argv []string) (int, string, string, error) {
+	agentcliInProcessMu.Lock()
+	defer agentcliInProcessMu.Unlock()
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return 0, "", "", err
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		stdoutR.Close()
+		stdoutW.Close()
+		return 0, "", "", err
+	}
+
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdoutW, stderrW
+
+	runErr := agentcli.Run(agentcli.RemoteProfile(), argv)
+
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+
+	outBytes, _ := io.ReadAll(stdoutR)
+	errBytes, _ := io.ReadAll(stderrR)
+	_ = stdoutR.Close()
+	_ = stderrR.Close()
+
+	stdout := string(outBytes)
+	stderr := string(errBytes)
+	exitCode := 0
+	if runErr != nil {
+		// Match cmd/remote-agent main: print Error to stderr, exit 1.
+		stderr += fmt.Sprintf("Error: %v\n", runErr)
+		exitCode = 1
+	}
+	return exitCode, stdout, stderr, nil
+}
+
+func runAgent(bin string, argv, env []string) (int, string, string, error) {
+	cmd := exec.Command(bin, argv...)
+	cmd.Env = env
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	runErr := cmd.Run()
+	exitCode := 0
 	if runErr != nil {
 		if exitErr, ok := runErr.(*exec.ExitError); ok {
-			resp.ExitCode = exitErr.ExitCode()
+			exitCode = exitErr.ExitCode()
 		} else {
-			return nil, runErr
+			return 0, "", "", runErr
 		}
 	}
-	resp.Stdout = stdout.String()
-	resp.Stderr = stderr.String()
-	resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
-
-	return resp, nil
+	return exitCode, outBuf.String(), errBuf.String(), nil
 }
 
 type remoteAgentConfigFile struct {
@@ -320,23 +475,6 @@ func writeRemoteAgentConfig(path, server, token string) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
-}
-
-func findModuleRoot() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			panic("go.mod not found")
-		}
-		dir = parent
-	}
 }
 
 func portBaseFromTestName(name string) int {

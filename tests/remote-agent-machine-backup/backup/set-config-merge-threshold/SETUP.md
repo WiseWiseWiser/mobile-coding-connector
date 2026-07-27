@@ -22,9 +22,13 @@ persisted file has both excludes and large_dir_threshold 50MB
 Set-config merge leaf: exclude-only invocation must not wipe prior threshold.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedKnowledgeHub = true
 	req.PrereqSetConfig = true
 	req.SetConfigExcludePaths = []string{".knowledge-hub"}

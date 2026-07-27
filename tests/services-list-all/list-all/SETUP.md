@@ -19,9 +19,12 @@ Two services seeded with different `projectDir` values.
 REQUIREMENT leaf: `list-all`.
 
 ```go
-import "testing"
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "list-all"
 	return nil
 }

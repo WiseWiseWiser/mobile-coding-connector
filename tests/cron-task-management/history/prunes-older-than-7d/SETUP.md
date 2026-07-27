@@ -25,9 +25,11 @@ Priority leaf optional prune. If implementer stores history elsewhere, seed file
 still be honored at boot or prune-on-read must drop old rows when history is returned.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedTasks = []TaskSeed{
 		{
 			ID:           "prune-hist",

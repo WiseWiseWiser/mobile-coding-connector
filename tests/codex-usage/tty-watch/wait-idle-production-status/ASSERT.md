@@ -1,8 +1,7 @@
 ---
-label: slow && real-codex
-explanation: real codex via tty-watch CLI; wait idle then /status\n\r (~16s)
+label: slow, real-codex, e2e
+explanation: real codex via tty-watch CLI; wait idle then /status (~16s)
 ---
-
 ## Expected
 
 Real tty-watch session must reach parseable `/status` output within 30s:
@@ -23,9 +22,11 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

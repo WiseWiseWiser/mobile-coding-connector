@@ -20,9 +20,11 @@ server.Serve -> server.RegisterAPI(mux) -> terminal.RegisterAPI(mux) -> ptywrap 
    capturing any panic as response fields so the test process is not killed.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.Phase == "" {
 		req.Phase = "server-api-register"
 	}

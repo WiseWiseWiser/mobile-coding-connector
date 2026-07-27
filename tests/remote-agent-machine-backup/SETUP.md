@@ -1,25 +1,27 @@
 # Scenario
 
-**Feature**: remote-agent machine backup and restore integration harness
+**Feature**: remote-agent machine backup and restore doctest harness (L2 mass + L3 smokes)
 
 ```
-# serverHome fixtures + server subprocess + isolated agent HOME
-leaf Setup -> seed serverHome -> remote-agent machine backup|restore -> archive / stdout / server files
+# L2: RegisterAPIForHome + agentcli.Run | L3 UseCLI: product binaries
+leaf Setup -> seed serverHome -> machine backup|restore -> archive / stdout / server files
 ```
 
 ## Preconditions
 
 1. Doctest injects `DOCTEST_SESSION_ID` (global in each generated test) to scope a
    file cache under `$TMPDIR/machine-backup-doctest-<session>/`
-   (binaries built once; default prereq archive built once when reuse applies).
+   (L3 binaries + default prereq archive built once when reuse applies).
 2. Session file locks (`flock`) serialize first-time cache population across parallel leaf packages.
 3. Each leaf still gets an isolated `serverHome` / `agentHome`; only artifacts are shared.
-4. Server runs with `HOME=serverHome` and cwd `serverHome` so backup scope matches fake machine home.
+4. **L2** (default): in-process mux with `machinebackup.RegisterAPIForHome(mux, serverHome)`
+   + `agentcli.Run` (no process `HOME` mutation; no product binary `exec`).
+5. **L3** (`UseCLI` smokes only): `ai-critic-server` with `HOME=serverHome` + `remote-agent` binary.
 
 ## Steps
 
-1. Root `Run` builds binaries, seeds `serverHome`, starts server, writes agent config.
-2. Leaf `Setup` narrows `Request` (flags, excludes, restore prereq backup, mutations).
+1. Root `Run` seeds `serverHome`; L2 starts in-process API, L3 builds/starts product binaries.
+2. Leaf `Setup` narrows `Request` (flags, excludes, restore prereq backup, mutations; smokes set `UseCLI`).
 3. `Run` may run a prereq `machine backup` before restore when `PrereqBackup` is set.
 4. Leaf `Assert` checks exit code, CLI output, archive layout, and server home files.
 
@@ -44,9 +46,9 @@ lines, and prepends `serverHome/bin` to the server subprocess `PATH`.
 `.doctest-cloudflared.pid` + `.doctest-cloudflared.cmdline` stubs, optional
 `.cloudflared/config.yml` with fake credentials, bash history with cloudflared
 quick-tunnel line, and prepends `serverHome/bin` to the server subprocess `PATH`.
-`SeedSystemdMock` writes `serverHome/bin/systemctl` (mock CLI) and prepends
-`serverHome/bin` to the server subprocess `PATH`; `SeedSystemdMockEmpty` sets
-`SYSTEMD_MOCK_EMPTY=1` on the server subprocess so list-units returns `[]`.
+`SeedSystemdMock` writes `serverHome/bin/systemctl` (mock CLI; home/bin is
+preferred by library PATH). `SeedSystemdMockEmpty` bakes empty list-units into
+the mock script (no process `Setenv`).
 Git fixture leaves skip when `git`
 is not on PATH (`requireGit`). `SeedGitReposNonDot` seeds `projects/demo` via
 `seedGitReposNonDotFixture`. `SeedGitReposOrigin` seeds `.wrk-test/main` and adds
@@ -78,10 +80,11 @@ import (
 	"time"
 
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
 
-func sessionCacheDir() string {
-	return filepath.Join(os.TempDir(), "machine-backup-doctest-"+DOCTEST_SESSION_ID)
+func sessionCacheDir(sessionID string) string {
+	return filepath.Join(os.TempDir(), "machine-backup-doctest-"+sessionID)
 }
 
 func withFileLock(t *testing.T, lockPath string, fn func() error) error {
@@ -311,9 +314,12 @@ func appendPostPrereqSetConfigExcludes(t *testing.T, home string, entries []Post
 	return nil
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.Token == "" {
 		req.Token = lib.TestPassword
+	}
+	if d.DOCTEST_SESSION_ID == "" {
+		t.Fatal("session id empty on session.Doctest")
 	}
 	return nil
 }
@@ -823,14 +829,19 @@ echo "mock systemctl: unsupported: $*" >&2
 exit 1
 `
 
-func seedSystemdMock(t *testing.T, home string) {
+func seedSystemdMock(t *testing.T, home string, empty bool) {
 	t.Helper()
 	binDir := filepath.Join(home, "bin")
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		t.Fatalf("mkdir %s: %v", binDir, err)
 	}
+	script := systemdMockScript
+	if empty {
+		// Bake empty mode into the mock so L2 needs no process Setenv.
+		script = strings.Replace(script, `empty="${SYSTEMD_MOCK_EMPTY:-0}"`, `empty="1"`, 1)
+	}
 	systemctlBin := filepath.Join(binDir, "systemctl")
-	if err := os.WriteFile(systemctlBin, []byte(systemdMockScript), 0755); err != nil {
+	if err := os.WriteFile(systemctlBin, []byte(script), 0755); err != nil {
 		t.Fatalf("write mock systemctl: %v", err)
 	}
 }
@@ -2241,14 +2252,14 @@ func argvWithoutDryRun(argv []string) []string {
 	return out
 }
 
-func runDryRunThenArchive(t *testing.T, req *Request, resp *Response, agentBin string, agentEnv []string, serverURL string) (*Response, error) {
+func runDryRunThenArchiveCLI(t *testing.T, req *Request, resp *Response, serverURL string, runCLI func(argv []string) (int, string, string, error)) (*Response, error) {
 	dryArgv := make([]string, 0, len(req.Args)+16)
 	dryArgv = append(dryArgv, "--server", serverURL, "--token", req.Token)
 	dryArgv = append(dryArgv, req.Args...)
 	dryArgv = insertSubcommandFlags(dryArgv, subcommandFlagsFromRequest(req)...)
 
 	t.Logf("dry-run argv: %v", dryArgv)
-	exitCode, stdout, stderr, runErr := runAgent(agentBin, dryArgv, agentEnv)
+	exitCode, stdout, stderr, runErr := runCLI(dryArgv)
 	if runErr != nil {
 		return nil, runErr
 	}
@@ -2277,7 +2288,7 @@ func runDryRunThenArchive(t *testing.T, req *Request, resp *Response, agentBin s
 	backupArgv := argvWithoutDryRun(dryArgv)
 	backupArgv = insertSubcommandFlags(backupArgv, "--output", absOut)
 	t.Logf("backup argv: %v", backupArgv)
-	exitCode, stdout, stderr, runErr = runAgent(agentBin, backupArgv, agentEnv)
+	exitCode, stdout, stderr, runErr = runCLI(backupArgv)
 	if runErr != nil {
 		return nil, runErr
 	}

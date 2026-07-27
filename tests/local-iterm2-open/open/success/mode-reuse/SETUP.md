@@ -19,9 +19,11 @@ Valid temp dir.
 REQUIREMENT mode map reuse.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Mode = "reuse"
 	req.UseRealOpenConfig = true
 	return nil

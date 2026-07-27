@@ -24,9 +24,13 @@ Deterministic synthetic repro of snapshot-frame timeout mechanics (silent fake T
 For the real Codex CLI path, see `fetch/real-codex-inprocess` (tag `slow`).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "fetch-inprocess"
 	req.StripDaemonPATH = true
 	req.FetchTimeoutSecs = 60

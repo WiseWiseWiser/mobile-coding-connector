@@ -38,9 +38,11 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.StartupWaitSecs <= 0 {
 		req.StartupWaitSecs = 15
 	}
@@ -48,18 +50,18 @@ func Setup(t *testing.T, req *Request) error {
 		req.SettleWaitSecs = 20
 	}
 	if req.Op == "api-restart-server" || req.Op == "api-restart-daemon" {
-		unlock := acquireKeepAliveLock(t)
+		unlock := acquireKeepAliveLock(t, d)
 		t.Cleanup(unlock)
 	}
 	return nil
 }
 
-func acquireKeepAliveLock(t *testing.T) func() {
-	session := DOCTEST_SESSION_ID
-	if session == "" {
-		session = fmt.Sprintf("%d", time.Now().UnixNano())
+func acquireKeepAliveLock(t *testing.T, d *session.Doctest) func() {
+	sid := d.DOCTEST_SESSION_ID
+	if sid == "" {
+		sid = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
-	lockPath := filepath.Join(os.TempDir(), "ai-critic-restart-menu-"+session+".lock")
+	lockPath := filepath.Join(os.TempDir(), "ai-critic-restart-menu-"+sid+".lock")
 	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		t.Skipf("another restart-menu doctest holds lock %s: %v", lockPath, err)

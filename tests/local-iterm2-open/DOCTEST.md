@@ -155,6 +155,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/auth"
 	"github.com/xhd2015/ai-critic/server/localiterm2"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/iterm2"
+	"github.com/xhd2015/doctest/session"
 )
 
 // openEndpoint is the fixed product path for local iTerm2 open.
@@ -213,7 +214,7 @@ type Response struct {
 	SkipListSource      string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 	switch req.Op {
 	case "parse":
@@ -230,7 +231,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	case "auth":
 		return runAuth(t, req, resp)
 	case "skip_list":
-		return runSkipList(t, resp)
+		return runSkipList(t, d, resp)
 	default:
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}
@@ -383,8 +384,8 @@ func runAuth(t *testing.T, req *Request, resp *Response) (*Response, error) {
 	return resp, nil
 }
 
-func runSkipList(t *testing.T, resp *Response) (*Response, error) {
-	moduleRoot, err := findModuleRoot()
+func runSkipList(t *testing.T, d *session.Doctest, resp *Response) (*Response, error) {
+	moduleRoot, err := findModuleRoot(d)
 	if err != nil {
 		return nil, err
 	}
@@ -440,9 +441,9 @@ func fillHTTP(resp *Response, rr *httptest.ResponseRecorder) {
 	}
 }
 
-func findModuleRoot() (string, error) {
-	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
-		for dir := root; ; dir = filepath.Dir(dir) {
+func findModuleRoot(d *session.Doctest) (string, error) {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		for dir := d.DOCTEST_ROOT; ; dir = filepath.Dir(dir) {
 			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 				return dir, nil
 			}

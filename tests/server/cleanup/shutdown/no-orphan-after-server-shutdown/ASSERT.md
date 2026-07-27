@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "ai-critic-server binary orphan cleanup process-boundary integration"
+---
+
 ## Expected
 
 1. Launch produced `SessionPort` > 0.
@@ -9,9 +14,13 @@
 - Orphan opencode serve on session port fails the test.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

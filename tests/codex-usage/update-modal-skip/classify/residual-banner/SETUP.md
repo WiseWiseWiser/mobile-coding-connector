@@ -20,9 +20,13 @@ Critical product implication: bare “update available” must not keep writable
 forever after Skip, or `/status` never runs.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	t.Helper()
 	if req.Op == "" {
 		req.Op = "classify"

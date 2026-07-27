@@ -24,9 +24,11 @@ MECE: reject wrong process, kill real child, clear registry after cleanup.
 import (
 	"os/exec"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if _, err := exec.LookPath("lsof"); err != nil {
 		t.Skip("lsof required for kill helper tests")
 	}

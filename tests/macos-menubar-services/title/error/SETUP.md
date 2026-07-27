@@ -19,9 +19,13 @@ Service status is `error`; title includes the full service name and error presen
 REQUIREMENT leaf: `title/error`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Name = "web"
 	req.Status = "error"
 	req.Enabled = true

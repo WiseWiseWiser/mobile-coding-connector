@@ -77,6 +77,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/ai-critic/macosapp/menubar"
 )
 
@@ -100,7 +101,7 @@ type Response struct {
 	DropdownLine string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, _ *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 	switch req.Op {
 	case "grok-compose":

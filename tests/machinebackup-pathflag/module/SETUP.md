@@ -27,9 +27,11 @@ server/machinebackup -> import pathflag
 - These leaves are the primary RED-forcing contract for classic TDD.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Clear path fields so module leaves never accidentally hit exclusion ops.
 	req.RelPath = ""
 	req.RulePath = ""

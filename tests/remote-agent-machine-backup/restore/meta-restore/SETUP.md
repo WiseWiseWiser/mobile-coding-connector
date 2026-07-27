@@ -23,9 +23,13 @@ CLASSIFYING + APPLYING; .backup/config.json.machine.bak -> ~/.backup/config.json
 REQUIREMENT leaf `restore/meta-restore`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedBackupMeta = true
 	req.IncludePaths = []string{".backup"}
 	req.AfterBackupMutate = "wipe-backup-config"

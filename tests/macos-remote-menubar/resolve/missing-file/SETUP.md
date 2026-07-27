@@ -24,9 +24,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	dir, err := os.MkdirTemp("", "macos-remote-menubar-missing-*")
 	if err != nil {
 		return err

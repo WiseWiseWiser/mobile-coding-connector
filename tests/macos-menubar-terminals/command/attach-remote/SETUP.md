@@ -19,9 +19,13 @@ Remote app uses `remote-agent` with config-covered domain (no Bearer on cmdline)
 REQUIREMENT leaf: `command/attach-remote`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "attach_cmd"
 	req.AgentBinary = "remote-agent"
 	req.SessionID = "web1"

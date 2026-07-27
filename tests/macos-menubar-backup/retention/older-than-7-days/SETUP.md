@@ -23,9 +23,13 @@ or [today-6, today-1]? Spec: "Past days within 7 calendar days" keep 1/day;
 REQUIREMENT #19.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.NowRFC3339 = "2026-07-10T15:00:00Z"
 	// 8 calendar days before 2026-07-10 is 2026-07-02
 	req.EntriesJSON = `[

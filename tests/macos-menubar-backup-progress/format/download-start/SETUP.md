@@ -19,9 +19,13 @@ After stream `done` with token, before archive GET completes.
 REQUIREMENT format table download start (ellipsis `…` U+2026).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "format_download_start"
 	return nil
 }

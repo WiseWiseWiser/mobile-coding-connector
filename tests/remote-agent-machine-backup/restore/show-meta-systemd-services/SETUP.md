@@ -21,9 +21,13 @@ REQUIREMENT leaf `restore/show-meta-systemd-services`. Complements `restore/show
 (installed.json + ENV only).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedSystemdMock = true
 	req.PrereqBackup = true
 	req.ShowMeta = true

@@ -1,33 +1,36 @@
 # Remote-Agent Download Directory Doctests
 
-End-to-end tests for `remote-agent download <REMOTE_PATH> [LOCAL_PATH]` when the
-remote source is a file or directory. Directory downloads mirror a remote tree
-locally via client-orchestrated per-file GET downloads with streaming progress,
-transient retry, and filesystem-based resume (skip complete files, Range for
-partial files).
+Doctests for `remote-agent download <REMOTE_PATH> [LOCAL_PATH]` when the remote
+source is a file or directory. Directory downloads mirror a remote tree locally
+via client-orchestrated per-file GET downloads with streaming progress, transient
+retry, and filesystem-based resume (skip complete files, Range for partial files).
+
+Most leaves are **L2 in-process** (`fileupload.RegisterAPIForHome` +
+`agentcli.Run`). Two sparse **L3 e2e** smokes keep the product binary path.
 
 # DSN (Domain Specific Notion)
 
-The harness exercises the remote-agent CLI against a real `ai-critic-server`
-subprocess. The server runs with `HOME=serverHome` so remote paths resolve under
-an isolated fake machine home. The CLI runs in a separate `agentHome` with only
-`remote-agent-config.json`, downloading into a per-leaf `agentWorkDir`. Leaf setup
-seeds `serverHome` with remote fixtures and optionally pre-seeds `agentWorkDir`
-to model resume states.
+Most leaves are **L2 in-process**: `fileupload.RegisterAPIForHome` on a local mux
++ `agentcli.Run` (no product binaries). Two sparse **L3 e2e** smokes keep the
+binary path (`UseCLI` + `label: heavy, e2e`): dir success stream + missing remote
+reject.
+
+**L2** serves download/browse/home APIs in-process via
+`RegisterAPIForHome(mux, serverHome)`. L2 emulates CLI cwd under the agentcli mutex via a temporary
+`os.Chdir(agentWorkDir)` (restored after the call; not used for HOME isolation).
+**L3 smokes** still run product binaries with `cmd.Dir = agentWorkDir`.
 
 **Participants**
 
-- **remote-agent subprocess** — built from `./cmd/remote-agent`; parses `download`
-  and dispatches file or directory downloads through the HTTP client.
-- **HTTP client** — `GET /api/files/download` per file plus browse/check helpers
-  for recursive directory discovery; Range requests for partial resume.
-- **ai-critic-server subprocess** — ephemeral port; `HOME=serverHome`; serves
-  download and browse APIs against the fake machine home.
+- **L2: agentcli.Run** — in-process `download` CLI against the local mux.
+- **L2: fileupload HTTP** — `RegisterAPIForHome` on ephemeral port.
+- **L3: remote-agent + ai-critic-server subprocesses** — sparse `UseCLI` smokes
+  (`dir-success/streams-progress`, `dir-rejected/remote-is-missing`).
 - **serverHome** — temp fake server home; leaf setup pre-creates remote source trees.
-- **agentWorkDir** — per-leaf cwd for CLI; leaf setup may pre-create partial local mirrors.
-- **agentHome** — temp `HOME` for `~/.ai-critic/remote-agent-config.json` only.
+- **agentWorkDir** — per-leaf local work root for download destinations and resume preseeds.
+- **agentHome** — temp dir for (L3) agent config.
 - **session cache** — doctest-injected `DOCTEST_SESSION_ID` keys
-  `$TMPDIR/remote-agent-download-dir-doctest-<id>/` for shared binaries (file lock).
+  `$TMPDIR/remote-agent-download-dir-doctest-<id>/` for L3 shared binaries (file lock).
 
 **Behaviors**
 
@@ -51,7 +54,7 @@ to model resume states.
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -105,7 +108,8 @@ to model resume states.
 ```sh
 go run ./script/build
 doctest vet ./tests/remote-agent-download-dir
-doctest test ./tests/remote-agent-download-dir/...
+doctest test ./tests/remote-agent-download-dir/...          # unlabeled L2 mass
+doctest test --label e2e ./tests/remote-agent-download-dir/...  # ~2 L3 smokes
 ```
 
 ```go
@@ -121,17 +125,28 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/xhd2015/ai-critic/cmd/agentcli"
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/ai-critic/server/fileupload"
+	"github.com/xhd2015/doctest/session"
 )
+
+// agentcliInProcessMu serializes in-process agentcli.Run.
+var agentcliInProcessMu sync.Mutex
 
 type Request struct {
 	Args   []string
 	Server string
 	Token  string
+
+	// UseCLI forces the L3 product-binary path. Default false → L2 in-process.
+	UseCLI bool
+	E2E    bool
 
 	// RemotePath is the CLI remote source argument.
 	RemotePath string
@@ -150,6 +165,10 @@ type Request struct {
 	LocalPreseedDirs []string
 }
 
+func useBinaryPath(req *Request) bool {
+	return req != nil && (req.UseCLI || req.E2E)
+}
+
 type Response struct {
 	ExitCode     int
 	Stdout       string
@@ -163,13 +182,11 @@ type Response struct {
 	LocalPath    string
 	LocalDir     string
 
-	// LocalFilesBeforeCLI / LocalFilesAfterCLI snapshot localDir file
-	// contents (localDir-relative paths) when Args include --dry-run.
 	LocalFilesBeforeCLI map[string]string
 	LocalFilesAfterCLI  map[string]string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	if len(req.Args) == 0 {
@@ -179,9 +196,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		req.Token = lib.TestPassword
 	}
 
-	moduleRoot := findModuleRoot()
-	cacheDir := sessionCacheDir()
-	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
+	cacheDir := sessionCacheDir(d.DOCTEST_SESSION_ID)
 
 	serverHome, err := os.MkdirTemp("", "download-dir-server-home-*")
 	if err != nil {
@@ -221,6 +237,62 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	} else if len(req.LocalPreseedFiles) > 0 || len(req.LocalPreseedDirs) > 0 {
 		return nil, fmt.Errorf("LocalDir is required when LocalPreseed* is set")
 	}
+
+	resp.RemotePath = req.RemotePath
+	resp.LocalPath = req.LocalPath
+
+	if useBinaryPath(req) {
+		return runBinaryE2E(t, d, req, resp, moduleRoot, cacheDir, serverHome, agentHome, agentWorkDir)
+	}
+	return runInProcessL2(t, d, req, resp, serverHome, agentWorkDir)
+}
+
+func runInProcessL2(t *testing.T, d *session.Doctest, req *Request, resp *Response, serverHome, agentWorkDir string) (*Response, error) {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	fileupload.RegisterAPIForHome(mux, serverHome)
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("listen in-process download server: %w", err)
+	}
+	serverPort := ln.Addr().(*net.TCPAddr).Port
+	resp.ServerPort = serverPort
+	srv := &http.Server{Handler: mux}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	serverURL := req.Server
+	if serverURL == "" {
+		serverURL = fmt.Sprintf("http://127.0.0.1:%d", serverPort)
+	}
+	normalizedServer := strings.TrimRight(strings.TrimSpace(serverURL), "/")
+
+	pingURL := fmt.Sprintf("http://127.0.0.1:%d/ping", serverPort)
+	if err := waitHTTPReady(pingURL, 10*time.Second); err != nil {
+		return nil, err
+	}
+	if err := verifyServerHome(t, normalizedServer, req.Token, serverHome); err != nil {
+		return nil, err
+	}
+	t.Logf("L2 in-process download server on %s home=%s", normalizedServer, serverHome)
+
+	return finishDownloadRun(t, req, resp, serverURL, agentWorkDir, func(argv []string) (int, string, string, error) {
+		// workDir is held under agentcliInProcessMu (same as stdout swap) so
+		// relative local destinations resolve without product-binary cmd.Dir.
+		return runAgentInProcess(argv, agentWorkDir)
+	}, true)
+}
+
+func runBinaryE2E(t *testing.T, d *session.Doctest, req *Request, resp *Response, moduleRoot, cacheDir, serverHome, agentHome, agentWorkDir string) (*Response, error) {
+	t.Helper()
+
+	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
 
 	credDir := filepath.Join(serverHome, ".ai-critic")
 	if err := os.MkdirAll(credDir, 0755); err != nil {
@@ -276,45 +348,120 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, err
 	}
 
-	resp.RemotePath = req.RemotePath
-	resp.LocalPath = req.LocalPath
+	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
+	agentEnv = append(agentEnv, "HOME="+agentHome)
+
+	return finishDownloadRun(t, req, resp, serverURL, agentWorkDir, func(argv []string) (int, string, string, error) {
+		return runAgent(agentBin, argv, agentEnv, agentWorkDir)
+	}, false)
+}
+
+func finishDownloadRun(
+	t *testing.T,
+	req *Request,
+	resp *Response,
+	serverURL, agentWorkDir string,
+	runCLI func(argv []string) (int, string, string, error),
+	inProcess bool,
+) (*Response, error) {
+	t.Helper()
 
 	argv := []string{"--server", serverURL, "--token", req.Token}
 	argv = append(argv, req.Args...)
-	t.Logf("remote-agent argv: %v (cwd=%s)", argv, agentWorkDir)
 
-	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
-	agentEnv = append(agentEnv, "HOME="+agentHome)
+	mode := "L2-inprocess"
+	if !inProcess {
+		mode = "L3-binary"
+	}
+	t.Logf("%s remote-agent argv: %v (work=%s)", mode, argv, agentWorkDir)
 
 	if argsHasDryRun(req.Args) && req.LocalDir != "" {
 		resp.LocalFilesBeforeCLI = snapshotDataTree(t, req.LocalDir)
 	}
 
-	agentCmd := exec.Command(agentBin, argv...)
-	agentCmd.Dir = agentWorkDir
-	agentCmd.Env = agentEnv
-
-	var stdout, stderr bytes.Buffer
-	agentCmd.Stdout = &stdout
-	agentCmd.Stderr = &stderr
-
-	runErr := agentCmd.Run()
+	exitCode, stdout, stderr, runErr := runCLI(argv)
+	if runErr != nil {
+		return nil, runErr
+	}
 
 	if argsHasDryRun(req.Args) && req.LocalDir != "" {
 		resp.LocalFilesAfterCLI = snapshotDataTree(t, req.LocalDir)
 	}
+
+	resp.ExitCode = exitCode
+	resp.Stdout = stdout
+	resp.Stderr = stderr
+	resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
+	return resp, nil
+}
+
+func runAgentInProcess(argv []string, workDir string) (int, string, string, error) {
+	agentcliInProcessMu.Lock()
+	defer agentcliInProcessMu.Unlock()
+
+	if workDir != "" {
+		oldWD, err := os.Getwd()
+		if err != nil {
+			return 0, "", "", err
+		}
+		if err := os.Chdir(workDir); err != nil {
+			return 0, "", "", fmt.Errorf("chdir agentWorkDir: %w", err)
+		}
+		defer func() { _ = os.Chdir(oldWD) }()
+	}
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return 0, "", "", err
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		stdoutR.Close()
+		stdoutW.Close()
+		return 0, "", "", err
+	}
+
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdoutW, stderrW
+
+	runErr := agentcli.Run(agentcli.RemoteProfile(), argv)
+
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+
+	outBytes, _ := io.ReadAll(stdoutR)
+	errBytes, _ := io.ReadAll(stderrR)
+	_ = stdoutR.Close()
+	_ = stderrR.Close()
+
+	stdout := string(outBytes)
+	stderr := string(errBytes)
+	exitCode := 0
+	if runErr != nil {
+		stderr += fmt.Sprintf("Error: %v\n", runErr)
+		exitCode = 1
+	}
+	return exitCode, stdout, stderr, nil
+}
+
+func runAgent(bin string, argv, env []string, dir string) (int, string, string, error) {
+	cmd := exec.Command(bin, argv...)
+	cmd.Env = env
+	cmd.Dir = dir
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	runErr := cmd.Run()
+	exitCode := 0
 	if runErr != nil {
 		if exitErr, ok := runErr.(*exec.ExitError); ok {
-			resp.ExitCode = exitErr.ExitCode()
+			exitCode = exitErr.ExitCode()
 		} else {
-			return nil, runErr
+			return 0, "", "", runErr
 		}
 	}
-	resp.Stdout = stdout.String()
-	resp.Stderr = stderr.String()
-	resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
-
-	return resp, nil
+	return exitCode, outBuf.String(), errBuf.String(), nil
 }
 
 type remoteAgentConfigFile struct {
@@ -337,23 +484,6 @@ func writeRemoteAgentConfig(path, server, token string) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
-}
-
-func findModuleRoot() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			panic("go.mod not found")
-		}
-		dir = parent
-	}
 }
 
 func portBaseFromTestName(name string) int {

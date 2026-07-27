@@ -1,3 +1,7 @@
+---
+label: heavy, e2e
+explanation: "L3 smoke: product binary git -C status happy path"
+---
 ## Expected
 
 1. Exit 0.
@@ -19,10 +23,12 @@ None beyond streaming.
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/doctest/assert"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

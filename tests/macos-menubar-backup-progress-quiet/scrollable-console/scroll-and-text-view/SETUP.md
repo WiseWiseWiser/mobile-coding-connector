@@ -22,9 +22,13 @@ Tokens `NSScrollView`, `NSTextView`, and `documentView` present in
 REQUIREMENT #10; expected GREEN on current layout.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "scroll-and-text-view"
 	return nil
 }

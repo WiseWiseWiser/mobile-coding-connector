@@ -20,9 +20,11 @@ Package exports `Register`. Skip-list leaf reads `server/server.go`.
 REQUIREMENT registration + not skip-listed.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Grouping narrows to registration / skip-list surface; leaf sets concrete Op.
 	if req == nil {
 		t.Fatal("nil request")

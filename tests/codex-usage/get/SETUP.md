@@ -24,9 +24,13 @@ REQUIREMENT-DESIGN-usage-structured-reset-ab.md scenario 2 (Codex parity). Class
 TDD: RED until hooks + Get recompute exist.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "get-recompute"
 	return nil
 }

@@ -1,8 +1,7 @@
 ---
-label: slow
+label: slow, e2e
 explanation: real opencode serve startup when fake not forced; fake path is fast
 ---
-
 ## Expected
 
 1. `LaunchErr` is nil.

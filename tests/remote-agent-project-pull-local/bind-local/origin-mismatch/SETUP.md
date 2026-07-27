@@ -22,9 +22,13 @@ Two independent bare origins.
 REQUIREMENT leaf `bind-local/origin-mismatch`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	pair := pairMismatchedOriginRepos(t)
 	remoteDir, localDir := pair.RemoteDir, pair.LocalDir
 	registerPullProject(t, req, "bind-mismatch-001", "bind-mismatch", remoteDir)

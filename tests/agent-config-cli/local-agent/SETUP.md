@@ -22,9 +22,13 @@ Binary is `./cmd/local-agent`; CLI name in help is `local-agent`.
 Shared `runConfig` with local profile; path isolation from remote-agent-config.json.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Profile = ProfileLocal
 	return nil
 }

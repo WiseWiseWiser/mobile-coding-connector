@@ -24,9 +24,13 @@ Documents why early `/status\r` after 5 boot snapshots fails while wait-idle +
 `/status\n\r` succeeds in ~16s.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.Op == "" {
 		req.Op = "ttywatch-real"
 	}

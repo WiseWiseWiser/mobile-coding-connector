@@ -43,9 +43,13 @@ Primary logic lives in Go (`macosapp/menubar`); Swift mirrors formatters and wir
 download + menu. Local app (`ai-critic-macos`) is **out of scope**.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Root: no shared mutation; leaves set Op and inputs.
 	// Keep non-stub shape for harness consistency.
 	if req == nil {

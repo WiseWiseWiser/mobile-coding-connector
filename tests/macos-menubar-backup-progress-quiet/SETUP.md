@@ -49,9 +49,13 @@ Focus: open presentation + append CPU policy only. Line format helpers and
 show-window schedule policy remain in the sibling progress tree.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req == nil {
 		t.Fatal("req is nil")
 	}

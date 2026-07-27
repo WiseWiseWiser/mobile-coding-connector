@@ -21,9 +21,15 @@ remote-agent machine analyse-files -> home: + > headers + analyse-files summary
 REQUIREMENT leaf `stream/basic`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
+	// L3 smoke: analyse-files happy path via product binaries.
+	req.UseCLI = true
 	req.SeedProfile = "basic"
 	req.Args = []string{"machine", "analyse-files"}
 	return nil

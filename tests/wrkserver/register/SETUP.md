@@ -21,9 +21,11 @@ Register(mux, base) -> GET {base}/projects, POST {base}/worktrees
 REQUIREMENT scenarios 10–11 — proves prefix is not hardcoded inside wrkserver.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "register"
 	return nil
 }

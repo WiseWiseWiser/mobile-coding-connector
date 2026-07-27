@@ -1,3 +1,8 @@
+---
+label: e2e
+explanation: "Process boundary: fake opencode / kill / lsof port discovery"
+---
+
 ## Expected
 
 1. `CleanupErr` is nil.
@@ -10,9 +15,13 @@
 - Non-empty registry after cleanup fails the test.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

@@ -20,9 +20,13 @@ Same ready conditions as when-disabled; task may be on for hourly schedule.
 REQUIREMENT #2.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.HasEndpoint = true
 	req.Running = false
 	req.ServerName = "foo.example.com"

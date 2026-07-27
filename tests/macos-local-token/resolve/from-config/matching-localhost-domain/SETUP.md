@@ -23,9 +23,13 @@ at a different server (so success is via local match, not merely default lookup)
 REQUIREMENT leaf: scenario 5 — matching localhost domain token (not default).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigJSON = `{
   "default": "https://other.example.com",
   "domains": [

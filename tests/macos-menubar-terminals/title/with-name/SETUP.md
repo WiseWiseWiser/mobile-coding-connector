@@ -19,9 +19,13 @@ Session has a non-empty display name distinct from id; status is running (no suf
 REQUIREMENT leaf: `title/with-name` (running → base only).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Name = "demo"
 	req.SessionID = "abc"
 	req.Status = "running"

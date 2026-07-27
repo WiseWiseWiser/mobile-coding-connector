@@ -21,9 +21,13 @@ Scratch reset; payload is 5000 ASCII `x` bytes (> 4096 echo threshold).
 REQUIREMENT leaf: `write-large-no-echo`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	resetScratch(req)
 	setWritePipe(t, req, repeatByte('x', largePayloadSize))
 	return nil

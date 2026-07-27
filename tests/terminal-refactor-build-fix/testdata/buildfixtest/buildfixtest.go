@@ -17,6 +17,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/xhd2015/ai-critic/server/terminal"
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap"
 	ptyclient "github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap/client"
 	aicriticclient "github.com/xhd2015/ai-critic/client"
@@ -81,12 +82,12 @@ type Response struct {
 }
 
 // Run executes a build-fix regression phase.
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	switch req.Phase {
 	case "remote-agent-build":
-		return runCompile(t, "./cmd/remote-agent")
+		return runCompile(t, d, "./cmd/remote-agent")
 	case "server-build":
-		return runCompile(t, ".")
+		return runCompile(t, d, ".")
 	case "shell-quote-simple":
 		return runShellQuoteSimple(t, req)
 	case "shell-quote-special":
@@ -110,9 +111,9 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 }
 
-func runCompile(t *testing.T, pkg string) (*Response, error) {
+func runCompile(t *testing.T, d *session.Doctest, pkg string) (*Response, error) {
 	t.Helper()
-	exitCode, output, err := CompilePackage(t, pkg)
+	exitCode, output, err := CompilePackage(t, d, pkg)
 	resp := &Response{
 		BuildExitCode: exitCode,
 		BuildOutput:   output,
@@ -474,10 +475,10 @@ func startFakeTerminalWSServer(t *testing.T, session func(conn *websocket.Conn) 
 }
 
 // ModuleRoot returns the ai-critic module root directory.
-func ModuleRoot(t *testing.T) string {
+func ModuleRoot(t *testing.T, d *session.Doctest) string {
 	t.Helper()
-	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
-		for dir := root; ; dir = filepath.Dir(dir) {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		for dir := d.DOCTEST_ROOT; ; dir = filepath.Dir(dir) {
 			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 				return dir
 			}
@@ -504,9 +505,9 @@ func ModuleRoot(t *testing.T) string {
 }
 
 // CompilePackage runs `go build -o /dev/null` for pkg relative to module root.
-func CompilePackage(t *testing.T, pkg string) (exitCode int, output string, err error) {
+func CompilePackage(t *testing.T, d *session.Doctest, pkg string) (exitCode int, output string, err error) {
 	t.Helper()
-	moduleRoot := ModuleRoot(t)
+	moduleRoot := ModuleRoot(t, d)
 	cmd := exec.Command("go", "build", "-o", "/dev/null", pkg)
 	cmd.Dir = moduleRoot
 	out, runErr := cmd.CombinedOutput()

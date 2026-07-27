@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "L3 smoke: product binary pull-local size-limit reject"
+---
+
 ## Expected
 
 1. Exit code 1.
@@ -19,9 +24,11 @@ No successful worktree with `big.bin` content; remote stays dirty.
 import (
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

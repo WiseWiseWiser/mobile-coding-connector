@@ -18,10 +18,12 @@ ai-critic-server -> ptywrap adapter -> shared ptywrap library
 2. Set `req.ServerURL` for descendant leaves.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
-	base, port, cleanup := startAICriticServer(t)
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	base, port, cleanup := startAICriticServer(t, d)
 	t.Cleanup(cleanup)
 	req.ServerURL = base
 	req.ServerPort = port

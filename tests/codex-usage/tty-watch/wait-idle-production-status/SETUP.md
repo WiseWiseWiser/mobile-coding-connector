@@ -21,9 +21,13 @@ Real codex + production argv; poll until prompt idle before `/status`.
 Observed 2026-07-05: prompt idle ~5s, status fields at +16s total.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "ttywatch-real"
 	req.TTYWatchMode = "wait-idle-production"
 	req.MaxWaitSecs = 30

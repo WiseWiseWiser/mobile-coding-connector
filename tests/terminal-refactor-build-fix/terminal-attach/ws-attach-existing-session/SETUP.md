@@ -54,9 +54,11 @@ timing out — restoring backward compatibility with pre-refactor daemons.
    `AttachSnapshot: true`, `Wait: true` in a recovering goroutine.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Phase = "ws-attach-existing-session"
 	req.AttachKnownSessionID = "session-5"
 	return nil

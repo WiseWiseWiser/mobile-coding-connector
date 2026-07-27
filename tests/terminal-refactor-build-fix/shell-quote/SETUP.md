@@ -22,9 +22,10 @@ sh -c round-trip -> original value preserved
 import (
 	"os/exec"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh not in PATH")
 	}

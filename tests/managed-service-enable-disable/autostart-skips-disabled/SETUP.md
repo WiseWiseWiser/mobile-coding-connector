@@ -29,15 +29,18 @@ REQUIREMENT leaf: `autostart-skips-disabled/`. Proves `enabled` defaults to true
 when the field is absent.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Services = []ServiceSeed{
 		{ID: "enabled-svc", Name: "enabled-svc", Command: "sleep 300"},
 		sleepService("disabled-svc", "disabled-svc", boolPtr(false)),
 	}
 	req.Action = "boot-only"
-	req.WaitAfterSecs = 3
+	// Allow AutoStartConfiguredServices + process bookkeeping under parallel suite load.
+	req.WaitAfterSecs = 8
 	return nil
 }
 ```

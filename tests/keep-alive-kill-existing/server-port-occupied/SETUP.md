@@ -19,9 +19,11 @@ port occupier (server, /ping) -> keep-alive --kill-existing -> occupier dead -> 
 Simulates stale managed server on `--port`.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.KillExisting = true
 	req.OccupyServerPort = true
 	req.OccupyDaemonPort = false

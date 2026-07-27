@@ -21,9 +21,11 @@ Isolated `WrkHome` with no recorded projects.
 REQUIREMENT scenario 1.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	ensureWrkHome(t, req)
 	// Explicit empty registry file (absent file should also yield empty).
 	writeProjectsJSON(t, req.WrkHome, nil)

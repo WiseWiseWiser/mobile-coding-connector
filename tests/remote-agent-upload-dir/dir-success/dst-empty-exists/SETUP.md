@@ -22,9 +22,13 @@ empty remoteDir -> remote-agent upload -> populated mirror tree
 REQUIREMENT leaf #3 — dir-success/dst-empty-exists.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	localRoot := mkLocalWorkDir(t)
 	seedStandardLocalTree(t, localRoot)
 	req.ServerPreseedDirs = []string{"uploads/mirror"}

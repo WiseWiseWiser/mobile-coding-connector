@@ -19,9 +19,13 @@ Remote app dropdown includes a Backup entry alongside Server/Services/Terminals.
 REQUIREMENT #24. Also expects Backup Now… and Reveal in Finder… as part of structure.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "backup-menu"
 	return nil
 }

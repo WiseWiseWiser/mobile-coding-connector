@@ -22,9 +22,11 @@ CLI --cron -> non-zero exit; message tells user to use --cron-utc
 Priority leaf: unsafe convert → error. No task should be created (or list lacks name).
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.UseCLI = true
 	req.Action = "create"
 	req.TaskName = "unsafe-cron"

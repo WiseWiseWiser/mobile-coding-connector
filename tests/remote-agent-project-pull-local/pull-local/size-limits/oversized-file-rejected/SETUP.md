@@ -21,13 +21,18 @@ Seeded binding; remote dirty with `big.bin` at 2 MiB.
 REQUIREMENT leaf `oversized-file-rejected`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	pair := pairSameOriginRepos(t)
 	dirtyWithBigUntracked(t, pair.RemoteDir)
 	seedSizeLimitPullProject(t, req, "pull-size-big-001", "pull-size-big", pair)
 	req.Args = []string{"project", "pull-local", "pull-size-big-001"}
+	req.UseCLI = true
 	return nil
 }
 ```

@@ -29,6 +29,8 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/doctest/assert"
 )
 
@@ -38,7 +40,7 @@ var (
 	gitReposWorktreeRowRE        = regexp.MustCompile(`worktree\s+\.wrk-test/feature-wt\s+feature/foo\s+[0-9a-f]{7}\s+dirty \(\d+ modified\)`)
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

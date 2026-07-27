@@ -20,9 +20,13 @@ REQUIREMENT leaf: `parse/explicit-utc`.
 Multi-format priority: explicit UTC (stricter) before no-TZ default.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.FixtureFile = "show-usage-utc.txt"
 	req.ExpectParseError = false
 	return nil

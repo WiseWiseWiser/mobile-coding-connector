@@ -40,9 +40,13 @@ Implements REQUIREMENT-DESIGN-macos-menubar-cron.md. Primary logic lives in Go
 formatters, cronapi package, and Cron menus land.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Root: no shared mutation; leaves set Op and case inputs.
 	_ = t
 	_ = req

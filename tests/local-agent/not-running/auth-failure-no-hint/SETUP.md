@@ -23,9 +23,13 @@ Server running; reachability passes (real or mocked up); explicit bad token.
 REQUIREMENT: distinguish unreachable server from auth failure.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	up := true
 	req.MockReachability = &up
 	req.StartServer = true

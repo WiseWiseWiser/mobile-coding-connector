@@ -19,9 +19,13 @@ Active server URL includes scheme and trailing slash; host is the scope key.
 REQUIREMENT leaf: paths #8.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "path_server_name"
 	req.ServerURL = "https://foo.example.com/"
 	return nil

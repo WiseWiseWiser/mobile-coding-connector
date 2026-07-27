@@ -24,9 +24,10 @@ only mount prefix.
 import (
 	"net/http"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	writeProjectsJSON(t, req.WrkHome, nil)
 	req.Base = "/custom"
 	req.Method = http.MethodGet

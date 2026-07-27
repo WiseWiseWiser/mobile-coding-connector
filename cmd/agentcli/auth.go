@@ -122,7 +122,7 @@ func runAuthImportLocal(resolve func() (*client.Client, error), args []string) e
 }
 
 func readFirstLocalCredentialLine() (token string, path string, err error) {
-	home, err := os.UserHomeDir()
+	home, err := testhooks.UserHomeDir()
 	if err != nil {
 		return "", "", err
 	}

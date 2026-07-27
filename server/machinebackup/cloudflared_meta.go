@@ -224,6 +224,7 @@ func cloudflaredCommandEnv(home string) []string {
 	if home == "" {
 		return env
 	}
+	env = replaceEnvHome(env, home)
 	binDir := filepath.Join(home, "bin")
 	if st, err := os.Stat(filepath.Join(binDir, "cloudflared")); err != nil || st.IsDir() {
 		return env
@@ -249,7 +250,13 @@ func discoverCloudflaredProcess(home string) CloudflaredProcessInfo {
 
 func cloudflaredProcInfo(home string) (int, string, bool) {
 	env := cloudflaredCommandEnv(home)
-	cmd := exec.Command("pgrep", "cloudflared")
+	// Resolve pgrep via env PATH (home/bin mock first). exec.Command("pgrep")
+	// would LookPath against the process PATH and miss harness stubs under L2.
+	pgrepBin, err := lookPathInEnv("pgrep", env)
+	if err != nil {
+		return 0, "", false
+	}
+	cmd := exec.Command(pgrepBin, "cloudflared")
 	cmd.Env = env
 	pidOut, err := cmd.Output()
 	if err != nil || len(bytes.TrimSpace(pidOut)) == 0 {
@@ -440,23 +447,17 @@ func marshalCloudflaredConfigSnapshot(snap *CloudflaredConfigSnapshot) ([]byte, 
 }
 
 func formatCloudflaredSummaryLinesForHome(home string) []string {
-	for _, candidate := range tailscaleHomeCandidates(home) {
-		if snap, included, err := buildCloudflaredConfigSnapshotFn(candidate); err == nil && included && snap != nil {
-			return formatCloudflaredSummaryLines(snap)
-		}
+	// Scope to the backup home only — do not fall back to process HOME (L2 in-process
+	// tests pass an isolated serverHome while the host may have real cloudflared).
+	snap, included, err := buildCloudflaredConfigSnapshotFn(home)
+	if err != nil || !included || snap == nil {
+		return nil
 	}
-	return nil
+	return formatCloudflaredSummaryLines(snap)
 }
 
 func captureCloudflaredConfigForHome(home string) (*CloudflaredConfigSnapshot, bool, error) {
-	for _, candidate := range tailscaleHomeCandidates(home) {
-		if snap, included, err := buildCloudflaredConfigSnapshotFn(candidate); err != nil {
-			return nil, false, err
-		} else if included && snap != nil {
-			return snap, true, nil
-		}
-	}
-	return nil, false, nil
+	return buildCloudflaredConfigSnapshotFn(home)
 }
 
 func formatCloudflaredSummaryLines(snap *CloudflaredConfigSnapshot) []string {

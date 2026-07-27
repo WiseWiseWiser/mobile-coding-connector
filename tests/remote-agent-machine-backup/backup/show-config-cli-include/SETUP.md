@@ -22,9 +22,13 @@ Prereq `machine backup --set-config --exclude .cache` persists user exclude on s
 REQUIREMENT leaf `backup/show-config-cli-include`. CLI `--include` overrides persisted and builtin exclude for preview.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.PrereqSetConfig = true
 	req.SetConfigExcludePaths = []string{".cache"}
 	req.ShowConfig = true

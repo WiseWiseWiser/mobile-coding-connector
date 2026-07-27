@@ -21,9 +21,13 @@ Credentials file exists but every line is empty after trim; config missing.
 REQUIREMENT edge of scenario 6/7: blank credentials do not invent a token.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigPresent = false
 	req.CredentialsPresent = true
 	req.CredentialsText = "\n  \n\t\n \n"

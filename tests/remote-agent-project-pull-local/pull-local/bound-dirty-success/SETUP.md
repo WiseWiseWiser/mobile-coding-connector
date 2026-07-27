@@ -22,15 +22,20 @@ Binding for `(server, remote_dir)`; remote dirty; local clone same origin.
 REQUIREMENT leaf `pull-local/bound-dirty-success`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	pair := pairSameOriginRepos(t)
 	remoteDir, localDir := pair.RemoteDir, pair.LocalDir
 	dirtyTopLevelModifiedAndUntracked(t, remoteDir)
 	registerPullProject(t, req, "pull-bound-001", "pull-bound", remoteDir)
 	seedBindingForServer(t, req, remoteDir, localDir)
 	req.Args = []string{"project", "pull-local", "pull-bound-001"}
+	req.UseCLI = true
 	return nil
 }
 ```

@@ -41,10 +41,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/doctest/assert"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
@@ -101,11 +103,11 @@ __PCT6__: type=number
 ---
 dry-run: download plan
 Downloading uploads/mirror -> ./local-mirror/ (3 items, __SIZE__)
-  [1/3] a.txt (__SIZE_A__) — 0% overall
+  \[1/3\] a.txt (__SIZE_A__) — 0% overall
     would skip (already complete, __SIZE_A__ / __SIZE_A__) — __PCT__% overall
-  [2/3] sub/b.txt (__SIZE_B__) — __PCT2__% overall
+  \[2/3\] sub/b.txt (__SIZE_B__) — __PCT2__% overall
     would skip (already complete, __SIZE_B__ / __SIZE_B__) — __PCT3__% overall
-  [3/3] big.bin (__SIZE_BIN__) — __PCT4__% overall
+  \[3/3\] big.bin (__SIZE_BIN__) — __PCT4__% overall
     would resume at __HALF__ / __SIZE_BIN__ (50%) — __PCT5__% overall
     would download chunk ... — __PCT6__% overall
 

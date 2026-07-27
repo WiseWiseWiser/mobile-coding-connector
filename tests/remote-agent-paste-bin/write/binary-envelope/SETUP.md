@@ -21,9 +21,13 @@ Scratch reset; payload contains embedded NUL byte.
 REQUIREMENT leaf: `write-binary-envelope`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	resetScratch(req)
 	setWritePipe(t, req, []byte(binaryEnvelopePayload))
 	return nil

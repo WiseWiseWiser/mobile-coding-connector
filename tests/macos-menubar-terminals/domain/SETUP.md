@@ -21,9 +21,13 @@ cfg(multi-domain, default=A) -> SelectDefaultDomain(B) -> Save -> Load -> Resolv
 REQUIREMENT: selecting a domain writes `default` and reloads clients for one endpoint.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "select_domain"
 	return nil
 }

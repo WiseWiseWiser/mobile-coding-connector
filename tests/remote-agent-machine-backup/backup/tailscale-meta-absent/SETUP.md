@@ -22,9 +22,13 @@ running in CI.
 REQUIREMENT leaf `backup/tailscale-meta-absent` (REQUIREMENT-DESIGN-tailscale-config-meta.md).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.DryRunThenArchive = true
 	req.OutputPath = "tailscale-meta-absent.tar.xz"
 	req.Args = []string{"machine", "backup", "--dry-run"}

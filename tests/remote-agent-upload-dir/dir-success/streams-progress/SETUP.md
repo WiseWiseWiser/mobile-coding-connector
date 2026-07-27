@@ -21,9 +21,15 @@ Remote destination `uploads/stream-mirror` absent.
 REQUIREMENT-DESIGN-upload-streaming-progress.md leaf #1 — dir-success/streams-progress.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
+	// L3 smoke: directory upload progress via product binaries.
+	req.UseCLI = true
 	localRoot := mkLocalWorkDir(t)
 	seedStandardLocalTree(t, localRoot)
 	setUploadArgs(t, req, localRoot, "uploads/stream-mirror")

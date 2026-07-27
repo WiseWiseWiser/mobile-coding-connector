@@ -22,9 +22,13 @@ No `local-agent-config.json` seed; no `--server` or `--port`.
 Tests default resolution without hard-coding port 23712 in the harness.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.StartServer = true
 	req.SyncDefaultPortFromServer = true
 	req.Args = []string{"ping"}

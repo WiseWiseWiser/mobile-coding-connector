@@ -24,9 +24,13 @@ Pure source inspection — no subprocess, UI, or network.
 REQUIREMENT Swift scenarios 16–20; enable-immediate window (goal 3).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "client"
 	return nil
 }

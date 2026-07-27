@@ -22,9 +22,13 @@ Remote project is registered in `projects.json`. Local path exists.
 Grouping node for bind-local MECE branches: same origin, origin mismatch, not a git repo.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if len(req.Args) >= 2 && req.Args[1] != "bind-local" {
 		t.Fatalf("bind-local group: unexpected subcommand argv %v", req.Args)
 	}

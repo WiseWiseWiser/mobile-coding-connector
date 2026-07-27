@@ -23,9 +23,13 @@ BuildUpdateCronTaskRequest(base, token, def with id)
 REQUIREMENT leaf: `cronapi/update-path`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.CronAPILeaf = "update-path"
 	req.BaseURL = "https://agent.example.com/"
 	req.Token = "secret-token"

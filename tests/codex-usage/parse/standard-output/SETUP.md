@@ -19,9 +19,13 @@ Monthly usage + Credits used + Next reset lines -> UsageInfo
 REQUIREMENT leaf: `parse/standard-output`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.FixtureFile = "show-status-standard.txt"
 	req.ExpectParseError = false
 	return nil

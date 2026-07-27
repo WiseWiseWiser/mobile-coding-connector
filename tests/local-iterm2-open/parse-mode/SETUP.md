@@ -20,9 +20,11 @@ Pure function; no filesystem or HTTP.
 REQUIREMENT mode mapping table; empty/omit → reuse (not lib zero ModeSmart).
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "parse"
 	return nil
 }

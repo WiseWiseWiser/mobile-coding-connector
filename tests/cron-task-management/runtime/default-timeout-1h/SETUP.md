@@ -22,9 +22,11 @@ definition/status Timeout == "1h" (or equivalent duration string)
 Priority leaf: default timeout 1h.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Action = "create"
 	req.TaskName = "default-timeout"
 	req.Command = "echo ok"

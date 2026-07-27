@@ -19,9 +19,13 @@ Home is an absolute path; server-name already resolved.
 REQUIREMENT leaf: paths #9.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "path_backup_dir"
 	req.HomeDir = "/Users/me"
 	req.ServerName = "foo.example.com"

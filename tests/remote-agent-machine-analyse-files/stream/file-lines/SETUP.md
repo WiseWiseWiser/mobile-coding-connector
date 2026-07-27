@@ -20,9 +20,13 @@ notes.txt + binary.dat at serverHome root
 REQUIREMENT leaf `stream/file-lines`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedProfile = "file-lines"
 	req.Args = []string{"machine", "analyse-files"}
 	return nil

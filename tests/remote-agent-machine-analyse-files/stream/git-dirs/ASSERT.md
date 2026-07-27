@@ -27,11 +27,13 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
 var gitDirsOneRE = regexp.MustCompile(`(?m)^\s*git-dirs\s+1\s*$`)
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

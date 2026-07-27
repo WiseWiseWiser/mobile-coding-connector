@@ -21,9 +21,13 @@ Both sources have non-empty tokens; locked order never skips a usable config tok
 REQUIREMENT: fall-through only when config fails; not when both succeed.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigJSON = `{
   "default": "http://localhost:23712",
   "domains": [

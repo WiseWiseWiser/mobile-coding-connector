@@ -184,6 +184,7 @@ import (
 	"github.com/xhd2015/ai-critic/macosapp/codexusage"
 	"github.com/xhd2015/ai-critic/script/lib"
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/doctest/session"
 )
 
 type Request struct {
@@ -275,9 +276,9 @@ type Response struct {
 	LastSnapshot       string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
-	doctestRoot := codexUsageDoctestRoot()
+	doctestRoot := codexUsageDoctestRoot(d)
 
 	switch req.Op {
 	case "parse":
@@ -289,7 +290,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	case "fetch-inprocess":
 		return runFetchInProcess(t, req, resp)
 	case "api":
-		return runAPI(t, req, doctestRoot, resp)
+		return runAPI(t, d, req, doctestRoot, resp)
 	case "refresh":
 		return runRefreshOverlap(t, req, resp)
 	case "ttywatch-real":
@@ -430,14 +431,13 @@ func runFetchInProcess(t *testing.T, req *Request, resp *Response) (*Response, e
 		}
 		attemptReq.SessionID = fmt.Sprintf("%s-%d", sessionBase, i+1)
 
-		restore := applyInProcessFetchEnv(t, &attemptReq)
+		svc := codexusage.TestExported_NewService()
+		codexPath := applyInProcessFetchEnv(t, svc, &attemptReq)
 		if attemptReq.UseRealCodex && resp.ResolvedCodexPath == "" {
-			resp.ResolvedCodexPath = strings.TrimSpace(os.Getenv("AGENT_RUNNER_CODEX_PATH"))
+			resp.ResolvedCodexPath = codexPath
 		}
 
-		svc := codexusage.TestExported_NewService()
 		out := svc.TestExported_FetchOnce(t)
-		restore()
 
 		last = out
 		if out.Status != codexusage.StatusReady {
@@ -457,69 +457,59 @@ func runFetchInProcess(t *testing.T, req *Request, resp *Response) (*Response, e
 	return resp, nil
 }
 
-func applyInProcessFetchEnv(t *testing.T, req *Request) func() {
+// applyInProcessFetchEnv installs library hooks on the service via
+// TestExported_SetEnv (applied only around fetchOnce). Never os.Setenv/Unsetenv
+// or t.Setenv in the harness — Parallel-safe with service-side env mutex.
+// Returns resolved real codex path when UseRealCodex (else "").
+func applyInProcessFetchEnv(t *testing.T, svc *codexusage.Service, req *Request) string {
 	t.Helper()
-	keys := []string{
-		"PATH",
-		"TTY_WATCH_HOME",
-		"CODEX_SHOW_STATUS_COMMAND",
-		"CODEX_SHOW_STATUS_SESSION_ID",
-		"CODEX_SHOW_STATUS_TIMEOUT",
-		"AGENT_RUNNER_CODEX_PATH",
-	}
-	prev := make(map[string]string, len(keys))
-	for _, k := range keys {
-		prev[k] = os.Getenv(k)
-	}
 
 	daemonPATH := "/usr/bin:/bin:/usr/sbin:/sbin"
+	var resolvedCodex string
 	if req.UseRealCodex {
 		codexPath, err := resolveRealCodexCLI(t)
 		if err != nil {
 			t.Skipf("real codex CLI not available: %v", err)
 		}
+		resolvedCodex = codexPath
 		req.ShowStatusCommand = codexPath
-		_ = os.Unsetenv("CODEX_SHOW_STATUS_COMMAND")
-		_ = os.Setenv("AGENT_RUNNER_CODEX_PATH", codexPath)
+		// Empty hook → real codex path resolution (buildCodexArgv ignores blank).
+		svc.TestExported_SetEnv("CODEX_SHOW_STATUS_COMMAND", "")
+		svc.TestExported_SetEnv("AGENT_RUNNER_CODEX_PATH", codexPath)
 		binDir := filepath.Dir(codexPath)
 		if req.StripDaemonPATH {
-			_ = os.Setenv("PATH", daemonPATH+":"+binDir)
+			svc.TestExported_SetEnv("PATH", daemonPATH+":"+binDir)
 		}
 	} else if req.StripDaemonPATH {
-		_ = os.Setenv("PATH", daemonPATH)
+		svc.TestExported_SetEnv("PATH", daemonPATH)
 	}
 
 	ttyHome := req.TTYWatchHome
 	if ttyHome == "" {
 		ttyHome = filepath.Join(t.TempDir(), ".tty-watch")
 	}
-	_ = os.Setenv("TTY_WATCH_HOME", ttyHome)
+	svc.TestExported_SetEnv("TTY_WATCH_HOME", ttyHome)
+	// Neutralize ambient agent-run pollution (serve vs wait subdir mismatch).
+	svc.TestExported_SetEnv("TTY_WATCH_REGISTRY_SUBDIR", "registry")
+	svc.TestExported_SetEnv("TTY_WATCH_KEEP_ALIVE", "")
 	if !req.UseRealCodex {
 		showCmd := req.ShowStatusCommand
 		if showCmd == "" {
 			showCmd = slowBootFakeCodexTUI()
 		}
-		_ = os.Setenv("CODEX_SHOW_STATUS_COMMAND", showCmd)
+		svc.TestExported_SetEnv("CODEX_SHOW_STATUS_COMMAND", showCmd)
 	}
 	sid := strings.TrimSpace(req.SessionID)
 	if sid == "" {
 		sid = "codex-status-usage"
 	}
-	_ = os.Setenv("CODEX_SHOW_STATUS_SESSION_ID", sid)
+	svc.TestExported_SetEnv("CODEX_SHOW_STATUS_SESSION_ID", sid)
 	timeout := req.FetchTimeoutSecs
 	if timeout <= 0 {
 		timeout = 60
 	}
-	_ = os.Setenv("CODEX_SHOW_STATUS_TIMEOUT", strconv.Itoa(timeout))
-	return func() {
-		for _, k := range keys {
-			if v, ok := prev[k]; ok {
-				_ = os.Setenv(k, v)
-			} else {
-				_ = os.Unsetenv(k)
-			}
-		}
-	}
+	svc.TestExported_SetEnv("CODEX_SHOW_STATUS_TIMEOUT", strconv.Itoa(timeout))
+	return resolvedCodex
 }
 
 func resolveRealCodexCLI(t *testing.T) (string, error) {
@@ -578,6 +568,8 @@ func runTTYWatchReal(t *testing.T, req *Request, resp *Response) (*Response, err
 
 	env := append(os.Environ(),
 		"TTY_WATCH_HOME="+ttyHome,
+		"TTY_WATCH_REGISTRY_SUBDIR=registry",
+		"TTY_WATCH_KEEP_ALIVE=",
 		"PATH=/usr/bin:/bin:/usr/sbin:/sbin:"+filepath.Dir(codexPath)+":"+filepath.Dir(ttyWatch),
 	)
 	var transcript strings.Builder
@@ -754,12 +746,12 @@ func neverRespondFakeCodexTUI() string {
 	return `sh -c 'printf "Codex › "; read -r cmd; sleep 120'`
 }
 
-func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response, error) {
+func runAPI(t *testing.T, d *session.Doctest, req *Request, root string, resp *Response) (*Response, error) {
 	if req.WaitAPIReadySecs <= 0 {
 		req.WaitAPIReadySecs = 12
 	}
 
-	moduleRoot, err := findModuleRoot()
+	moduleRoot, err := findModuleRoot(d)
 	if err != nil {
 		return nil, err
 	}
@@ -808,6 +800,8 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 	env = append(env,
 		"AI_CRITIC_TEST_SKIP_EXTENSION=1",
 		"TTY_WATCH_HOME="+ttyHome,
+		"TTY_WATCH_REGISTRY_SUBDIR=registry",
+		"TTY_WATCH_KEEP_ALIVE=",
 		"CODEX_SHOW_STATUS_COMMAND="+showCmd,
 		"CODEX_SHOW_STATUS_SESSION_ID="+sid,
 		"CODEX_SHOW_STATUS_TIMEOUT="+strconv.Itoa(timeout),
@@ -942,8 +936,9 @@ func fakeCodexTUIDefault() string {
 	return `sh -c 'printf "Codex › "; read -r cmd; printf "Monthly credit limit: 42%% left (resets 08:00 on 1 Aug)\n6,519 of 11,250 credits used\n› "'`
 }
 
-func codexUsageDoctestRoot() string {
-	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
+func codexUsageDoctestRoot(d *session.Doctest) string {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		root := d.DOCTEST_ROOT
 		candidate := filepath.Join(root, "tests", "codex-usage")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
@@ -973,9 +968,9 @@ func buildAICritic(t *testing.T, moduleRoot string) (string, func(), error) {
 	return out, func() { os.Remove(out) }, nil
 }
 
-func findModuleRoot() (string, error) {
-	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
-		for dir := root; ; dir = filepath.Dir(dir) {
+func findModuleRoot(d *session.Doctest) (string, error) {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		for dir := d.DOCTEST_ROOT; ; dir = filepath.Dir(dir) {
 			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 				return dir, nil
 			}

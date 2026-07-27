@@ -20,9 +20,13 @@ Status submenu has **only** Enable and Disable (not Backup Now, which is sibling
 REQUIREMENT menu scenarios 21–23.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Grouping: leaves assign Op (menu_children | menu_gating).
 	if req == nil {
 		t.Fatal("req is nil")

@@ -38,9 +38,11 @@ REQUIREMENT-DESIGN-codex-update-modal-skip.md. Nested tree is intentionally
 ```go
 import (
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.FetchTimeoutSecs <= 0 {
 		req.FetchTimeoutSecs = 30
 	}

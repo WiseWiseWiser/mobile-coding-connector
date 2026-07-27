@@ -21,9 +21,13 @@ summary DOT DIRS sorted by size desc; plain LARGE SIZE (stdout piped, not TTY)
 REQUIREMENT leaf `backup/large-dir-summary`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedLargeDir = true
 	req.Args = []string{"machine", "backup", "--dry-run"}
 	return nil

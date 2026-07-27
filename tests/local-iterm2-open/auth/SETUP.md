@@ -28,18 +28,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Op = "auth"
 	req.Dir = t.TempDir()
 	req.OmitMode = true
 	req.OmitSend = true
 
 	// Serialize auth leaves: auth.SetCredentialsFile is process-global.
-	unlock := acquireLocalITerm2AuthLock(t)
+	unlock := acquireLocalITerm2AuthLock(t, d)
 	t.Cleanup(unlock)
 
 	credDir := t.TempDir()
@@ -51,25 +54,29 @@ func Setup(t *testing.T, req *Request) error {
 	return nil
 }
 
-func acquireLocalITerm2AuthLock(t *testing.T) func() {
-	session := DOCTEST_SESSION_ID
-	if session == "" {
-		session = fmt.Sprintf("%d", time.Now().UnixNano())
+func acquireLocalITerm2AuthLock(t *testing.T, d *session.Doctest) func() {
+	sid := ""
+	if d != nil {
+		sid = d.DOCTEST_SESSION_ID
 	}
-	lockPath := filepath.Join(os.TempDir(), "local-iterm2-open-auth-"+session+".lock")
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if err == nil {
-			_, _ = f.WriteString(fmt.Sprintf("%d\n", os.Getpid()))
-			_ = f.Close()
-			return func() { os.Remove(lockPath) }
-		}
-		if time.Now().After(deadline) {
-			t.Skipf("could not acquire auth lock %s: %v", lockPath, err)
-			return func() {}
-		}
-		time.Sleep(50 * time.Millisecond)
+	if sid == "" {
+		sid = "default"
+	}
+	// Global flock: credentials path is process-global across parallel leaves.
+	_ = sid
+	lockPath := filepath.Join(os.TempDir(), "local-iterm2-open-auth-global.lock")
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatalf("open auth lock %s: %v", lockPath, err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		_ = f.Close()
+		t.Fatalf("flock auth lock %s: %v", lockPath, err)
+	}
+	_, _ = f.WriteAt([]byte(fmt.Sprintf("%d\n", os.Getpid())), 0)
+	return func() {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = f.Close()
 	}
 }
 ```

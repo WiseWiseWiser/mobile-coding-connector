@@ -156,6 +156,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
 // Canonical interval band for quiet batch flush (milliseconds).
@@ -208,28 +210,27 @@ type Response struct {
 	SwiftSourcesChecked  []string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 	switch req.Op {
 	case "client":
-		return runClientQuietContract(t, req, resp)
+		return runClientQuietContract(t, d, req, resp)
 	case "helper_flush_interval":
-		return runHelperFlushInterval(t, resp)
+		return runHelperFlushInterval(t, d, resp)
 	case "helper_join_batch":
-		return runHelperJoinBatch(t, req, resp)
+		return runHelperJoinBatch(t, d, req, resp)
 	case "helper_scroll_policy":
-		return runHelperScrollPolicy(t, resp)
+		return runHelperScrollPolicy(t, d, resp)
 	default:
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}
 }
 
 // readMenubarPackageSource concatenates macosapp/menubar/*.go for helper contracts.
-func readMenubarPackageSource() (src string, paths []string, err error) {
-	moduleRoot, err := findModuleRoot()
-	if err != nil {
-		return "", nil, err
-	}
+func readMenubarPackageSource(d *session.Doctest) (src string, paths []string, err error) {
+	// DOCTEST_ROOT is the tree root under tests/; module root is two levels up.
+	// Do not walk from cwd: doctest runs under mapping-gen which has its own go.mod.
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
 	dir := filepath.Join(moduleRoot, "macosapp", "menubar")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -258,8 +259,8 @@ func readMenubarPackageSource() (src string, paths []string, err error) {
 	return b.String(), paths, nil
 }
 
-func runHelperFlushInterval(t *testing.T, resp *Response) (*Response, error) {
-	src, paths, err := readMenubarPackageSource()
+func runHelperFlushInterval(t *testing.T, d *session.Doctest, resp *Response) (*Response, error) {
+	src, paths, err := readMenubarPackageSource(d)
 	if err != nil {
 		return nil, err
 	}
@@ -279,8 +280,8 @@ func runHelperFlushInterval(t *testing.T, resp *Response) (*Response, error) {
 	return resp, nil
 }
 
-func runHelperJoinBatch(t *testing.T, req *Request, resp *Response) (*Response, error) {
-	src, paths, err := readMenubarPackageSource()
+func runHelperJoinBatch(t *testing.T, d *session.Doctest, req *Request, resp *Response) (*Response, error) {
+	src, paths, err := readMenubarPackageSource(d)
 	if err != nil {
 		return nil, err
 	}
@@ -309,8 +310,8 @@ func runHelperJoinBatch(t *testing.T, req *Request, resp *Response) (*Response, 
 	return resp, nil
 }
 
-func runHelperScrollPolicy(t *testing.T, resp *Response) (*Response, error) {
-	src, paths, err := readMenubarPackageSource()
+func runHelperScrollPolicy(t *testing.T, d *session.Doctest, resp *Response) (*Response, error) {
+	src, paths, err := readMenubarPackageSource(d)
 	if err != nil {
 		return nil, err
 	}
@@ -357,11 +358,10 @@ func extractFuncBody(src, funcRe string) string {
 	return ""
 }
 
-func runClientQuietContract(t *testing.T, req *Request, resp *Response) (*Response, error) {
-	moduleRoot, err := findModuleRoot()
-	if err != nil {
-		return nil, err
-	}
+func runClientQuietContract(t *testing.T, d *session.Doctest, req *Request, resp *Response) (*Response, error) {
+	// DOCTEST_ROOT is the tree root under tests/; module root is two levels up.
+	// Do not walk from cwd: doctest runs under mapping-gen which has its own go.mod.
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
 	progressPath := filepath.Join(moduleRoot, "macos-ai-critic", "Shared", "BackupProgressWindow.swift")
 	remoteApp := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-remote-macos", "AICriticApp.swift")
 	clientPath := filepath.Join(moduleRoot, "macos-ai-critic", "Shared", "MachineBackupClient.swift")
@@ -555,26 +555,4 @@ func hasNonEditableSelectable(src string) bool {
 	return notEditable && selectable
 }
 
-func findModuleRoot() (string, error) {
-	// DOCTEST_ROOT is injected (tree root). Walk up for go.mod.
-	start := DOCTEST_ROOT
-	if start == "" {
-		wd, err := os.Getwd()
-		if err != nil {
-			return "", err
-		}
-		start = wd
-	}
-	dir := start
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("go.mod not found from %s", start)
-		}
-		dir = parent
-	}
-}
 ```

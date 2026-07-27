@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "L3 smoke: product binary backup --dry-run plan"
+---
+
 ## Expected Output
 
 Stream phase prints DOT FILES / DOT DIRS / EXCLUDED with per-entry sizes (B, KB,
@@ -38,9 +43,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

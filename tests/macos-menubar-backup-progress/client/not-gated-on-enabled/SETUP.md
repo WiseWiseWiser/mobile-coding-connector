@@ -20,9 +20,13 @@ One-shot policy reflected in Swift menu gating (matches CanRunBackupNow).
 REQUIREMENT #18.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "not-gated-on-enabled"
 	return nil
 }

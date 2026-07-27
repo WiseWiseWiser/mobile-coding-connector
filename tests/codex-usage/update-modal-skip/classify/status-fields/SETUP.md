@@ -19,9 +19,13 @@ Signed fixture after successful Skip + `/status` on live Codex 0.143.0.
 PROTOCOL step `continue_status`. Ensures field regexes still match real TUI chrome.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	t.Helper()
 	if req.Op == "" {
 		req.Op = "classify"

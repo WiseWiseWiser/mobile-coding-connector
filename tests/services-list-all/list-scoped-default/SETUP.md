@@ -19,9 +19,12 @@ Two services seeded: one local project, one other project.
 REQUIREMENT leaf: `list-scoped-default`.
 
 ```go
-import "testing"
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "list-scoped"
 	return nil
 }

@@ -1,8 +1,7 @@
 ---
-label: slow && real-codex
+label: slow, real-codex, e2e
 explanation: spawns real codex CLI up to 5 times with 90s service timeout each
 ---
-
 ## Expected
 
 Every in-process fetch attempt against the **real** codex CLI must succeed:
@@ -26,9 +25,11 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

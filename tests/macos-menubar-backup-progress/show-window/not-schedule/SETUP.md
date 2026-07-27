@@ -20,9 +20,13 @@ immediate run).
 REQUIREMENT #6; goals 1 and 3.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.TriggeredBySchedule = false
 	return nil
 }

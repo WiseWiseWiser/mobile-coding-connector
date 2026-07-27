@@ -19,9 +19,13 @@ Remote app has no configured base URL (same copy as Services/Terminals).
 REQUIREMENT leaf: `empty/not-configured`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.NotConfigured = true
 	return nil
 }

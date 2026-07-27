@@ -24,9 +24,10 @@ REQUIREMENT scenario 4.
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Path under temp parent but never created.
 	missing := filepath.Join(mkTempDir(t, "wrkserver-missing-parent-*"), "does-not-exist-repo")
 	writeProjectsJSON(t, req.WrkHome, []string{missing})

@@ -22,9 +22,13 @@ with tailscale lines; server subprocess `PATH` prepends `serverHome/bin`.
 REQUIREMENT leaf `backup/tailscale-meta` (REQUIREMENT-DESIGN-tailscale-config-meta.md).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedTailscaleMock = true
 	req.DryRunThenArchive = true
 	req.OutputPath = "tailscale-meta.tar.xz"

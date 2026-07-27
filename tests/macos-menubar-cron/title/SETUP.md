@@ -19,9 +19,13 @@ name + status + enabled + scheduleMode/interval/cronExpr -> FormatCronTaskTitle 
 REQUIREMENT title format (name + glyph + short schedule).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "title"
 	return nil
 }

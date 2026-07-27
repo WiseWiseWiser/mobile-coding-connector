@@ -23,9 +23,13 @@ extended fixtures (ELF/SQLite/JPEG stubs, log files, upload-chunks, path-prefix 
 Grouping node for backup: dry-run plan, streamed archive, and custom `--exclude`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if len(req.Args) >= 2 && req.Args[0] == "machine" && req.Args[1] != "backup" {
 		t.Fatalf("backup group: unexpected subcommand argv %v", req.Args)
 	}

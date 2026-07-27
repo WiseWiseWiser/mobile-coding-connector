@@ -1,27 +1,29 @@
 # Scenario
 
-**Feature**: remote-agent machine analyse-files integration harness
+**Feature**: remote-agent machine analyse-files doctest harness (L2 mass + L3 smoke)
 
 ```
-# serverHome fixtures + server subprocess + isolated agent HOME
-leaf Setup -> seed serverHome profile -> remote-agent machine analyse-files -> stdout blocks + summary
+# L2: RegisterAPIForHome + agentcli.Run | L3 UseCLI: product binaries
+leaf Setup -> seed serverHome profile -> machine analyse-files -> stdout blocks + summary
 ```
 
 ## Preconditions
 
 1. Doctest injects `DOCTEST_SESSION_ID` (global in each generated test) to scope a
    file cache under `$TMPDIR/machine-analyse-files-doctest-<session>/`
-   (binaries built once per invocation).
+   (L3 binaries when needed).
 2. Session file locks (`flock`) serialize first-time cache population across parallel leaf packages.
 3. Each leaf still gets an isolated `serverHome` / `agentHome`; only compiled binaries are shared.
-4. Server runs with `HOME=serverHome` and cwd `serverHome` so scan scope matches fake machine home.
-5. `git` is available in PATH for `git-dirs` profile seeding.
+4. **L2** (default): in-process mux with `machineanalyse.RegisterAPIForHome(mux, serverHome)`
+   + `agentcli.Run` (no process `HOME` mutation).
+5. **L3** (`UseCLI` smoke only): `ai-critic-server` with `HOME=serverHome` + `remote-agent`.
+6. `git` is available in PATH for `git-dirs` profile seeding.
 
 ## Steps
 
-1. Root `Run` builds binaries, seeds `serverHome` from `SeedProfile`, starts server, writes agent config.
-2. Leaf `Setup` sets `SeedProfile` and optional `Args`.
-3. `Run` executes `machine analyse-files` against live server.
+1. Root `Run` seeds `serverHome`; L2 starts in-process API, L3 builds/starts product binaries.
+2. Leaf `Setup` sets `SeedProfile` and optional `Args`; smoke sets `UseCLI`.
+3. `Run` executes `machine analyse-files` via agentcli (L2) or product binary (L3).
 4. Leaf `Assert` checks exit code, streamed entry blocks, and summary lines.
 
 ## Context
@@ -41,10 +43,11 @@ import (
 	"time"
 
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
 
-func sessionCacheDir() string {
-	return filepath.Join(os.TempDir(), "machine-analyse-files-doctest-"+DOCTEST_SESSION_ID)
+func sessionCacheDir(sessionID string) string {
+	return filepath.Join(os.TempDir(), "machine-analyse-files-doctest-"+sessionID)
 }
 
 func withFileLock(t *testing.T, lockPath string, fn func() error) error {
@@ -105,9 +108,12 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.Token == "" {
 		req.Token = lib.TestPassword
+	}
+	if d.DOCTEST_SESSION_ID == "" {
+		t.Fatal("session id empty on session.Doctest")
 	}
 	return nil
 }
@@ -199,15 +205,16 @@ func seedEntryOrderEntries(t *testing.T, home string) {
 	writeServerText(t, home, "zzz-last/omega.txt", "z\n")
 }
 
-func seedFileLinesEntries(t *testing.T, home string) {
+func seedFileLinesEntries(t *testing.T, home, treeRoot string) {
 	t.Helper()
-	notes, err := os.ReadFile("testdata/notes.txt")
+	td := filepath.Join(treeRoot, "stream", "file-lines", "testdata")
+	notes, err := os.ReadFile(filepath.Join(td, "notes.txt"))
 	if err != nil {
-		t.Fatalf("read testdata/notes.txt: %v", err)
+		t.Fatalf("read %s: %v", filepath.Join(td, "notes.txt"), err)
 	}
-	binary, err := os.ReadFile("testdata/binary.dat")
+	binary, err := os.ReadFile(filepath.Join(td, "binary.dat"))
 	if err != nil {
-		t.Fatalf("read testdata/binary.dat: %v", err)
+		t.Fatalf("read %s: %v", filepath.Join(td, "binary.dat"), err)
 	}
 	writeServerFile(t, home, "notes.txt", notes)
 	writeServerFile(t, home, "binary.dat", binary)
@@ -219,7 +226,7 @@ func seedBasicEntries(t *testing.T, home string) {
 	writeServerText(t, home, "notes.txt", "alpha\nbeta\n")
 }
 
-func seedAnalyseServerHome(t *testing.T, home, profile string) error {
+func seedAnalyseServerHome(t *testing.T, home, profile, treeRoot string) error {
 	t.Helper()
 	switch profile {
 	case "basic":
@@ -228,7 +235,7 @@ func seedAnalyseServerHome(t *testing.T, home, profile string) error {
 		seedCodexTree(t, home)
 		seedPlainDir(t, home)
 	case "file-lines":
-		seedFileLinesEntries(t, home)
+		seedFileLinesEntries(t, home, treeRoot)
 	case "git-dirs":
 		seedGitDirsEntries(t, home)
 	case "node-modules":

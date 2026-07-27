@@ -21,9 +21,13 @@ Daemon running with managed server on test port.
 Documents legacy signal path the macOS menu must **stop** using.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "api-restart-server"
 	req.SettleWaitSecs = 20
 	return nil

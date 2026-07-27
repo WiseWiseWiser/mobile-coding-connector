@@ -19,9 +19,13 @@ server URL / home / UTC time -> ServerNameFromURL | BackupDir | BackupArchiveFil
 REQUIREMENT: paths/naming scenarios 8–10.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Op set by each leaf under path/
 	if req.Op == "" {
 		req.Op = "path_server_name"

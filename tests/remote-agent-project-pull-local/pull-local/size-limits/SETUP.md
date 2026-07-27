@@ -28,9 +28,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if len(req.Args) >= 2 && req.Args[1] != "pull-local" {
 		t.Fatalf("size-limits group: unexpected argv %v", req.Args)
 	}

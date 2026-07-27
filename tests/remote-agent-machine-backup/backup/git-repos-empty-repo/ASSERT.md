@@ -28,6 +28,8 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/doctest/assert"
 )
 
@@ -36,7 +38,7 @@ var (
 	gitReposEmptyErrorRowRE   = regexp.MustCompile(`(?m)^\s+repo\s+\.wrk-test/empty(?:\s+){2,}error: no commits \(HEAD unborn\)\s*$`)
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

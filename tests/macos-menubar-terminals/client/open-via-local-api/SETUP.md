@@ -22,9 +22,13 @@ REQUIREMENT scenario 11: **local** Terminals use `/api/local/iterm2/open` (not
 Terminal.app; not raw osascript-only product path). Remote keeps client-side open.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "open-via-local-api"
 	return nil
 }

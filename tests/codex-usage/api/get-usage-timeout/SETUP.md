@@ -26,9 +26,11 @@ Negative API contract mirroring `fetch/timeout-no-status-response`. Requires
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "api"
 	req.TTYWatchHome = filepath.Join(t.TempDir(), ".tty-watch")
 	req.ShowStatusCommand = neverRespondFakeCodexTUI()

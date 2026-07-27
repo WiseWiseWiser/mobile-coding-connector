@@ -23,9 +23,13 @@ Contracts inspect `BackupProgressWindow.swift` only for activate/order-front tok
 REQUIREMENT quiet open scenarios 1–3.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "client"
 	return nil
 }

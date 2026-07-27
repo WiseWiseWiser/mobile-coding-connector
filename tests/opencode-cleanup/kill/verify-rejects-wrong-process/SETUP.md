@@ -19,9 +19,13 @@ stdlib http listener + registry pid -> Kill -> process still alive
 Safety guard: never kill arbitrary PIDs from stale registry.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = OpKill
 	req.StartWrongProcess = true
 	req.UseRegistryPID = true

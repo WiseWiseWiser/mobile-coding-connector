@@ -20,9 +20,13 @@ No config file required.
 Target: bare no longer opens the web UI.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// help group: no seed
 	req.SeedConfig = nil
 	return nil

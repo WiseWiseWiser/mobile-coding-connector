@@ -22,9 +22,13 @@ priority over clean/branch.
 REQUIREMENT: project error → Leading `demo`, Trailing `⚠ Error`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Name = "demo"
 	req.Branch = "main"
 	req.Clean = false

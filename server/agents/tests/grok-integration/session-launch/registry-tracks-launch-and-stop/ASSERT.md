@@ -1,8 +1,7 @@
 ---
-label: slow
-explanation: real opencode serve when installed; registry poll after launch/stop
+label: slow, e2e
+explanation: opencode serve process + registry lifecycle
 ---
-
 ## Expected
 
 1. `LaunchErr` is nil.

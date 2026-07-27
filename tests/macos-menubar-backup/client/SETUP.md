@@ -22,9 +22,13 @@ Pure source inspection — no subprocess, UI, or network.
 REQUIREMENT Swift contract scenarios 24–27. Local app out of scope.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "client"
 	return nil
 }

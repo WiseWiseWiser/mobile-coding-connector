@@ -20,9 +20,13 @@ Leaves differ on whether `local-agent-config.json` is seeded.
 Resolution priority: `--server` > `--port` > saved default > built-in `http://localhost:23712` (hooked in tests).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.Args == nil {
 		req.Args = []string{}
 	}

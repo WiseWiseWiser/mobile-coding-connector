@@ -21,9 +21,13 @@ worktree .wrk-test/feature-wt with dirty (N modified) count
 REQUIREMENT leaf `backup/git-repos-worktree`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	requireGit(t)
 	req.SeedGitReposWorktree = true
 	req.Args = []string{"machine", "backup", "--dry-run"}

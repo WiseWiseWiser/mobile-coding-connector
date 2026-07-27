@@ -20,9 +20,13 @@ isRemote -> AgentBinaryForApp -> local-agent | remote-agent
 REQUIREMENT: local uses `local-agent`, remote uses `remote-agent`; prefer session id in attach.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Leaves set Op and command-builder inputs.
 	if req == nil {
 		t.Fatal("nil request")

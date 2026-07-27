@@ -20,9 +20,13 @@ script/macos-app/install-remote.sh -> APP_NAME=ai-critic-remote-macos,
 REQUIREMENT leaf: `client/install-remote-identity`. RED until script exists.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "install-remote-identity"
 	return nil
 }

@@ -22,9 +22,11 @@ POST -> non-2xx error
 Validation: XOR schedule.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Action = "create"
 	req.RawBody = map[string]any{
 		"name":         "both-modes",

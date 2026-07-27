@@ -8,9 +8,17 @@ No frontend UI. Global scope only. Isolated `AI_CRITIC_HOME` per leaf.
 
 # DSN (Domain Specific Notion)
 
+Most leaves are **L2 in-process**: `crontasks.NewManagerAt` + `RegisterAPIWithManager`
+(+ optional `agentcli.Run`). Two sparse **L3 e2e** smokes keep the product binary
+path (`UseBinary` + `label: heavy, e2e`): `management/create-interval-and-list` and
+`cli-schedule/cron-local-safe-convert`.
+
 **Participants**
 
-- **ai-critic-server subprocess** — loads `{AI_CRITIC_HOME}/cron-tasks.json`, runs
+- **L2: crontasks.Manager** — isolated config path; tick loop via `Manager.Start`.
+- **L2: httptest + agentcli.Run** — CLI schedule leaves without product binaries.
+- **L3: ai-critic-server + remote-agent subprocesses** — sparse binary smokes.
+- **ai-critic-server (L3)** — loads `{AI_CRITIC_HOME}/cron-tasks.json`, runs
   a background tick loop (~1s), exposes `/api/cron-tasks*`, appends run logs under
   data dir `cron-tasks/<id>.log`.
 - **Cron task definitions** — global rows with `scheduleMode` (`interval` | `cron`),
@@ -43,7 +51,7 @@ No frontend UI. Global scope only. Isolated `AI_CRITIC_HOME` per leaf.
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -135,17 +143,25 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/xhd2015/ai-critic/cmd/agentcli"
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/ai-critic/server/crontasks"
+	"github.com/xhd2015/doctest/session"
 )
+
+var agentcliInProcessMu sync.Mutex
+
 
 // TaskSeed is one row written to cron-tasks.json before the server starts.
 type TaskSeed struct {
@@ -192,6 +208,10 @@ type Request struct {
 	CLIArgs []string
 	// Extra process env for CLI (e.g. "TZ=Etc/GMT-8").
 	CLIEnv []string
+
+	// UseBinary / E2E force L3 product binaries. Default false → L2 Manager/agentcli.
+	UseBinary bool
+	E2E       bool
 
 	// Pre-phase wait after seed boot (before main action), for disable gating etc.
 	PreWaitSecs int
@@ -274,7 +294,11 @@ type Response struct {
 	RunCount      int
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func useBinaryPath(req *Request) bool {
+	return req != nil && (req.UseBinary || req.E2E)
+}
+
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 	if req.Token == "" {
 		req.Token = lib.TestPassword
@@ -285,14 +309,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if req.Action == "" {
 		req.Action = "list"
 	}
-
-	moduleRoot, err := findModuleRoot()
-	if err != nil {
-		return nil, err
-	}
-
-	cacheDir := sessionCacheDir()
-	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
 
 	configHome, err := lib.CreateTestConfigHome()
 	if err != nil {
@@ -321,7 +337,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 
 	if req.UseMarker {
-		// Rewrite create command to append to marker (absolute path, shell-safe).
 		if req.Command == "" {
 			req.Command = fmt.Sprintf("echo ran >> %q", resp.MarkerPath)
 		} else if !strings.Contains(req.Command, resp.MarkerPath) {
@@ -334,6 +349,278 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			return nil, err
 		}
 	}
+
+	if useBinaryPath(req) {
+		return runBinaryE2E(t, d, req, resp, configHome, agentHome, aiCriticAgent)
+	}
+	return runInProcessL2(t, req, resp, configHome, agentHome, aiCriticAgent)
+}
+
+func runInProcessL2(t *testing.T, req *Request, resp *Response, configHome, agentHome, aiCriticAgent string) (*Response, error) {
+	cfgPath := filepath.Join(configHome, "cron-tasks.json")
+	m := crontasks.NewManagerAt(cfgPath)
+	m.Start()
+	t.Cleanup(m.Shutdown)
+
+	mux := http.NewServeMux()
+	crontasks.RegisterAPIWithManager(mux, m)
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ping" {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer "+req.Token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	baseURL := srv.URL
+	resp.ServerPort = 0
+
+	if req.PreWaitSecs > 0 {
+		time.Sleep(time.Duration(req.PreWaitSecs) * time.Second)
+	}
+	if req.CapturePreSnapshot {
+		tasks, err := getCronTasks(baseURL, req.Token)
+		if err != nil {
+			return nil, fmt.Errorf("pre list: %w", err)
+		}
+		resp.PreTasks = tasks
+		if id := resolveTargetID(req, tasks); id != "" {
+			hist, err := getCronHistory(baseURL, req.Token, id)
+			if err == nil {
+				resp.PreHistory = hist
+				resp.PreRuns = len(hist)
+			}
+		}
+	}
+
+	if req.UseCLI {
+		if err := writeRemoteAgentConfig(filepath.Join(aiCriticAgent, "remote-agent-config.json"), baseURL, req.Token); err != nil {
+			return nil, err
+		}
+		argv := req.CLIArgs
+		if len(argv) == 0 {
+			argv = buildCLIArgs(req)
+		}
+		fullArgv := append([]string{"--server", baseURL, "--token", req.Token}, argv...)
+		// CLIEnv: agentcli uses process env for TZ; mutate under mutex only (not Setenv API).
+		exitCode, stdout, stderr, _ := runAgentcliCapturedWithEnv(fullArgv, req.CLIEnv)
+		resp.ExitCode = exitCode
+		resp.Stdout = stdout
+		resp.Stderr = stderr
+		resp.Combined = strings.TrimSpace(stdout + "\n" + stderr)
+	} else {
+		switch req.Action {
+		case "none", "list":
+			// observation only
+		case "create":
+			body := req.RawBody
+			if body == nil {
+				body = buildCreateBody(req)
+			}
+			status, raw, created, err := postCronCreate(baseURL, req.Token, body)
+			resp.HTTPStatus = status
+			resp.Body = raw
+			if err != nil {
+				resp.ActionError = err.Error()
+			} else if created != nil {
+				resp.Target = created
+				if req.Target == "" {
+					req.Target = created.ID
+				}
+			}
+		case "update":
+			body := req.RawBody
+			if body == nil {
+				body = buildCreateBody(req)
+			}
+			if req.Target != "" {
+				body["id"] = req.Target
+			}
+			status, raw, updated, err := putCronUpdate(baseURL, req.Token, body)
+			resp.HTTPStatus = status
+			resp.Body = raw
+			if err != nil {
+				resp.ActionError = err.Error()
+			} else if updated != nil {
+				resp.Target = updated
+			}
+		case "delete", "enable", "disable", "run":
+			id := req.Target
+			if id == "" && resp.Target != nil {
+				id = resp.Target.ID
+			}
+			if id == "" {
+				tasks, _ := getCronTasks(baseURL, req.Token)
+				id = resolveTargetID(req, tasks)
+			}
+			switch req.Action {
+			case "delete":
+				status, raw, err := deleteCronTask(baseURL, req.Token, id)
+				resp.HTTPStatus = status
+				resp.Body = raw
+				if err != nil {
+					resp.ActionError = err.Error()
+				}
+			case "enable":
+				status, raw, err := postCronAction(baseURL, req.Token, "/api/cron-tasks/enable", id)
+				resp.HTTPStatus = status
+				resp.Body = raw
+				if err != nil {
+					resp.ActionError = err.Error()
+				}
+			case "disable":
+				status, raw, err := postCronAction(baseURL, req.Token, "/api/cron-tasks/disable", id)
+				resp.HTTPStatus = status
+				resp.Body = raw
+				if err != nil {
+					resp.ActionError = err.Error()
+				}
+			case "run":
+				status, raw, err := postCronAction(baseURL, req.Token, "/api/cron-tasks/run", id)
+				resp.HTTPStatus = status
+				resp.Body = raw
+				if err != nil {
+					resp.ActionError = err.Error()
+				}
+			}
+		case "history":
+			// final snapshot
+		default:
+			return nil, fmt.Errorf("unknown action %q", req.Action)
+		}
+	}
+
+	if req.WaitSecs > 0 {
+		time.Sleep(time.Duration(req.WaitSecs) * time.Second)
+	}
+
+	tasks, err := getCronTasks(baseURL, req.Token)
+	if err != nil {
+		actionFailed := resp.ActionError != "" ||
+			resp.ExitCode != 0 ||
+			(resp.HTTPStatus != 0 && (resp.HTTPStatus < 200 || resp.HTTPStatus >= 300))
+		if !actionFailed {
+			return nil, err
+		}
+		tasks = nil
+	} else {
+		resp.Tasks = tasks
+	}
+
+	id := resolveTargetID(req, tasks)
+	if id == "" && resp.Target != nil {
+		id = resp.Target.ID
+	}
+	if id != "" {
+		for i := range tasks {
+			if tasks[i].ID == id || tasks[i].Name == id {
+				cp := tasks[i]
+				resp.Target = &cp
+				resp.TargetPID = cp.PID
+				resp.ProcessAlive = processAlive(cp.PID)
+				break
+			}
+		}
+		if req.PollRunsMin > 0 {
+			deadline := time.Now().Add(time.Duration(req.PollTimeoutSecs) * time.Second)
+			for time.Now().Before(deadline) {
+				hist, hErr := getCronHistory(baseURL, req.Token, id)
+				if hErr == nil && len(hist) >= req.PollRunsMin {
+					resp.History = hist
+					resp.RunCount = len(hist)
+					break
+				}
+				if hErr == nil {
+					resp.History = hist
+					resp.RunCount = len(hist)
+				}
+				time.Sleep(200 * time.Millisecond)
+			}
+		} else if req.Action == "history" || req.PollRunsMin == 0 {
+			hist, hErr := getCronHistory(baseURL, req.Token, id)
+			if hErr == nil {
+				resp.History = hist
+				resp.RunCount = len(hist)
+			} else if req.Action == "history" && resp.ActionError == "" {
+				resp.ActionError = hErr.Error()
+			}
+		}
+		if tasks2, err2 := getCronTasks(baseURL, req.Token); err2 == nil {
+			resp.Tasks = tasks2
+			for i := range tasks2 {
+				if tasks2[i].ID == id || tasks2[i].Name == id {
+					cp := tasks2[i]
+					resp.Target = &cp
+					resp.TargetPID = cp.PID
+					resp.ProcessAlive = processAlive(cp.PID)
+					break
+				}
+			}
+		}
+	}
+
+	if data, err := os.ReadFile(resp.MarkerPath); err == nil {
+		resp.MarkerContent = string(data)
+		resp.MarkerLines = countNonEmptyLines(resp.MarkerContent)
+	}
+	t.Logf("L2 cron action=%s useCLI=%v", req.Action, req.UseCLI)
+	return resp, nil
+}
+
+func runAgentcliCapturedWithEnv(argv []string, extraEnv []string) (exitCode int, stdout, stderr string, err error) {
+	// L2 path does not mutate process env (no Setenv). TZ-sensitive convert is L3-only.
+	_ = extraEnv
+	agentcliInProcessMu.Lock()
+	defer agentcliInProcessMu.Unlock()
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return 1, "", "", err
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		stdoutR.Close()
+		stdoutW.Close()
+		return 1, "", "", err
+	}
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdoutW, stderrW
+	runErr := agentcli.Run(agentcli.RemoteProfile(), argv)
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+	outBytes, _ := io.ReadAll(stdoutR)
+	errBytes, _ := io.ReadAll(stderrR)
+	_ = stdoutR.Close()
+	_ = stderrR.Close()
+	stdout = string(outBytes)
+	stderr = string(errBytes)
+	exitCode = 0
+	if runErr != nil {
+		exitCode = 1
+		// agentcli returns errors without always printing them.
+		stderr = strings.TrimSpace(stderr + "\n" + runErr.Error())
+	}
+	return exitCode, stdout, stderr, runErr
+}
+
+func runBinaryE2E(t *testing.T, d *session.Doctest, req *Request, resp *Response, configHome, agentHome, aiCriticAgent string) (*Response, error) {
+	moduleRoot, err := findModuleRoot(d)
+	if err != nil {
+		return nil, err
+	}
+
+	cacheDir := sessionCacheDir(d)
+	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
 
 	credFile, err := lib.WriteTestCredentials(configHome)
 	if err != nil {
@@ -384,7 +671,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		}
 	}
 
-	// Main action
 	switch {
 	case req.UseCLI:
 		serverURL := fmt.Sprintf("http://localhost:%d", serverPort)
@@ -400,7 +686,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
 		agentEnv = append(agentEnv, "HOME="+agentHome)
 		for _, e := range req.CLIEnv {
-			// last-wins: strip existing KEY=
 			if i := strings.IndexByte(e, '='); i > 0 {
 				agentEnv = stripEnvPrefix(agentEnv, e[:i+1])
 			}
@@ -423,7 +708,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
 
 	case req.Action == "none", req.Action == "list":
-		// list-only / observe-only handled after wait
 
 	case req.Action == "create":
 		body := req.RawBody
@@ -465,14 +749,11 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			id = resp.Target.ID
 		}
 		if id == "" {
-			// resolve by name from current list
 			tasks, _ := getCronTasks(baseURL, req.Token)
 			id = resolveTargetID(req, tasks)
 		}
-		var path string
 		switch req.Action {
 		case "delete":
-			path = "/api/cron-tasks"
 			status, raw, err := deleteCronTask(baseURL, req.Token, id)
 			resp.HTTPStatus = status
 			resp.Body = raw
@@ -480,34 +761,29 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 				resp.ActionError = err.Error()
 			}
 		case "enable":
-			path = "/api/cron-tasks/enable"
-			status, raw, err := postCronAction(baseURL, req.Token, path, id)
+			status, raw, err := postCronAction(baseURL, req.Token, "/api/cron-tasks/enable", id)
 			resp.HTTPStatus = status
 			resp.Body = raw
 			if err != nil {
 				resp.ActionError = err.Error()
 			}
 		case "disable":
-			path = "/api/cron-tasks/disable"
-			status, raw, err := postCronAction(baseURL, req.Token, path, id)
+			status, raw, err := postCronAction(baseURL, req.Token, "/api/cron-tasks/disable", id)
 			resp.HTTPStatus = status
 			resp.Body = raw
 			if err != nil {
 				resp.ActionError = err.Error()
 			}
 		case "run":
-			path = "/api/cron-tasks/run"
-			status, raw, err := postCronAction(baseURL, req.Token, path, id)
+			status, raw, err := postCronAction(baseURL, req.Token, "/api/cron-tasks/run", id)
 			resp.HTTPStatus = status
 			resp.Body = raw
 			if err != nil {
 				resp.ActionError = err.Error()
 			}
 		}
-		_ = path
 
 	case req.Action == "history":
-		// history fetched in final snapshot
 
 	default:
 		return nil, fmt.Errorf("unknown action %q", req.Action)
@@ -517,11 +793,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		time.Sleep(time.Duration(req.WaitSecs) * time.Second)
 	}
 
-	// Final list
 	tasks, err := getCronTasks(baseURL, req.Token)
 	if err != nil {
-		// Continue with empty list when the primary action already failed (validation /
-		// CLI error leaves still need Assert). Happy-path actions require a working list.
 		actionFailed := resp.ActionError != "" ||
 			resp.ExitCode != 0 ||
 			(resp.HTTPStatus != 0 && (resp.HTTPStatus < 200 || resp.HTTPStatus >= 300))
@@ -571,7 +844,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 				resp.ActionError = hErr.Error()
 			}
 		}
-		// refresh target status after poll
 		if tasks2, err2 := getCronTasks(baseURL, req.Token); err2 == nil {
 			resp.Tasks = tasks2
 			for i := range tasks2 {
@@ -590,7 +862,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		resp.MarkerContent = string(data)
 		resp.MarkerLines = countNonEmptyLines(resp.MarkerContent)
 	}
-
 	return resp, nil
 }
 
@@ -633,7 +904,6 @@ func buildCLIArgs(req *Request) []string {
 			args = append(args, "--every", req.Interval)
 		}
 		if req.CronExpr != "" {
-			// default to --cron-utc unless leaf sets CLIArgs
 			args = append(args, "--cron-utc", req.CronExpr)
 		}
 		if req.Timeout != "" {
@@ -692,4 +962,5 @@ func countNonEmptyLines(s string) int {
 	}
 	return n
 }
+
 ```

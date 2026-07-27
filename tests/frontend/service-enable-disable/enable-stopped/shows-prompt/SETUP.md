@@ -24,9 +24,11 @@ Parent `enable-stopped` seeds a disabled stopped service via API.
 REQUIREMENT leaf: `enable-stopped/shows-prompt`.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.TimeoutSecs = 120
 	if req.ServiceSeed == nil {
 		req.ServiceSeed = &ServiceSeed{

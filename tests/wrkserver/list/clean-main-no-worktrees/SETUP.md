@@ -22,9 +22,11 @@ Temp git repo on `main` with one commit and a clean worktree.
 REQUIREMENT scenario 2.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	main := mkCleanMainRepo(t)
 	writeProjectsJSON(t, req.WrkHome, []string{main})
 	return nil

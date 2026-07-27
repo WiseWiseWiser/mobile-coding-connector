@@ -20,9 +20,13 @@ Structured fields already produced by backend (no raw next_reset parse).
 REQUIREMENT scenario 5: exact compose shape mirrors Swift concat.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "grok-compose"
 	req.Status = "ready"
 	req.WeeklyLimit = "61%"

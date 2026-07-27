@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "L3 UI smoke (sparse Playwright)"
+---
+
 ## Expected
 
 1. `Response.ServerStarted` is `true`.
@@ -27,11 +32,16 @@
 import (
 	"strings"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
-		t.Fatalf("Run returned unexpected error: %v\nscript output:\n%s", err, resp.ScriptOutput)
+		out := ""
+		if resp != nil {
+			out = resp.ScriptOutput
+		}
+		t.Fatalf("Run returned unexpected error: %v\nscript output:\n%s", err, out)
 	}
 
 	if !resp.ServerStarted {

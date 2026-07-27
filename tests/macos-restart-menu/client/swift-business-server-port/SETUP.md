@@ -20,9 +20,13 @@ Port split: daemon `23312` control only; server `23712` business plane.
 REQUIREMENT section E — restart-menu client contract for server-port APIs.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "client-business-port"
 	return nil
 }

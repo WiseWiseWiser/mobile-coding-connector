@@ -21,9 +21,13 @@ Scratch reset before write.
 REQUIREMENT leaf: `write-json-flag`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	resetScratch(req)
 	setWritePipe(t, req, []byte(smallEchoPayload), "--json")
 	return nil

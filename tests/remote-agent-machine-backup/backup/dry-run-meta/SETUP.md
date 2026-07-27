@@ -20,9 +20,13 @@ snapshot (NAME rows may vary by environment).
 REQUIREMENT leaf `backup/dry-run-meta` (REQUIREMENT-DESIGN-dry-run-meta-tables.md).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Args = []string{"machine", "backup", "--dry-run"}
 	return nil
 }

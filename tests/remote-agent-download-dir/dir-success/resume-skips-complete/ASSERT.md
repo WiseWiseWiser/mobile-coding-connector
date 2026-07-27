@@ -35,12 +35,14 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/doctest/assert"
 )
 
 var reSkippedComplete = regexp.MustCompile(`skipped \(already complete`)
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
@@ -66,9 +68,9 @@ __PCT__: type=number
 __PCT2__: type=number
 ---
 Downloading uploads/mirror -> ./local-mirror/ (2 items, __SIZE__)
-  [1/2] a.txt (__SIZE_A__) — 0% overall
+  \[1/2\] a.txt (__SIZE_A__) — 0% overall
     skipped (already complete, __SIZE_A__ / __SIZE_A__) — __PCT__% overall
-  [2/2] sub/b.txt (__SIZE_B__) — __PCT2__% overall
+  \[2/2\] sub/b.txt (__SIZE_B__) — __PCT2__% overall
     skipped (already complete, __SIZE_B__ / __SIZE_B__) — 100% overall
 
 Download complete: ./local-mirror/ (2 files, __SIZE__; 2 skipped, 0 resumed)

@@ -1,24 +1,28 @@
 # Remote-Agent Project List Git Status Doctests
 
-End-to-end tests for `remote-agent project list`: live Git branch, commit, and
-worktree cleanliness rendered from server-side inspection of each project's `dir`.
+Doctests for `remote-agent project list`: live Git branch, commit, and worktree
+cleanliness rendered from server-side inspection of each project's `dir`.
+
+Most leaves are **L2 in-process** (`projects.RegisterAPIForFile` + `agentcli.Run`
+with testhooks home override). One sparse **L3 e2e** smoke keeps the product binary path.
 
 # DSN (Domain Specific Notion)
 
-The harness exercises the remote profile of the shared agent CLI against a real
-`ai-critic-server` subprocess with seeded `projects.json` and temp git worktrees.
+Most leaves are **L2 in-process**: `projects.RegisterAPIForFile` on a local mux +
+local bearer auth + `agentcli.Run` with mutex-scoped home override (no product
+binaries, no process Setenv). One sparse **L3 e2e** smoke keeps the binary path
+(`UseCLI` + `label: heavy, e2e`): `clean-repo`.
 
 **Participants**
 
-- **remote-agent subprocess** — built from `./cmd/remote-agent`; calls
-  `GET /api/projects?all=true` via `project list`.
-- **ai-critic-server subprocess** — bound to an ephemeral port with test
-  credentials; reads `projects.json` from isolated `AI_CRITIC_HOME`.
+- **L2: agentcli.Run** — in-process `project list` / `git-config get` against the local mux.
+- **L2: projects HTTP** — `RegisterAPIForFile(mux, configHome/projects.json)` on ephemeral port.
+- **L3: remote-agent + ai-critic-server subprocesses** — sparse `UseCLI` smoke.
 - **Temp project directories** — leaf `Setup` creates git repos (or plain dirs)
   and registers them in `projects.json` before the CLI runs.
-- **Test credentials** — `lib.TestPassword` token written to `server-credentials`.
-- **Isolated agent HOME** — temp `HOME` with `~/.ai-critic/remote-agent-config.json`
-  (`project_bindings`) so list output never reads the developer machine config.
+- **Test credentials** — `lib.TestPassword` token for bearer auth / L3 credentials file.
+- **Isolated agent HOME** — temp dir with `remote-agent-config.json` (`project_bindings`);
+  L2 uses `testhooks.SetHomeOverride`, L3 uses child `HOME=`.
 - **Local path bindings** — optional `(server, remote_dir) → local_path` rows resolved
   when `printProjectGitConfig` renders each project.
 
@@ -39,7 +43,7 @@ The harness exercises the remote profile of the shared agent CLI against a real
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -114,7 +118,8 @@ The harness exercises the remote profile of the shared agent CLI against a real
 ```sh
 go run ./script/build
 doctest vet ./tests/remote-agent-project-list
-doctest test ./tests/remote-agent-project-list/...
+doctest test ./tests/remote-agent-project-list/...          # unlabeled L2 mass
+doctest test --label e2e ./tests/remote-agent-project-list/...  # ~1 L3 smoke
 ```
 
 ```go
@@ -122,6 +127,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -129,12 +135,20 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/xhd2015/ai-critic/cmd/agentcli"
+	"github.com/xhd2015/ai-critic/cmd/agentcli/testhooks"
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/ai-critic/server/projects"
+	"github.com/xhd2015/doctest/session"
 )
+
+// agentcliInProcessMu serializes in-process agentcli.Run (profile + stdout/stderr + home override).
+var agentcliInProcessMu sync.Mutex
 
 // ProjectEntry is one row written to projects.json before the CLI runs.
 type ProjectEntry struct {
@@ -165,6 +179,14 @@ type Request struct {
 	LocalPath    string
 	WatchRemoteConfig bool
 	ServerCredentialContent string
+
+	// UseCLI forces the L3 product-binary path. Default false → L2 in-process.
+	UseCLI bool
+	E2E    bool
+}
+
+func useBinaryPath(req *Request) bool {
+	return req != nil && (req.UseCLI || req.E2E)
 }
 
 type Response struct {
@@ -210,7 +232,7 @@ type bindingRow struct {
 	LocalPath string `json:"local_path"`
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	if len(req.Args) == 0 {
@@ -220,30 +242,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		req.Token = lib.TestPassword
 	}
 
-	moduleRoot, err := findModuleRoot()
-	if err != nil {
-		return nil, err
-	}
-
-	safeName := strings.ReplaceAll(t.Name(), "/", "_")
-	serverBin := filepath.Join(os.TempDir(), "ai-critic-server-project-list-"+safeName)
-	agentBin := filepath.Join(os.TempDir(), "remote-agent-project-list-"+safeName)
-
-	for _, spec := range []struct {
-		out string
-		pkg string
-	}{
-		{serverBin, "."},
-		{agentBin, "./cmd/remote-agent"},
-	} {
-		cmd := exec.Command("go", "build", "-o", spec.out, spec.pkg)
-		cmd.Dir = moduleRoot
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return nil, fmt.Errorf("build %s: %w\n%s", spec.pkg, err, string(out))
-		}
-		t.Cleanup(func() { os.Remove(spec.out) })
-	}
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
+	cacheDir := sessionCacheDir(d.DOCTEST_SESSION_ID)
 
 	configHome, err := lib.CreateTestConfigHome()
 	if err != nil {
@@ -263,6 +263,93 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, err
 	}
 
+	projectsList := req.Projects
+	if len(projectsList) == 0 && req.Project.Dir != "" {
+		projectsList = []ProjectEntry{req.Project}
+	}
+	if len(projectsList) > 0 {
+		for i := range projectsList {
+			absDir, err := filepath.Abs(projectsList[i].Dir)
+			if err != nil {
+				return nil, fmt.Errorf("abs project dir: %w", err)
+			}
+			projectsList[i].Dir = absDir
+		}
+		req.Projects = projectsList
+		resp.ProjectDir = projectsList[0].Dir
+		if err := writeProjectsJSON(configHome, projectsList); err != nil {
+			return nil, err
+		}
+	}
+
+	if useBinaryPath(req) {
+		return runBinaryE2E(t, d, req, resp, moduleRoot, cacheDir, configHome, agentHome, aiCriticAgent)
+	}
+	return runInProcessL2(t, d, req, resp, configHome, agentHome, aiCriticAgent)
+}
+
+func withBearerAuth(validToken string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ping" || !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		authHeader := r.Header.Get("Authorization")
+		if !strings.HasPrefix(authHeader, "Bearer ") || strings.TrimPrefix(authHeader, "Bearer ") != validToken {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func runInProcessL2(t *testing.T, d *session.Doctest, req *Request, resp *Response, configHome, agentHome, aiCriticAgent string) (*Response, error) {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	projects.RegisterAPIForFile(mux, filepath.Join(configHome, "projects.json"))
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	handler := withBearerAuth(lib.TestPassword, mux)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("listen in-process project-list server: %w", err)
+	}
+	serverPort := ln.Addr().(*net.TCPAddr).Port
+	resp.ServerPort = serverPort
+	srv := &http.Server{Handler: handler}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	serverURL := req.Server
+	if serverURL == "" {
+		serverURL = fmt.Sprintf("http://127.0.0.1:%d", serverPort)
+	}
+	normalizedServer := strings.TrimRight(strings.TrimSpace(serverURL), "/")
+
+	if err := prepareAgentConfig(t, req, resp, aiCriticAgent, normalizedServer); err != nil {
+		return nil, err
+	}
+
+	pingURL := fmt.Sprintf("http://127.0.0.1:%d/ping", serverPort)
+	if err := waitHTTPReady(pingURL, 10*time.Second); err != nil {
+		return nil, err
+	}
+	t.Logf("L2 in-process project-list server on %s", normalizedServer)
+
+	return finishListRun(t, req, resp, serverURL, agentHome, true)
+}
+
+func runBinaryE2E(t *testing.T, d *session.Doctest, req *Request, resp *Response, moduleRoot, cacheDir, configHome, agentHome, aiCriticAgent string) (*Response, error) {
+	t.Helper()
+
+	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
+
 	credFile, err := lib.WriteTestCredentials(configHome)
 	if err != nil {
 		return nil, err
@@ -275,24 +362,14 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	}
 	resp.ServerPort = serverPort
 
-	projects := req.Projects
-	if len(projects) == 0 && req.Project.Dir != "" {
-		projects = []ProjectEntry{req.Project}
+	serverURL := req.Server
+	if serverURL == "" {
+		serverURL = fmt.Sprintf("http://localhost:%d", serverPort)
 	}
-	if len(projects) > 0 {
-		for i := range projects {
-			absDir, err := filepath.Abs(projects[i].Dir)
-			if err != nil {
-				return nil, fmt.Errorf("abs project dir: %w", err)
-			}
-			projects[i].Dir = absDir
-		}
-		req.Projects = projects
-		resp.ProjectDir = projects[0].Dir
+	normalizedServer := strings.TrimRight(strings.TrimSpace(serverURL), "/")
 
-		if err := writeProjectsJSON(configHome, projects); err != nil {
-			return nil, err
-		}
+	if err := prepareAgentConfig(t, req, resp, aiCriticAgent, normalizedServer); err != nil {
+		return nil, err
 	}
 
 	serverCmd := exec.Command(serverBin, "--port", strconv.Itoa(serverPort), "--credentials-file", credFile)
@@ -314,39 +391,61 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, err
 	}
 
-	serverURL := req.Server
-	if serverURL == "" {
-		serverURL = fmt.Sprintf("http://localhost:%d", serverPort)
-	}
-	normalizedServer := strings.TrimRight(strings.TrimSpace(serverURL), "/")
+	return finishListRunBinary(t, req, resp, serverURL, agentBin, agentHome)
+}
 
+func prepareAgentConfig(t *testing.T, req *Request, resp *Response, aiCriticAgent, normalizedServer string) error {
+	t.Helper()
 	if req.LocalPath != "" {
 		absLocal, err := filepath.Abs(req.LocalPath)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		req.LocalPath = absLocal
 		resp.LocalPath = absLocal
 	}
-
 	configPath := filepath.Join(aiCriticAgent, "remote-agent-config.json")
 	if err := writeRemoteAgentConfig(configPath, normalizedServer, req.Token, req.SeedBindings); err != nil {
-		return nil, err
+		return err
 	}
 	resp.RemoteConfigPath = configPath
 	if req.ServerCredentialContent != "" {
 		credPath := filepath.Join(aiCriticAgent, "server-credentials")
 		if err := os.WriteFile(credPath, []byte(req.ServerCredentialContent), 0600); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if req.WatchRemoteConfig {
 		resp.RemoteConfigBefore, _ = os.ReadFile(resp.RemoteConfigPath)
 	}
+	return nil
+}
 
+func finishListRun(t *testing.T, req *Request, resp *Response, serverURL, agentHome string, inProcess bool) (*Response, error) {
+	t.Helper()
 	argv := []string{"--server", serverURL, "--token", req.Token}
 	argv = append(argv, req.Args...)
-	t.Logf("remote-agent argv: %v", argv)
+	t.Logf("L2-inprocess remote-agent argv: %v", argv)
+
+	exitCode, stdout, stderr, runErr := runAgentInProcess(argv, agentHome)
+	if runErr != nil {
+		return nil, runErr
+	}
+	resp.ExitCode = exitCode
+	resp.Stdout = stdout
+	resp.Stderr = stderr
+	resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
+	if req.WatchRemoteConfig {
+		resp.RemoteConfigAfter, _ = os.ReadFile(resp.RemoteConfigPath)
+	}
+	return resp, nil
+}
+
+func finishListRunBinary(t *testing.T, req *Request, resp *Response, serverURL, agentBin, agentHome string) (*Response, error) {
+	t.Helper()
+	argv := []string{"--server", serverURL, "--token", req.Token}
+	argv = append(argv, req.Args...)
+	t.Logf("L3-binary remote-agent argv: %v", argv)
 
 	agentCmd := exec.Command(agentBin, argv...)
 	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
@@ -371,13 +470,54 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if req.WatchRemoteConfig {
 		resp.RemoteConfigAfter, _ = os.ReadFile(resp.RemoteConfigPath)
 	}
-
 	return resp, nil
 }
 
-func writeProjectsJSON(configHome string, projects []ProjectEntry) error {
-	rows := make([]projectsFileRow, 0, len(projects))
-	for _, project := range projects {
+func runAgentInProcess(argv []string, agentHome string) (int, string, string, error) {
+	agentcliInProcessMu.Lock()
+	defer agentcliInProcessMu.Unlock()
+
+	testhooks.SetHomeOverride(agentHome)
+	defer testhooks.ResetInProcessOverrides()
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return 0, "", "", err
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		stdoutR.Close()
+		stdoutW.Close()
+		return 0, "", "", err
+	}
+
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdoutW, stderrW
+
+	runErr := agentcli.Run(agentcli.RemoteProfile(), argv)
+
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+
+	outBytes, _ := io.ReadAll(stdoutR)
+	errBytes, _ := io.ReadAll(stderrR)
+	_ = stdoutR.Close()
+	_ = stderrR.Close()
+
+	stdout := string(outBytes)
+	stderr := string(errBytes)
+	exitCode := 0
+	if runErr != nil {
+		stderr += fmt.Sprintf("Error: %v\n", runErr)
+		exitCode = 1
+	}
+	return exitCode, stdout, stderr, nil
+}
+
+func writeProjectsJSON(configHome string, projectsList []ProjectEntry) error {
+	rows := make([]projectsFileRow, 0, len(projectsList))
+	for _, project := range projectsList {
 		if project.ID == "" {
 			return fmt.Errorf("project ID is required")
 		}
@@ -440,25 +580,6 @@ func stripEnvPrefix(env []string, prefix string) []string {
 	return out
 }
 
-func findModuleRoot() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("go.mod not found")
-		}
-		dir = parent
-	}
-}
-
-// portBaseFromTestName maps each parallel leaf package to a distinct starting
-// port in [25000, 25999] so concurrent doctest runs do not all bind 24800.
 func portBaseFromTestName(name string) int {
 	hash := 0
 	for _, c := range name {
@@ -495,4 +616,6 @@ func waitHTTPReady(url string, timeout time.Duration) error {
 	}
 	return fmt.Errorf("timeout waiting for %s", url)
 }
+
+
 ```

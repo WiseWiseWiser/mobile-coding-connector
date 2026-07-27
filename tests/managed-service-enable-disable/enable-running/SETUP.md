@@ -26,9 +26,11 @@ POST /api/services/enable -> already running prompt
 Sibling `enable-stopped/` covers deferred daemon start.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Services = []ServiceSeed{
 		sleepService("svc-en-run-001", "sleep-manual", boolPtr(false)),
 	}

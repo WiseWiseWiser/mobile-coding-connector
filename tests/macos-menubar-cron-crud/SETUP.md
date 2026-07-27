@@ -49,9 +49,13 @@ CRUD builders, convert helpers, delete gating, and Cron Editor menus land.
 Does not modify operate-only tree `tests/macos-menubar-cron/`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Root: no shared mutation; leaves set Op and case inputs.
 	_ = t
 	_ = req

@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "L3 smoke: local-agent -h branding (os.Exit help path)"
+---
+
 ## Expected Output
 
 ```
@@ -29,10 +34,12 @@ None.
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
+
 	"github.com/xhd2015/doctest/assert"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

@@ -24,9 +24,10 @@ REQUIREMENT leaf: `missing-dir/nested-path`.
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	workingDir := filepath.Join(req.TempBase, "a", "b", "c")
 	req.WorkingDir = workingDir
 	req.Services = []ServiceSeed{

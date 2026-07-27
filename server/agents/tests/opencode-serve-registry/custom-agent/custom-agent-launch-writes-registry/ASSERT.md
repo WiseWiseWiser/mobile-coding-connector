@@ -1,3 +1,7 @@
+---
+label: e2e
+explanation: LaunchCustomAgent spawns opencode serve + registry write
+---
 ## Expected
 
 1. `CustomErr` is nil.

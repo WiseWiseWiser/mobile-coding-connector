@@ -21,9 +21,13 @@ Config parses but domain token is empty after trim; credentials has a usable lin
 REQUIREMENT leaf: scenario 3.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigPresent = true
 	req.ConfigJSON = `{
   "default": "http://localhost:23712",

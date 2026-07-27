@@ -1,3 +1,7 @@
+---
+label: slow, e2e
+explanation: keep-alive subprocess + POST restart server signal
+---
 ## Expected
 
 1. `RestartHTTPStatus` is `200`.
@@ -16,9 +20,13 @@
 - Status not `restart_requested`, server PID unchanged, or daemon unreachable.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

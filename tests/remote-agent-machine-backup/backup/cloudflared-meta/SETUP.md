@@ -24,9 +24,13 @@ server subprocess `PATH` prepends `serverHome/bin`.
 REQUIREMENT leaf `backup/cloudflared-meta` (REQUIREMENT-DESIGN-cloudflared-config-meta.md).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedCloudflaredMock = true
 	req.DryRunThenArchive = true
 	req.OutputPath = "cloudflared-meta.tar.xz"

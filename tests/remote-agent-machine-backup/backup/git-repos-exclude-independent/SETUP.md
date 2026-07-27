@@ -22,9 +22,13 @@ the tree from backup plan/archive but must not suppress git repo discovery.
 REQUIREMENT leaf `backup/git-repos-exclude-independent` (exclude-independent git scan).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	requireGit(t)
 	req.SeedGitRepos = true
 	req.ExcludePaths = []string{".wrk-test/**"}

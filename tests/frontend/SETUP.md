@@ -56,9 +56,11 @@ that prints a single JSON line to stdout for machine-readable assertions.
 | 8 | `FileTransferSeeds` | []FileTransferSeed | name + source path | Files copied into `file-transfer/` after server is healthy |
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	return nil
 }
 ```

@@ -22,9 +22,13 @@ Classic TDD: RED against current `nextResetRe` which allows `[A-Z]{2,4}` and can
 capture `Imag` as a timezone. Desired: no-TZ candidate wins; bare local wall clock.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.FixtureFile = "show-usage-junk-suffix.txt"
 	req.ExpectParseError = false
 	return nil

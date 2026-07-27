@@ -20,9 +20,13 @@ REQUIREMENT leaf: `parse/no-timezone`.
 No-TZ form stays bare (`July 17, 08:55`); consumers treat as local time.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.FixtureFile = "show-usage-no-timezone.txt"
 	req.ExpectParseError = false
 	return nil

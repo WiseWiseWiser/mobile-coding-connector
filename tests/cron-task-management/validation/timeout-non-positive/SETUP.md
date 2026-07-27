@@ -21,9 +21,11 @@ POST -> non-2xx error (timeout must be > 0; no unlimited)
 Validation: timeout always enforced, must be >0.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Action = "create"
 	req.RawBody = map[string]any{
 		"name":         "bad-timeout",

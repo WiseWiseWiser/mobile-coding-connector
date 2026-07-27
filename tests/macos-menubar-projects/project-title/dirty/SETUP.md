@@ -21,9 +21,13 @@ Project worktree is dirty; branch still `main`; no error.
 REQUIREMENT: project dirty → Leading `demo`, Trailing `○ main`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Name = "demo"
 	req.Branch = "main"
 	req.Clean = false

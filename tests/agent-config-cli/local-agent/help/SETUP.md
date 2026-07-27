@@ -20,9 +20,13 @@ No seed required.
 local-agent parity for bare help.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.SeedConfig = nil
 	return nil
 }

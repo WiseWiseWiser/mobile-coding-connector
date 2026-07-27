@@ -21,9 +21,13 @@ Scratch seeded with known UTF-8 content.
 REQUIREMENT leaf: `read-json-flag`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	seedScratch(req, seededUTF8Content, seededMetaUpdatedAt)
 	setReadTTY(t, req, "--json")
 	return nil

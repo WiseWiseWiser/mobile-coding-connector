@@ -1,26 +1,26 @@
 # Local-Agent CLI Doctests
 
-End-to-end tests for the `local-agent` binary: server URL resolution (`--server`,
+Scenario tests for the `local-agent` CLI: server URL resolution (`--server`,
 `--port`, saved config, built-in default), local reachability hints, isolated
 `local-agent-config.json`, and command parity with `remote-agent`.
 
-# DSN (Domain Specific Notion)
+Most leaves are **L2 in-process** (`agentcli.Run(LocalProfile())` with testhooks
+home/port/reachability overrides and optional in-process `/ping` + auth stubs).
+Two sparse **L3 e2e** smokes keep the product binary path: `not-running/prompts-ai-critic`
+and `command-parity/help-branding` (less-gen `os.Exit` on help).
 
-The harness exercises the local profile of the shared agent CLI against a real
-`ai-critic-server` subprocess when needed.
+# DSN (Domain Specific Notion)
 
 **Participants**
 
-- **local-agent subprocess** — built from `./cmd/local-agent`; parses global
-  `--server`, `--port`, `--token`, then dispatches subcommands.
-- **ai-critic-server subprocess** — optional; bound to an ephemeral port with
-  test credentials when a leaf needs a listening API.
-- **Isolated user HOME** — temp directory so `~/.ai-critic/local-agent-config.json`
-  (and optional `remote-agent-config.json` sentinel) never touch the developer machine.
-- **agentcli test hooks** — `AGENTCLI_TEST_DEFAULT_PORT` and
-  `AGENTCLI_TEST_REACHABILITY` env vars (read by `cmd/agentcli/testhooks` at
-  process start) so tests never depend on port 23712 being free and can force
-  “not listening” without racey firewall tricks.
+- **L2: agentcli.Run** — `LocalProfile()` under a suite mutex; home/port/reachability
+  via `testhooks` package vars (no process Setenv).
+- **L2: optional httptest mux** — `/ping` + `/api/auth/status` + `/api/projects` stubs
+  when `StartServer` is set (no product server binary).
+- **L3: local-agent subprocess** — `UseCLI` smokes only (`./cmd/local-agent`).
+- **L3: ai-critic-server subprocess** — only when a UseCLI leaf also needs a real server.
+- **Isolated user HOME** — temp dir via testhooks override (L2) or child `HOME=` (L3).
+- **agentcli test hooks** — in-process setters or child env for default port / reachability.
 
 **Behaviors**
 
@@ -39,7 +39,7 @@ The harness exercises the local profile of the shared agent CLI against a real
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -112,7 +112,8 @@ The harness exercises the local profile of the shared agent CLI against a real
 ```sh
 go run ./script/build
 doctest vet ./tests/local-agent
-doctest test ./tests/local-agent/...
+doctest test ./tests/local-agent/...          # unlabeled L2 mass
+doctest test --label e2e ./tests/local-agent/...  # ~2 L3 smokes
 ```
 
 ```go
@@ -120,6 +121,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -127,13 +129,20 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/xhd2015/ai-critic/cmd/agentcli"
 	"github.com/xhd2015/ai-critic/cmd/agentcli/testhooks"
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
+
+// localAgentInProcessMu serializes in-process agentcli.Run (active profile +
+// stdout/stderr capture + testhooks overrides are process-global).
+var localAgentInProcessMu sync.Mutex
 
 // DomainEntry mirrors local-agent-config.json domain rows.
 type DomainEntry struct {
@@ -190,6 +199,14 @@ type Request struct {
 
 	// GlobalHelp runs `local-agent -h` (top-level help, no subcommand).
 	GlobalHelp bool
+
+	// UseCLI forces the L3 product-binary path. Default false → L2 in-process.
+	UseCLI bool
+	E2E    bool
+}
+
+func useBinaryPath(req *Request) bool {
+	return req != nil && (req.UseCLI || req.E2E)
 }
 
 type Response struct {
@@ -207,33 +224,17 @@ type Response struct {
 	RemoteConfigAfter  []byte
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
-	moduleRoot, err := findModuleRoot()
-	if err != nil {
-		return nil, err
+	if useBinaryPath(req) {
+		return runLocalAgentCLI(t, d, req, resp)
 	}
+	return runLocalAgentInProcess(t, d, req, resp)
+}
 
-	safeName := strings.ReplaceAll(t.Name(), "/", "_")
-	serverBin := filepath.Join(os.TempDir(), "ai-critic-server-local-agent-"+safeName)
-	agentBin := filepath.Join(os.TempDir(), "local-agent-doctest-"+safeName)
-
-	for _, spec := range []struct {
-		out string
-		pkg string
-	}{
-		{serverBin, "."},
-		{agentBin, "./cmd/local-agent"},
-	} {
-		cmd := exec.Command("go", "build", "-o", spec.out, spec.pkg)
-		cmd.Dir = moduleRoot
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return nil, fmt.Errorf("build %s: %w\n%s", spec.pkg, err, string(out))
-		}
-		t.Cleanup(func() { os.Remove(spec.out) })
-	}
+func runLocalAgentInProcess(t *testing.T, d *session.Doctest, req *Request, resp *Response) (*Response, error) {
+	t.Helper()
 
 	agentHome, err := os.MkdirTemp("", "local-agent-home-*")
 	if err != nil {
@@ -249,29 +250,231 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	resp.LocalConfigPath = filepath.Join(aiCriticDir, "local-agent-config.json")
 	resp.RemoteConfigPath = filepath.Join(aiCriticDir, "remote-agent-config.json")
 
-	if req.SeedRemoteConfig != nil {
-		if err := os.WriteFile(resp.RemoteConfigPath, req.SeedRemoteConfig, 0600); err != nil {
+	if err := seedAgentFiles(req, resp); err != nil {
+		return nil, err
+	}
+
+	serverPort := req.ServerListenPort
+	if req.StartServer {
+		if serverPort <= 0 {
+			serverPort, err = pickFreePort(24700)
+			if err != nil {
+				return nil, err
+			}
+		}
+		resp.ServerPort = serverPort
+		if err := startInProcessLocalServer(t, req, resp, serverPort); err != nil {
+			return nil, err
+		}
+		if err := applyServerSyncFlags(req, serverPort, resp); err != nil {
 			return nil, err
 		}
 	}
+
+	argv := buildAgentArgv(req)
+	t.Logf("L2-inprocess local-agent argv: %v", argv)
+
+	localAgentInProcessMu.Lock()
+	defer localAgentInProcessMu.Unlock()
+
+	testhooks.SetHomeOverride(agentHome)
+	if req.InjectedDefaultPort > 0 {
+		testhooks.SetDefaultPortForTest(req.InjectedDefaultPort)
+	}
+	if req.MockReachability != nil {
+		if *req.MockReachability {
+			testhooks.SetReachabilityForTest("up")
+		} else {
+			testhooks.SetReachabilityForTest("down")
+		}
+	}
+	defer testhooks.ResetInProcessOverrides()
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		stdoutR.Close()
+		stdoutW.Close()
+		return nil, err
+	}
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdoutW, stderrW
+
+	runErr := agentcli.Run(agentcli.LocalProfile(), argv)
+
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+
+	outBytes, _ := io.ReadAll(stdoutR)
+	errBytes, _ := io.ReadAll(stderrR)
+	_ = stdoutR.Close()
+	_ = stderrR.Close()
+
+	resp.Stdout = string(outBytes)
+	resp.Stderr = string(errBytes)
+	if runErr != nil {
+		resp.Stderr += fmt.Sprintf("Error: %v\n", runErr)
+		resp.ExitCode = 1
+	}
+	resp.Combined = strings.TrimSpace(resp.Stdout + "\n" + resp.Stderr)
+
+	if req.WatchRemoteConfig {
+		resp.RemoteConfigAfter, _ = os.ReadFile(resp.RemoteConfigPath)
+	}
+	if req.WatchLocalConfig {
+		resp.LocalConfigAfter, _ = os.ReadFile(resp.LocalConfigPath)
+	}
+	return resp, nil
+}
+
+func startInProcessLocalServer(t *testing.T, req *Request, resp *Response, serverPort int) error {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("pong"))
+	})
+	mux.HandleFunc("/api/auth/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		authHeader := r.Header.Get("Authorization")
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token == lib.TestPassword {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"initialized": true,
+				"status":      "ok",
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"initialized": true,
+			"status":      "unauthorized",
+		})
+	})
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		authHeader := r.Header.Get("Authorization")
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token != lib.TestPassword {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]interface{}{})
+	})
+	// Catch-all API auth for request subcommand variants.
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token != lib.TestPassword {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", serverPort))
+	if err != nil {
+		return fmt.Errorf("listen in-process local-agent server: %w", err)
+	}
+	srv := &http.Server{Handler: mux}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	pingURL := fmt.Sprintf("http://127.0.0.1:%d/ping", serverPort)
+	if err := waitHTTPReady(pingURL, 10*time.Second); err != nil {
+		return err
+	}
+	t.Logf("L2 in-process local-agent server on port %d", serverPort)
+	return nil
+}
+
+func seedAgentFiles(req *Request, resp *Response) error {
+	if req.SeedRemoteConfig != nil {
+		if err := os.WriteFile(resp.RemoteConfigPath, req.SeedRemoteConfig, 0600); err != nil {
+			return err
+		}
+	}
 	if req.ServerCredentialContent != "" {
-		credPath := filepath.Join(aiCriticDir, "server-credentials")
+		credPath := filepath.Join(filepath.Dir(resp.LocalConfigPath), "server-credentials")
 		if err := os.WriteFile(credPath, []byte(req.ServerCredentialContent), 0600); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if req.WatchRemoteConfig {
 		resp.RemoteConfigBefore, _ = os.ReadFile(resp.RemoteConfigPath)
 	}
-
 	if req.SeedLocalConfig != nil {
 		data, err := json.MarshalIndent(req.SeedLocalConfig, "", "  ")
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if err := os.WriteFile(resp.LocalConfigPath, data, 0600); err != nil {
-			return nil, err
+			return err
 		}
+	}
+	return nil
+}
+
+func applyServerSyncFlags(req *Request, serverPort int, resp *Response) error {
+	if req.SyncPortFlagFromServer && req.Port <= 0 {
+		req.Port = serverPort
+	}
+	if req.SyncDefaultPortFromServer {
+		req.InjectedDefaultPort = serverPort
+	}
+	if req.SyncServerFromBoundPort {
+		req.Server = fmt.Sprintf("http://localhost:%d", serverPort)
+	}
+	if req.SeedLocalConfigAfterServer {
+		token := req.LocalConfigToken
+		if token == "" {
+			token = lib.TestPassword
+		}
+		serverURL := fmt.Sprintf("http://localhost:%d", serverPort)
+		cfg := &LocalAgentConfigFile{
+			Default: serverURL,
+			Domains: []DomainEntry{{Server: serverURL, Token: token}},
+		}
+		data, err := json.MarshalIndent(cfg, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(resp.LocalConfigPath, data, 0600); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runLocalAgentCLI(t *testing.T, d *session.Doctest, req *Request, resp *Response) (*Response, error) {
+	t.Helper()
+	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
+	cacheDir := sessionCacheDir(d.DOCTEST_SESSION_ID)
+	serverBin, agentBin := buildSessionBinariesOnce(t, moduleRoot, cacheDir)
+
+	agentHome, err := os.MkdirTemp("", "local-agent-home-*")
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() { os.RemoveAll(agentHome) })
+	resp.AgentHome = agentHome
+
+	aiCriticDir := filepath.Join(agentHome, ".ai-critic")
+	if err := os.MkdirAll(aiCriticDir, 0755); err != nil {
+		return nil, err
+	}
+	resp.LocalConfigPath = filepath.Join(aiCriticDir, "local-agent-config.json")
+	resp.RemoteConfigPath = filepath.Join(aiCriticDir, "remote-agent-config.json")
+
+	if err := seedAgentFiles(req, resp); err != nil {
+		return nil, err
 	}
 
 	serverPort := req.ServerListenPort
@@ -313,42 +516,19 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		if err := waitHTTPReady(pingURL, 30*time.Second); err != nil {
 			return nil, err
 		}
-
-		if req.SyncPortFlagFromServer && req.Port <= 0 {
-			req.Port = serverPort
-		}
-		if req.SyncDefaultPortFromServer {
-			req.InjectedDefaultPort = serverPort
-		}
-		if req.SyncServerFromBoundPort {
-			req.Server = fmt.Sprintf("http://localhost:%d", serverPort)
-		}
-		if req.SeedLocalConfigAfterServer {
-			token := req.LocalConfigToken
-			if token == "" {
-				token = lib.TestPassword
-			}
-			serverURL := fmt.Sprintf("http://localhost:%d", serverPort)
-			cfg := &LocalAgentConfigFile{
-				Default: serverURL,
-				Domains: []DomainEntry{{Server: serverURL, Token: token}},
-			}
-			data, err := json.MarshalIndent(cfg, "", "  ")
-			if err != nil {
-				return nil, err
-			}
-			if err := os.WriteFile(resp.LocalConfigPath, data, 0600); err != nil {
-				return nil, err
-			}
+		if err := applyServerSyncFlags(req, serverPort, resp); err != nil {
+			return nil, err
 		}
 	}
 
 	argv := buildAgentArgv(req)
-	t.Logf("local-agent argv: %v", argv)
+	t.Logf("L3-binary local-agent argv: %v", argv)
 
 	agentCmd := exec.Command(agentBin, argv...)
-	agentEnv := append([]string{}, os.Environ()...)
+	agentEnv := stripEnvPrefix(os.Environ(), "HOME=")
+	agentEnv = stripEnvPrefix(agentEnv, "PATH=")
 	agentEnv = append(agentEnv, "HOME="+agentHome)
+	agentEnv = append(agentEnv, "PATH=/usr/bin:/bin:/usr/sbin:/sbin")
 	if req.InjectedDefaultPort > 0 {
 		agentEnv = testhooks.AppendDefaultPortEnv(agentEnv, req.InjectedDefaultPort)
 	}
@@ -383,6 +563,17 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	return resp, nil
 }
 
+func stripEnvPrefix(env []string, prefix string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
 func buildAgentArgv(req *Request) []string {
 	if req.GlobalHelp {
 		return []string{"-h"}
@@ -401,24 +592,14 @@ func buildAgentArgv(req *Request) []string {
 	return argv
 }
 
-func findModuleRoot() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("go.mod not found")
-		}
-		dir = parent
-	}
-}
-
 func pickFreePort(base int) (int, error) {
+	// Prefer kernel-assigned free port to avoid parallel leaf races (TOCTOU).
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err == nil {
+		port := ln.Addr().(*net.TCPAddr).Port
+		ln.Close()
+		return port, nil
+	}
 	for port := base; port < base+200; port++ {
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err == nil {
@@ -443,4 +624,6 @@ func waitHTTPReady(url string, timeout time.Duration) error {
 	}
 	return fmt.Errorf("timeout waiting for %s", url)
 }
+
+
 ```

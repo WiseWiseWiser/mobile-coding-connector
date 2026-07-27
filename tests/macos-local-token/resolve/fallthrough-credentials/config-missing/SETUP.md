@@ -22,9 +22,13 @@ Config file absent; credentials present with a single non-empty line.
 REQUIREMENT leaf: scenario 2.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigPresent = false
 	req.CredentialsText = "cred-from-missing-config\n"
 	return nil

@@ -22,9 +22,13 @@ REQUIREMENT leaf `restore/show-meta`. Asserts `installed.json` and `ENV` only;
 `git-repo-worktrees.json` coverage lives in `restore/show-meta-git-repos`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ShowMeta = true
 	req.Args = []string{"machine", "restore"}
 	return nil

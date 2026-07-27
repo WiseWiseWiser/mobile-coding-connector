@@ -19,9 +19,11 @@ port occupier (server) -> keep-alive (no flag) -> startup error
 Preserves existing behavior when flag omitted.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.KillExisting = false
 	req.OccupyServerPort = true
 	req.OccupyDaemonPort = false

@@ -22,9 +22,11 @@ Requirement: remote read-only forms only.
 ```go
 import (
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	dir := mkDeniedRepo(t)
 	setGitLocalArgs(t, req, dir, "remote", "add", "origin", "https://example.com/foo.git")
 	return nil

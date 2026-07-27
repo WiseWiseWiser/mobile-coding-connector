@@ -21,9 +21,13 @@ localDir -> remote-agent upload uploads/mirror -> uploads/mirror/{a.txt,sub/b.tx
 REQUIREMENT leaf #2 — dir-success/dst-not-exists.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	localRoot := mkLocalWorkDir(t)
 	seedStandardLocalTree(t, localRoot)
 	setUploadArgs(t, req, localRoot, "uploads/mirror")

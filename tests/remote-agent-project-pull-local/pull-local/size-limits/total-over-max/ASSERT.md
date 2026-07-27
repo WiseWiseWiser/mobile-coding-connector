@@ -1,6 +1,6 @@
 ---
 label: slow
-explanation: writes 65 MiB of fixture data on remote project dir
+explanation: "large package fixture; L2 in-process"
 ---
 
 ## Expected
@@ -24,9 +24,11 @@ Remote bulk files remain; no successful full pull worktree.
 import (
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

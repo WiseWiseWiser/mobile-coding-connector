@@ -19,9 +19,13 @@ Size is exact 42 * 1024 * 1024 bytes; modTime 12 minutes before now.
 REQUIREMENT #16.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "recent_format"
 	req.NowRFC3339 = "2026-07-10T15:00:00Z"
 	req.EntryPath = "machine-backup-20260710-144800.tar.xz"

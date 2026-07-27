@@ -1,3 +1,7 @@
+---
+label: e2e
+explanation: GROK_SHOW_USAGE_COMMAND mock TUI process boundary
+---
 ## Expected
 
 1. `ServiceStatus` is `error`.
@@ -9,9 +13,13 @@
 - Service reports ready on failing script.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

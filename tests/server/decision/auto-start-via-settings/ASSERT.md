@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "ai-critic-server binary AutoStartWebServer process-boundary integration"
+---
+
 ## Expected
 
 1. `Response.ServerStarted` is `true` — the ai-critic server started and `/ping` responded
@@ -39,9 +44,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run returned unexpected error: %v", err)
 	}

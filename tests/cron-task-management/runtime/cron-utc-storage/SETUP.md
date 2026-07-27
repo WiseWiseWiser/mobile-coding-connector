@@ -22,9 +22,11 @@ list shows cronExpr exactly "0 9 * * *" (UTC stored form)
 Priority leaf: Cron UTC storage. First fire timing is not asserted (may be hours away).
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Action = "create"
 	req.TaskName = "morning-utc"
 	req.Command = "echo utc-cron"

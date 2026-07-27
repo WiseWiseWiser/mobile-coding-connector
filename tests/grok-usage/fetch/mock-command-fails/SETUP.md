@@ -19,9 +19,13 @@ GROK_SHOW_USAGE_COMMAND=mock-fail.sh -> tty fetch error -> status error
 REQUIREMENT leaf: `fetch/mock-command-fails`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.MockScript = "mock-fail.sh"
 	return nil
 }

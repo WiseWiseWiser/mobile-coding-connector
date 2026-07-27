@@ -22,9 +22,13 @@ When `projectCount > 0`, project menus are shown (no status placeholder).
 REQUIREMENT empty/loading table and scenario 11 (empty+loading is not empty registry).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "list_status"
 	return nil
 }

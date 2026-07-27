@@ -152,6 +152,7 @@ import (
 	"github.com/xhd2015/ai-critic/macosapp/grokusage"
 	"github.com/xhd2015/ai-critic/script/lib"
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/doctest/session"
 )
 
 const envGrokShowUsageCommand = "GROK_SHOW_USAGE_COMMAND"
@@ -212,9 +213,9 @@ type Response struct {
 	ConcurrentStarted    int
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
-	doctestRoot := grokUsageDoctestRoot()
+	doctestRoot := grokUsageDoctestRoot(d)
 
 	switch req.Op {
 	case "parse":
@@ -224,7 +225,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	case "get-recompute":
 		return runGetRecompute(t, req, resp)
 	case "api":
-		return runAPI(t, req, doctestRoot, resp)
+		return runAPI(t, d, req, doctestRoot, resp)
 	case "refresh":
 		return runRefreshOverlap(t, req, doctestRoot, resp)
 	default:
@@ -342,7 +343,7 @@ func runGetRecompute(t *testing.T, req *Request, resp *Response) (*Response, err
 	return resp, nil
 }
 
-func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response, error) {
+func runAPI(t *testing.T, d *session.Doctest, req *Request, root string, resp *Response) (*Response, error) {
 	if req.WaitAPIReadySecs <= 0 {
 		req.WaitAPIReadySecs = 12
 	}
@@ -351,7 +352,7 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 		return nil, err
 	}
 
-	moduleRoot, err := findModuleRoot()
+	moduleRoot, err := findModuleRoot(d)
 	if err != nil {
 		return nil, err
 	}
@@ -384,6 +385,10 @@ func runAPI(t *testing.T, req *Request, root string, resp *Response) (*Response,
 	env = append(env,
 		"AI_CRITIC_TEST_SKIP_EXTENSION=1",
 		envGrokShowUsageCommand+"="+mockCommand,
+		// Isolate from ambient agent-run tty-watch pollution (child-only).
+		"TTY_WATCH_HOME="+filepath.Join(configHome, ".tty-watch"),
+		"TTY_WATCH_REGISTRY_SUBDIR=registry",
+		"TTY_WATCH_KEEP_ALIVE=",
 	)
 	cmd.Env = env
 	if err := cmd.Start(); err != nil {
@@ -471,19 +476,35 @@ func runRefreshOverlap(t *testing.T, req *Request, root string, resp *Response) 
 	}
 	wg.Wait()
 
-	time.Sleep(500 * time.Millisecond)
-	data, _ := os.ReadFile(counterFile)
-	if len(data) > 0 {
-		n, _ := strconv.Atoi(strings.TrimSpace(string(data)))
-		resp.MockInvocationCount = n
-		resp.FetchInvocationCount = n
+	// Poll: under Parallel other leaves may briefly hold the service env mutex.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		data, _ := os.ReadFile(counterFile)
+		if len(data) > 0 {
+			n, _ := strconv.Atoi(strings.TrimSpace(string(data)))
+			if n > 0 {
+				resp.MockInvocationCount = n
+				resp.FetchInvocationCount = n
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if resp.FetchInvocationCount == 0 {
+		data, _ := os.ReadFile(counterFile)
+		if len(data) > 0 {
+			n, _ := strconv.Atoi(strings.TrimSpace(string(data)))
+			resp.MockInvocationCount = n
+			resp.FetchInvocationCount = n
+		}
 	}
 	resp.ConcurrentStarted = started
 	return resp, nil
 }
 
-func grokUsageDoctestRoot() string {
-	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
+func grokUsageDoctestRoot(d *session.Doctest) string {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		root := d.DOCTEST_ROOT
 		candidate := filepath.Join(root, "tests", "grok-usage")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
@@ -509,6 +530,12 @@ func newServiceWithMockCommand(root, mockScript string) (*grokusage.Service, err
 	}
 	svc := grokusage.TestExported_NewService()
 	svc.TestExported_SetEnv(envGrokShowUsageCommand, scriptPath)
+	// Isolate in-process tty fetch from ambient agent-run pollution.
+	ttyHome := filepath.Join(os.TempDir(), fmt.Sprintf("grok-usage-tty-%d-%d", os.Getpid(), time.Now().UnixNano()))
+	_ = os.MkdirAll(ttyHome, 0o755)
+	svc.TestExported_SetEnv("TTY_WATCH_HOME", ttyHome)
+	svc.TestExported_SetEnv("TTY_WATCH_REGISTRY_SUBDIR", "registry")
+	svc.TestExported_SetEnv("TTY_WATCH_KEEP_ALIVE", "")
 	return svc, nil
 }
 
@@ -535,9 +562,9 @@ func buildAICritic(t *testing.T, moduleRoot string) (string, func(), error) {
 	return out, func() { os.Remove(out) }, nil
 }
 
-func findModuleRoot() (string, error) {
-	if root := os.Getenv("DOCTEST_ROOT"); root != "" {
-		for dir := root; ; dir = filepath.Dir(dir) {
+func findModuleRoot(d *session.Doctest) (string, error) {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		for dir := d.DOCTEST_ROOT; ; dir = filepath.Dir(dir) {
 			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 				return dir, nil
 			}

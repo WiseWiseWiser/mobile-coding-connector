@@ -20,9 +20,13 @@ Both assignments present in `BackupProgressWindow.swift`.
 REQUIREMENT #11; expected GREEN on current code.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "non-editable-selectable"
 	return nil
 }

@@ -22,9 +22,13 @@ Remote and local repos cloned from the same bare origin.
 REQUIREMENT leaf `bind-local/same-origin`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	pair := pairSameOriginRepos(t)
 	remoteDir, localDir := pair.RemoteDir, pair.LocalDir
 	registerPullProject(t, req, "bind-same-001", "bind-same", remoteDir)

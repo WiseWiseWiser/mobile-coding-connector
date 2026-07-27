@@ -24,9 +24,13 @@ BackupProgressWindow.open -> (no NSApp.activate)
 REQUIREMENT #2; fails on current code that calls `NSApp.activate(ignoringOtherApps: true)`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "no-activate"
 	return nil
 }

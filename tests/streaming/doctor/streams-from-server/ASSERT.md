@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "Server + remote-agent doctor SSE stream integration"
+---
+
 ## Expected
 
 1. `HasDoctorHdr` is true (`WS Proxy Doctor` on stdout).
@@ -23,9 +28,11 @@ Reflects healthy/unhealthy; not asserted in this leaf (see `exit-code-reflects-h
 import (
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run returned unexpected error: %v", err)
 	}

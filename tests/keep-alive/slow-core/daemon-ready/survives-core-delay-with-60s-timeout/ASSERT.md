@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "keep-alive daemon + managed server binary process-boundary integration"
+---
+
 ## Expected
 
 1. `Response.ServerReady` is true — daemon logged ready or `[keepalive] phase=server_ready`.
@@ -19,9 +24,11 @@
 - `0` when server becomes ready within 60s startup timeout despite 15s core delay.
 
 ```go
-import "testing"
-
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

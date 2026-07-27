@@ -22,9 +22,11 @@ REQUIREMENT leaf `local-dir/wrong-remote-dir`.
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	dir := mkProjectDir(t)
 	gitInitWithMain(t, dir)
 	gitInitialCommit(t, dir, "Initial commit")

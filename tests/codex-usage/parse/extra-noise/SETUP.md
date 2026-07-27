@@ -19,9 +19,13 @@ noisy stdout -> ParseStatusOutput -> UsageInfo
 REQUIREMENT leaf: `parse/extra-noise`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.FixtureFile = "show-status-noisy.txt"
 	req.ExpectParseError = false
 	return nil

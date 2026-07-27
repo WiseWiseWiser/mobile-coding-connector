@@ -19,9 +19,13 @@ Fetcher returns canonical codex usage snapshot (58%, credits, reset).
 REQUIREMENT leaf: `fetch/mock-command-success`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.FetchMode = "success"
 	return nil
 }

@@ -41,9 +41,13 @@ parts, loading/failure UX, and stale-while-revalidate. HTTP create/list remains
 covered by `tests/wrkserver/`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Root validates request pointer; grouping/leaf Setups populate Op and inputs.
 	if req == nil {
 		t.Fatal("nil request")

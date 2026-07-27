@@ -19,9 +19,11 @@ None beyond parse group.
 Invalid mode must not silently default.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ModeInput = "bogus"
 	return nil
 }

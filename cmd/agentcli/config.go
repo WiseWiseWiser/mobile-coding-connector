@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/xhd2015/ai-critic/cmd/agentcli/testhooks"
 )
 
 // domainConfig is a saved server+token pair.
@@ -65,7 +67,7 @@ func normalizeServerForMatch(server string) string {
 }
 
 func configFilePath() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := testhooks.UserHomeDir()
 	if err != nil {
 		return "", err
 	}

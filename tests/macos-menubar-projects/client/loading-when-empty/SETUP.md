@@ -20,9 +20,13 @@ Local Projects menu UI and loading label wiring.
 REQUIREMENT scenario 14: show Loading… when loading and empty.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "loading-when-empty"
 	return nil
 }

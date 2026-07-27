@@ -19,9 +19,13 @@ Remaining duration is 90 seconds (1.5 minutes) — floors to `left 1min`.
 REQUIREMENT rule: minutes floor to at least 1 when 0 < duration < 1h.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Reset = "July 6, 16:56:30 PT"
 	req.NowRFC3339 = "2026-07-06T16:55:00-07:00"
 	return nil

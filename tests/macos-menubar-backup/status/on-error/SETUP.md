@@ -19,9 +19,13 @@ Last run failed; last_error / last_finished set. Preferred presentation when las
 REQUIREMENT status title (optional preferred error form).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Enabled = true
 	req.Phase = "error"
 	req.LastError = "download failed"

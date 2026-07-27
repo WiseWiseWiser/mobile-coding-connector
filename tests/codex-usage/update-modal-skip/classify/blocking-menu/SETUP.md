@@ -19,9 +19,13 @@ Fixtures `01` and `02` contain full menu options and `Press enter to continue`.
 Auto-Skip protocol only runs when blocking menu is detected.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	t.Helper()
 	// Grouping: ensure classify op for all menu leaves.
 	if req.Op == "" {

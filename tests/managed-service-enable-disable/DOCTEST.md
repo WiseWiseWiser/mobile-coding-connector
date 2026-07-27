@@ -5,24 +5,18 @@ reconcile, boot auto-start filtering, and `remote-agent service` CLI prompts.
 
 # DSN (Domain Specific Notion)
 
-The harness exercises managed services against a real `ai-critic-server`
-subprocess with isolated `AI_CRITIC_HOME`, seeded `services.json`, and optional
-`remote-agent` CLI invocation.
+Most leaves are **L2 in-process**: `services.NewManagerAt` + Manager methods
+(or `agentcli.Run` against `RegisterAPIWithManager`). One sparse **L3 e2e** smoke
+keeps the product binary path (`UseBinary` + `label: heavy, e2e`):
+`disable-running/keeps-process`.
 
 **Participants**
 
-- **ai-critic-server subprocess** — loads `services.json`, runs
-  `AutoStartConfiguredServices()` at boot, and `reconcileProcesses()` on a 5s
-  ticker.
-- **Service definitions** — persisted rows in `{AI_CRITIC_HOME}/services.json`
-  with optional `enabled` (default true when absent).
-- **Service processes** — long-running commands (typically `sleep`) tracked by
-  PID, `desiredRunning`, and `status`.
-- **HTTP client** — authenticated `POST /api/services/{disable,enable,start,stop}`
-  and `GET /api/services` for server-side leaves.
-- **remote-agent subprocess** — built from `./cmd/remote-agent`; prints API
-  `message` to stdout for CLI leaves.
-- **Test credentials** — `lib.TestPassword` token in `server-credentials`.
+- **L2: services.Manager** — isolated config dir; Enable/Disable/Start/AutoStart.
+- **L2: agentcli.Run** — in-process `service enable|disable` against local mux.
+- **L3: ai-critic-server + remote-agent subprocesses** — sparse binary smoke.
+- **Service definitions** — `services.json` with optional `enabled`.
+- **Service processes** — long-running `sleep` tracked by PID / desiredRunning.
 
 **Behaviors**
 
@@ -38,7 +32,7 @@ subprocess with isolated `AI_CRITIC_HOME`, seeded `services.json`, and optional
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -107,17 +101,26 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/xhd2015/ai-critic/cmd/agentcli"
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/ai-critic/server/services"
+	"github.com/xhd2015/doctest/session"
 )
+
+// agentcliInProcessMu serializes in-process agentcli.Run (package-level state).
+var agentcliInProcessMu sync.Mutex
+
 
 // ServiceSeed is one row written to services.json before the server starts.
 type ServiceSeed struct {
@@ -131,8 +134,12 @@ type Request struct {
 	Services []ServiceSeed
 	TargetID string
 	Action   string
-	UseCLI   bool
+	UseCLI   bool // invoke via agentcli/CLI path (L2 or L3)
 	CLIArgs  []string
+
+	// UseBinary / E2E force L3 product binaries. Default false → L2 Manager.
+	UseBinary bool
+	E2E       bool
 
 	PreStartID string
 	Token      string
@@ -184,7 +191,11 @@ type servicesFileRow struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func useBinaryPath(req *Request) bool {
+	return req != nil && (req.UseBinary || req.E2E)
+}
+
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	if req.Token == "" {
@@ -193,11 +204,260 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if req.TargetID == "" && len(req.Services) > 0 {
 		req.TargetID = req.Services[0].ID
 	}
-	if req.WaitAfterSecs <= 0 && req.Action == "enable" {
+	if req.WaitAfterSecs <= 0 && req.Action == "enable" && !req.UseCLI {
 		req.WaitAfterSecs = 7
 	}
 
-	moduleRoot, err := findModuleRoot()
+	configHome, err := lib.CreateTestConfigHome()
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() { os.RemoveAll(configHome) })
+	resp.ConfigHome = configHome
+
+	agentHome, err := os.MkdirTemp("", "remote-agent-enable-disable-home-*")
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() { os.RemoveAll(agentHome) })
+	resp.AgentHome = agentHome
+	aiCriticAgent := filepath.Join(agentHome, ".ai-critic")
+	if err := os.MkdirAll(aiCriticAgent, 0755); err != nil {
+		return nil, err
+	}
+
+	if len(req.Services) > 0 {
+		if err := writeServicesJSON(configHome, req.Services); err != nil {
+			return nil, err
+		}
+	}
+
+	if useBinaryPath(req) {
+		return runBinaryE2E(t, d, req, resp, configHome, agentHome, aiCriticAgent)
+	}
+	return runInProcessL2(t, req, resp, configHome, agentHome, aiCriticAgent)
+}
+
+func runInProcessL2(t *testing.T, req *Request, resp *Response, configHome, agentHome, aiCriticAgent string) (*Response, error) {
+	m := services.NewManagerAt(configHome)
+	t.Cleanup(func() { m.Shutdown() })
+
+	// Boot auto-start for boot-only leaves.
+	if req.Action == "" || req.Action == "boot-only" {
+		go m.AutoStartConfiguredServices()
+		if req.WaitAfterSecs > 0 {
+			time.Sleep(time.Duration(req.WaitAfterSecs) * time.Second)
+		} else {
+			time.Sleep(3 * time.Second)
+		}
+		if err := fillServiceSnapshot(req, resp, m, configHome); err != nil {
+			return nil, err
+		}
+		return resp, nil
+	}
+
+	if req.PreStartID != "" {
+		if _, err := m.Start(req.PreStartID); err != nil {
+			return nil, fmt.Errorf("pre-start %s: %w", req.PreStartID, err)
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	// Enable deferred start needs health reconcile.
+	if req.Action == "enable" {
+		m.StartHealthCheck()
+	}
+
+	if req.UseCLI {
+		mux := http.NewServeMux()
+		services.RegisterAPIWithManager(mux, m)
+		mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+		})
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/ping" {
+				mux.ServeHTTP(w, r)
+				return
+			}
+			auth := r.Header.Get("Authorization")
+			if auth != "Bearer "+req.Token {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			mux.ServeHTTP(w, r)
+		})
+		srv := httptest.NewServer(handler)
+		t.Cleanup(srv.Close)
+		serverURL := srv.URL
+		if err := writeRemoteAgentConfig(filepath.Join(aiCriticAgent, "remote-agent-config.json"), serverURL, req.Token); err != nil {
+			return nil, err
+		}
+		argv := req.CLIArgs
+		if len(argv) == 0 {
+			argv = []string{"service", req.Action, serviceNameForTarget(req)}
+		}
+		fullArgv := append([]string{"--server", serverURL, "--token", req.Token}, argv...)
+		exitCode, stdout, stderr, runErr := runAgentcliCaptured(fullArgv)
+		resp.ExitCode = exitCode
+		resp.Stdout = stdout
+		resp.Stderr = stderr
+		resp.Combined = strings.TrimSpace(stdout + "\n" + stderr)
+		if runErr != nil && resp.ActionError == "" {
+			resp.ActionError = runErr.Error()
+		}
+	} else {
+		switch req.Action {
+		case "disable":
+			ar, err := m.Disable(req.TargetID)
+			if err != nil {
+				resp.ActionError = err.Error()
+			} else {
+				resp.ActionResult = toActionResponse(ar)
+			}
+		case "enable":
+			ar, err := m.Enable(req.TargetID)
+			if err != nil {
+				resp.ActionError = err.Error()
+			} else {
+				resp.ActionResult = toActionResponse(ar)
+			}
+		case "start":
+			st, err := m.Start(req.TargetID)
+			if err != nil {
+				resp.ActionError = err.Error()
+			} else if st != nil {
+				resp.ActionResult = &serviceActionResponse{Status: "ok", Service: toServiceStatus(st)}
+			}
+		case "stop":
+			// Manager has no public Stop; use Restart reverse via API path not available.
+			// stop via package: list then disable doesn't stop. Use binary for stop only if needed.
+			// For enable/disable trees we only need start as PreStart.
+			resp.ActionError = "stop not used in L2 path"
+		default:
+			return nil, fmt.Errorf("unknown action %q", req.Action)
+		}
+	}
+
+	// Immediate snapshot
+	if err := fillServiceSnapshot(req, resp, m, configHome); err != nil {
+		return nil, err
+	}
+	resp.TargetRunningImmediate = resp.TargetRunningAfterWait
+
+	if req.WaitAfterSecs > 0 && req.Action != "" && req.Action != "boot-only" {
+		time.Sleep(time.Duration(req.WaitAfterSecs) * time.Second)
+		if err := fillServiceSnapshot(req, resp, m, configHome); err != nil {
+			return nil, err
+		}
+	}
+	t.Logf("L2 Manager action=%s target=%s", req.Action, req.TargetID)
+	return resp, nil
+}
+
+func findListed(m *services.Manager, id string) (services.ServiceStatus, bool) {
+	for _, s := range m.ListAll() {
+		if s.ID == id {
+			return s, true
+		}
+	}
+	return services.ServiceStatus{}, false
+}
+
+func toServiceStatus(st *services.ServiceStatus) serviceStatus {
+	if st == nil {
+		return serviceStatus{}
+	}
+	return serviceStatus{
+		ID: st.ID, Name: st.Name, Command: st.Command, Status: st.Status,
+		PID: st.PID, DesiredRunning: st.DesiredRunning, Enabled: st.Enabled,
+	}
+}
+
+func toActionResponse(ar *services.ServiceActionResponse) *serviceActionResponse {
+	if ar == nil {
+		return nil
+	}
+	out := &serviceActionResponse{Status: ar.Status, Message: ar.Message}
+	if ar.Service != nil {
+		out.Service = toServiceStatus(ar.Service)
+	}
+	return out
+}
+
+func fillServiceSnapshot(req *Request, resp *Response, m *services.Manager, configHome string) error {
+	listed := m.ListAll()
+	svcs := make([]serviceStatus, 0, len(listed))
+	for _, s := range listed {
+		svcs = append(svcs, toServiceStatus(&s))
+	}
+	resp.ServicesAfterAction = svcs
+	if req.TargetID != "" {
+		for _, svc := range svcs {
+			if svc.ID == req.TargetID {
+				resp.TargetPID = svc.PID
+				resp.TargetRunningAfterWait = serviceIsRunning(svc)
+				break
+			}
+		}
+	}
+	onDisk, err := readServicesJSON(configHome)
+	if err != nil {
+		return err
+	}
+	resp.ServicesOnDisk = onDisk
+	if req.TargetID != "" {
+		for _, row := range onDisk {
+			id, _ := row["id"].(string)
+			if id == req.TargetID {
+				if enabled, ok := row["enabled"].(bool); ok {
+					v := enabled
+					resp.TargetEnabledOnDisk = &v
+				}
+				break
+			}
+		}
+	}
+	return nil
+}
+
+
+func runAgentcliCaptured(argv []string) (exitCode int, stdout, stderr string, err error) {
+	agentcliInProcessMu.Lock()
+	defer agentcliInProcessMu.Unlock()
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return 1, "", "", err
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		stdoutR.Close()
+		stdoutW.Close()
+		return 1, "", "", err
+	}
+
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdoutW, stderrW
+	runErr := agentcli.Run(agentcli.RemoteProfile(), argv)
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+
+	outBytes, _ := io.ReadAll(stdoutR)
+	errBytes, _ := io.ReadAll(stderrR)
+	_ = stdoutR.Close()
+	_ = stderrR.Close()
+
+	exitCode = 0
+	if runErr != nil {
+		exitCode = 1
+	}
+	return exitCode, string(outBytes), string(errBytes), runErr
+}
+
+func runBinaryE2E(t *testing.T, d *session.Doctest, req *Request, resp *Response, configHome, agentHome, aiCriticAgent string) (*Response, error) {
+	moduleRoot, err := findModuleRoot(d)
 	if err != nil {
 		return nil, err
 	}
@@ -222,33 +482,9 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		t.Cleanup(func() { os.Remove(spec.out) })
 	}
 
-	configHome, err := lib.CreateTestConfigHome()
-	if err != nil {
-		return nil, err
-	}
-	t.Cleanup(func() { os.RemoveAll(configHome) })
-	resp.ConfigHome = configHome
-
-	agentHome, err := os.MkdirTemp("", "remote-agent-enable-disable-home-*")
-	if err != nil {
-		return nil, err
-	}
-	t.Cleanup(func() { os.RemoveAll(agentHome) })
-	resp.AgentHome = agentHome
-	aiCriticAgent := filepath.Join(agentHome, ".ai-critic")
-	if err := os.MkdirAll(aiCriticAgent, 0755); err != nil {
-		return nil, err
-	}
-
 	credFile, err := lib.WriteTestCredentials(configHome)
 	if err != nil {
 		return nil, err
-	}
-
-	if len(req.Services) > 0 {
-		if err := writeServicesJSON(configHome, req.Services); err != nil {
-			return nil, err
-		}
 	}
 
 	portBase := portBaseFromTestName(t.Name())
@@ -260,7 +496,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	serverCmd := exec.Command(serverBin, "--port", strconv.Itoa(serverPort), "--credentials-file", credFile)
 	serverCmd.Dir = configHome
-	serverCmd.Env = lib.AppendTestServerEnv(os.Environ(), configHome)
+	env := lib.AppendTestServerEnv(os.Environ(), configHome)
+	env = stripEnvPrefix(env, "AI_CRITIC_TEST_SKIP_EXTENSION=")
+	env = append(env, "AI_CRITIC_TEST_SKIP_EXTENSION=0")
+	serverCmd.Env = env
 	if err := serverCmd.Start(); err != nil {
 		return nil, fmt.Errorf("start server: %w", err)
 	}
@@ -286,7 +525,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	switch req.Action {
 	case "", "boot-only":
-		// autostart-only: server boot already ran AutoStartConfiguredServices
 		if req.WaitAfterSecs > 0 {
 			time.Sleep(time.Duration(req.WaitAfterSecs) * time.Second)
 		}
@@ -332,12 +570,12 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, fmt.Errorf("unknown action %q", req.Action)
 	}
 
-	services, err := getServices(baseURL, req.Token)
+	servicesList, err := getServices(baseURL, req.Token)
 	if err != nil {
 		return nil, err
 	}
 	if req.TargetID != "" {
-		for _, svc := range services {
+		for _, svc := range servicesList {
 			if svc.ID == req.TargetID {
 				resp.TargetPID = svc.PID
 				resp.TargetRunningImmediate = serviceIsRunning(svc)
@@ -348,13 +586,13 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	if req.WaitAfterSecs > 0 && req.Action != "" && req.Action != "boot-only" {
 		time.Sleep(time.Duration(req.WaitAfterSecs) * time.Second)
-		services, err = getServices(baseURL, req.Token)
+		servicesList, err = getServices(baseURL, req.Token)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	resp.ServicesAfterAction = services
+	resp.ServicesAfterAction = servicesList
 
 	onDisk, err := readServicesJSON(configHome)
 	if err != nil {
@@ -363,7 +601,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	resp.ServicesOnDisk = onDisk
 
 	if req.TargetID != "" {
-		for _, svc := range services {
+		for _, svc := range servicesList {
 			if svc.ID == req.TargetID {
 				resp.TargetPID = svc.PID
 				resp.TargetRunningAfterWait = serviceIsRunning(svc)
@@ -384,4 +622,5 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	return resp, nil
 }
+
 ```

@@ -24,12 +24,14 @@ REQUIREMENT leaf #1 — file-regression/single-file.
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	localDir := mkLocalWorkDir(t)
 	localFile := filepath.Join(localDir, "hello.txt")
-	copyFixture(t, "testdata/hello.txt", localFile)
+	copyFixture(t, filepath.Join(d.DOCTEST_CASE, "testdata", "hello.txt"), localFile)
 	setUploadArgs(t, req, localFile, "uploads/hello.txt")
 	req.RemoteDir = "uploads"
 	return nil

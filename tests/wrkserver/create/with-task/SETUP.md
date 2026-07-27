@@ -22,9 +22,11 @@ Clean main git repo.
 REQUIREMENT scenario 6. Slugify: lowercase, non-alnum → `-` → `fix-login`.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ProjectPath = mkCleanMainRepo(t)
 	req.Task = "Fix Login"
 	req.OmitTask = false

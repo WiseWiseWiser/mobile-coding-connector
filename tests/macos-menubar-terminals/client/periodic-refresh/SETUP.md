@@ -19,9 +19,13 @@ App-side poll re-fetches services and terminal sessions without requiring manual
 REQUIREMENT leaf: `client/periodic-refresh`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ClientLeaf = "periodic-refresh"
 	return nil
 }

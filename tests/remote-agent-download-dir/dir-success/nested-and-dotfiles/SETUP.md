@@ -21,9 +21,13 @@ Remote destination `uploads/dot-mirror` seeded with dotfiles and empty subdir.
 REQUIREMENT leaf #6 — dir-success/nested-and-dotfiles.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	seedDotRemoteTree(req)
 	setDownloadArgs(t, req, "uploads/dot-mirror", "./local-dot")
 	req.LocalDir = localDirRel("uploads/dot-mirror", "./local-dot")

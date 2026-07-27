@@ -23,9 +23,11 @@ MkdirAll(workingDir) -> services.json -> POST /api/services/start -> running
 Sibling `missing-dir/` covers auto-creation when the path is absent.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.TempBase = t.TempDir()
 	return nil
 }

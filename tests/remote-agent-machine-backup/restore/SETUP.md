@@ -28,9 +28,11 @@ optional `APPLYING:` (apply only), then `dry-run: machine restore plan` or
 import (
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if len(req.Args) >= 2 && req.Args[0] == "machine" && req.Args[1] != "restore" {
 		t.Fatalf("restore group: unexpected subcommand argv %v", req.Args)
 	}

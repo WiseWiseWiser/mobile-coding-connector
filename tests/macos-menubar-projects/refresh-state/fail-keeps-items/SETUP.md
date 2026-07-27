@@ -22,9 +22,13 @@ Refresh was in progress with a non-empty prior list; the list call fails.
 REQUIREMENT: failure → keep projects; set `projectsLoadError`; `projectsLoading=false`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.PriorProjects = []string{"dot-pkgs"}
 	req.PriorLoading = true
 	req.PriorError = ""

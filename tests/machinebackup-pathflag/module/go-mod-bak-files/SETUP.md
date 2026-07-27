@@ -22,9 +22,11 @@ go.mod -> replace github.com/xhd2015/bak-files => ../..
 - RED until implementer edits go.mod (designer must not).
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = OpModuleGoMod
 	return nil
 }

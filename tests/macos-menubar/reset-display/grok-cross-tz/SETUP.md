@@ -19,9 +19,13 @@ FormatResetDisplay("July 9, 17:55 PT", now=Jul 6 16:55 EDT) -> "July 9, 20:55"
 REQUIREMENT scenario 7: `July 9, 17:55 PT` in EDT → `July 9, 20:55`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Reset = "July 9, 17:55 PT"
 	req.NowRFC3339 = "2026-07-06T16:55:00-04:00"
 	return nil

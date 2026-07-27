@@ -1,3 +1,7 @@
+---
+explanation: "L2 Manager.Start; log lacks fork/exec bash error"
+---
+
 ## Expected
 
 1. `Run` completes without error and `Response.StartResult` is non-nil.
@@ -27,9 +31,10 @@ import (
 	"testing"
 
 	"github.com/xhd2015/doctest/assert"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

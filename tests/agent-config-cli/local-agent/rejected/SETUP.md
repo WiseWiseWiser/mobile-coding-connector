@@ -22,10 +22,12 @@ Parity for shared flag validation.
 ```go
 import (
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 	"time"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.Timeout <= 0 {
 		req.Timeout = 3 * time.Second
 	}

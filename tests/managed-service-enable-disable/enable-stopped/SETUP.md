@@ -26,9 +26,11 @@ POST /api/services/enable -> daemon starts within ~6s
 Sibling `enable-running/` covers enabling while already running.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Services = []ServiceSeed{
 		sleepService("svc-en-stopped-001", "sleep-disabled", boolPtr(false)),
 	}

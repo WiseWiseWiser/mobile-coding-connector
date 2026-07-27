@@ -20,9 +20,13 @@ Task enabled, not running, last finish and next run known.
 REQUIREMENT #12.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Enabled = true
 	req.Phase = "idle"
 	req.NowRFC3339 = "2026-07-10T15:00:00Z"

@@ -1,3 +1,7 @@
+---
+label: heavy, e2e
+explanation: server + remote-agent binary process boundary
+---
 ## Expected
 
 1. Create succeeds (`HTTPStatus` 2xx, no `ActionError`).
@@ -21,9 +25,10 @@
 import (
 	"strings"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v body=%s", err, resp.Body)
 	}

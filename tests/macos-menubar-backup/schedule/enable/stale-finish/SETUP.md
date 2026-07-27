@@ -19,9 +19,13 @@ Last finish older than the 1h interval.
 REQUIREMENT #4.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// now = 15:00Z; last = 13:00Z (2h ago)
 	req.NowRFC3339 = "2026-07-10T15:00:00Z"
 	req.LastFinishedRFC3339 = "2026-07-10T13:00:00Z"

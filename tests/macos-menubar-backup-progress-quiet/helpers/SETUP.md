@@ -23,9 +23,13 @@ batching (optional but sealed once leaves exist).
 REQUIREMENT optional pure helpers; RED until symbols exist in `macosapp/menubar`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	// Grouping: ensure request exists; leaves set helper_* Op.
 	if req == nil {
 		t.Fatal("req is nil")

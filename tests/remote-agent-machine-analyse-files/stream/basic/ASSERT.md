@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "L3 smoke: product binary analyse-files path"
+---
+
 ## Expected Output
 
 Stdout begins with `home: <serverHome>`, prints `> plain-dir` and `> notes.txt`
@@ -28,9 +33,11 @@ None (read-only scan).
 import (
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

@@ -22,9 +22,11 @@ REQUIREMENT scenarios 5–9. Whitespace-only task is treated as empty (no slug),
 even if CLI `wrk --task` rejects whitespace.
 
 ```go
-import "testing"
-
-func Setup(t *testing.T, req *Request) error {
+import (
+	"testing"
+	"github.com/xhd2015/doctest/session"
+)
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "create"
 	return nil
 }

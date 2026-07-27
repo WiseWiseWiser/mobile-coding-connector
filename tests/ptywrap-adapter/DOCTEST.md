@@ -57,16 +57,17 @@ import (
 	"testing"
 
 	"github.com/xhd2015/ai-critic/tests/ptywrap-adapter/adaptertest"
+	"github.com/xhd2015/doctest/session"
 )
 
 type Request = adaptertest.Request
 type Response = adaptertest.Response
 
-func Run(t *testing.T, req *Request) (*Response, error) {
-	return adaptertest.Run(t, req)
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
+	return adaptertest.Run(t, d, req)
 }
 
-func startAICriticServer(t *testing.T) (base string, port int, cleanup func()) {
-	return adaptertest.StartAICriticServer(t)
+func startAICriticServer(t *testing.T, d *session.Doctest) (base string, port int, cleanup func()) {
+	return adaptertest.StartAICriticServer(t, d)
 }
 ```

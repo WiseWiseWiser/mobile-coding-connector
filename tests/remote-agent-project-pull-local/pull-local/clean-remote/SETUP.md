@@ -21,9 +21,13 @@ Clean remote; binding seeded.
 REQUIREMENT leaf `pull-local/clean-remote`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	pair := pairSameOriginRepos(t)
 	remoteDir, localDir := pair.RemoteDir, pair.LocalDir
 	registerPullProject(t, req, "pull-clean-001", "pull-clean", remoteDir)

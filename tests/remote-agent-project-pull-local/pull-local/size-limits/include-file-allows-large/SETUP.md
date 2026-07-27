@@ -21,9 +21,13 @@ Same dirty layout as oversized rejection; include lists `big.bin`.
 REQUIREMENT leaf `include-file-allows-large`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	pair := pairSameOriginRepos(t)
 	dirtyWithBigUntracked(t, pair.RemoteDir)
 	seedSizeLimitPullProject(t, req, "pull-size-inc-001", "pull-size-inc", pair)

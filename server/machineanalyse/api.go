@@ -4,14 +4,34 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"strings"
 )
 
-// RegisterAPI registers machine analyse-files HTTP endpoints.
+// RegisterAPI registers machine analyse-files HTTP endpoints that use the
+// process HOME environment variable as the scan root (production path).
 func RegisterAPI(mux *http.ServeMux) {
-	mux.HandleFunc("/api/remote-agent/machine/analyse-files/stream", handleAnalyseFilesStream)
+	RegisterAPIForHome(mux, "")
 }
 
-func handleAnalyseFilesStream(w http.ResponseWriter, r *http.Request) {
+// RegisterAPIForHome registers the same endpoints as RegisterAPI, but scopes
+// analyse-files scanning to the given home directory. When home is empty,
+// handlers fall back to os.Getenv("HOME") like RegisterAPI.
+//
+// Intended for in-process tests that want an explicit home without mutating
+// process environment.
+func RegisterAPIForHome(mux *http.ServeMux, home string) {
+	homeFn := func() string {
+		if strings.TrimSpace(home) != "" {
+			return home
+		}
+		return os.Getenv("HOME")
+	}
+	mux.HandleFunc("/api/remote-agent/machine/analyse-files/stream", func(w http.ResponseWriter, r *http.Request) {
+		handleAnalyseFilesStream(w, r, homeFn())
+	})
+}
+
+func handleAnalyseFilesStream(w http.ResponseWriter, r *http.Request, home string) {
 	if r.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -21,7 +41,7 @@ func handleAnalyseFilesStream(w http.ResponseWriter, r *http.Request) {
 		var discard map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&discard)
 	}
-	if err := AnalyseFilesStream(w, os.Getenv("HOME")); err != nil {
+	if err := AnalyseFilesStream(w, home); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

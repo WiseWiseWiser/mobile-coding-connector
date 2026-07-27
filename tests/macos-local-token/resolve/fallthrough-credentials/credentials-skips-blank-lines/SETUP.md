@@ -25,9 +25,13 @@ Config missing so credentials path is used; file starts with blank/whitespace li
 REQUIREMENT leaf: scenario 7 (and scenario 2 base path).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.ConfigPresent = false
 	req.CredentialsText = "\n\n  \n\t\nfirst-non-empty-cred\nsecond-token-ignored\n"
 	return nil

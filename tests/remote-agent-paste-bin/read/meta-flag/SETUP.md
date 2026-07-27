@@ -21,9 +21,13 @@ Scratch seeded with fixed `updated_at` for deterministic stderr assertion.
 REQUIREMENT leaf: `read-meta-flag`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	seedScratch(req, seededUTF8Content, seededMetaUpdatedAt)
 	setReadTTY(t, req, "--meta")
 	return nil

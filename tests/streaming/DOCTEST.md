@@ -78,6 +78,7 @@ import (
 
 	"github.com/xhd2015/ai-critic/script/lib"
 	"github.com/xhd2015/ai-critic/server/proxy/wsproxy"
+	"github.com/xhd2015/doctest/session"
 )
 
 type Request struct {
@@ -102,12 +103,18 @@ type Response struct {
 	HasResultLine bool
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	buildDir, err := findModuleRoot()
 	if err != nil {
 		return nil, err
+	}
+	if d != nil && d.DOCTEST_ROOT != "" {
+		candidate := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
+		if _, statErr := os.Stat(filepath.Join(candidate, "go.mod")); statErr == nil {
+			buildDir = candidate
+		}
 	}
 
 	safeName := strings.ReplaceAll(t.Name(), "/", "_")
@@ -135,8 +142,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, err
 	}
 	t.Cleanup(func() { os.RemoveAll(configHome) })
-	os.Setenv(lib.EnvAI_CRITIC_HOME, configHome)
-	t.Cleanup(func() { os.Unsetenv(lib.EnvAI_CRITIC_HOME) })
 
 	credFile, err := lib.WriteTestCredentials(configHome)
 	if err != nil {
@@ -146,6 +151,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if err := os.MkdirAll(configHome, 0755); err != nil {
 		return nil, err
 	}
+	// Harness-process hooks for writing config files (not process AI_CRITIC_HOME).
 	wsproxy.SetTestConfigDir(configHome)
 	t.Cleanup(func() { wsproxy.SetTestConfigDir("") })
 	wsproxy.SetTestStubNetworkChecks(true)
@@ -177,6 +183,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	serverCmd := exec.Command(serverBin, "--port", strconv.Itoa(serverPort), "--credentials-file", credFile)
 	serverCmd.Dir = configHome
+	// Child-only isolation: AI_CRITIC_HOME on cmd.Env, never process Setenv.
 	serverCmd.Env = lib.AppendTestServerEnv(os.Environ(), configHome)
 	if err := serverCmd.Start(); err != nil {
 		return nil, fmt.Errorf("start server: %w", err)
@@ -200,6 +207,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		"--token", lib.TestPassword,
 		"ws-proxy", "doctor",
 	)
+	// Agent talks to server over HTTP; no process AI_CRITIC_HOME needed.
 	agentCmd.Env = os.Environ()
 
 	stdout, err := agentCmd.StdoutPipe()

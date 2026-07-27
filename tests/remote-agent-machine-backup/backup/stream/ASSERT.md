@@ -1,3 +1,8 @@
+---
+label: heavy, e2e
+explanation: "L3 smoke: product binary backup archive happy path"
+---
+
 ## Expected Output
 
 Backup completes quietly or prints a short summary; primary artifact is the archive file.
@@ -29,9 +34,11 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}

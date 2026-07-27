@@ -1,3 +1,7 @@
+---
+label: e2e
+explanation: GROK_SHOW_USAGE_COMMAND mock TUI process boundary
+---
 ## Expected
 
 1. `ServiceStatus` is `ready`.
@@ -12,10 +16,12 @@
 ```go
 import (
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 	"time"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

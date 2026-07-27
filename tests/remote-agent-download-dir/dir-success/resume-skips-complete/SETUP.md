@@ -22,9 +22,13 @@ Remote tree at `uploads/mirror`; local `local-mirror/` pre-seeded with complete 
 REQUIREMENT leaf #4 — dir-success/resume-skips-complete.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	seedStandardRemoteTree(req)
 	setDownloadArgs(t, req, "uploads/mirror", "./local-mirror")
 	req.LocalDir = localDirRel("uploads/mirror", "./local-mirror")

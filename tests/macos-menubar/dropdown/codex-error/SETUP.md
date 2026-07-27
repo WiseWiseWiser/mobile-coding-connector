@@ -19,9 +19,13 @@ Typical bundled-install failure: missing `codex-show-status` beside `ai-critic`.
 REQUIREMENT leaf: `dropdown/codex-error`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "codex-dropdown"
 	req.CodexStatus = "error"
 	req.CodexMonthly = ""

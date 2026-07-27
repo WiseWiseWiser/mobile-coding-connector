@@ -72,6 +72,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/ai-critic/script/lib"
+	"github.com/xhd2015/doctest/session"
 )
 
 const (
@@ -176,20 +177,24 @@ func registryIsEmpty(configHome string) bool {
 	return len(reg.Children) == 0
 }
 
-func fakeOpenCodeSrcDir() string {
-	root := DOCTEST_ROOT
+func fakeOpenCodeSrcDir(d *session.Doctest) string {
+	root := ""
+	if d != nil {
+		root = d.DOCTEST_ROOT
+	}
 	if root == "" {
 		root = "."
 	}
-	return filepath.Join(root, "..", "..", "server", "agents", "tests", "grok-integration", "testdata", "fake-opencode")
+	// cleanup tree root is tests/server/cleanup; fixture lives under tests/server/agents/...
+	return filepath.Join(root, "..", "agents", "tests", "grok-integration", "testdata", "fake-opencode")
 }
 
-func buildFakeOpenCode(t *testing.T, binDir string) {
+func buildFakeOpenCode(t *testing.T, d *session.Doctest, binDir string) {
 	t.Helper()
 	_ = os.MkdirAll(binDir, 0755)
 	bin := filepath.Join(binDir, "opencode")
 	build := exec.Command("go", "build", "-o", bin, ".")
-	build.Dir = fakeOpenCodeSrcDir()
+	build.Dir = fakeOpenCodeSrcDir(d)
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build fake opencode: %v\n%s", err, out)
 	}
@@ -239,7 +244,7 @@ func stopServerProcess(cmd *exec.Cmd, configHome string, extraPorts ...int) {
 	_ = lib.CleanupOpencodeServe(configHome, extraPorts...)
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	if req.TimeoutSecs <= 0 {
@@ -253,13 +258,16 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	// From tests/server/cleanup leaf, module root is DOCTEST_ROOT/../..
-	if strings.HasSuffix(moduleRoot, "cleanup") || strings.Contains(moduleRoot, "server/cleanup") {
-		moduleRoot = filepath.Join(DOCTEST_ROOT, "..", "..")
-		if _, statErr := os.Stat(filepath.Join(moduleRoot, "go.mod")); statErr != nil {
-			moduleRoot, err = findGoModuleRoot()
-			if err != nil {
-				return nil, err
+	// From tests/server/cleanup tree root, module root is three levels up.
+	if d != nil && d.DOCTEST_ROOT != "" {
+		candidate := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", "..", ".."))
+		if _, statErr := os.Stat(filepath.Join(candidate, "go.mod")); statErr == nil {
+			moduleRoot = candidate
+		} else {
+			// Fallback: two levels if suite root is tests/server
+			candidate2 := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
+			if _, statErr2 := os.Stat(filepath.Join(candidate2, "go.mod")); statErr2 == nil {
+				moduleRoot = candidate2
 			}
 		}
 	}
@@ -275,7 +283,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	fakeBinDir := filepath.Join(t.TempDir(), "fake-oc")
 	if req.UseFakeOpenCode {
-		buildFakeOpenCode(t, fakeBinDir)
+		buildFakeOpenCode(t, d, fakeBinDir)
 	}
 
 	configHome, err := lib.CreateTestConfigHome()
@@ -283,10 +291,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, err
 	}
 	resp.ConfigHome = configHome
-	os.Setenv(lib.EnvAI_CRITIC_HOME, configHome)
 	t.Cleanup(func() {
 		lib.CleanupOpencodeServe(configHome)
-		os.Unsetenv(lib.EnvAI_CRITIC_HOME)
 		os.RemoveAll(configHome)
 	})
 
@@ -316,6 +322,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			env = append(env, e)
 		}
 	}
+	// Child-only isolation: AI_CRITIC_HOME on cmd.Env, never process Setenv.
 	cmd.Env = lib.AppendTestServerEnv(env, configHome)
 
 	var logBuf bytes.Buffer

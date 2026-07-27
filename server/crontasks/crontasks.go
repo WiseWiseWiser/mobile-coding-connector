@@ -97,12 +97,14 @@ type taskRuntime struct {
 
 // Manager owns definitions and the tick loop.
 type Manager struct {
-	mu        sync.Mutex
-	defs      []CronTaskDefinition
-	runtime   map[string]*taskRuntime
-	tickStop  chan struct{}
-	started   bool
+	mu         sync.Mutex
+	defs       []CronTaskDefinition
+	runtime    map[string]*taskRuntime
+	tickStop   chan struct{}
+	started    bool
 	configPath string
+	// dataDir is where cron-tasks/*.log live; empty → config.DataDir.
+	dataDir string
 }
 
 var (
@@ -118,17 +120,51 @@ func NewManager() *Manager {
 	return m
 }
 
+// NewManagerAt loads/saves cron-tasks.json at the given path (isolated L2 tests).
+// Logs are written under the same directory as the config file.
+func NewManagerAt(configPath string) *Manager {
+	configPath = strings.TrimSpace(configPath)
+	if configPath == "" {
+		return NewManager()
+	}
+	m := &Manager{
+		runtime:    make(map[string]*taskRuntime),
+		configPath: configPath,
+		dataDir:    filepath.Dir(configPath),
+	}
+	m.loadLocked()
+	return m
+}
+
 func GetDefaultManager() *Manager {
 	return defaultManager
 }
 
-// RegisterAPI mounts /api/cron-tasks* routes.
+// RegisterAPI mounts /api/cron-tasks* routes on the default manager.
 func RegisterAPI(mux *http.ServeMux) {
-	mux.HandleFunc("/api/cron-tasks", handleCronTasks)
-	mux.HandleFunc("/api/cron-tasks/enable", handleEnable)
-	mux.HandleFunc("/api/cron-tasks/disable", handleDisable)
-	mux.HandleFunc("/api/cron-tasks/run", handleRun)
-	mux.HandleFunc("/api/cron-tasks/history", handleHistory)
+	RegisterAPIWithManager(mux, GetDefaultManager())
+}
+
+// RegisterAPIWithManager mounts /api/cron-tasks* routes bound to m.
+func RegisterAPIWithManager(mux *http.ServeMux, m *Manager) {
+	if m == nil {
+		m = GetDefaultManager()
+	}
+	mux.HandleFunc("/api/cron-tasks", func(w http.ResponseWriter, r *http.Request) {
+		handleCronTasksWith(m, w, r)
+	})
+	mux.HandleFunc("/api/cron-tasks/enable", func(w http.ResponseWriter, r *http.Request) {
+		handleEnableWith(m, w, r)
+	})
+	mux.HandleFunc("/api/cron-tasks/disable", func(w http.ResponseWriter, r *http.Request) {
+		handleDisableWith(m, w, r)
+	})
+	mux.HandleFunc("/api/cron-tasks/run", func(w http.ResponseWriter, r *http.Request) {
+		handleRunWith(m, w, r)
+	})
+	mux.HandleFunc("/api/cron-tasks/history", func(w http.ResponseWriter, r *http.Request) {
+		handleHistoryWith(m, w, r)
+	})
 }
 
 // Start begins the 1s scheduler tick.
@@ -225,8 +261,8 @@ func (m *Manager) saveLocked() error {
 	if err := os.MkdirAll(filepath.Dir(m.configPath), 0755); err != nil {
 		return err
 	}
-	// Ensure DataDir/cron-tasks exists for logs too.
-	_ = os.MkdirAll(filepath.Join(config.DataDir, "cron-tasks"), 0755)
+	// Ensure log dir exists.
+	_ = os.MkdirAll(filepath.Join(m.cronDataDir(), "cron-tasks"), 0755)
 	data, err := json.MarshalIndent(m.defs, "", "  ")
 	if err != nil {
 		return err
@@ -582,7 +618,7 @@ func (m *Manager) buildStatusLocked(def CronTaskDefinition, now time.Time) CronT
 		Enabled:      taskEnabled(def),
 		Timeout:      def.Timeout,
 		Status:       StatusIdle,
-		LogPath:      taskLogPath(def.ID),
+		LogPath:      m.taskLogPath(def.ID),
 		RecentRuns:   append([]CronTaskRun(nil), def.RecentRuns...),
 		CreatedAt:    def.CreatedAt,
 		UpdatedAt:    def.UpdatedAt,
@@ -690,7 +726,19 @@ func taskEnabled(def CronTaskDefinition) bool {
 	return *def.Enabled
 }
 
+func (m *Manager) cronDataDir() string {
+	if m != nil && m.dataDir != "" {
+		return m.dataDir
+	}
+	return config.DataDir
+}
+
+func (m *Manager) taskLogPath(id string) string {
+	return filepath.Join(m.cronDataDir(), "cron-tasks", id+".log")
+}
+
 func taskLogPath(id string) string {
+	// Production default manager path.
 	return filepath.Join(config.DataDir, "cron-tasks", id+".log")
 }
 
@@ -825,7 +873,7 @@ func (m *Manager) startTask(id string) error {
 		m.mu.Unlock()
 		return fmt.Errorf("invalid timeout %q", timeoutStr)
 	}
-	logPath := taskLogPath(id)
+	logPath := m.taskLogPath(id)
 	workingDir := strings.TrimSpace(def.WorkingDir)
 	command := def.Command
 	extraEnv := def.ExtraEnv
@@ -1177,7 +1225,10 @@ func shellQuote(s string) string {
 // --- HTTP ---
 
 func handleCronTasks(w http.ResponseWriter, r *http.Request) {
-	mgr := GetDefaultManager()
+	handleCronTasksWith(GetDefaultManager(), w, r)
+}
+
+func handleCronTasksWith(mgr *Manager, w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, mgr.List())
@@ -1222,6 +1273,10 @@ func handleCronTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleEnable(w http.ResponseWriter, r *http.Request) {
+	handleEnableWith(GetDefaultManager(), w, r)
+}
+
+func handleEnableWith(mgr *Manager, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1231,7 +1286,7 @@ func handleEnable(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	st, err := GetDefaultManager().SetEnabled(id, true)
+	st, err := mgr.SetEnabled(id, true)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1240,6 +1295,10 @@ func handleEnable(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDisable(w http.ResponseWriter, r *http.Request) {
+	handleDisableWith(GetDefaultManager(), w, r)
+}
+
+func handleDisableWith(mgr *Manager, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1249,7 +1308,7 @@ func handleDisable(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	st, err := GetDefaultManager().SetEnabled(id, false)
+	st, err := mgr.SetEnabled(id, false)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1258,6 +1317,10 @@ func handleDisable(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleRun(w http.ResponseWriter, r *http.Request) {
+	handleRunWith(GetDefaultManager(), w, r)
+}
+
+func handleRunWith(mgr *Manager, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1267,7 +1330,7 @@ func handleRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	st, err := GetDefaultManager().RunNow(id)
+	st, err := mgr.RunNow(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1276,6 +1339,10 @@ func handleRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleHistory(w http.ResponseWriter, r *http.Request) {
+	handleHistoryWith(GetDefaultManager(), w, r)
+}
+
+func handleHistoryWith(mgr *Manager, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1285,7 +1352,7 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	runs, err := GetDefaultManager().History(id)
+	runs, err := mgr.History(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

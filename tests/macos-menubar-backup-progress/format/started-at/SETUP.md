@@ -19,9 +19,13 @@ Format uses the time value’s wall clock as `2006-01-02 15:04:05` (no TZ suffix
 REQUIREMENT format table “Started {local time}”.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "format_started_at"
 	req.TimeRFC3339 = "2026-07-10T15:00:00Z"
 	return nil

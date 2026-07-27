@@ -21,9 +21,13 @@ REQUIREMENT leaf `restore/show-meta-git-repos`. Complements `restore/show-meta`
 (installed.json + ENV only).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	requireGit(t)
 	req.SeedGitRepos = true
 	req.ShowMeta = true

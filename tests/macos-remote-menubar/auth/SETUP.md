@@ -21,9 +21,13 @@ Empty token must not produce a bare `Bearer` prefix.
 REQUIREMENT group: `auth/`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.Op = "auth"
 	return nil
 }

@@ -1,3 +1,7 @@
+---
+label: heavy, e2e
+explanation: server + remote-agent binary process boundary
+---
 ## Expected Output
 
 CLI stdout includes the local expression and the stored UTC expression (order flexible).
@@ -29,9 +33,10 @@ import (
 	"testing"
 
 	"github.com/xhd2015/doctest/assert"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run error: %v\n%s", err, resp.Combined)
 	}

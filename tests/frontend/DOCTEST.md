@@ -1,5 +1,9 @@
 # Frontend Doctests
 
+Sparse **L3 e2e** UI smokes (Playwright + quick-test): `navigation/home-loads`,
+`file-transfer/upload-and-list`, `service-enable-disable/enable-stopped/shows-prompt`.
+Redundant navigation/file-transfer leaves were removed; assert coverage maps to these smokes.
+
 Doc-style tests that drive the React UI through Playwright scripts executed via
 the `playwright-debug` CLI. Each leaf keeps its browser automation in a
 `script.js` fixture alongside `SETUP.md`.
@@ -191,6 +195,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -203,6 +208,7 @@ import (
 
 	"github.com/xhd2015/ai-critic/script/lib"
 	envpkg "github.com/xhd2015/ai-critic/server/env"
+	"github.com/xhd2015/doctest/session"
 )
 
 const defaultQuickTestPort = 3580
@@ -245,7 +251,7 @@ type serverProcess struct {
 	binPath    string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	headless := true
@@ -268,14 +274,19 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if hash < 0 {
 		hash = -hash
 	}
-	port := basePort + (hash % 100)
+	// Prefer an ephemeral free port in a high range to avoid parallel collisions
+	// and Chromium-blocked ports.
+	port, err := pickChromeSafeFreePort(chromeSafePort(basePort + (hash % 500)))
+	if err != nil {
+		return nil, err
+	}
 	resp.ServerPort = port
 
 	if req.TimeoutSecs <= 0 {
 		req.TimeoutSecs = 90
 	}
 
-	projectRoot, err := findGoModuleRoot()
+	projectRoot, err := findGoModuleRoot(d)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find repo root: %w", err)
 	}
@@ -284,9 +295,16 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return nil, fmt.Errorf("failed to load env: %w", err)
 	}
 
-	caseDir, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get case directory: %w", err)
+	caseDir := ""
+	if d != nil {
+		caseDir = d.DOCTEST_CASE
+	}
+	if caseDir == "" {
+		var err error
+		caseDir, err = os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get case directory: %w", err)
+		}
 	}
 	scriptPath := req.ScriptPath
 	if !filepath.IsAbs(scriptPath) {
@@ -389,7 +407,42 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	return resp, nil
 }
 
-func findGoModuleRoot() (string, error) {
+// chromeSafePort skips Chromium's hard-blocked ports (e.g. 3659 apple-sasl)
+// so Playwright page.goto does not fail with net::ERR_UNSAFE_PORT.
+func chromeSafePort(port int) int {
+	blocked := map[int]struct{}{
+		2049: {}, 3659: {}, 4045: {}, 6000: {}, 6665: {}, 6666: {}, 6667: {}, 6668: {}, 6669: {},
+	}
+	for {
+		if _, bad := blocked[port]; !bad {
+			return port
+		}
+		port++
+	}
+}
+
+func pickChromeSafeFreePort(base int) (int, error) {
+	for port := chromeSafePort(base); port < base+400; port = chromeSafePort(port + 1) {
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err == nil {
+			_ = ln.Close()
+			return port, nil
+		}
+	}
+	return 0, fmt.Errorf("no free chrome-safe port near %d", base)
+}
+
+func findGoModuleRoot(d *session.Doctest) (string, error) {
+	if d != nil && d.DOCTEST_ROOT != "" {
+		for dir := d.DOCTEST_ROOT; ; dir = filepath.Dir(dir) {
+			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+				return dir, nil
+			}
+			if filepath.Dir(dir) == dir {
+				break
+			}
+		}
+	}
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", err
