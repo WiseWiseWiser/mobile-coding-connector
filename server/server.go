@@ -30,6 +30,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/agents/web/cursorweb"
 	customagentapi "github.com/xhd2015/ai-critic/server/api"
 	"github.com/xhd2015/ai-critic/server/auth"
+	"github.com/xhd2015/ai-critic/server/bookmarks"
 	"github.com/xhd2015/ai-critic/server/checkpoint"
 	cloudflareSettings "github.com/xhd2015/ai-critic/server/cloudflare"
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
@@ -584,6 +585,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Settings export/import API
 	settings.RegisterAPI(mux)
+
+	// Bookmarks API (local Chrome-style tree)
+	bookmarks.RegisterAPI(mux)
 
 	// Exposed URLs API
 	exposedurls.RegisterAPI(mux)

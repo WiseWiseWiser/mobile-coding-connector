@@ -105,6 +105,8 @@ func Run(profile Profile, args []string) error {
 		return runMachine(resolve, rest)
 	case "settings":
 		return runSettings(resolve, rest)
+	case "bookmarks":
+		return runBookmarks(resolve, rest)
 	case "service":
 		return runService(resolve, rest)
 	case "cron":

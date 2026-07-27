@@ -12,6 +12,8 @@ final class AppState: ObservableObject {
     @Published var cronTasks: [CronTaskStatus] = []
     @Published var terminals: [TerminalSession] = []
     @Published var projects: [WrkProjectStatus] = []
+    /// Top-level bookmark children under the fixed root (folders + urls).
+    @Published var bookmarkRoots: [BookmarkNode] = []
     /// True while `listWrkProjects` is in flight (stale-while-revalidate; never clear projects).
     @Published var projectsLoading = false
     /// Last projects load error; nil on success. Kept for empty-area status labels.
@@ -59,6 +61,17 @@ final class AppState: ObservableObject {
                 return nil
             }
         }()
+        async let bookmarksTask: [BookmarkNode]? = {
+            do {
+                let doc = try await ServerClient.shared.listBookmarks()
+                if let root = doc.roots.first {
+                    return root.children ?? []
+                }
+                return []
+            } catch {
+                return nil
+            }
+        }()
 
         // Stale-while-revalidate: set loading, do not clear projects.
         projectsLoading = true
@@ -81,6 +94,9 @@ final class AppState: ObservableObject {
         }
         if let listed = await terminalsTask {
             terminals = listed
+        }
+        if let listed = await bookmarksTask {
+            bookmarkRoots = listed
         }
         switch await projectsTask {
         case .success(let listed):
@@ -537,6 +553,19 @@ private struct MenuBarDropdownContent: View {
             }
             .accessibilityIdentifier("projects-menu")
 
+            // Bookmarks submenu (Chrome-style tree; open with resolved browser)
+            Menu("Bookmarks") {
+                if state.bookmarkRoots.isEmpty {
+                    Text(BookmarkMenuFormatter.formatEmptyBookmarksLabel())
+                } else {
+                    BookmarkMenuItems(
+                        nodes: state.bookmarkRoots,
+                        defaultBrowser: defaultBrowser
+                    )
+                }
+            }
+            .accessibilityIdentifier("bookmarks-menu")
+
             Divider()
 
             Button(OpenInBrowserLabelFormatter.format(browser: defaultBrowser)) {
@@ -705,6 +734,39 @@ private struct MenuBarDropdownContent: View {
             err.alertStyle = .warning
             err.addButton(withTitle: "OK")
             err.runModal()
+        }
+    }
+}
+
+/// Recursive Bookmarks menu: folders nest; URL items open with resolved browser.
+@available(macOS 15.0, *)
+private struct BookmarkMenuItems: View {
+    let nodes: [BookmarkNode]
+    let defaultBrowser: String
+
+    var body: some View {
+        ForEach(nodes) { node in
+            if node.isFolder {
+                Menu(BookmarkMenuFormatter.formatBookmarkMenuTitle(name: node.name)) {
+                    let kids = node.children ?? []
+                    if kids.isEmpty {
+                        Text(BookmarkMenuFormatter.formatEmptyBookmarksLabel())
+                    } else {
+                        BookmarkMenuItems(nodes: kids, defaultBrowser: defaultBrowser)
+                    }
+                }
+            } else if node.isURL, let raw = node.url, let url = URL(string: raw) {
+                Button(BookmarkMenuFormatter.formatBookmarkMenuTitle(name: node.name)) {
+                    let effective = BookmarkMenuFormatter.resolveBrowser(
+                        bookmarkBrowser: node.browser,
+                        globalDefault: defaultBrowser
+                    )
+                    BrowserOpener.open(
+                        url: url,
+                        browser: BrowserPreference.fromStored(effective)
+                    )
+                }
+            }
         }
     }
 }

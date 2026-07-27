@@ -40,6 +40,7 @@ Commands:
     git                  Server-side git operations
     project              Project metadata and git identity
     settings             Server settings (git users, etc.)
+    bookmarks            Bookmarks tree (list/add/open)
 
   Machine
     machine              Backup/restore server HOME dot-files and dot-dirs
@@ -99,6 +100,7 @@ Commands:
     git                  Server-side git operations
     project              Project metadata and git identity
     settings             Server settings (git users, etc.)
+    bookmarks            Bookmarks tree (list/add/open)
 
   Machine
     machine              Backup/restore server HOME dot-files and dot-dirs

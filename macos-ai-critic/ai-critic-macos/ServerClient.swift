@@ -104,6 +104,31 @@ struct WrkCreateWorktreeResponse: Decodable {
     let branch: String
 }
 
+// MARK: - Bookmarks (GET /api/bookmarks)
+
+struct BookmarkNode: Decodable, Identifiable {
+    var id: String { nodeID }
+    let type: String
+    let nodeID: String
+    let name: String
+    let url: String?
+    let browser: String?
+    let children: [BookmarkNode]?
+
+    enum CodingKeys: String, CodingKey {
+        case type, name, url, browser, children
+        case nodeID = "id"
+    }
+
+    var isFolder: Bool { type == "folder" }
+    var isURL: Bool { type == "url" }
+}
+
+struct BookmarksDocument: Decodable {
+    let version: Int
+    let roots: [BookmarkNode]
+}
+
 
 enum ServerClientError: LocalizedError {
     case unreachable(String)
@@ -176,6 +201,15 @@ final class ServerClient {
             throw ServerClientError.unreachable("cron tasks list request failed")
         }
         return try JSONDecoder().decode([CronTaskStatus].self, from: data)
+    }
+
+    /// Full bookmarks tree via GET /api/bookmarks.
+    func listBookmarks() async throws -> BookmarksDocument {
+        let (data, response) = try await get(path: "/api/bookmarks")
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable("bookmarks list request failed")
+        }
+        return try JSONDecoder().decode(BookmarksDocument.self, from: data)
     }
 
     func runCronTask(id: String) async throws {
