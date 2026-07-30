@@ -10,11 +10,17 @@ import (
 
 const serviceHelp = `Usage: remote-agent service <subcommand> [args...]
 
-Manage remote services configured in the frontend's Services tab.
+Manage remote services configured on the remote-agent server.
 
 Subcommands:
-  list [--project-dir <dir>]
-      List managed services visible to the remote server.
+  list [--project-dir <dir>] [--all]
+      List managed services. Default is project-scoped; --all lists every service.
+
+  add --name NAME --command COMMAND [options...]
+      Create a new service definition (optionally start or disable it).
+
+  rm <service-name-or-id>
+      Remove one service by name or id.
 
   start <service-name-or-id>
       Start one service.
@@ -44,13 +50,43 @@ Subcommands:
       Stream one service's log file.
 `
 
-const serviceListHelp = `Usage: remote-agent service list [--project-dir <dir>]
+const serviceListHelp = `Usage: remote-agent service list [--project-dir <dir>] [--all]
 
 List services from the remote server.
 
 Options:
-  --project-dir DIR   Filter to the same project scope used by the frontend.
+  --project-dir DIR   Filter to one project scope.
+  --all               List services across all project scopes.
   -h, --help          Show this help message.
+`
+
+const serviceAddHelp = `Usage: remote-agent service add --name NAME --command COMMAND [options...]
+
+Create a new managed service definition on the remote server.
+
+Required:
+  --name NAME                 Service name.
+  --command COMMAND           Shell command to run.
+
+Options:
+  --project-dir DIR           Project scope directory.
+  --working-dir DIR           Working directory for the process.
+  --upgrade-target PATH       Remembered service upgrade target.
+  --env KEY=VALUE             Environment variable. Can be repeated.
+  --port N                    Port-forward port.
+  --port-label LABEL          Port-forward label.
+  --port-provider PROVIDER    Port-forward provider.
+  --port-base-domain DOMAIN   Port-forward base domain.
+  --port-subdomain NAME       Port-forward subdomain.
+  --disabled                  Create with enabled=false (no auto-start).
+  --start                     Start the service after creating it.
+  -h, --help                  Show this help message.
+`
+
+const serviceRmHelp = `Usage: remote-agent service rm <service-name-or-id>
+
+Remove one managed service by name or id. Name resolution searches all
+project scopes.
 `
 
 const serviceLogsHelp = `Usage: remote-agent service logs [--lines N] <service-name-or-id>
@@ -104,6 +140,10 @@ func runService(resolve func() (*client.Client, error), args []string) error {
 	switch args[0] {
 	case "list":
 		return runServiceList(resolve, args[1:])
+	case "add":
+		return runServiceAdd(resolve, args[1:])
+	case "rm":
+		return runServiceRm(resolve, args[1:])
 	case "start":
 		return runServiceAction(resolve, "start", args[1:])
 	case "stop":
@@ -132,8 +172,10 @@ func runService(resolve func() (*client.Client, error), args []string) error {
 
 func runServiceList(resolve func() (*client.Client, error), args []string) error {
 	var projectDir string
+	var listAll bool
 	args, err := flags.
 		String("--project-dir", &projectDir).
+		Bool("--all", &listAll).
 		Help("-h,--help", serviceListHelp).
 		Parse(args)
 	if err != nil {
@@ -142,18 +184,26 @@ func runServiceList(resolve func() (*client.Client, error), args []string) error
 	if len(args) > 0 {
 		return fmt.Errorf("service list takes no positional arguments, got %v", args)
 	}
+	if listAll && strings.TrimSpace(projectDir) != "" {
+		return fmt.Errorf("service list --all cannot be combined with --project-dir")
+	}
 
 	cli, err := resolve()
 	if err != nil {
 		return err
 	}
 
-	services, err := cli.ListServices(projectDir)
+	var services []client.ServiceStatus
+	if listAll {
+		services, err = cli.ListAllServices()
+	} else {
+		services, err = cli.ListServices(projectDir)
+	}
 	if err != nil {
 		return err
 	}
 	if len(services) == 0 {
-		if strings.TrimSpace(projectDir) == "" {
+		if listAll || strings.TrimSpace(projectDir) == "" {
 			fmt.Println("No services found.")
 		} else {
 			fmt.Printf("No services found for project scope %q.\n", projectDir)
@@ -301,7 +351,8 @@ func runServiceLogs(resolve func() (*client.Client, error), args []string) error
 }
 
 func resolveServiceTarget(cli *client.Client, idOrName string) (*client.ServiceStatus, error) {
-	services, err := cli.ListServices("")
+	// Resolve against all project scopes so name/id works cross-projectDir.
+	services, err := cli.ListAllServices()
 	if err != nil {
 		return nil, err
 	}

@@ -106,6 +106,19 @@ func (c *Client) ListServices(projectDir string) ([]ServiceStatus, error) {
 	return out, nil
 }
 
+// ListAllServices returns every managed service across all project scopes.
+// GET /api/services?all=1
+func (c *Client) ListAllServices() ([]ServiceStatus, error) {
+	var out []ServiceStatus
+	if err := c.getJSON("/api/services?all=1", &out); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []ServiceStatus{}
+	}
+	return out, nil
+}
+
 func (c *Client) StartService(id string) (*ServiceStatus, error) {
 	req, err := c.NewRequest(http.MethodPost, "/api/services/start?id="+url.QueryEscape(id), nil)
 	if err != nil {
@@ -177,6 +190,29 @@ func (c *Client) SaveService(def ServiceDefinition, restart bool) (*ServiceStatu
 		return nil, fmt.Errorf("decode /api/services response: %w", err)
 	}
 	return &out, nil
+}
+
+// DeleteService removes a managed service by id.
+// DELETE /api/services?id=<id>
+func (c *Client) DeleteService(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("service id is required")
+	}
+	req, err := c.NewRequest(http.MethodDelete, "/api/services?id="+url.QueryEscape(id), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return readAPIError(resp)
+	}
+	return nil
 }
 
 func (c *Client) UpgradeService(upgrade ServiceUpgradeRequest) (*ServiceUpgradeResult, error) {
