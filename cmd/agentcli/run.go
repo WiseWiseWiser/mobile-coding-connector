@@ -123,6 +123,8 @@ func Run(profile Profile, args []string) error {
 		return runOpenClaw(resolve, rest)
 	case "ws-proxy":
 		return runWSProxy(resolve, rest)
+	case "ssh":
+		return runSSH(rest, resolve)
 	default:
 		return fmt.Errorf("unknown command: %s", cmd)
 	}

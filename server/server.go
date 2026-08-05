@@ -65,6 +65,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/settings"
 	"github.com/xhd2015/ai-critic/server/startup"
 	"github.com/xhd2015/ai-critic/server/sshservers"
+	"github.com/xhd2015/ai-critic/server/sshtunnel"
 	"github.com/xhd2015/ai-critic/server/subprocess"
 	"github.com/xhd2015/ai-critic/server/terminal"
 	"github.com/xhd2015/ai-critic/server/tools"
@@ -552,6 +553,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// SSH Servers API
 	sshservers.RegisterAPI(mux)
+
+	// Remote-agent SSH tunnel sessions (WS duplex → AdhocServer)
+	sshtunnel.RegisterAPI(mux)
 
 	// Tools diagnostics API
 	tools.RegisterAPI(mux)
