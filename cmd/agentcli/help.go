@@ -122,6 +122,8 @@ Commands:
     local                Local-machine utilities
     skill                Install remote-agent skill docs
     config               Manage saved server domains (local web UI)
+    sync                 Unison pair store (local↔remote sync profiles)
+    ssh                  SSH tunnel relay (serve + client)
 
 Run 'remote-agent <command> --help' for subcommands and options.
 Run 'remote-agent <command> <subcommand> --help' for nested topics.`

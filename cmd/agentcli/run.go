@@ -125,6 +125,8 @@ func Run(profile Profile, args []string) error {
 		return runWSProxy(resolve, rest)
 	case "ssh":
 		return runSSH(rest, resolve)
+	case "sync":
+		return runSync(rest)
 	default:
 		return fmt.Errorf("unknown command: %s", cmd)
 	}
