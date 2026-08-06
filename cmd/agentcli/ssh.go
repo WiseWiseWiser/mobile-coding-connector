@@ -20,6 +20,7 @@ import (
 // runSSH dispatches the `ssh` subcommand with FileSessionStore and CryptoSSHRunner.
 // Session root lives under ~/.ai-critic (or testhooks home override).
 // --serve wires Dial via BuildSSHTunnelDial when a Client is resolvable.
+// Client identity (CryptoSSHRunner.Signer) comes from EnsureClientKeyPair under configDir.
 func runSSH(args []string, resolve func() (*client.Client, error)) error {
 	home, err := testhooks.UserHomeDir()
 	if err != nil {
@@ -29,7 +30,13 @@ func runSSH(args []string, resolve func() (*client.Client, error)) error {
 	store := &sshcmd.FileSessionStore{Root: root}
 	configDir := filepath.Join(root, "ssh")
 
+	kp, err := sshcmd.EnsureClientKeyPair(configDir)
+	if err != nil {
+		return fmt.Errorf("ensure client key pair: %w", err)
+	}
+
 	runner := &sshcmd.CryptoSSHRunner{
+		Signer:                kp.Signer,
 		Stdout:                os.Stdout,
 		Stderr:                os.Stderr,
 		Stdin:                 os.Stdin,
@@ -102,7 +109,7 @@ func (s *sshServeStarter) Start(opts sshcmd.ServeOpts) error {
 	if s.client != nil {
 		pub := s.PublicKeyOpenSSH
 		if pub == "" {
-			kp, err := loadOrGenerateServeKey(s.configDir)
+			kp, err := sshcmd.EnsureClientKeyPair(s.configDir)
 			if err != nil {
 				return err
 			}
@@ -122,40 +129,13 @@ func (s *sshServeStarter) Start(opts sshcmd.ServeOpts) error {
 		User:      "agent",
 		ConfigDir: s.configDir,
 		ServePID:  os.Getpid(),
+		Stdout:    opts.Stdout,
+		Quiet:     opts.Quiet,
+	}
+	if svc.Stdout == nil {
+		svc.Stdout = os.Stdout
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return svc.Start(ctx)
-}
-
-// loadOrGenerateServeKey returns an ed25519 client key pair, generating and
-// persisting under configDir when missing.
-func loadOrGenerateServeKey(configDir string) (*sshcmd.ClientKeyPair, error) {
-	if configDir != "" {
-		if err := os.MkdirAll(configDir, 0o755); err != nil {
-			return nil, err
-		}
-		privPath := filepath.Join(configDir, "id_ed25519")
-		if data, err := os.ReadFile(privPath); err == nil {
-			signer, err := ssh.ParsePrivateKey(data)
-			if err == nil {
-				return &sshcmd.ClientKeyPair{
-					Signer: signer,
-					Public: signer.PublicKey(),
-				}, nil
-			}
-		}
-	}
-
-	kp, err := sshcmd.GenerateClientKeyPair()
-	if err != nil {
-		return nil, err
-	}
-	// Persistence of private key is best-effort; runtime works without it.
-	if configDir != "" {
-		// Re-generate via crypto is fine for serve; optional write omitted to
-		// avoid adding PEM helpers. Keys regenerate per missing file.
-		_ = kp
-	}
-	return kp, nil
 }

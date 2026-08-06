@@ -1,0 +1,8 @@
+{
+  "local_port": 51234,
+  "user": "agent",
+  "config_dir": "/Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/sshcmd/session_tests/session-store/save-load/session-config",
+  "serve_pid": 0,
+  "profile_id": "default",
+  "alive": true
+}

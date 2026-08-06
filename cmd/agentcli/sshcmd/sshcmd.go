@@ -21,8 +21,13 @@ const (
 )
 
 // Usage is printed for -h / --help (trailing newline required).
-const Usage = `Usage: remote-agent ssh --serve
+const Usage = `Usage: remote-agent ssh --serve [--quiet]
        remote-agent ssh [user@host] [command [args...]]
+
+  --serve     Start local relay + remote ad-hoc SSH; blocks until Ctrl-C.
+              Run client commands in another terminal while serve is up.
+  --quiet     With --serve: suppress the ready/stop banner.
+  -h, --help  Show this help
 `
 
 // ErrNoActiveTunnel is returned when client modes lack an Alive session.
@@ -36,6 +41,8 @@ type ParseResult struct {
 	Mode       Mode
 	Dest       string
 	RemoteArgv []string
+	// Quiet is set when --quiet appears (meaningful with --serve).
+	Quiet bool
 }
 
 // Session is tunnel session metadata loaded from a SessionStore.
@@ -56,6 +63,9 @@ type SessionStore interface {
 // ServeOpts configures ServeStarter.Start.
 type ServeOpts struct {
 	ProfileID string
+	Quiet     bool
+	// Stdout receives serve ready/stop banners when non-nil and not Quiet.
+	Stdout io.Writer
 }
 
 // ServeStarter starts the local serve side (`--serve` only).
@@ -95,12 +105,17 @@ func Parse(args []string) (*ParseResult, error) {
 		return &ParseResult{Mode: ModeHelp}, nil
 	}
 
-	// Scan for --serve and remaining tokens.
+	// Scan for --serve / --quiet and remaining tokens.
 	hasServe := false
+	quiet := false
 	var rest []string
 	for _, a := range args {
-		if a == "--serve" {
+		switch a {
+		case "--serve":
 			hasServe = true
+			continue
+		case "--quiet", "-q":
+			quiet = true
 			continue
 		}
 		rest = append(rest, a)
@@ -110,7 +125,10 @@ func Parse(args []string) (*ParseResult, error) {
 		if len(rest) > 0 {
 			return nil, errors.New("--serve cannot be combined with a remote command")
 		}
-		return &ParseResult{Mode: ModeServe}, nil
+		return &ParseResult{Mode: ModeServe, Quiet: quiet}, nil
+	}
+	if quiet {
+		return nil, errors.New("--quiet is only valid with --serve")
 	}
 
 	dest := ""
@@ -163,7 +181,11 @@ func Run(opts Options) error {
 		if opts.Serve == nil {
 			return errors.New("serve starter not configured")
 		}
-		return opts.Serve.Start(ServeOpts{ProfileID: opts.ProfileID})
+		return opts.Serve.Start(ServeOpts{
+			ProfileID: opts.ProfileID,
+			Quiet:     parsed.Quiet,
+			Stdout:    stdout,
+		})
 
 	case ModeLogin, ModeCommand:
 		if opts.Store == nil {

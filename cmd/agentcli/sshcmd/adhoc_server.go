@@ -10,9 +10,12 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
+	"github.com/creack/pty"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -44,6 +47,13 @@ func GenerateClientKeyPair() (*ClientKeyPair, error) {
 type AdhocServer struct {
 	// User is the accepted SSH username (default "agent").
 	User string
+	// Interactive is deprecated in favor of: hasPty && !ForcePipeShell.
+	// Kept for callers; when true with hasPty, forces human shell path.
+	Interactive bool
+	// ForcePipeShell keeps the deterministic pipe shell + empty PS1 used by
+	// doctests. Production must leave this false. When a client requests a
+	// PTY and ForcePipeShell is false, a human interactive shell is used.
+	ForcePipeShell bool
 
 	mu          sync.Mutex
 	ln          net.Listener
@@ -363,13 +373,35 @@ func (s *AdhocServer) runCommand(ch ssh.Channel, command string) {
 
 // runShell starts a login-capable shell.
 //
-// PTY is acknowledged to the client (hasPty) for protocol compatibility, but
-// I/O uses pipes so scripted echo/exit sequences stay deterministic under
-// parallel tests (macOS PTY under concurrent load can yield empty stdout).
+// Human path (client requested PTY and ForcePipeShell is false):
+// host PTY + interactive shell with a visible PS1.
+// Test path (ForcePipeShell or no PTY): pipes + empty PS1 for doctests.
+// Always sends SSH exit-status before returning.
 func (s *AdhocServer) runShell(ch ssh.Channel, hasPty bool, rows, cols uint16) {
-	_ = hasPty
-	_ = rows
-	_ = cols
+	forcePipe := true
+	interactiveFlag := false
+	if s != nil {
+		s.mu.Lock()
+		forcePipe = s.ForcePipeShell
+		interactiveFlag = s.Interactive
+		s.mu.Unlock()
+	}
+	// OpenSSH -tt and real terminals always send pty-req. Treat that as human
+	// login unless tests force the pipe shell.
+	human := hasPty && !forcePipe
+	if !human && interactiveFlag && hasPty {
+		human = true
+	}
+	if human {
+		if s.runShellPTY(ch, rows, cols) {
+			return
+		}
+		// PTY failed: human-friendly pipe shell with a basic prompt.
+		shell := selectLoginShell()
+		cmd := humanShellCmd(shell)
+		s.runShellPipes(ch, cmd)
+		return
+	}
 	// Prefer a plain POSIX shell so echo/exit sequences are deterministic.
 	shell := "/bin/sh"
 	cmd := exec.Command(shell)
@@ -377,26 +409,128 @@ func (s *AdhocServer) runShell(ch ssh.Channel, hasPty bool, rows, cols uint16) {
 	s.runShellPipes(ch, cmd)
 }
 
+// humanShellCmd builds an interactive shell with a predictable visible prompt.
+func humanShellCmd(shell string) *exec.Cmd {
+	// -i: interactive. Explicit PS1 so users always see a prompt even when
+	// remote profiles are empty or non-interactive heuristics fire.
+	base := filepath.Base(shell)
+	var cmd *exec.Cmd
+	switch base {
+	case "bash":
+		// --norc/--noprofile: fast, predictable prompt (no slow cloud rc).
+		cmd = exec.Command(shell, "--norc", "--noprofile", "-i")
+	case "zsh":
+		cmd = exec.Command(shell, "-f", "-i") // -f: no rc
+	default:
+		cmd = exec.Command(shell, "-i")
+	}
+	cmd.Env = append(os.Environ(),
+		"TERM="+envOr("TERM", "xterm-256color"),
+		// Visible, simple prompt for remote-agent ssh login.
+		"PS1=[remote-agent \\W]\\$ ",
+		"PROMPT_COMMAND=",
+		"REMOTE_AGENT_SSH=1",
+	)
+	return cmd
+}
+
 func (s *AdhocServer) runShellPipes(ch ssh.Channel, cmd *exec.Cmd) {
+	code := 1
+	defer func() {
+		sendExitStatus(ch, code)
+		_ = ch.CloseWrite()
+		// Unblock any reader still waiting on the channel.
+		_ = ch.Close()
+	}()
+
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		sendExitStatus(ch, 1)
 		return
 	}
 	cmd.Stdout = ch
 	cmd.Stderr = ch
 	if err := cmd.Start(); err != nil {
 		_ = stdin.Close()
-		sendExitStatus(ch, 1)
 		return
 	}
 	go func() {
 		_, _ = io.Copy(stdin, ch)
 		_ = stdin.Close()
 	}()
+	code = exitCodeFromErr(cmd.Wait())
+	// Stop feeding the dead shell so the stdin-copy goroutine can finish.
+	_ = stdin.Close()
+}
+
+// runShellPTY attaches a human shell to a host PTY bridged to the SSH channel.
+// Returns true if the PTY path was used (caller must not also run pipes).
+//
+// Important: after the shell process exits we must send SSH exit-status and
+// close the channel without waiting forever on the channel→PTY copy (client
+// often keeps stdin open until it sees session end). Waiting on that copy
+// deadlocks interactive `exit`.
+func (s *AdhocServer) runShellPTY(ch ssh.Channel, rows, cols uint16) bool {
+	if rows == 0 {
+		rows = 24
+	}
+	if cols == 0 {
+		cols = 80
+	}
+	cmd := humanShellCmd(selectLoginShell())
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
+	if err != nil {
+		return false
+	}
+
+	inputDone := make(chan struct{})
+	go func() {
+		defer close(inputDone)
+		_, _ = io.Copy(ptmx, ch)
+	}()
+	go func() {
+		_, _ = io.Copy(ch, ptmx)
+	}()
+
 	waitErr := cmd.Wait()
-	sendExitStatus(ch, exitCodeFromErr(waitErr))
+	code := exitCodeFromErr(waitErr)
+
+	// Tear down PTY first so the shell side is fully dead.
+	_ = ptmx.Close()
+
+	// Send exit-status while the channel is still usable, then close so the
+	// client (OpenSSH) completes session.Wait / returns to the local shell.
+	sendExitStatus(ch, code)
 	_ = ch.CloseWrite()
+	_ = ch.Close()
+
+	// Best-effort: don't block forever if client still has stdin open.
+	select {
+	case <-inputDone:
+	case <-time.After(2 * time.Second):
+	}
+	return true
+}
+
+// selectLoginShell picks $SHELL, else bash if present, else sh -l style shell.
+func selectLoginShell() string {
+	if sh := os.Getenv("SHELL"); sh != "" {
+		if _, err := os.Stat(sh); err == nil {
+			return sh
+		}
+	}
+	for _, cand := range []string{"/bin/bash", "/usr/bin/bash", "/bin/zsh", "/bin/sh"} {
+		if _, err := os.Stat(cand); err == nil {
+			return cand
+		}
+	}
+	return "/bin/sh"
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func sendExitStatus(ch ssh.Channel, code int) {

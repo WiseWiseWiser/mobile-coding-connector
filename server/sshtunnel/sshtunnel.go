@@ -230,7 +230,8 @@ func (m *Manager) CreateSession(publicKeyOpenSSH string) (*createResponse, error
 	m.mu.Unlock()
 
 	if backendDial == nil {
-		adhoc := &sshcmd.AdhocServer{User: user}
+		// ForcePipeShell must stay false so OpenSSH -tt gets a real prompt.
+		adhoc := &sshcmd.AdhocServer{User: user, Interactive: true, ForcePipeShell: false}
 		if strings.TrimSpace(publicKeyOpenSSH) != "" {
 			pub, err := parseAuthorizedKey(publicKeyOpenSSH)
 			if err != nil {

@@ -114,7 +114,7 @@ Package `github.com/xhd2015/ai-critic/cmd/agentcli/sshcmd` (extend P1/P2):
 Compose pattern (tests / serve wiring):
 
 ```go
-adhoc := &sshcmd.AdhocServer{User: "agent"}
+adhoc := &sshcmd.AdhocServer{User: "agent", ForcePipeShell: true}
 adhoc.SetAuthorizedKeys([]ssh.PublicKey{kp.Public})
 _ = adhoc.Start()
 defer adhoc.Close()
@@ -299,7 +299,8 @@ func startAdhoc(t *testing.T, user string, authorized ...ssh.PublicKey) *sshcmd.
 	if user == "" {
 		user = "agent"
 	}
-	s := &sshcmd.AdhocServer{User: user}
+	// ForcePipeShell: doctests need deterministic pipe shell (empty PS1).
+	s := &sshcmd.AdhocServer{User: user, ForcePipeShell: true}
 	if len(authorized) > 0 {
 		s.SetAuthorizedKeys(authorized)
 	}
@@ -402,7 +403,10 @@ func runAdhocLoginShell(t *testing.T, d *session.Doctest, req *Request, resp *Re
 		resp.ShellErr = err.Error()
 		return
 	}
-	var stdout bytes.Buffer
+	// crypto/ssh copies stdout and stderr in concurrent goroutines. Sharing a
+	// bare bytes.Buffer races (ReadFrom grow) and intermittently loses shell-ok
+	// under parallel suite load. syncWriter serializes writes.
+	var stdout safeBuffer
 	session.Stdout = &stdout
 	session.Stderr = &stdout
 	if err := session.Shell(); err != nil {
@@ -425,6 +429,27 @@ func runAdhocLoginShell(t *testing.T, d *session.Doctest, req *Request, resp *Re
 		// only when needle found. ASSERT requires ShellOK.
 		resp.ShellErr = "shell stdout missing shell-ok"
 	}
+}
+
+// safeBuffer serializes Write for concurrent ssh.Session stdout+stderr copy
+// goroutines. Intentionally does not implement ReaderFrom: io.Copy then uses
+// Write per chunk (safe). A locked ReadFrom would deadlock when both streams
+// call it (each holds the mutex for the full read-until-EOF).
+type safeBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (w *safeBuffer) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.b.Write(p)
+}
+
+func (w *safeBuffer) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.b.String()
 }
 
 func runAdhocAuthReject(t *testing.T, d *session.Doctest, req *Request, resp *Response) {
