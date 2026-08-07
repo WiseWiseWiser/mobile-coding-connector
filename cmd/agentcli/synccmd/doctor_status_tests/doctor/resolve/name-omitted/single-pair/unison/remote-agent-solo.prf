@@ -1,0 +1,9 @@
+root = /Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/synccmd/doctor_status_tests/doctor/resolve/name-omitted/single-pair/workspace-local
+root = ssh://remote-agent//Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/synccmd/doctor_status_tests/doctor/resolve/name-omitted/single-pair/workspace-remote
+sshargs = -F /Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/synccmd/doctor_status_tests/doctor/resolve/name-omitted/single-pair/ssh/ssh_config
+servercmd = /usr/local/bin/unison
+auto = true
+batch = true
+times = true
+prefer = newer
+ignore = Name .DS_Store

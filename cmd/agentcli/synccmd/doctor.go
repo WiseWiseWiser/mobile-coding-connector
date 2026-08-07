@@ -103,7 +103,7 @@ func Doctor(opts DoctorOpts) (DoctorReport, error) {
 			}
 		}
 	} else {
-		// Default: try real binary (not used in tests).
+		// Production: PATH unison -version (tests inject LocalVersion).
 		v, verr := defaultLocalVersion()
 		if verr != nil || strings.TrimSpace(v) == "" {
 			detail := "local unison version unavailable"
@@ -154,7 +154,8 @@ func Doctor(opts DoctorOpts) (DoctorReport, error) {
 			}
 		}
 	} else {
-		v, verr := defaultRemoteVersion()
+		// Production: ssh Host remote-agent + remoteUnison -version.
+		v, verr := defaultRemoteVersion(opts.SSHConfigDir, pair.RemoteUnison)
 		if verr != nil || strings.TrimSpace(v) == "" {
 			detail := "remote unison version unavailable"
 			if verr != nil {
@@ -268,7 +269,7 @@ func Doctor(opts DoctorOpts) (DoctorReport, error) {
 			Detail: detail,
 		})
 	} else {
-		if rerr := defaultRemotePathOK(pair.Remote); rerr != nil {
+		if rerr := defaultRemotePathOK(opts.SSHConfigDir, pair.Remote); rerr != nil {
 			rep.Checks = append(rep.Checks, DoctorCheck{
 				Name:   "remote-root",
 				OK:     false,
@@ -310,7 +311,11 @@ func Doctor(opts DoctorOpts) (DoctorReport, error) {
 		}
 	}
 	if !rep.AllOK {
-		return rep, fmt.Errorf("doctor: one or more checks failed for pair %s", name)
+		hint := ""
+		if !serveOK {
+			hint = "\nStart serve: remote-agent ssh --serve"
+		}
+		return rep, fmt.Errorf("doctor: one or more checks failed for pair %s%s", name, hint)
 	}
 	return rep, nil
 }
@@ -327,23 +332,4 @@ func resolvePairName(cfg *Config, name string) (string, error) {
 		return cfg.Pairs[0].Name, nil
 	}
 	return "", fmt.Errorf("pair name required")
-}
-
-// Production defaults — tests always inject hooks; these fail closed without real deps.
-func defaultLocalVersion() (string, error) {
-	return "", fmt.Errorf("local unison version probe not configured")
-}
-
-func defaultRemoteVersion() (string, error) {
-	return "", fmt.Errorf("remote unison version probe not configured")
-}
-
-func defaultServeOK(sshConfigDir string) error {
-	_ = sshConfigDir
-	return fmt.Errorf("serve probe not configured")
-}
-
-func defaultRemotePathOK(remote string) error {
-	_ = remote
-	return fmt.Errorf("remote path probe not configured")
 }

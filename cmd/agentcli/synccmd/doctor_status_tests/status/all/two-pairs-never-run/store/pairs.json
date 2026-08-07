@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "defaultPair": "",
+  "pairs": [
+    {
+      "name": "alpha",
+      "backend": "unison",
+      "local": "/Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/synccmd/doctor_status_tests/status/all/two-pairs-never-run/workspace-local",
+      "remote": "/Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/synccmd/doctor_status_tests/status/all/two-pairs-never-run/workspace-remote",
+      "prefer": "newer",
+      "ignore": [
+        "Name .DS_Store"
+      ],
+      "localHostname": "remote-agent-alpha",
+      "remoteUnison": "/usr/local/bin/unison",
+      "times": true,
+      "auto": true,
+      "batch": true
+    },
+    {
+      "name": "beta",
+      "backend": "unison",
+      "local": "/Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/synccmd/doctor_status_tests/status/all/two-pairs-never-run/workspace-local",
+      "remote": "/Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/synccmd/doctor_status_tests/status/all/two-pairs-never-run/workspace-remote-b",
+      "prefer": "newer",
+      "ignore": [
+        "Name .DS_Store"
+      ],
+      "localHostname": "remote-agent-beta",
+      "remoteUnison": "/usr/local/bin/unison",
+      "times": true,
+      "auto": true,
+      "batch": true
+    }
+  ]
+}

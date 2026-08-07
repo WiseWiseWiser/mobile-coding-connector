@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "defaultPair": "",
+  "pairs": [
+    {
+      "name": "mad-max",
+      "backend": "unison",
+      "local": "/Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/synccmd/doctor_status_tests/doctor/check-fail/local-root-missing/workspace-local",
+      "remote": "/Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/synccmd/doctor_status_tests/doctor/check-fail/local-root-missing/workspace-remote",
+      "prefer": "newer",
+      "ignore": [
+        "Name .DS_Store"
+      ],
+      "localHostname": "remote-agent-mad-max",
+      "remoteUnison": "/usr/local/bin/unison",
+      "times": true,
+      "auto": true,
+      "batch": true
+    }
+  ]
+}

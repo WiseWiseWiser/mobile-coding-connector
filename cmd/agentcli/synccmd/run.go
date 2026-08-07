@@ -1,13 +1,12 @@
 package synccmd
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 )
 
@@ -147,24 +146,40 @@ func RunPair(opts RunOpts) (RunResult, error) {
 	}
 
 	bin := argv[0]
+	// Tee Unison output so we can parse the summary while streaming to the user.
+	var capture bytes.Buffer
+	stdout := io.Writer(&capture)
+	stderr := io.Writer(&capture)
+	if opts.Stdout != nil {
+		stdout = io.MultiWriter(opts.Stdout, &capture)
+	}
+	if opts.Stderr != nil {
+		stderr = io.MultiWriter(opts.Stderr, &capture)
+	}
+
 	// Pass full argv (including binary as argv[0]); defaultExec strips it.
 	start := time.Now()
-	exitCode, execErr := execFn(ctx, bin, argv, env, opts.Stdout, opts.Stderr)
+	exitCode, execErr := execFn(ctx, bin, argv, env, stdout, stderr)
 	result.Duration = time.Since(start)
 	result.ExitCode = exitCode
 
-	msg := "ok"
-	if exitCode != 0 {
-		msg = fmt.Sprintf("exit code %d", exitCode)
+	outcome, detail, transferred, failed, skipped := parseUnisonOutcome(exitCode, capture.String())
+	msg := detail
+	if msg == "" {
+		if exitCode != 0 {
+			msg = fmt.Sprintf("exit code %d", exitCode)
+		} else {
+			msg = "ok"
+		}
 	}
-	if execErr != nil && msg == "ok" {
+	if execErr != nil && exitCode == 0 {
 		msg = execErr.Error()
+		outcome = OutcomeFailed
 	}
 	result.Message = msg
 
-	// Write state after Exec returns (including non-zero exit).
-	if werr := writePairState(opts.StoreDir, opts.Name, exitCode, msg); werr != nil {
-		// Prefer surface exec outcome; attach write failure if exec succeeded.
+	// Write enriched state after Exec returns (including non-zero exit).
+	if werr := writePairStateFull(opts.StoreDir, opts.Name, exitCode, msg, outcome, transferred, failed, skipped, result.Duration); werr != nil {
 		if exitCode == 0 && execErr == nil {
 			return result, fmt.Errorf("write state: %w", werr)
 		}
@@ -181,30 +196,6 @@ func RunPair(opts RunOpts) (RunResult, error) {
 	}
 	_ = workdir
 	return result, nil
-}
-
-// writePairState writes {StoreDir}/state/<name>.json after a run.
-func writePairState(storeDir, name string, exitCode int, message string) error {
-	dir := filepath.Join(storeDir, "state")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	st := struct {
-		LastRunAt string `json:"lastRunAt"`
-		ExitCode  int    `json:"exitCode"`
-		Message   string `json:"message"`
-	}{
-		LastRunAt: time.Now().UTC().Format(time.RFC3339),
-		ExitCode:  exitCode,
-		Message:   message,
-	}
-	data, err := json.MarshalIndent(st, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	path := filepath.Join(dir, name+".json")
-	return os.WriteFile(path, data, 0o644)
 }
 
 // defaultExec runs the binary via os/exec with child-only env (no Setenv).

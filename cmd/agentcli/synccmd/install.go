@@ -146,28 +146,31 @@ func defaultRemoteEnsure(targetPath string) (string, error) {
 	return "", fmt.Errorf("remote install requires --serve and upload")
 }
 
-// unisonVersionRe matches typical "unison version 2.54.0" / "2.54.0" lines.
-var unisonVersionRe = regexp.MustCompile(`(?i)(?:unison\s+version\s+)?(\d+\.\d+(?:\.\d+)?)`)
+// unisonVersionLabeledRe prefers "unison version 2.54.0" so SSH banners
+// like "Permanently added '[127.0.0.1]:port'" are not mistaken for Unison.
+var unisonVersionLabeledRe = regexp.MustCompile(`(?i)unison\s+version\s+(\d+\.\d+(?:\.\d+)?)`)
+
+// unisonVersionBareRe matches a lone semver-ish token (fallback only).
+var unisonVersionBareRe = regexp.MustCompile(`\b(\d+\.\d+\.\d+)\b`)
 
 func parseUnisonVersion(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return ""
 	}
-	// Prefer first non-empty line.
+	// 1) Prefer explicit "unison version X.Y.Z" anywhere.
+	if m := unisonVersionLabeledRe.FindStringSubmatch(s); len(m) >= 2 {
+		return m[1]
+	}
+	// 2) Fallback: first X.Y.Z on a line that mentions unison (not 127.0.0.1).
 	for _, line := range strings.Split(s, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" {
+		if line == "" || !strings.Contains(strings.ToLower(line), "unison") {
 			continue
 		}
-		m := unisonVersionRe.FindStringSubmatch(line)
-		if len(m) >= 2 {
+		if m := unisonVersionBareRe.FindStringSubmatch(line); len(m) >= 2 {
 			return m[1]
 		}
-	}
-	m := unisonVersionRe.FindStringSubmatch(s)
-	if len(m) >= 2 {
-		return m[1]
 	}
 	return ""
 }

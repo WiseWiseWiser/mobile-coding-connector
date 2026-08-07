@@ -1,0 +1,13 @@
+root = /Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/synccmd/sync_tests/rm/success/no-purge-profile/workspace-local
+root = ssh://remote-agent//Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/synccmd/sync_tests/rm/success/no-purge-profile/workspace-remote
+sshargs = -F /Users/xhd2015/.wrk/worktrees/bak-files-master-2026-07-31-sync-a-specific-workspace-between-remote-and-local/external/ai-critic-master-2026-07-31/cmd/agentcli/synccmd/sync_tests/rm/success/no-purge-profile/ssh/ssh_config
+servercmd = /usr/local/bin/unison
+auto = true
+batch = true
+times = true
+prefer = newer
+ignore = Name .DS_Store
+ignore = Name node_modules
+ignore = Name *.log
+ignore = Path tmp
+ignore = Path log

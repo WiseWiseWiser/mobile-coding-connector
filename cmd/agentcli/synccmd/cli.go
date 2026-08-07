@@ -14,6 +14,8 @@ type CLIOpts struct {
 	SSHConfigDir string
 	Stdout       io.Writer
 	Stderr       io.Writer
+	// ColorMode controls ANSI on human output (default Auto: TTY + NO_COLOR).
+	ColorMode ColorMode
 	// Probe hooks for doctor/status/run (nil → product real defaults).
 	LocalVersion  func() (string, error)
 	RemoteVersion func() (string, error)
@@ -29,20 +31,26 @@ type CLIOpts struct {
 }
 
 // SyncUsage is printed for bare sync / -h / --help.
-const SyncUsage = `Usage: remote-agent sync [subcommand]
+const SyncUsage = `Usage: remote-agent sync <command> [args...]
 
-Manage named local↔remote Unison sync pairs and regenerable profiles.
+Local↔remote directory sync (Unison backend).
 
-Subcommands:
-  unison             Unison backend (init/add/list/show/set/rm)
+Commands:
+  list                 List configured pairs
+  run [<name>]         Run Unison for a pair (default pair if omitted)
+  doctor [<name>]      Readiness checks
+  status [<name>] [--check]  Sync outcome + last sync (optional live check)
+  unison                     Unison backend (init/set/rm/install/…)
 
-Run 'remote-agent sync unison --help' for unison CRUD verbs.
+Prerequisite: remote-agent ssh --serve in another terminal.
+
+Run 'remote-agent sync unison --help' for init/set/rm/install and flags.
 `
 
 // UnisonUsage is printed for bare unison / unison -h / --help.
 const UnisonUsage = `Usage: remote-agent sync unison <command> [args...]
 
-Unison pair store CRUD, profile emit, doctor, status, run, and install.
+Unison pair store, profile emit, doctor, status, run, and install.
 
 Commands:
   init|add <name> <local> <remote>   Create a pair (error if name exists)
@@ -52,9 +60,9 @@ Commands:
   rm <name> [--yes] [--purge-profile|--no-purge-profile]
                                      Remove pair (default: purge profile)
   doctor [<name>]                    Run readiness checks for a pair
-  status [<name>]                    Show pair status and last-run state
-  run <name> [--skip-doctor] [--interactive]
-                                     Run Unison for a named pair
+  status [<name>] [--check]          Serve + SYNC + LAST SYNC + DETAIL
+  run [<name>] [--skip-doctor] [--interactive]
+                                     Run Unison (default pair if name omitted)
   install [--local|--remote|--both]  Ensure Unison binary (default: both)
 
 Init/set flags:
@@ -66,7 +74,102 @@ Init/set flags:
   --auto / --no-auto
   --batch / --no-batch
   --ignore LINE                      (repeatable; on set replaces list)
+
+Run 'remote-agent sync unison <command> --help' for command-specific help.
 `
+
+const (
+	initHelp = `Usage: remote-agent sync unison init|add <name> <local> <remote> [flags]
+
+Create a named local↔remote Unison pair and emit ~/.unison/remote-agent-<name>.prf.
+
+Flags:
+  --prefer VALUE
+  --local-hostname HOST
+  --remote-unison PATH
+  --times / --no-times
+  --auto / --no-auto
+  --batch / --no-batch
+  --ignore LINE          (repeatable)
+  -h, --help
+`
+
+	runHelp = `Usage: remote-agent sync unison run [<name>] [--skip-doctor] [--interactive]
+       remote-agent sync run [<name>] …
+
+Run Unison for a pair. Name may be omitted when defaultPair is set or only one pair exists.
+
+Flags:
+  --skip-doctor    skip readiness checks
+  --interactive    non-batch Unison (may prompt)
+  -h, --help
+
+Prerequisite: remote-agent ssh --serve
+`
+
+	doctorHelp = `Usage: remote-agent sync unison doctor [<name>]
+       remote-agent sync doctor [<name>]
+
+Check local/remote Unison versions, ssh serve, roots, and profile.
+
+  -h, --help
+`
+
+	statusHelp = `Usage: remote-agent sync unison status [<name>] [--check]
+       remote-agent sync status [<name>] [--check]
+
+Show serve health, sync outcome, and last successful sync time.
+
+  --check     run Unison now (may transfer; serve required; can be slow)
+  -h, --help
+
+SYNC values: synced (nothing to do), ok (last run exit 0 with transfers),
+failed, never. No fake progress percentages.
+`
+
+	listHelp = `Usage: remote-agent sync unison list
+       remote-agent sync list
+
+List configured sync pairs.
+
+  -h, --help
+`
+
+	installHelp = `Usage: remote-agent sync unison install [--local|--remote|--both]
+
+Ensure Unison is available (default: both). Preferred version: ` + PreferredUnisonVersion + `.
+
+  -h, --help
+`
+
+	showHelp = `Usage: remote-agent sync unison show <name>
+
+Show one pair definition.
+
+  -h, --help
+`
+
+	setHelp = `Usage: remote-agent sync unison set <name> [flags]
+
+Partial-update a pair and regenerate its Unison profile.
+
+Flags:
+  --local PATH / --remote PATH
+  --prefer VALUE
+  --local-hostname HOST
+  --remote-unison PATH
+  --times / --no-times / --auto / --no-auto / --batch / --no-batch
+  --ignore LINE          (repeatable; replaces ignore list)
+  -h, --help
+`
+
+	rmHelp = `Usage: remote-agent sync unison rm <name> [--yes] [--purge-profile|--no-purge-profile]
+
+Remove a pair from the store. Default: purge generated profile.
+
+  -h, --help
+`
+)
 
 func (o CLIOpts) stdout() io.Writer {
 	if o.Stdout != nil {
@@ -86,6 +189,10 @@ func (o CLIOpts) store() *Store {
 	return &Store{Dir: o.StoreDir}
 }
 
+func (o CLIOpts) style() colorStyle {
+	return newColorStyle(o.ColorMode, o.stdout())
+}
+
 // RunCLI dispatches argv after the `sync` subcommand.
 func RunCLI(args []string, opts CLIOpts) error {
 	if args == nil {
@@ -93,21 +200,34 @@ func RunCLI(args []string, opts CLIOpts) error {
 	}
 
 	if len(args) == 0 || isHelpToken(args[0]) {
-		fmt.Fprint(opts.stdout(), SyncUsage)
-		if !strings.HasSuffix(SyncUsage, "\n") {
-			fmt.Fprintln(opts.stdout())
-		}
+		printUsage(opts.stdout(), SyncUsage)
 		return nil
 	}
 
 	switch args[0] {
 	case "help":
-		fmt.Fprint(opts.stdout(), SyncUsage)
+		printUsage(opts.stdout(), SyncUsage)
 		return nil
 	case "unison":
 		return runUnison(args[1:], opts)
+	// Short aliases (go-best-practice: short path for primary verbs).
+	case "list":
+		return runList(args[1:], opts)
+	case "run":
+		return runRun(args[1:], opts)
+	case "doctor":
+		return runDoctor(args[1:], opts)
+	case "status":
+		return runStatus(args[1:], opts)
 	default:
-		return fmt.Errorf("unknown subcommand: %s", args[0])
+		return fmt.Errorf("unknown subcommand: %s\nRun 'remote-agent sync --help' for usage", args[0])
+	}
+}
+
+func printUsage(w io.Writer, s string) {
+	fmt.Fprint(w, s)
+	if !strings.HasSuffix(s, "\n") {
+		fmt.Fprintln(w)
 	}
 }
 
@@ -117,7 +237,7 @@ func isHelpToken(s string) bool {
 
 func runUnison(args []string, opts CLIOpts) error {
 	if len(args) == 0 || isHelpToken(args[0]) {
-		fmt.Fprint(opts.stdout(), UnisonUsage)
+		printUsage(opts.stdout(), UnisonUsage)
 		return nil
 	}
 
@@ -127,7 +247,7 @@ func runUnison(args []string, opts CLIOpts) error {
 	case "init", "add":
 		return runInit(rest, opts)
 	case "list":
-		return runList(opts)
+		return runList(rest, opts)
 	case "show":
 		return runShow(rest, opts)
 	case "set":
@@ -143,12 +263,16 @@ func runUnison(args []string, opts CLIOpts) error {
 	case "install":
 		return runInstall(rest, opts)
 	default:
-		return fmt.Errorf("unknown unison subcommand: %s", cmd)
+		return fmt.Errorf("unknown unison subcommand: %s\nRun 'remote-agent sync unison --help' for usage", cmd)
 	}
 }
 
 // runInstall handles `unison install [--local|--remote|--both]` (default both).
 func runInstall(args []string, opts CLIOpts) error {
+	if hasHelpFlag(args) {
+		printUsage(opts.stdout(), installHelp)
+		return nil
+	}
 	scope := "both"
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -158,11 +282,8 @@ func runInstall(args []string, opts CLIOpts) error {
 			scope = "remote"
 		case "--both":
 			scope = "both"
-		case "-h", "--help", "help":
-			fmt.Fprintln(opts.stdout(), "Usage: remote-agent sync unison install [--local|--remote|--both]")
-			return nil
 		default:
-			return fmt.Errorf("unknown install flag: %s", args[i])
+			return fmt.Errorf("unknown install flag: %s\nRun 'remote-agent sync unison install --help'", args[i])
 		}
 	}
 	report, err := Install(InstallOpts{
@@ -180,23 +301,45 @@ func runInstall(args []string, opts CLIOpts) error {
 	return err
 }
 
-// runRun handles `unison run <name> [--skip-doctor] [--interactive]`.
+// runRun handles `run [<name>] [--skip-doctor] [--interactive]`.
 func runRun(args []string, opts CLIOpts) error {
-	if len(args) < 1 || strings.HasPrefix(args[0], "-") {
-		return fmt.Errorf("run requires a pair name")
+	if hasHelpFlag(args) {
+		printUsage(opts.stdout(), runHelp)
+		return nil
 	}
-	name := args[0]
+	name := ""
 	skipDoctor := false
 	interactive := false
-	for i := 1; i < len(args); i++ {
-		switch args[i] {
-		case "--skip-doctor":
-			skipDoctor = true
-		case "--interactive":
-			interactive = true
-		default:
-			return fmt.Errorf("unknown run flag: %s", args[i])
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if strings.HasPrefix(a, "-") {
+			switch a {
+			case "--skip-doctor":
+				skipDoctor = true
+			case "--interactive":
+				interactive = true
+			default:
+				return fmt.Errorf("unknown run flag: %s\nRun 'remote-agent sync run --help'", a)
+			}
+			continue
 		}
+		if name == "" {
+			name = a
+			continue
+		}
+		return fmt.Errorf("run: unexpected argument %q", a)
+	}
+	// Resolve empty name via store (defaultPair / sole pair).
+	if name == "" {
+		cfg, err := opts.store().Load()
+		if err != nil {
+			return err
+		}
+		resolved, rerr := resolvePairName(cfg, "")
+		if rerr != nil {
+			return fmt.Errorf("run requires a pair name (or set defaultPair)\nRun 'remote-agent sync list'")
+		}
+		name = resolved
 	}
 	_, err := RunPair(RunOpts{
 		StoreDir:      opts.StoreDir,
@@ -217,6 +360,10 @@ func runRun(args []string, opts CLIOpts) error {
 }
 
 func runDoctor(args []string, opts CLIOpts) error {
+	if hasHelpFlag(args) {
+		printUsage(opts.stdout(), doctorHelp)
+		return nil
+	}
 	name := ""
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		name = args[0]
@@ -231,60 +378,138 @@ func runDoctor(args []string, opts CLIOpts) error {
 		ServeOK:       opts.ServeOK,
 		RemotePathOK:  opts.RemotePathOK,
 	})
-	// Always print table-ish check lines when we have checks.
+	st := opts.style()
 	if report.PairName != "" {
 		fmt.Fprintf(opts.stdout(), "doctor: pair %s\n", report.PairName)
 	} else {
 		fmt.Fprintln(opts.stdout(), "doctor:")
 	}
 	for _, c := range report.Checks {
-		status := "ok"
+		status := st.green("ok")
 		if !c.OK {
-			status = "fail"
+			status = st.red("fail")
 		}
 		fmt.Fprintf(opts.stdout(), "  %-16s %s  %s\n", c.Name, status, c.Detail)
 	}
 	if len(report.Checks) == 0 && err != nil {
-		// Resolution failed before checks — still give a non-empty line.
 		fmt.Fprintf(opts.stdout(), "  check fail: %v\n", err)
+	}
+	if err == nil && report.AllOK {
+		fmt.Fprintln(opts.stdout(), st.green("doctor: all checks passed"))
 	}
 	return err
 }
 
 func runStatus(args []string, opts CLIOpts) error {
+	if hasHelpFlag(args) {
+		printUsage(opts.stdout(), statusHelp)
+		return nil
+	}
 	name := ""
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		name = args[0]
+	check := false
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--check" {
+			check = true
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			return fmt.Errorf("unknown status flag: %s\nRun 'remote-agent sync status --help'", a)
+		}
+		if name == "" {
+			name = a
+			continue
+		}
+		return fmt.Errorf("status: unexpected argument %q", a)
+	}
+	if check {
+		fmt.Fprintln(opts.stderr(), "checking… (may transfer; serve required)")
 	}
 	report, err := Status(StatusOpts{
-		StoreDir:     opts.StoreDir,
-		UnisonDir:    opts.UnisonDir,
-		SSHConfigDir: opts.SSHConfigDir,
-		Name:         name,
-		ServeOK:      opts.ServeOK,
+		StoreDir:      opts.StoreDir,
+		UnisonDir:     opts.UnisonDir,
+		SSHConfigDir:  opts.SSHConfigDir,
+		Name:          name,
+		ServeOK:       opts.ServeOK,
+		Check:         check,
+		Exec:          opts.Exec,
+		LocalVersion:  opts.LocalVersion,
+		RemoteVersion: opts.RemoteVersion,
+		RemotePathOK:  opts.RemotePathOK,
+		Stdout:        opts.stdout(),
+		Stderr:        opts.stderr(),
 	})
-	if err != nil {
+	// Always print table when we have items, even if check partially failed.
+	st := opts.style()
+	if !reportHasItems(report) && err != nil {
 		return err
 	}
 	if len(report.Items) == 0 {
 		fmt.Fprintln(opts.stdout(), "(no pairs)")
-		return nil
+		return err
 	}
+	if !reportServeAllUp(report) {
+		fmt.Fprintln(opts.stderr(), st.yellow("warning: serve down; SYNC reflects last run only"))
+	}
+	// Pad plain fields first, then color — ANSI escapes must not participate
+	// in width calculation or columns misalign.
+	fmt.Fprintf(opts.stdout(), "  %-16s %-6s %-8s %-22s %s\n", "NAME", "SERVE", "SYNC", "LAST SYNC", "DETAIL")
 	for _, it := range report.Items {
-		serve := "down"
+		servePlain := padRight("down", 6)
+		serve := st.red(servePlain)
 		if it.ServeOK {
-			serve = "up"
+			servePlain = padRight("up", 6)
+			serve = st.green(servePlain)
 		}
-		fmt.Fprintf(opts.stdout(), "%s  local=%s  remote=%s  serve=%s  lastRun=%s\n",
-			it.Name, it.Local, it.Remote, serve, it.LastRun)
+		syncPlain := padRight(it.Sync, 8)
+		var syncCol string
+		switch it.Sync {
+		case OutcomeSynced, OutcomePropagated:
+			syncCol = st.green(syncPlain)
+		case OutcomeFailed:
+			syncCol = st.red(syncPlain)
+		default:
+			syncCol = st.gray(syncPlain)
+		}
+		fmt.Fprintf(opts.stdout(), "  %-16s %s %s %-22s %s\n",
+			it.Name, serve, syncCol, it.LastSync, it.Detail)
 	}
-	return nil
+	fmt.Fprintf(opts.stdout(), "\n%s\n", st.gray(fmt.Sprintf("%d pair(s)", len(report.Items))))
+	return err
+}
+
+// padRight pads s with spaces to width n (rune-aware for plain ASCII labels).
+func padRight(s string, n int) string {
+	if n <= 0 {
+		return s
+	}
+	if len(s) >= n {
+		return s
+	}
+	return s + strings.Repeat(" ", n-len(s))
+}
+
+func reportHasItems(r StatusReport) bool {
+	return len(r.Items) > 0
+}
+
+func reportServeAllUp(r StatusReport) bool {
+	for _, it := range r.Items {
+		if !it.ServeOK {
+			return false
+		}
+	}
+	return len(r.Items) > 0
 }
 
 func runInit(args []string, opts CLIOpts) error {
+	if hasHelpFlag(args) {
+		printUsage(opts.stdout(), initHelp)
+		return nil
+	}
 	name, local, remote, flags, err := parseInitPositionals(args)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w\nRun 'remote-agent sync unison init --help'", err)
 	}
 	initOpts, err := parseInitFlags(flags)
 	if err != nil {
@@ -380,13 +605,14 @@ func parseInitFlags(flags []string) (InitOpts, error) {
 			return opts, fmt.Errorf("unknown init flag: %s", f)
 		}
 	}
-	// When --ignore was used on init, opts.Ignore is non-nil (possibly empty slice
-	// only if somehow set); nil means use defaults. append creates non-nil slice
-	// only when at least one --ignore was seen — good.
 	return opts, nil
 }
 
-func runList(opts CLIOpts) error {
+func runList(args []string, opts CLIOpts) error {
+	if hasHelpFlag(args) {
+		printUsage(opts.stdout(), listHelp)
+		return nil
+	}
 	pairs, err := ListPairs(opts.store())
 	if err != nil {
 		return err
@@ -395,20 +621,31 @@ func runList(opts CLIOpts) error {
 		fmt.Fprintln(opts.stdout(), "(no pairs)")
 		return nil
 	}
+	st := opts.style()
+	fmt.Fprintf(opts.stdout(), "  %-16s %-40s %s\n", "NAME", "LOCAL", "REMOTE")
 	for _, p := range pairs {
-		fmt.Fprintln(opts.stdout(), p.Name)
+		local := p.Local
+		if len(local) > 40 {
+			local = "…" + local[len(local)-39:]
+		}
+		fmt.Fprintf(opts.stdout(), "  %-16s %-40s %s\n", p.Name, local, p.Remote)
 	}
+	fmt.Fprintf(opts.stdout(), "\n%s\n", st.gray(fmt.Sprintf("%d pair(s)", len(pairs))))
 	return nil
 }
 
 func runShow(args []string, opts CLIOpts) error {
+	if hasHelpFlag(args) {
+		printUsage(opts.stdout(), showHelp)
+		return nil
+	}
 	if len(args) < 1 || strings.HasPrefix(args[0], "-") {
-		return fmt.Errorf("show requires a pair name")
+		return fmt.Errorf("show requires a pair name\nRun 'remote-agent sync unison show --help'")
 	}
 	name := args[0]
 	p, err := GetPair(opts.store(), name)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w\nRun 'remote-agent sync list' to see pairs", err)
 	}
 	fmt.Fprintf(opts.stdout(), "name: %s\n", p.Name)
 	fmt.Fprintf(opts.stdout(), "backend: %s\n", p.Backend)
@@ -430,8 +667,12 @@ func runShow(args []string, opts CLIOpts) error {
 }
 
 func runSet(args []string, opts CLIOpts) error {
+	if hasHelpFlag(args) {
+		printUsage(opts.stdout(), setHelp)
+		return nil
+	}
 	if len(args) < 1 || strings.HasPrefix(args[0], "-") {
-		return fmt.Errorf("set requires a pair name")
+		return fmt.Errorf("set requires a pair name\nRun 'remote-agent sync unison set --help'")
 	}
 	name := args[0]
 	setOpts, err := parseSetFlags(args[1:])
@@ -524,8 +765,12 @@ func parseSetFlags(flags []string) (SetOpts, error) {
 }
 
 func runRm(args []string, opts CLIOpts) error {
+	if hasHelpFlag(args) {
+		printUsage(opts.stdout(), rmHelp)
+		return nil
+	}
 	if len(args) < 1 || strings.HasPrefix(args[0], "-") {
-		return fmt.Errorf("rm requires a pair name")
+		return fmt.Errorf("rm requires a pair name\nRun 'remote-agent sync unison rm --help'")
 	}
 	name := args[0]
 	purge := true // default purge profile
@@ -545,4 +790,13 @@ func runRm(args []string, opts CLIOpts) error {
 		PurgeProfile: purge,
 		UnisonDir:    opts.UnisonDir,
 	})
+}
+
+func hasHelpFlag(args []string) bool {
+	for _, a := range args {
+		if isHelpToken(a) {
+			return true
+		}
+	}
+	return false
 }
