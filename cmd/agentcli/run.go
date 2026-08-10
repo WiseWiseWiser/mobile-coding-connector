@@ -16,12 +16,14 @@ import (
 
 // Run executes the agent CLI with the given profile and arguments.
 func Run(profile Profile, args []string) error {
-	return RunWithWriters(profile, args, os.Stdout, os.Stderr)
+	return runCLI(profile, args, os.Stdout, os.Stderr)
 }
 
-// RunWithWriters is the L2-injectable CLI entry (stdout/stderr writers).
-// Product binaries call Run, which delegates here with os.Stdout/os.Stderr.
-func RunWithWriters(profile Profile, args []string, stdout, stderr io.Writer) error {
+// runCLI is the core CLI entry with injectable stdout/stderr writers
+// (help text, event-bus, etc.). Product binaries use Run; tests use
+// RunWithWriters in run_writers.go, which also redirects process stdio
+// for code paths that write via osStdout().
+func runCLI(profile Profile, args []string, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}

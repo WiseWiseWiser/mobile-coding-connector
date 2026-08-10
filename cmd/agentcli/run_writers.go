@@ -16,10 +16,12 @@ func osStdout() *os.File {
 	return os.Stdout
 }
 
-// RunWithWriters runs the CLI while directing process stdout/stderr to the
-// given writers for the duration of the call. Writers may be *os.File or any
-// io.Writer; non-file writers are wired through pipes. Nil writers keep the
-// process defaults. Parallel-safe via package mutex.
+// RunWithWriters is the L2-injectable CLI entry for tests. It redirects
+// process stdout/stderr to the given writers (for osStdout() / legacy
+// fmt paths) and also passes those writers into the core CLI (for
+// fmt.Fprint(stdout, …) paths such as help and event-bus). Writers may
+// be *os.File or any io.Writer; non-file writers are wired through pipes.
+// Nil writers keep the process defaults. Parallel-safe via package mutex.
 func RunWithWriters(profile Profile, args []string, stdout, stderr io.Writer) error {
 	runWritersMu.Lock()
 	defer runWritersMu.Unlock()
@@ -29,7 +31,15 @@ func RunWithWriters(profile Profile, args []string, stdout, stderr io.Writer) er
 		return err
 	}
 	defer restore()
-	return Run(profile, args)
+
+	out, errW := stdout, stderr
+	if out == nil {
+		out = os.Stdout
+	}
+	if errW == nil {
+		errW = os.Stderr
+	}
+	return runCLI(profile, args, out, errW)
 }
 
 func redirectStdio(stdout, stderr io.Writer) (restore func(), err error) {
