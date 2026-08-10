@@ -117,6 +117,8 @@ func Run(profile Profile, args []string) error {
 		return runAuth(resolve, rest)
 	case "agent":
 		return runAgent(resolve, rest)
+	case "agent-run":
+		return runAgentRunRoot(resolve, rest)
 	case "skill":
 		return agentskill.Handle(rest)
 	case "openclaw":

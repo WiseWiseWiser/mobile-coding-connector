@@ -25,6 +25,7 @@ import (
 	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 	"github.com/xhd2015/agent-pro/agent/streaming/sse"
 	"github.com/xhd2015/ai-critic/server/actions"
+	"github.com/xhd2015/ai-critic/server/agentrun"
 	"github.com/xhd2015/ai-critic/server/agents"
 	opencode_exposed "github.com/xhd2015/ai-critic/server/agents/opencode/exposed_opencode"
 	"github.com/xhd2015/ai-critic/server/agents/web/cursorweb"
@@ -541,6 +542,11 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Agents API
 	agents.RegisterAPI(mux)
+
+	// Agent-run sessions API (remote façade over agentstorage; home from env/default)
+	if err := agentrun.RegisterAPI(mux, ""); err != nil {
+		return err
+	}
 
 	// Custom Agents API
 	customagentapi.RegisterCustomAgentsAPI(mux)

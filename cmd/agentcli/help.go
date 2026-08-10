@@ -55,6 +55,7 @@ Commands:
 
   Integrations
     agent                Custom agents and sessions
+    agent-run            Remote agent-run (sessions/attach/status/resume/send/run/…)
     openclaw             Mock OpenClaw gateway + Slack config
     ws-proxy             Mobile WebSocket proxy (Xray + tunnel)
 
@@ -115,6 +116,7 @@ Commands:
 
   Integrations
     agent                Custom agents and sessions
+    agent-run            Remote agent-run (sessions/attach/status/resume/send/run/…)
     openclaw             Mock OpenClaw gateway + Slack config
     ws-proxy             Mobile WebSocket proxy (Xray + tunnel)
 
