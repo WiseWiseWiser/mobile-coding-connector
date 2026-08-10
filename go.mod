@@ -8,14 +8,15 @@ require (
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/ulikunitz/xz v0.5.12
-	github.com/xhd2015/agent-pro v0.0.83
+	github.com/xhd2015/agent-pro v0.0.111
 	github.com/xhd2015/bak-files v0.0.1
 	github.com/xhd2015/doctest v0.0.98
-	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.98
+	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.112
 	github.com/xhd2015/gitops v0.0.30
 	github.com/xhd2015/kool v0.0.129
 	github.com/xhd2015/less-gen v0.0.19
-	github.com/xhd2015/skills v0.0.22
+	github.com/xhd2015/skills v0.0.26
+	github.com/xhd2015/tty-watch v0.0.4
 	github.com/xhd2015/wrk v0.0.1
 	github.com/xhd2015/xgo v1.2.0
 	golang.org/x/crypto v0.47.0
@@ -25,11 +26,11 @@ require (
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02 // indirect
 	github.com/xhd2015/go-coverage v1.0.41 // indirect
 	github.com/xhd2015/go-inspect v0.0.49 // indirect
 	github.com/xhd2015/less-flags v1.0.2 // indirect
-	github.com/xhd2015/tty-watch v0.0.1 // indirect
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 )
