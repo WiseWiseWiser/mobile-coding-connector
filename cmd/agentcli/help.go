@@ -58,6 +58,7 @@ Commands:
     agent-run            Remote agent-run (sessions/attach/status/resume/send/run/…)
     openclaw             Mock OpenClaw gateway + Slack config
     ws-proxy             Mobile WebSocket proxy (Xray + tunnel)
+    event-bus            Subscribe to server event notification bus
 
   Local & tooling
     local                Local-machine utilities
@@ -119,6 +120,7 @@ Commands:
     agent-run            Remote agent-run (sessions/attach/status/resume/send/run/…)
     openclaw             Mock OpenClaw gateway + Slack config
     ws-proxy             Mobile WebSocket proxy (Xray + tunnel)
+    event-bus            Subscribe to server event notification bus
 
   Local & tooling
     local                Local-machine utilities

@@ -16,6 +16,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/ai-critic/server/domains"
 	"github.com/xhd2015/ai-critic/server/encrypt"
+	"github.com/xhd2015/ai-critic/server/eventbus"
 	serverenv "github.com/xhd2015/ai-critic/server/env"
 	"github.com/xhd2015/ai-critic/server/quicktest"
 
@@ -56,6 +57,9 @@ Options:
   --rules-dir DIR         Directory containing REVIEW_RULES.md (defaults to "rules")
   --project-dir DIR       Project root directory (for finding ai-critic-react in dev mode)
   --component             Serve a specific component
+  --event-bus-publish-port PORT   Loopback event-bus publish HTTP port (default: %d)
+  --event-bus-publish-token TOK   Optional Bearer token for POST /publish
+  --no-event-bus-publish          Disable loopback event-bus publish listener
   -h, --help              Show this help message
 
 Keep-Alive Options:
@@ -69,7 +73,7 @@ Keep-Alive Commands:
   request info            Get current status from keep-alive daemon
   request status          Get current status from keep-alive daemon
   request restart         Request keep-alive daemon to restart the server
-`, config.DefaultServerPort, config.CredentialsFile, config.EncKeyFile, config.DomainsFile)
+`, config.DefaultServerPort, config.CredentialsFile, config.EncKeyFile, config.DomainsFile, config.DefaultEventBusPublishPort)
 
 func Run(args []string) error {
 	if err := serverenv.Load(); err != nil {
@@ -117,6 +121,9 @@ func Run(args []string) error {
 	var rulesDir string
 	var projectDir string
 	var portFlag int
+	var eventBusPublishPortFlag int
+	var eventBusPublishTokenFlag string
+	var noEventBusPublishFlag bool
 	args, err := flags.
 		Bool("--dev", &devFlag).
 		Int("--frontend-port", &frontendPortFlag).
@@ -132,11 +139,20 @@ func Run(args []string) error {
 		String("--domains-file", &domainsFileFlag).
 		String("--rules-dir", &rulesDir).
 		String("--project-dir", &projectDir).
+		Int("--event-bus-publish-port", &eventBusPublishPortFlag).
+		String("--event-bus-publish-token", &eventBusPublishTokenFlag).
+		Bool("--no-event-bus-publish", &noEventBusPublishFlag).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
 		return err
 	}
+
+	eventbus.SetPublishConfig(eventbus.ResolvePublishConfig(
+		eventBusPublishPortFlag,
+		eventBusPublishTokenFlag,
+		noEventBusPublishFlag,
+	))
 
 	if len(args) > 0 {
 		return fmt.Errorf("unrecognized extra args: %s", strings.Join(args, " "))

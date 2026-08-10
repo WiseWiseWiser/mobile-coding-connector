@@ -14,6 +14,7 @@ import (
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap"
 	"github.com/xhd2015/ai-critic/run/daemon"
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/eventbus"
 	"github.com/xhd2015/less-gen/flags"
 )
 
@@ -57,6 +58,9 @@ func runKeepAlive(args []string) error {
 	var detachFlag bool
 	var logFlag string
 	var startupTimeoutFlag string
+	var eventBusPublishPortFlag int
+	var eventBusPublishTokenFlag string
+	var noEventBusPublishFlag bool
 
 	args, err := flags.
 		Bool("--script", &scriptFlag).
@@ -66,6 +70,9 @@ func runKeepAlive(args []string) error {
 		Bool("--kill-existing", &killExistingFlag).
 		Bool("--detach", &detachFlag).
 		String("--log", &logFlag).
+		Int("--event-bus-publish-port", &eventBusPublishPortFlag).
+		String("--event-bus-publish-token", &eventBusPublishTokenFlag).
+		Bool("--no-event-bus-publish", &noEventBusPublishFlag).
 		Help("-h,--help", fmt.Sprintf(keepAliveHelp, config.DefaultServerPort)).
 		Parse(args)
 	if err != nil {
@@ -76,6 +83,14 @@ func runKeepAlive(args []string) error {
 	if portFlag > 0 {
 		port = portFlag
 	}
+
+	// Forward event-bus flags to the managed server child argv.
+	ebCfg := eventbus.ResolvePublishConfig(
+		eventBusPublishPortFlag,
+		eventBusPublishTokenFlag,
+		noEventBusPublishFlag,
+	)
+	args = eventbus.AppendEventBusServerArgs(args, ebCfg)
 
 	if scriptFlag {
 		return outputKeepAliveScript(port, args)

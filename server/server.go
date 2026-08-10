@@ -39,6 +39,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/env"
 	"github.com/xhd2015/ai-critic/server/domains"
 	"github.com/xhd2015/ai-critic/server/encrypt"
+	"github.com/xhd2015/ai-critic/server/eventbus"
 	serverexec "github.com/xhd2015/ai-critic/server/exec"
 	"github.com/xhd2015/ai-critic/server/exposedurls"
 	"github.com/xhd2015/ai-critic/server/fakellm"
@@ -249,6 +250,11 @@ func Serve(port int, dev bool) error {
 
 	err := RegisterAPI(mux)
 	if err != nil {
+		return err
+	}
+
+	// Loopback event-bus publish listener (hard-fails if port in use when enabled).
+	if err := eventbus.StartFromConfig(); err != nil {
 		return err
 	}
 
@@ -616,6 +622,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Services API
 	services.RegisterAPI(mux)
+
+	// Event bus: main-mux WebSocket subscribe (publish is loopback-only HTTP)
+	eventbus.RegisterDefault(mux)
 
 	// Cron tasks API
 	crontasks.RegisterAPI(mux)
@@ -1378,6 +1387,7 @@ func SetShutdownMode(mode string) {
 
 // ShutdownServer initiates server shutdown
 func ShutdownServer() {
+	eventbus.StopPublishServer()
 	close(globalShutdownChan)
 }
 

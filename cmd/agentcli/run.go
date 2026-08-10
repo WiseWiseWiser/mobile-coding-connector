@@ -3,6 +3,8 @@ package agentcli
 import (
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -14,6 +16,19 @@ import (
 
 // Run executes the agent CLI with the given profile and arguments.
 func Run(profile Profile, args []string) error {
+	return RunWithWriters(profile, args, os.Stdout, os.Stderr)
+}
+
+// RunWithWriters is the L2-injectable CLI entry (stdout/stderr writers).
+// Product binaries call Run, which delegates here with os.Stdout/os.Stderr.
+func RunWithWriters(profile Profile, args []string, stdout, stderr io.Writer) error {
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	if stderr == nil {
+		stderr = os.Stderr
+	}
+
 	active = profile
 	help := topLevelHelp(profile)
 	args = reorderMisplacedRestoreArchive(args)
@@ -31,8 +46,9 @@ func Run(profile Profile, args []string) error {
 	}
 	args, err := parser.
 		HelpFunc("-h,--help", func() {
-			fmt.Print(strings.TrimRight(help, "\n"))
+			fmt.Fprint(stdout, strings.TrimRight(help, "\n")+"\n")
 		}).
+		HelpNoExit().
 		StopOnFirstArg().
 		Parse(args)
 	if err != nil {
@@ -47,7 +63,7 @@ func Run(profile Profile, args []string) error {
 	}
 
 	if len(args) == 0 {
-		fmt.Print(strings.TrimRight(help, "\n"))
+		fmt.Fprint(stdout, strings.TrimRight(help, "\n")+"\n")
 		return nil
 	}
 
@@ -129,6 +145,8 @@ func Run(profile Profile, args []string) error {
 		return runSSH(rest, resolve)
 	case "sync":
 		return runSync(rest)
+	case "event-bus":
+		return runEventBus(stdout, stderr, server, token, tokenSpecified, rest)
 	default:
 		return fmt.Errorf("unknown command: %s", cmd)
 	}

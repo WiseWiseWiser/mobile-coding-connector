@@ -28,6 +28,10 @@ const (
 	// KeepAlivePort is the port for the keep-alive management HTTP server.
 	KeepAlivePort = 23312
 
+	// DefaultEventBusPublishPort is the default loopback HTTP port for the
+	// in-process event-bus publish listener (POST /publish).
+	DefaultEventBusPublishPort = 23891
+
 	// ServerLogFile is the log file for the keep-alive managed server.
 	ServerLogFile = "ai-critic-server.log"
 )
