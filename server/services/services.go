@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 	"github.com/xhd2015/ai-critic/server/cloudflare"
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/procenv"
 	"github.com/xhd2015/ai-critic/server/proxy/portforward"
 )
 
@@ -1513,24 +1513,7 @@ func normalizeExtraEnv(extraEnv map[string]string) map[string]string {
 }
 
 func buildServiceEnv(def ServiceDefinition) []string {
-	env := tool_resolve.AppendExtraPaths(os.Environ())
-	if len(def.ExtraEnv) == 0 {
-		return env
-	}
-	envMap := make(map[string]string, len(env)+len(def.ExtraEnv))
-	for _, item := range env {
-		if idx := strings.IndexByte(item, '='); idx >= 0 {
-			envMap[item[:idx]] = item[idx+1:]
-		}
-	}
-	for key, value := range def.ExtraEnv {
-		envMap[key] = value
-	}
-	merged := make([]string, 0, len(envMap))
-	for key, value := range envMap {
-		merged = append(merged, fmt.Sprintf("%s=%s", key, value))
-	}
-	return merged
+	return procenv.BuildManagedEnv(def.ExtraEnv)
 }
 
 func lookupEnvValue(env []string, key string) string {

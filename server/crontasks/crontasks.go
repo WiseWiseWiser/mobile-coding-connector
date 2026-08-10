@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/procenv"
 )
 
 const (
@@ -920,12 +920,7 @@ func (m *Manager) startTask(id string) error {
 	startedAt := time.Now().UTC()
 	_, _ = logFile.WriteString(fmt.Sprintf("\n[%s] starting cron task %s\n", startedAt.Format(time.RFC3339), name))
 
-	env := tool_resolve.AppendExtraPaths(os.Environ())
-	if len(extraEnv) > 0 {
-		for k, v := range extraEnv {
-			env = append(env, k+"="+v)
-		}
-	}
+	env := procenv.BuildManagedEnv(extraEnv)
 	shellCommand := command
 	if pathVal := lookupEnv(env, "PATH"); pathVal != "" {
 		shellCommand = fmt.Sprintf("export PATH=%s; %s", shellQuote(pathVal), command)
