@@ -5,7 +5,7 @@ go 1.25.10
 require (
 	github.com/chromedp/cdproto v0.0.0-20240202021202-6d0b6a386732
 	github.com/chromedp/chromedp v0.9.5
-	github.com/xhd2015/ai-critic v0.0.18
+	github.com/xhd2015/ai-critic v0.0.19
 	github.com/xhd2015/less-gen v0.0.19
 )
 
