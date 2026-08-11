@@ -8,7 +8,7 @@ require (
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/ulikunitz/xz v0.5.12
-	github.com/xhd2015/agent-pro v0.0.111
+	github.com/xhd2015/agent-pro v0.0.112
 	github.com/xhd2015/bak-files v0.0.1
 	github.com/xhd2015/doctest v0.0.98
 	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.114
@@ -34,3 +34,5 @@ require (
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 )
+
+replace github.com/xhd2015/dot-pkgs/go-pkgs => ../dot-pkgs-master-2026-08-10-3/go-pkgs
