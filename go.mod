@@ -13,7 +13,7 @@ require (
 	github.com/xhd2015/doctest v0.0.98
 	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.114
 	github.com/xhd2015/gitops v0.0.30
-	github.com/xhd2015/kool v0.0.129
+	github.com/xhd2015/kool v0.0.146
 	github.com/xhd2015/less-gen v0.0.19
 	github.com/xhd2015/skills v0.0.26
 	github.com/xhd2015/tty-watch v0.0.4
