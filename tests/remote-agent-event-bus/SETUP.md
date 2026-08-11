@@ -3,37 +3,43 @@
 **Feature**: remote-agent event-bus listen L2 harness
 
 ```
-# L2: RunWithWriters (help/reject) | RunEventBusListen (injectable WS)
-leaf Setup -> help argv OR hub/inject stream -> stdout/stderr Assert
+# L2: RunWithWriters (help/reject) | RunEventBusListen (injectable WS + OpenTTYSession)
+leaf Setup -> help argv OR hub/inject stream -> stdout/stderr + open calls Assert
 ```
 
 ## Preconditions
 
 1. Product implements `remote-agent event-bus` (+ `listen`),
    `agentcli.RunWithWriters`, and `agentcli.RunEventBusListen` /
-   `EventBusListenOpts` (classic TDD: missing → compile RED or assertion RED).
+   `EventBusListenOpts` including `OpenTTY` / `OpenTTYSession` (classic TDD:
+   missing fields → compile RED; missing behavior → assertion RED).
 2. PHASE 2 `server/eventbus` Hub + `RegisterSubscribeWS` available for hub-mode
    leaves.
 3. Shared Event types from `dot-pkgs/go-pkgs/eventbus` (module replace ok).
-4. No product-binary e2e; no process env/cwd mutation.
+4. No product-binary e2e; no process env/cwd mutation; no real iTerm/osascript.
 5. Harness never reassigns `os.Stdout`/`os.Stderr`; all CLI and listen I/O uses
-   injected `io.Writer` buffers.
+   injected `io.Writer` buffers. OpenTTYSession is always injected for open-tty
+   leaves (recording hook).
 
 ## Steps
 
 1. Root Setup defaults `Op` and common fixture fields.
 2. Grouping Setup sets Op branch and dial mode defaults.
-3. Leaf Setup fills Args or listen opts + event seeds.
-4. Root `Run` executes CLI or `RunEventBusListen` and fills `Response`.
-5. Leaf `Assert` checks exit code, help text, human/JSON lines, warnings.
+3. Leaf Setup fills Args or listen opts + event seeds (+ OpenTTY hooks).
+4. Root `Run` executes CLI or `RunEventBusListen` and fills `Response`
+   (including `OpenTTYSessionIDs` when hook installed).
+5. Leaf `Assert` checks exit code, help text, human/JSON lines, warnings, open
+   calls.
 
 ## Context
 
-Implements `/tmp/REQUIREMENT-DESIGN-PHASE-3-remote-agent-eventbus-listen.md`.
+Implements `/tmp/REQUIREMENT-DESIGN-PHASE-3-remote-agent-eventbus-listen.md`
+and `/tmp/REQUIREMENT-DESIGN-PHASE-2-remote-agent-open-tty.md`.
 L2 mass only; no `e2e` label.
 
 ```go
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -54,6 +60,8 @@ const (
 	fixtureTS3         = "2026-08-10T12:35:10.000Z"
 	fixturePayload1    = `{"text":"hello-bus"}`
 	fixturePayload2    = `{"text":"second"}`
+	fixtureSessionIDA  = "sess-open-tty-aaa"
+	fixtureSessionIDB  = "sess-open-tty-bbb"
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
@@ -78,6 +86,43 @@ func setCLI(req *Request, args ...string) {
 func setListenHub(req *Request) {
 	req.Op = "listen"
 	req.DialMode = "hub"
+}
+
+func setListenInject(req *Request) {
+	req.Op = "listen"
+	req.DialMode = "inject"
+}
+
+func ttyPayload(sessionID string) string {
+	if sessionID == "" {
+		return `{"runner":"codex","workspace":"/tmp/ws"}`
+	}
+	return fmt.Sprintf(`{"session_id":%q,"runner":"codex","workspace":"/tmp/ws"}`, sessionID)
+}
+
+// seedInjectTTY appends one agent.tty.started inject event (session_id in payload).
+func seedInjectTTY(req *Request, id, ts, sessionID string) {
+	req.InjectEvents = append(req.InjectEvents, EventSeed{
+		ID:      id,
+		TS:      ts,
+		Source:  fixtureSourceAgent,
+		Type:    fixtureTypeTTY,
+		Payload: ttyPayload(sessionID),
+	})
+}
+
+// seedInjectSeatalk appends one seatalk.message.received inject event.
+func seedInjectSeatalk(req *Request, id, ts, payload string) {
+	if payload == "" {
+		payload = fixturePayload1
+	}
+	req.InjectEvents = append(req.InjectEvents, EventSeed{
+		ID:      id,
+		TS:      ts,
+		Source:  fixtureSourceBot,
+		Type:    fixtureTypeSeatalk,
+		Payload: payload,
+	})
 }
 
 func seedOneLive(req *Request) {

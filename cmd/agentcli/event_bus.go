@@ -7,12 +7,16 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/xhd2015/ai-critic/server/eventbus"
 	sharedeb "github.com/xhd2015/dot-pkgs/go-pkgs/eventbus"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/iterm2"
 	"github.com/xhd2015/less-gen/flags"
 )
 
@@ -32,6 +36,12 @@ type EventBusListenOpts struct {
 	Types     []string
 	JSON      bool
 	Replay    int
+	// OpenTTY enables opening a local iTerm attach window on agent.tty.started
+	// and agent.tty.restarted. Default false (--open-tty flag).
+	OpenTTY bool
+	// OpenTTYSession is called once per distinct session_id when OpenTTY is set.
+	// nil → production iTerm ForceNew running `remote-agent agent-run attach <id>`.
+	OpenTTYSession func(sessionID string) error
 	DialWS    EventBusDialFunc
 	Now       func() time.Time
 	MaxEvents int
@@ -57,6 +67,7 @@ Flags:
   --type T       Only print events of type T (repeatable)
   --json         Emit one NDJSON Event object per line (no ANSI)
   --replay N     Print up to N recent hub events (oldest first) before live
+  --open-tty     On agent.tty.started|restarted, open iTerm attach (default: off)
 
 Global options (before event-bus):
   --server URL   Server base URL
@@ -100,10 +111,12 @@ func runEventBusListenCLI(stdout, stderr io.Writer, server, token string, tokenS
 	var types []string
 	var jsonOut bool
 	var replay int
+	var openTTY bool
 	remain, err := flags.
 		StringSlice("--type", &types).
 		Bool("--json", &jsonOut).
 		Int("--replay", &replay).
+		Bool("--open-tty", &openTTY).
 		HelpFunc("-h,--help", func() {
 			fmt.Fprint(stdout, strings.TrimRight(eventBusListenHelp, "\n")+"\n")
 		}).
@@ -136,11 +149,12 @@ func runEventBusListenCLI(stdout, stderr io.Writer, server, token string, tokenS
 	}
 
 	return RunEventBusListen(stdout, stderr, EventBusListenOpts{
-		Server: server,
-		Token:  token,
-		Types:  types,
-		JSON:   jsonOut,
-		Replay: replay,
+		Server:  server,
+		Token:   token,
+		Types:   types,
+		JSON:    jsonOut,
+		Replay:  replay,
+		OpenTTY: openTTY,
 	})
 }
 
@@ -184,6 +198,13 @@ func RunEventBusListen(stdout, stderr io.Writer, opts EventBusListenOpts) error 
 	printed := 0
 	everConnected := false
 	backoff := 50 * time.Millisecond
+
+	// Process-local dedupe for --open-tty (no disk).
+	openedSessions := make(map[string]struct{})
+	openTTYSession := opts.OpenTTYSession
+	if opts.OpenTTY && openTTYSession == nil {
+		openTTYSession = defaultOpenTTYSession
+	}
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -233,6 +254,10 @@ func RunEventBusListen(stdout, stderr io.Writer, opts EventBusListenOpts) error 
 			}
 			if err := printEvent(stdout, opts.JSON, nowFn, ev); err != nil {
 				return err
+			}
+			// Best-effort open-tty after a printed event; never aborts the listen loop.
+			if opts.OpenTTY {
+				maybeOpenTTY(stderr, opts.JSON, openTTYSession, openedSessions, ev)
 			}
 			printed++
 			if opts.MaxEvents > 0 && printed >= opts.MaxEvents {
@@ -329,6 +354,110 @@ func writeWarning(stderr io.Writer, jsonMode bool, msg string) {
 	fmt.Fprintln(stderr, colorYellow(msg))
 }
 
+// maybeOpenTTY opens a local attach window for agent.tty.started|restarted.
+// Best-effort: warnings only; never returns an error to the listen loop.
+// started: process-local dedupe per session_id (first open only).
+// restarted: always open (user closed window + follow-up should re-open).
+func maybeOpenTTY(stderr io.Writer, jsonMode bool, openFn func(string) error, opened map[string]struct{}, ev sharedeb.Event) {
+	if openFn == nil {
+		return
+	}
+	switch ev.Type {
+	case sharedeb.TypeAgentTTYStarted, sharedeb.TypeAgentTTYRestarted:
+	default:
+		return
+	}
+	sessionID := parseEventSessionID(ev.Payload)
+	if sessionID == "" {
+		writeWarning(stderr, jsonMode, fmt.Sprintf("warning: %s missing session_id; skipping open", ev.Type))
+		return
+	}
+	if ev.Type == sharedeb.TypeAgentTTYStarted {
+		if _, seen := opened[sessionID]; seen {
+			return
+		}
+		// Mark before call so concurrent started events share one open attempt.
+		opened[sessionID] = struct{}{}
+	}
+	if err := openFn(sessionID); err != nil {
+		writeWarning(stderr, jsonMode, fmt.Sprintf("warning: open tty session %s: %v", sessionID, err))
+	}
+}
+
+// parseEventSessionID extracts payload.session_id from a JSON Event payload.
+func parseEventSessionID(payload json.RawMessage) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal(payload, &m); err != nil {
+		return ""
+	}
+	v, ok := m["session_id"]
+	if !ok || v == nil {
+		return ""
+	}
+	switch s := v.(type) {
+	case string:
+		return strings.TrimSpace(s)
+	default:
+		return strings.TrimSpace(fmt.Sprint(s))
+	}
+}
+
+// defaultOpenTTYSession opens a new iTerm window running remote-agent agent-run attach.
+func defaultOpenTTYSession(sessionID string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return fmt.Errorf("empty session_id")
+	}
+	bin := resolveRemoteAgentBinary()
+	// Quote for shell write-text in iTerm.
+	cmdLine := shellQuote(bin) + " agent-run attach " + shellQuote(sessionID)
+	// Prefer $HOME so the new window is not stuck in listen's cwd.
+	dir, err := os.UserHomeDir()
+	if err != nil || dir == "" {
+		dir = "/"
+	}
+	return iterm2.OpenConfig(dir, &iterm2.Config{
+		Mode:             iterm2.ModeForceNew,
+		FollowUpCommands: []string{cmdLine},
+	})
+}
+
+// resolveRemoteAgentBinary is the binary the user is already running.
+func resolveRemoteAgentBinary() string {
+	if exe, err := os.Executable(); err == nil && exe != "" {
+		return exe
+	}
+	if p, err := exec.LookPath("remote-agent"); err == nil {
+		return p
+	}
+	return "remote-agent"
+}
+
+// shellQuote returns a single-quoted shell-safe form of s (POSIX).
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	if isShellSafe(s) {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func isShellSafe(s string) bool {
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '/' || r == '_' || r == '-' || r == '.' || r == ':' || r == '+' || r == '=' {
+			continue
+		}
+		return false
+	}
+	return s != ""
+}
+
 func colorYellow(s string) string {
 	return "\033[33m" + s + "\033[0m"
 }
@@ -383,35 +512,43 @@ func defaultEventBusDial(ctx context.Context, wsURL string, header http.Header) 
 }
 
 type wsEventBusConn struct {
-	conn *websocket.Conn
-	ctx  context.Context
+	conn       *websocket.Conn
+	ctx        context.Context
+	cancelOnce sync.Once
 }
 
-func (c *wsEventBusConn) ReadJSON(v any) error {
-	// Unblock on context cancel by closing the conn from a helper if needed.
-	// DialContext already respects ctx for dial; for read we set a deadline loop.
+func (c *wsEventBusConn) ReadJSON(v any) (err error) {
+	// Recover gorilla/websocket panic on repeated read after a failed frame.
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("websocket read: %v", r)
+		}
+	}()
+	// Do not use short read deadlines: gorilla/websocket marks the connection
+	// failed after some deadline errors, which races with Cloudflare idle
+	// proxies and causes reconnect thrash. Cancel is handled by a watcher that
+	// closes the conn when ctx ends.
 	if c.ctx != nil {
 		if err := c.ctx.Err(); err != nil {
 			return err
 		}
-		// Short read deadline so we can notice cancellation.
-		_ = c.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		c.startCancelWatcher()
 	}
-	for {
-		err := c.conn.ReadJSON(v)
-		if err == nil {
-			return nil
+	// Clear any prior deadline so the read blocks until a frame or close.
+	_ = c.conn.SetReadDeadline(time.Time{})
+	return c.conn.ReadJSON(v)
+}
+
+func (c *wsEventBusConn) startCancelWatcher() {
+	c.cancelOnce.Do(func() {
+		if c.ctx == nil || c.conn == nil {
+			return
 		}
-		if c.ctx != nil && c.ctx.Err() != nil {
-			return c.ctx.Err()
-		}
-		// Retry on timeout to poll context.
-		if netErr, ok := err.(interface{ Timeout() bool }); ok && netErr.Timeout() {
-			_ = c.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-			continue
-		}
-		return err
-	}
+		go func() {
+			<-c.ctx.Done()
+			_ = c.conn.Close()
+		}()
+	})
 }
 
 func (c *wsEventBusConn) Close() error {

@@ -7,11 +7,16 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"golang.org/x/term"
 )
 
 // AgentRunSession is one entry from GET /api/agent-run/sessions.
@@ -78,10 +83,31 @@ func (c *Client) DialAgentRunAttach(sessionID string) (*websocket.Conn, error) {
 	return conn, nil
 }
 
+// attachTTYCleanup turns off modes remote TUIs (e.g. grok) enable over the
+// relay — mouse tracking, alt screen, etc. Without this, mouse moves paint
+// CSI garbage in the local window after attach ends or desyncs.
+const attachTTYCleanup = "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?1049l\x1b[0m"
+
 // AttachAgentRunSession dials attach and bridges binary frames to stdin/stdout
 // until the remote side closes or an IO error occurs.
-// onRestore is optional and runs on exit (local TTY restore hook).
+// When stdin is a local TTY (*os.File), it is put in raw mode (same as local
+// agent-run attach) so mouse/CSI keys are not cooked/echoed as garbage.
+// When stdout is a TTY, sends initial size + SIGWINCH as JSON
+// {"type":"resize","cols","rows"} (same wire as local tty-watch attach).
+// onRestore is optional and runs on exit (after raw restore / mode cleanup).
 func (c *Client) AttachAgentRunSession(sessionID string, stdin io.Reader, stdout io.Writer, onRestore func()) error {
+	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		state, err := term.MakeRaw(int(f.Fd()))
+		if err == nil {
+			defer func() {
+				_ = term.Restore(int(f.Fd()), state)
+				// Best-effort: leave the window usable after detach/exit.
+				if out, ok := stdout.(*os.File); ok {
+					_, _ = out.WriteString(attachTTYCleanup)
+				}
+			}()
+		}
+	}
 	conn, err := c.DialAgentRunAttach(sessionID)
 	if err != nil {
 		return err
@@ -91,13 +117,48 @@ func (c *Client) AttachAgentRunSession(sessionID string, stdin io.Reader, stdout
 		defer onRestore()
 	}
 
+	var writeMu sync.Mutex
+	writeMsg := func(mt int, data []byte) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		return conn.WriteMessage(mt, data)
+	}
+	sendResize := func(out *os.File) {
+		cols, rows, gerr := term.GetSize(int(out.Fd()))
+		if gerr != nil || cols <= 0 || rows <= 0 {
+			return
+		}
+		body, merr := json.Marshal(map[string]any{
+			"type": "resize",
+			"cols": cols,
+			"rows": rows,
+		})
+		if merr != nil {
+			return
+		}
+		_ = writeMsg(websocket.TextMessage, body)
+	}
+
+	// Initial size + live SIGWINCH (local agent-run attach parity).
+	if out, ok := stdout.(*os.File); ok && term.IsTerminal(int(out.Fd())) {
+		sendResize(out)
+		winch := make(chan os.Signal, 1)
+		signal.Notify(winch, syscall.SIGWINCH)
+		defer signal.Stop(winch)
+		go func() {
+			for range winch {
+				sendResize(out)
+			}
+		}()
+	}
+
 	errCh := make(chan error, 2)
 	go func() {
 		buf := make([]byte, 32*1024)
 		for {
 			n, readErr := stdin.Read(buf)
 			if n > 0 {
-				if werr := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); werr != nil {
+				if werr := writeMsg(websocket.BinaryMessage, buf[:n]); werr != nil {
 					errCh <- werr
 					return
 				}

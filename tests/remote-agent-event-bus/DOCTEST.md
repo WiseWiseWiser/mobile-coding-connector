@@ -2,34 +2,43 @@
 
 L2 in-process doctests for `remote-agent event-bus listen`: connect to the
 main-server event-bus WebSocket (`GET /api/event-bus/ws`), print events as logs,
-optional `--json` / `--type` / `--replay`, reconnect with `warning:`.
+optional `--json` / `--type` / `--replay` / `--open-tty`, reconnect with `warning:`.
 
-Classic TDD: CLI surface and injectable listen core are **greenfield** in
-`agentcli` until implementer lands them. Server hub + `RegisterSubscribeWS`
-(PHASE 2) are available for real-WS leaves; reconnect uses an injectable dialer.
+PHASE 2 classic TDD: `--open-tty` + injectable open hook + process-local
+session dedupe are **new** (expect RED until implementer). Existing listen /
+help / reject leaves stay GREEN once `OpenTTY` fields are scaffolded (default
+off). Server hub + `RegisterSubscribeWS` for real-WS leaves; reconnect and
+open-tty streams use injectable dialers.
 
 # DSN (Domain Specific Notion)
 
-CLI client that subscribes to the server event bus over WebSocket and prints
-each Event as a log line (human or NDJSON), with reconnect warnings.
+CLI client that subscribes to the server event bus over WebSocket, prints each
+Event as a log line (human or NDJSON), optionally opens a local iTerm attach
+window on new agent TTY sessions, with reconnect and open-failure warnings.
 
 **Participants**
 
 - **agentcli.RunWithWriters** — top-level / `event-bus` help and reject paths
   with injected stdout/stderr (no `os.Stdout` reassignment; no product binary e2e).
 - **agentcli.RunEventBusListen** — injectable listen core: writers +
-  `EventBusListenOpts` (Server, Token, Types, JSON, Replay, DialWS, Now,
-  MaxEvents, Context).
+  `EventBusListenOpts` (Server, Token, Types, JSON, Replay, OpenTTY,
+  OpenTTYSession, DialWS, Now, MaxEvents, Context).
 - **EventBusListenOpts.DialWS** — optional fake dialer for drop-once reconnect
   and deterministic streams without a live hub.
+- **EventBusListenOpts.OpenTTYSession** — L2 inject for open-on-TTY; when nil
+  and OpenTTY, production opens iTerm ForceNew running
+  `remote-agent agent-run attach <session_id>` (resolve binary via `os.Args[0]`
+  or lookpath). Tests always inject a recorder — no real osascript/iTerm.
 - **server/eventbus Hub + RegisterSubscribeWS** — real ephemeral mux for
   one-event / filter / replay leaves when DialWS is nil.
-- **Shared Event** — `dot-pkgs/go-pkgs/eventbus` JSON envelope.
+- **Shared Event** — `dot-pkgs/go-pkgs/eventbus` JSON envelope; TTY payload
+  carries `session_id` (plus optional runner/workspace from agent-run).
 
 **Behaviors**
 
 - Help: top-level lists `event-bus`; `event-bus --help` lists `listen`;
-  `event-bus listen --help` documents `--type`, `--json`, `--replay`.
+  `event-bus listen --help` documents `--type`, `--json`, `--replay`,
+  `--open-tty` (default off).
 - Human listen: green `connected  server=…` then lines
   `HH:MM:SS  <type>  …` (gray meta optional); yellow `warning:` on disconnect
   before reconnect.
@@ -37,6 +46,12 @@ each Event as a log line (human or NDJSON), with reconnect warnings.
 - Token optional (empty Bearer / omit ok for open WS).
 - `--type T` (repeatable): only matching event types are printed.
 - `--replay N`: up to N recent hub events (oldest first) before live frames.
+- `--open-tty`: on each **printed** `agent.tty.started` with non-empty
+  payload `session_id`, call OpenTTYSession once per distinct session_id
+  (process-local dedupe). Missing session_id → `warning:` stderr, keep
+  listening. Open error → `warning:` stderr, continue (MaxEvents still exits 0).
+  Other event types (e.g. `seatalk.message.received`) never open. Without
+  `--open-tty` / OpenTTY=false → never open.
 - Unknown `event-bus` subcommand → non-zero + `Error:`.
 
 ## Version
@@ -64,7 +79,16 @@ each Event as a log line (human or NDJSON), with reconnect warnings.
  |    +-- filter/                            (GROUP) --type filter
  |    |    +-- excludes-non-matching/        (LEAF)  non-matching type suppressed
  |    +-- replay/                            (GROUP) --replay N
- |         +-- recent-then-live/             (LEAF)  N recent then one live event
+ |    |    +-- recent-then-live/             (LEAF)  N recent then one live event
+ |    +-- open-tty/                          (GROUP) --open-tty / OpenTTYSession
+ |         +-- enabled/                      (GROUP) OpenTTY=true + inject hook
+ |         |    +-- opens-on-tty-started/    (LEAF)  agent.tty.started → open once
+ |         |    +-- dedupe-same-session/     (LEAF)  same session_id → no 2nd open
+ |         |    +-- missing-session-id-warns/(LEAF)  no session_id → warning; no open
+ |         |    +-- open-failure-warns/      (LEAF)  open err → warning; exit 0
+ |         |    +-- ignores-non-tty-event/   (LEAF)  seatalk.* → never open
+ |         +-- disabled/                     (GROUP) OpenTTY=false (default)
+ |              +-- never-opens/             (LEAF)  tty.started without flag → no open
  |
  +-- rejected/                               (GROUP) CLI surface errors
       +-- unknown-subcommand/                (LEAF)  event-bus foo → Error
@@ -76,14 +100,20 @@ each Event as a log line (human or NDJSON), with reconnect warnings.
 |---|------|-------------|
 | 1 | `help/top-level-lists-event-bus` | Top-level help mentions `event-bus` |
 | 2 | `help/event-bus-root` | `event-bus --help` lists `listen` |
-| 3 | `help/listen` | `event-bus listen --help` documents flags |
+| 3 | `help/listen` | `event-bus listen --help` documents flags incl. `--open-tty` |
 | 4 | `listen/human/one-event` | Connect + one hub event → human stdout |
 | 5 | `listen/human/empty-token-ok` | Empty token still connects and prints |
 | 6 | `listen/json/one-event` | `--json` → one NDJSON line, no ANSI |
 | 7 | `listen/reconnect/warning-and-retry` | Injectable drop-once → `warning:` + recover |
 | 8 | `listen/filter/excludes-non-matching` | `--type` drops non-matching events |
 | 9 | `listen/replay/recent-then-live` | `--replay N` prints recent then live |
-| 10 | `rejected/unknown-subcommand` | `event-bus foo` → non-zero + Error |
+| 10 | `listen/open-tty/enabled/opens-on-tty-started` | OpenTTY + tty.started → one open |
+| 11 | `listen/open-tty/enabled/dedupe-same-session` | Same session_id → open once; other id opens |
+| 12 | `listen/open-tty/enabled/missing-session-id-warns` | Missing session_id → warning; no open |
+| 13 | `listen/open-tty/enabled/open-failure-warns` | Open error → warning; continue exit 0 |
+| 14 | `listen/open-tty/enabled/ignores-non-tty-event` | seatalk.message.received → no open |
+| 15 | `listen/open-tty/disabled/never-opens` | Without OpenTTY → never open |
+| 16 | `rejected/unknown-subcommand` | `event-bus foo` → non-zero + Error |
 
 ## Parameter Coverage
 
@@ -96,12 +126,19 @@ each Event as a log line (human or NDJSON), with reconnect warnings.
 | Reconnect / warning | listen/reconnect/* |
 | Type filter | listen/filter/* |
 | Replay N | listen/replay/* |
+| OpenTTY on / off | listen/open-tty/enabled/*, listen/open-tty/disabled/* |
+| Open event type (tty vs other) | opens-on-tty-started, ignores-non-tty-event |
+| session_id present / missing | opens-on-tty-started, missing-session-id-warns |
+| Open success / fail | opens-on-tty-started, open-failure-warns |
+| Process-local session dedupe | dedupe-same-session |
 | Unknown subcommand | rejected/* |
 
 ## Locked product API (implementer)
 
-Classic TDD: symbols below are **not** required to exist until implementer
-scaffolds them. First make them compile, then satisfy Asserts.
+Classic TDD: **new** `--open-tty` symbols below may not exist until implementer
+scaffolds them. Scaffold `OpenTTY` / `OpenTTYSession` first so the suite
+compiles (existing leaves stay GREEN with defaults), then satisfy open-tty
+Asserts.
 
 Package `github.com/xhd2015/ai-critic/cmd/agentcli` (or subpackage wired from
 `Run`):
@@ -111,7 +148,7 @@ Package `github.com/xhd2015/ai-critic/cmd/agentcli` (or subpackage wired from
 | `event-bus` command in `Run` / `RunWithWriters` switch | dispatch + top-level help listing |
 | `RunWithWriters(profile Profile, args []string, stdout, stderr io.Writer) error` | L2 CLI entry (help/reject); product `Run` may delegate with `os.Stdout`/`os.Stderr` |
 | `RunEventBusListen(stdout, stderr io.Writer, opts EventBusListenOpts) error` | L2-injectable listen core |
-| `EventBusListenOpts` | `Server, Token string`; `Types []string`; `JSON bool`; `Replay int`; `DialWS EventBusDialFunc`; `Now func() time.Time`; `MaxEvents int`; `Context context.Context` |
+| `EventBusListenOpts` | existing: `Server, Token string`; `Types []string`; `JSON bool`; `Replay int`; `DialWS EventBusDialFunc`; `Now func() time.Time`; `MaxEvents int`; `Context context.Context`; **new:** `OpenTTY bool`; `OpenTTYSession func(sessionID string) error` |
 | `EventBusDialFunc` | `func(ctx context.Context, wsURL string, header http.Header) (EventBusConn, error)` |
 | `EventBusConn` | `ReadJSON(v any) error` (or equivalent text-frame Event read) + `Close() error` |
 | Human log | green `connected  server=<base>`; event lines `HH:MM:SS  <type>  …` (local clock from `Now`); yellow `warning:` on disconnect before reconnect |
@@ -119,6 +156,7 @@ Package `github.com/xhd2015/ai-critic/cmd/agentcli` (or subpackage wired from
 | Token | optional; empty token may omit Authorization or send empty Bearer |
 | `--type` | repeatable; when non-empty, print only matching `Event.Type` |
 | `--replay N` | print up to N hub recent events (oldest first) before live; may use WS query, HTTP, or client fetch of Recent — implementer choice as long as Asserts pass |
+| `--open-tty` / `OpenTTY` | default off; when on, after printing `agent.tty.started`, parse payload `session_id`; if non-empty and not yet opened this process, call `OpenTTYSession(sessionID)` (nil → production iTerm ForceNew with `remote-agent agent-run attach <session_id>`). Process-local map/set dedupe only (no disk). Missing/empty session_id → `warning:` on stderr, no open, keep listening. Open error → `warning:` on stderr, keep listening. Never open for other types. |
 | Reconnect | on read/dial failure after a successful connect, print `warning:` (stderr) and retry dial (backoff ok; tests use injectable dialer) |
 | Stop | when `MaxEvents > 0`, return nil after that many **printed** events; honor `Context` cancel |
 
@@ -128,7 +166,7 @@ Wire path for real dial: `ws(s)://<host>/api/event-bus/ws` from `Server` base UR
 CLI shape:
 
 ```
-remote-agent event-bus listen [--type T ...] [--json] [--replay N]
+remote-agent event-bus listen [--type T ...] [--json] [--replay N] [--open-tty]
 ```
 
 ## How to Run
@@ -144,7 +182,7 @@ Single leaf:
 
 ```sh
 doctest test ./tests/remote-agent-event-bus/help/listen
-doctest test ./tests/remote-agent-event-bus/listen/human/one-event
+doctest test ./tests/remote-agent-event-bus/listen/open-tty/enabled/opens-on-tty-started
 ```
 
 ```go
@@ -196,6 +234,14 @@ type Request struct {
 	JSON   bool
 	Replay int
 
+	// --open-tty / OpenTTY (PHASE 2)
+	OpenTTY bool
+	// InjectOpenHook installs a recording OpenTTYSession even when OpenTTY is
+	// false (disabled leaf proves the hook is never called).
+	InjectOpenHook bool
+	// OpenTTYFail makes the injected OpenTTYSession return an error.
+	OpenTTYFail bool
+
 	// Hub / stream control
 	// When DialMode is empty or "hub", start RegisterSubscribeWS and publish LiveEvents after connect.
 	// When DialMode is "drop-once", use injectable DialWS that fails once then delivers InjectEvents.
@@ -206,7 +252,7 @@ type Request struct {
 	LiveEvents []EventSeed
 	// Pre-seeded hub events for --replay (published before listen starts).
 	RecentEvents []EventSeed
-	// InjectEvents used by injectable dialer (reconnect / pure inject).
+	// InjectEvents used by injectable dialer (reconnect / pure inject / open-tty).
 	InjectEvents []EventSeed
 
 	// MaxEvents passed to opts (0 → default from leaf Setup).
@@ -224,6 +270,10 @@ type Response struct {
 
 	ServerURL string
 	WSURL     string
+
+	// OpenTTYSessionIDs is the ordered list of session IDs passed to the
+	// injected OpenTTYSession hook (empty when hook not installed or never called).
+	OpenTTYSessionIDs []string
 }
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
@@ -292,9 +342,25 @@ func runListen(t *testing.T, req *Request, resp *Response) (*Response, error) {
 	opts.Types = append([]string(nil), req.Types...)
 	opts.JSON = req.JSON
 	opts.Replay = req.Replay
+	opts.OpenTTY = req.OpenTTY
 	opts.MaxEvents = maxEvents
 	opts.Context = ctx
 	opts.Now = func() time.Time { return fixedNow }
+
+	// Injectable OpenTTYSession recorder (L2; no real iTerm/osascript).
+	var openMu sync.Mutex
+	var openIDs []string
+	if req.InjectOpenHook || req.OpenTTY || req.OpenTTYFail {
+		opts.OpenTTYSession = func(sessionID string) error {
+			openMu.Lock()
+			openIDs = append(openIDs, sessionID)
+			openMu.Unlock()
+			if req.OpenTTYFail {
+				return fmt.Errorf("simulated open failure")
+			}
+			return nil
+		}
+	}
 
 	dialMode := req.DialMode
 	if dialMode == "" {
@@ -340,6 +406,10 @@ func runListen(t *testing.T, req *Request, resp *Response) (*Response, error) {
 
 	var stdout, stderr bytes.Buffer
 	runErr := agentcli.RunEventBusListen(&stdout, &stderr, opts)
+
+	openMu.Lock()
+	resp.OpenTTYSessionIDs = append([]string(nil), openIDs...)
+	openMu.Unlock()
 
 	resp.Stdout = stdout.String()
 	resp.Stderr = stderr.String()

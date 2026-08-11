@@ -3,7 +3,7 @@
 **Feature**: event-bus listen help documents flags
 
 ```
-remote-agent event-bus listen --help -> flags --type --json --replay
+remote-agent event-bus listen --help -> flags --type --json --replay --open-tty
 ```
 
 ## Steps

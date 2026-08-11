@@ -11,6 +11,20 @@ import (
 // buffers via RunWithWriters under this mutex (and harness-level locks).
 var runWritersMu sync.Mutex
 
+// lockedWriter serializes writes so a buffer can safely receive both direct
+// fmt.Fprint(stdout, …) from runCLI and concurrent io.Copy from the pipe
+// that backs redirected os.Stdout/os.Stderr.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
+}
+
 // osStdout returns the current process stdout (may be swapped by RunWithWriters).
 func osStdout() *os.File {
 	return os.Stdout
@@ -25,6 +39,19 @@ func osStdout() *os.File {
 func RunWithWriters(profile Profile, args []string, stdout, stderr io.Writer) error {
 	runWritersMu.Lock()
 	defer runWritersMu.Unlock()
+
+	// Wrap non-file writers so direct runCLI writes and pipe-copy goroutines
+	// never race on the same bytes.Buffer (undefined → flaky empty capture).
+	if stdout != nil {
+		if _, ok := stdout.(*os.File); !ok {
+			stdout = &lockedWriter{w: stdout}
+		}
+	}
+	if stderr != nil {
+		if _, ok := stderr.(*os.File); !ok {
+			stderr = &lockedWriter{w: stderr}
+		}
+	}
 
 	restore, err := redirectStdio(stdout, stderr)
 	if err != nil {
