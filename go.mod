@@ -34,5 +34,3 @@ require (
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 )
-
-replace github.com/xhd2015/dot-pkgs/go-pkgs => ../dot-pkgs-master-2026-08-10-3/go-pkgs
