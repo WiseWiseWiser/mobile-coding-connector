@@ -11,8 +11,8 @@ require (
 	github.com/xhd2015/agent-pro v0.0.114
 	github.com/xhd2015/bak-files v0.0.2
 	github.com/xhd2015/doctest v0.0.98
-	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.115
-	github.com/xhd2015/gitops v0.0.30
+	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.119
+	github.com/xhd2015/gitops v0.0.31
 	github.com/xhd2015/kool v0.0.146
 	github.com/xhd2015/less-gen v0.0.19
 	github.com/xhd2015/skills v0.0.26
