@@ -18,7 +18,8 @@ Fixture files under shared `testdata/`. Parser source of truth is `agent/grok/tt
 ## Context
 
 Pure parser tests; no daemon, network, or PTY fetch.
-Covers multi-format Next reset (REQUIREMENT-DESIGN-grok-usage-next-reset-multi-format).
+Covers multi-format Next reset (REQUIREMENT-DESIGN-grok-usage-next-reset-multi-format)
+and Grok 1.0.3 modal panel (`Resets:` / plan subtitle) from crime-scene REPRODUCED.
 
 ```go
 import (

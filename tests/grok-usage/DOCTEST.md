@@ -34,6 +34,8 @@ deterministically without a live grok binary.
 - Multi-format `Next reset` (first match wins): explicit `PT`, explicit `UTC`, then
   no-timezone → bare wall clock (local time for consumers). Whitelist known TZs only
   (no catch-all `[A-Z]{2,4}`).
+- Grok 1.0.3 usage **modal panel** also parses: `Weekly limit (plan)` + bar `%` line +
+  `Resets: Month D, HH:MM` → same `UsageInfo` fields (bare reset when TZ omitted).
 - No-TZ / junk-suffix fixtures must not invent a timezone from trailing scrollback.
 - `GROK_SHOW_USAGE_COMMAND=mock-success.sh` → service `status=ready` with parsed limits.
 - `GROK_SHOW_USAGE_COMMAND=mock-success-no-tz.sh` → ready + structured `reset_at` /
@@ -51,7 +53,7 @@ deterministically without a live grok binary.
 
 ## Version
 
-0.0.3
+0.0.4
 
 ## Decision Tree
 
@@ -65,6 +67,7 @@ deterministically without a live grok binary.
  |    +-- extra-noise/                (LEAF)   PT lines buried in scrollback
  |    +-- noisy-no-timezone/          (LEAF)   no TZ buried in scrollback → bare local
  |    +-- junk-suffix/                (LEAF)   junk after date must not be TZ
+ |    +-- modal-panel/                (LEAF)   Grok 1.0.3 panel: Weekly limit (plan) + Resets:
  |    +-- missing-weekly/             (LEAF)   parse error
  |    +-- missing-reset/              (LEAF)   parse error
  |
@@ -94,15 +97,16 @@ deterministically without a live grok binary.
 | 4 | `parse/extra-noise` | Parse PT usage buried in noise |
 | 5 | `parse/noisy-no-timezone` | No-TZ usage buried in noise → bare local |
 | 6 | `parse/junk-suffix` | Junk after date not treated as TZ; bare local |
-| 7 | `parse/missing-weekly` | Missing weekly line → error |
-| 8 | `parse/missing-reset` | Missing reset line → error |
-| 9 | `fetch/mock-command-success` | `GROK_SHOW_USAGE_COMMAND` mock → service ready |
-| 10 | `fetch/mock-command-fails` | Mock exit 1 → service error |
-| 11 | `fetch/structured-ready` | Bare local mock → ready + structured A+B fields |
-| 12 | `fetch/structured-error-empty` | Mock fail → empty reset_at/display/time_left |
-| 13 | `get/time-left-recomputed` | Seeded reset_at; second Get shortens time_left |
-| 14 | `api/get-usage-ready` | HTTP API on server port returns ready JSON |
-| 15 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
+| 7 | `parse/modal-panel` | Grok 1.0.3 panel: plan subtitle + bar % + `Resets:` |
+| 8 | `parse/missing-weekly` | Missing weekly line → error |
+| 9 | `parse/missing-reset` | Missing reset line → error |
+| 10 | `fetch/mock-command-success` | `GROK_SHOW_USAGE_COMMAND` mock → service ready |
+| 11 | `fetch/mock-command-fails` | Mock exit 1 → service error |
+| 12 | `fetch/structured-ready` | Bare local mock → ready + structured A+B fields |
+| 13 | `fetch/structured-error-empty` | Mock fail → empty reset_at/display/time_left |
+| 14 | `get/time-left-recomputed` | Seeded reset_at; second Get shortens time_left |
+| 15 | `api/get-usage-ready` | HTTP API on server port returns ready JSON |
+| 16 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
 
 ## Parameter Coverage
 
@@ -114,6 +118,7 @@ deterministically without a live grok binary.
 | extra-noise | parse | show-usage-noisy.txt | false |
 | noisy-no-timezone | parse | show-usage-noisy-no-tz.txt | false |
 | junk-suffix | parse | show-usage-junk-suffix.txt | false |
+| modal-panel | parse | show-usage-modal-panel.txt | false |
 | missing-weekly | parse | show-usage-missing-weekly.txt | true |
 | missing-reset | parse | show-usage-missing-reset.txt | true |
 | mock-command-success | fetch | GROK_SHOW_USAGE_COMMAND=mock-success.sh | false |
