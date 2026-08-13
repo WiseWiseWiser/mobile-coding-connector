@@ -73,8 +73,8 @@ github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e h1:MRM5ITcdelLK2j1
 github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e/go.mod h1:XV66xRDqSt+GTGFMVlhk3ULuV0y9ZmzeVGR4mloJI3M=
 github.com/ulikunitz/xz v0.5.12 h1:37Nm15o69RwBkXM0J6A5OlE67RZTfzUxTj8fB3dfcsc=
 github.com/ulikunitz/xz v0.5.12/go.mod h1:nbz6k7qbPmH4IRqmfOplQw/tblSgqTqBwxkY0oWt/14=
-github.com/xhd2015/agent-pro v0.0.122 h1:b5glf2pa6sU/WZYbOu4UDlG9oNjovddlJmLuwpXLkag=
-github.com/xhd2015/agent-pro v0.0.122/go.mod h1:kiirZuFxnEEvBn8xnbySrQXJvgfwSjCs905Fa5Kdg48=
+github.com/xhd2015/agent-pro v0.0.123 h1:M+P2RgmY+MiUK2Ce6+2dCV4boGib2q7mLfOdF5q5n9Y=
+github.com/xhd2015/agent-pro v0.0.123/go.mod h1:kiirZuFxnEEvBn8xnbySrQXJvgfwSjCs905Fa5Kdg48=
 github.com/xhd2015/bak-files v0.0.2 h1:g0ceqBOM8mooLlV2Sa/RzxHYplsPJbmzfplyLGcylkc=
 github.com/xhd2015/bak-files v0.0.2/go.mod h1:4dhwSqCB/5p6zUFM0LXklw1OhjR4DueeWbfh81rwhFo=
 github.com/xhd2015/doctest v0.0.98 h1:nkz4Bl/FRxKOsNcbn9TECn3uASoHtpTtxPgxESZoVXE=
