@@ -26,7 +26,7 @@ public enum ITermOpener {
           activate
           set newWindow to (create window with default profile)
           tell current session of newWindow
-            write text "\(escaped)"
+            write text ((ASCII character 21) & "\(escaped)")
           end tell
         end tell
         """

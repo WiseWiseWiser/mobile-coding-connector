@@ -101,6 +101,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cfg := &iterm2.Config{
 		Mode:             mode,
 		FollowUpCommands: req.Send,
+		SafeInputIgnore:  true,
 	}
 	if err := h.openFunc()(dir, cfg); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())

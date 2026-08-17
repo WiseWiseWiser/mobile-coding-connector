@@ -422,6 +422,7 @@ func defaultOpenTTYSession(sessionID string) error {
 	return iterm2.OpenConfig(dir, &iterm2.Config{
 		Mode:             iterm2.ModeForceNew,
 		FollowUpCommands: []string{cmdLine},
+		SafeInputIgnore:  true,
 	})
 }
 
