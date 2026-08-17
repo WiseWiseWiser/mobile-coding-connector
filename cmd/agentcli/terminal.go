@@ -3,6 +3,7 @@ package agentcli
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"golang.org/x/term"
 
@@ -21,17 +22,21 @@ Subcommands:
 
   new [--name NAME] [cwd]
       Create a new terminal session on the remote server and attach to it.
+      Detach without stopping the remote shell: Ctrl-].
 
   close <id-or-name>
       Remove a terminal session from the remote server.
 
   attach <id-or-name>
       Attach this terminal to an existing remote terminal session.
+      Detach without stopping the remote shell: Ctrl-].
 `
 
 const terminalNewHelp = `Usage: remote-agent terminal new [--name NAME] [cwd]
 
 Create a new terminal session on the remote server and attach to it.
+
+Detach without stopping the remote shell: Ctrl-].
 
 Options:
   --name NAME          Session name shown in the frontend and CLI.
@@ -124,12 +129,16 @@ func runTerminalNew(resolve func() (*client.Client, error), args []string) error
 		return err
 	}
 	c := ptyClientFrom(cli)
-	_, err = ptyclient.Attach(c, ptyclient.ConnectOptions{
+	result, err := ptyclient.Attach(c, ptyclient.ConnectOptions{
 		Name: firstArgOr(name, "Terminal"),
 		Cwd:  firstArg(args),
 		Wait: true,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	printDetached(result)
+	return nil
 }
 
 func runTerminalClose(resolve func() (*client.Client, error), args []string) error {
@@ -161,7 +170,7 @@ func runTerminalClose(resolve func() (*client.Client, error), args []string) err
 func runTerminalAttach(resolve func() (*client.Client, error), args []string) error {
 	if len(args) != 1 {
 		if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
-			fmt.Print("Usage: remote-agent terminal attach <id-or-name>\n")
+			fmt.Print("Usage: remote-agent terminal attach <id-or-name>\n\nDetach without stopping the remote shell: Ctrl-].\n")
 			return nil
 		}
 		return fmt.Errorf("terminal attach requires exactly 1 argument <id-or-name>")
@@ -179,13 +188,48 @@ func runTerminalAttach(resolve func() (*client.Client, error), args []string) er
 	if err != nil {
 		return err
 	}
+	if err := ErrIfSessionNotAttachable(*session); err != nil {
+		return err
+	}
 
-	_, err = ptyclient.Attach(c, ptyclient.ConnectOptions{
-		SessionID:      session.ID,
-		AttachSnapshot: true,
-		Wait:           true,
-	})
-	return err
+	result, err := ptyclient.Attach(c, TerminalAttachConnectOptions(session.ID))
+	if err != nil {
+		return err
+	}
+	printDetached(result)
+	return nil
+}
+
+func printDetached(result ptyclient.AttachResult) {
+	if !result.Detached {
+		return
+	}
+	id := strings.TrimSpace(result.SessionID)
+	if id == "" {
+		fmt.Println("detached (session still running)")
+		return
+	}
+	fmt.Printf("detached (%s still running)\n", id)
+}
+
+// ErrIfSessionNotAttachable rejects sessions whose PTY child is already gone.
+// Attach would otherwise open a mute raw TTY on replayed scrollback.
+func ErrIfSessionNotAttachable(session ptyclient.SessionInfo) error {
+	if strings.EqualFold(strings.TrimSpace(session.Status), "exited") {
+		return fmt.Errorf("%s is exited", session.ID)
+	}
+	return nil
+}
+
+// TerminalAttachConnectOptions is the handshake `remote-agent terminal attach`
+// uses for an existing session. attach_mode=attach claims roleAttacher so
+// keystrokes are accepted even when another client already holds the writer.
+func TerminalAttachConnectOptions(sessionID string) ptyclient.ConnectOptions {
+	return ptyclient.ConnectOptions{
+		SessionID:  sessionID,
+		AttachMode: "attach",
+		Wait:       true,
+	}
 }
 
 func boolWord(v bool) string {

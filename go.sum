@@ -73,12 +73,14 @@ github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e h1:MRM5ITcdelLK2j1
 github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e/go.mod h1:XV66xRDqSt+GTGFMVlhk3ULuV0y9ZmzeVGR4mloJI3M=
 github.com/ulikunitz/xz v0.5.12 h1:37Nm15o69RwBkXM0J6A5OlE67RZTfzUxTj8fB3dfcsc=
 github.com/ulikunitz/xz v0.5.12/go.mod h1:nbz6k7qbPmH4IRqmfOplQw/tblSgqTqBwxkY0oWt/14=
+github.com/xhd2015/agent-pro v0.0.131 h1:Dt7feEKf1Q1I8yIHk5OUI+dCmVDHryXb9EL/e9OHHUQ=
+github.com/xhd2015/agent-pro v0.0.131/go.mod h1:bSCEownt2Ab1R2nJu0MzjFhHHFPcBcmlLVMj25FKI2w=
 github.com/xhd2015/bak-files v0.0.2 h1:g0ceqBOM8mooLlV2Sa/RzxHYplsPJbmzfplyLGcylkc=
 github.com/xhd2015/bak-files v0.0.2/go.mod h1:4dhwSqCB/5p6zUFM0LXklw1OhjR4DueeWbfh81rwhFo=
 github.com/xhd2015/doctest v0.0.98 h1:nkz4Bl/FRxKOsNcbn9TECn3uASoHtpTtxPgxESZoVXE=
 github.com/xhd2015/doctest v0.0.98/go.mod h1:JsvbNAP0qRO9V6Qfk7zbdcIjJQLofZCZxxTXS+Bbga0=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.119 h1:hTARb+Nu6unoe7mi5DzJ89hbjTpxZYEs843f4yrN7ns=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.119/go.mod h1:eelZPb7I/hdpxmdCflzfphdiYriUVGaI1PNkUwUII9A=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.128 h1:8APV98+rdO1uu6omrGgxc6ggx/h4Nc3AuTzlXVqxXvY=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.128/go.mod h1:eelZPb7I/hdpxmdCflzfphdiYriUVGaI1PNkUwUII9A=
 github.com/xhd2015/gitops v0.0.31 h1:dyiUIHzxeTCrG6dySEvfS5TpzooDxM8tXR+qlWDb+LQ=
 github.com/xhd2015/gitops v0.0.31/go.mod h1:KS8y6tZ3FG+myEaR+H6MvoR099YrP/ADIHZX9ROpZo8=
 github.com/xhd2015/go-coverage v1.0.41 h1:JjUcE93IMz0KHmdCYUKq9JN/EDC/5k0OEhsMAeVvL88=
