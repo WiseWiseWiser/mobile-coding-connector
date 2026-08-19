@@ -62,6 +62,7 @@ Commands:
 
   Local & tooling
     local                Local-machine utilities
+    native-terminals     Native terminal-emulator windows/tabs (aliases: native-terminal, native-terms, native-term)
     skill                Install local-agent skill docs
     config               Manage saved server domains (local web UI)
 

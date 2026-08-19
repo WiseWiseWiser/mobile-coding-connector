@@ -80,7 +80,7 @@ public struct SettingsView<Extra: View>: View {
             extraSections
         }
         .padding(16)
-        .frame(minWidth: 440, minHeight: showRemoteConnection ? 420 : 340)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings-window")
     }

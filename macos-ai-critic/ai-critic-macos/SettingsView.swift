@@ -3,6 +3,7 @@ import AICriticMacShared
 
 /// Local Settings: shared browser + Grok/Codex display, plus debug log.
 /// Thin wrapper around Shared.SettingsView so local keeps ServerClient debug wiring.
+@available(macOS 15.0, *)
 struct LocalSettingsRoot: View {
     @Binding var menuBarDisplayMode: String
 
@@ -11,6 +12,9 @@ struct LocalSettingsRoot: View {
             menuBarDisplayMode: $menuBarDisplayMode,
             showRemoteConnection: false
         ) {
+            Divider()
+            ITermSwitcherHotKeySection()
+            Divider()
             LocalDebugLogSection()
         }
     }

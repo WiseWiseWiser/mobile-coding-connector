@@ -86,10 +86,12 @@ func SetReachabilityForTest(mode string) {
 
 // ResetInProcessOverrides clears home/port/reachability overrides after an
 // in-process agentcli.Run. Safe to call from defer under the suite mutex.
+// Also clears terminals list/focus inject hooks and their counters.
 func ResetInProcessOverrides() {
 	homeOverride = ""
 	defaultPortOverride = 0
 	reachabilityMode = ""
+	resetTerminalsHooks()
 }
 
 // UserHomeDir returns the home override when set, otherwise os.UserHomeDir.

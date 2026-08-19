@@ -84,6 +84,23 @@ public final class ServiceClient: @unchecked Sendable {
         }
     }
 
+    /// List wrk projects via GET /api/wrk/projects.
+    public func listWrkProjects() async throws -> [WrkProjectStatus] {
+        guard isConfigured else { throw ServiceClientError.notConfigured }
+        guard let url = URL(string: baseURL + "/api/wrk/projects") else {
+            throw ServiceClientError.unreachable("invalid wrk projects url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        Self.applyAuth(&request, token: token)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServiceClientError.unreachable("wrk projects list request failed")
+        }
+        let decoded = try JSONDecoder().decode(WrkListProjectsResponse.self, from: data)
+        return decoded.projects
+    }
+
     public func listServices() async throws -> [ServiceStatus] {
         let request = try Self.buildListServicesRequest(baseURL: baseURL, token: token)
         let (data, response) = try await session.data(for: request)

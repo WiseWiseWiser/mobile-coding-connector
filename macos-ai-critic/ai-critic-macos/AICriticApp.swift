@@ -229,6 +229,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await state?.refresh()
             startRefreshLoop()
             startRotationLoop()
+            if #available(macOS 15.0, *) {
+                ITermSwitcherHotKeyMonitor.shared.start()
+                SpaceLabelOverlayController.shared.start()
+            }
         }
     }
 
@@ -275,43 +279,23 @@ struct AICriticApp: App {
     }
 
     var body: some Scene {
-        Window("Settings", id: "settings") {
-            LocalSettingsRoot(menuBarDisplayMode: $state.menuBarDisplayMode)
-                .onChange(of: state.menuBarDisplayMode) { _ in
-                    state.updateMenuLabel()
-                }
+        Window("AI Critic", id: MainWindowController.windowID) {
+            LocalMainWindow(
+                state: state,
+                menuBarDisplayMode: $state.menuBarDisplayMode
+            )
         }
-        .windowResizability(.contentSize)
+        .defaultSize(width: 820, height: 600)
         .defaultLaunchBehavior(.suppressed)
 
         MenuBarExtra {
             MenuBarDropdownContent(
                 state: state,
-                autoStart: $autoStart,
-                showSettings: showSettingsWindow
+                autoStart: $autoStart
             )
+            .modifier(RegisterMainWindowOpener())
         } label: {
             Text(state.menuLabel)
-        }
-    }
-
-    private func showSettingsWindow(openWindow: OpenWindowAction) {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        openWindow(id: "settings")
-        if let window = NSApp.windows.first(where: { $0.title == "Settings" }) {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        Task { @MainActor in
-            for _ in 0..<15 {
-                openWindow(id: "settings")
-                if let window = NSApp.windows.first(where: { $0.title == "Settings" }) {
-                    window.makeKeyAndOrderFront(nil)
-                    return
-                }
-                try? await Task.sleep(nanoseconds: 100_000_000)
-            }
         }
     }
 }
@@ -321,9 +305,6 @@ private struct MenuBarDropdownContent: View {
     @ObservedObject var state: AppState
     @Binding var autoStart: Bool
     @AppStorage("defaultBrowser") private var defaultBrowser = BrowserPreference.default.rawValue
-    @Environment(\.openWindow) private var openWindow
-    let showSettings: (OpenWindowAction) -> Void
-
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(UsageLabelFormatter.composeGrokDropdownLine(
@@ -346,6 +327,14 @@ private struct MenuBarDropdownContent: View {
             Text(state.statusLine)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Divider()
+
+            Button(MainWindowFormatter.formatShowAppLabel()) {
+                MainWindowController.open()
+            }
+            .keyboardShortcut("o", modifiers: [.command])
+            .accessibilityIdentifier("show-app-menu-button")
 
             Divider()
 
@@ -477,6 +466,11 @@ private struct MenuBarDropdownContent: View {
             }
             .accessibilityIdentifier("terminals-menu")
 
+            Button("iTerm Switcher…") {
+                ITermSwitcherController.shared.toggle()
+            }
+            .accessibilityIdentifier("iterm-switcher-menu")
+
             // Projects submenu (wrk registry + linked worktrees)
             Menu("Projects") {
                 // Empty-area status: Loading… when projectsLoading && isEmpty; else empty/failed labels.
@@ -599,7 +593,7 @@ private struct MenuBarDropdownContent: View {
             Divider()
 
             Button("Settings…") {
-                showSettings(openWindow)
+                MainWindowController.open(page: .settings)
             }
             .accessibilityIdentifier("settings-menu-button")
 

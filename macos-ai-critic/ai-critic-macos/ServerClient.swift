@@ -56,54 +56,6 @@ struct DebugLogSettings: Codable {
 
 // ServiceStatus / ServiceActionResponse / CronTaskStatus / LogStreamEvent live in AICriticMacShared.
 
-// MARK: - wrk projects / worktrees (GET/POST /api/wrk/*)
-
-struct WrkWorktreeStatus: Decodable, Identifiable {
-    var id: String { path }
-    let path: String
-    let name: String
-    let branch: String?
-    let clean: Bool
-    let isMain: Bool
-    let error: String?
-
-    enum CodingKeys: String, CodingKey {
-        case path, name, branch, clean, error
-        case isMain = "is_main"
-    }
-}
-
-struct WrkProjectStatus: Decodable, Identifiable {
-    var id: String { path }
-    let path: String
-    let name: String
-    let branch: String?
-    let commit: String?
-    let subject: String?
-    let clean: Bool
-    let error: String?
-    let worktrees: [WrkWorktreeStatus]?
-}
-
-struct WrkListProjectsResponse: Decodable {
-    let projects: [WrkProjectStatus]
-}
-
-struct WrkCreateWorktreeRequest: Encodable {
-    let projectPath: String
-    let task: String?
-
-    enum CodingKeys: String, CodingKey {
-        case projectPath = "project_path"
-        case task
-    }
-}
-
-struct WrkCreateWorktreeResponse: Decodable {
-    let path: String
-    let branch: String
-}
-
 // MARK: - Bookmarks (GET /api/bookmarks)
 
 struct BookmarkNode: Decodable, Identifiable {
@@ -323,6 +275,206 @@ final class ServerClient {
             throw ServerClientError.unreachable("wrk create worktree request failed")
         }
         return try JSONDecoder().decode(WrkCreateWorktreeResponse.self, from: data)
+    }
+
+    /// Ranked skills for the ⌘⇧; picker via GET /api/local/skills.
+    /// Non-empty query is sent as `?q=` (server fuzzy + highlight spans).
+    func listSkills(query: String = "") async throws -> SkillsListResponse {
+        var path = "/api/local/skills"
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !q.isEmpty, var comps = URLComponents(string: path) {
+            comps.queryItems = [URLQueryItem(name: "q", value: q)]
+            path = comps.string ?? path
+        }
+        let (data, response) = try await get(path: path)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "skills list request failed"))
+        }
+        return try JSONDecoder().decode(SkillsListResponse.self, from: data)
+    }
+
+    /// Increment usage for a SKILL.md path via POST /api/local/skills/use.
+    func recordSkillUse(path: String) async throws {
+        let (data, response) = try await postJSON(
+            path: "/api/local/skills/use",
+            body: ["path": path]
+        )
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "skills use request failed"))
+        }
+    }
+
+    /// Live Desktops + iTerm sessions + notes via GET /api/local/iterm2/inventory.
+    /// Pass refresh=true to wait for a smart recapture (`?refresh=1`).
+    /// Pass spaceID to recapture that Desktop only (`space_id=`).
+    func itermInventory(refresh: Bool = false, spaceID: UInt64 = 0) async throws -> ITermInventory {
+        var path = "/api/local/iterm2/inventory"
+        var qs: [String] = []
+        if refresh {
+            qs.append("refresh=1")
+        }
+        if spaceID != 0 {
+            qs.append("space_id=\(spaceID)")
+        }
+        if !qs.isEmpty {
+            path += "?" + qs.joined(separator: "&")
+        }
+        let (data, response) = try await get(path: path)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "iterm inventory request failed"))
+        }
+        return try JSONDecoder().decode(ITermInventory.self, from: data)
+    }
+
+    /// SSE: cache inventory first (if any), then one coalesced refresh result.
+    func itermInventoryStream() -> AsyncThrowingStream<ITermInventory, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard let url = URL(string: baseURL + "/api/local/iterm2/inventory/stream") else {
+                        throw ServerClientError.unreachable("invalid url")
+                    }
+                    var request = URLRequest(url: url)
+                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    applyAuth(&request)
+                    let (bytes, response) = try await session.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                        throw ServerClientError.unreachable("iterm inventory stream failed")
+                    }
+                    for try await line in bytes.lines {
+                        try Task.checkCancellation()
+                        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard trimmed.hasPrefix("data: ") else { continue }
+                        let payload = String(trimmed.dropFirst("data: ".count))
+                        let frame = try JSONDecoder().decode(ITermInventoryStreamFrame.self, from: Data(payload.utf8))
+                        if frame.type == "error" {
+                            throw ServerClientError.unreachable(frame.message ?? "inventory stream failed")
+                        }
+                        if frame.type == "inventory", let inv = frame.inventory {
+                            continuation.yield(inv)
+                        }
+                        if frame.type == "done" {
+                            break
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// Activate a Mission Control Space by CGS id (daemon process, not this app).
+    func switchITermSpace(spaceID: UInt64) async throws {
+        guard spaceID != 0 else {
+            throw ServerClientError.unreachable(ITermSwitcherFormatter.formatSwitchSpaceMissingID())
+        }
+        let (data, response) = try await postJSON(
+            path: "/api/local/iterm2/switch-space",
+            body: ["space_id": NSNumber(value: spaceID)]
+        )
+        guard let http = response as? HTTPURLResponse else {
+            throw ServerClientError.unreachable(ITermSwitcherFormatter.formatSwitchSpaceFailed())
+        }
+        if http.statusCode == 200 { return }
+        throw ServerClientError.unreachable(jsonError(data, fallback: ITermSwitcherFormatter.formatSwitchSpaceFailed()))
+    }
+
+    /// Switch Desktop then focus an iTerm window/tab/session.
+    func focusITermSession(sessionID: String) async throws {
+        let (data, response) = try await postJSON(
+            path: "/api/local/iterm2/focus",
+            body: ["session_id": sessionID]
+        )
+        guard let http = response as? HTTPURLResponse else {
+            throw ServerClientError.unreachable("iterm focus request failed")
+        }
+        if http.statusCode == 200 { return }
+        throw ServerClientError.unreachable(jsonError(data, fallback: "iterm focus request failed"))
+    }
+
+    /// Patch a session note and/or bookmark. Omitted fields are left unchanged.
+    /// Empty note + bookmarked false deletes the record.
+    func setITermNote(sessionID: String, note: String? = nil, bookmarked: Bool? = nil) async throws {
+        guard let url = URL(string: baseURL + "/api/local/iterm2/notes") else {
+            throw ServerClientError.unreachable("invalid url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(&request)
+        let body = ITermNoteBody(sessionID: sessionID, note: note, bookmarked: bookmarked)
+        request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "iterm note request failed"))
+        }
+    }
+
+    private struct ITermNoteBody: Encodable {
+        let sessionID: String
+        let note: String?
+        let bookmarked: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case sessionID = "session_id"
+            case note
+            case bookmarked
+        }
+    }
+
+    /// Set or clear a Mission Control Space label. Empty label deletes it.
+    func setITermSpaceLabel(spaceID: UInt64, uuid: String = "", label: String) async throws {
+        guard spaceID != 0 || !uuid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ServerClientError.unreachable("space_id is required")
+        }
+        guard let url = URL(string: baseURL + "/api/local/iterm2/space-labels") else {
+            throw ServerClientError.unreachable("invalid url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(&request)
+        let body = ITermSpaceLabelBody(spaceID: spaceID, uuid: uuid, label: label)
+        request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "iterm space label request failed"))
+        }
+    }
+
+    private struct ITermSpaceLabelBody: Encodable {
+        let spaceID: UInt64
+        let uuid: String
+        let label: String
+
+        enum CodingKeys: String, CodingKey {
+            case spaceID = "space_id"
+            case uuid
+            case label
+        }
+    }
+
+    private func postJSON(path: String, body: [String: Any]) async throws -> (Data, URLResponse) {
+        guard let url = URL(string: baseURL + path) else {
+            throw ServerClientError.unreachable("invalid url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(&request)
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try await session.data(for: request)
+    }
+
+    private func jsonError(_ data: Data, fallback: String) -> String {
+        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let msg = obj["error"] as? String, !msg.isEmpty {
+            return msg
+        }
+        return fallback
     }
 
     /// Open a directory in iTerm2 via POST /api/local/iterm2/open.

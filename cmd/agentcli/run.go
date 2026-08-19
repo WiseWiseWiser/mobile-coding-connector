@@ -111,6 +111,11 @@ func runCLI(profile Profile, args []string, stdout, stderr io.Writer) error {
 		return runBash(resolve, rest)
 	case "terminal":
 		return runTerminal(resolve, rest)
+	case "native-terminals", "native-terminal", "native-terms", "native-term":
+		if profile.Name != "local-agent" {
+			return fmt.Errorf("unknown command: %s", cmd)
+		}
+		return runTerminals(rest)
 	case "git":
 		return runGit(resolve, rest)
 	case "proxy":

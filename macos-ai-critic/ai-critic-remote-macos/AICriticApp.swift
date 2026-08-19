@@ -15,6 +15,9 @@ final class RemoteAppState: ObservableObject {
     @Published var services: [ServiceStatus] = []
     @Published var cronTasks: [CronTaskStatus] = []
     @Published var terminals: [TerminalSession] = []
+    @Published var projects: [WrkProjectStatus] = []
+    @Published var projectsLoading = false
+    @Published var projectsLoadError: String? = nil
     @Published var domains: [RemoteDomain] = []
     @Published var defaultServer: String = ""
     @AppStorage("menuBarDisplayMode") var menuBarDisplayMode = "rotating"
@@ -93,6 +96,8 @@ final class RemoteAppState: ObservableObject {
                     services = []
                     cronTasks = []
                     terminals = []
+                    projects = []
+                    projectsLoadError = nil
                 }
             } else {
                 domains = []
@@ -103,12 +108,15 @@ final class RemoteAppState: ObservableObject {
                 services = []
                 cronTasks = []
                 terminals = []
+                projects = []
+                projectsLoadError = nil
             }
 
             if hasEndpoint {
                 await refreshServices()
                 await refreshCronTasks()
                 await refreshTerminals()
+                await refreshProjects()
             }
             reloadBackupStateFromDisk()
             startBackupTickLoopIfNeeded()
@@ -124,6 +132,8 @@ final class RemoteAppState: ObservableObject {
             services = []
             cronTasks = []
             terminals = []
+            projects = []
+            projectsLoadError = nil
             menuLabel = "Remote …"
             reloadBackupStateFromDisk()
         }
@@ -392,6 +402,24 @@ final class RemoteAppState: ObservableObject {
         }
     }
 
+    func refreshProjects() async {
+        guard serviceClient.isConfigured else {
+            projects = []
+            projectsLoadError = nil
+            projectsLoading = false
+            return
+        }
+        projectsLoading = true
+        do {
+            projects = try await serviceClient.listWrkProjects()
+            projectsLoadError = nil
+            projectsLoading = false
+        } catch {
+            projectsLoadError = error.localizedDescription
+            projectsLoading = false
+        }
+    }
+
     /// Persist selected domain as `default` and reload clients (services + terminals + browser).
     func selectDefaultDomain(server: String) async {
         let path = configPath()
@@ -464,48 +492,23 @@ struct AICriticRemoteApp: App {
     }
 
     var body: some Scene {
-        Window("Settings", id: "settings") {
-            SettingsView(
-                menuBarDisplayMode: $state.menuBarDisplayMode,
-                showRemoteConnection: true,
-                onConnectionSaved: {
-                    Task { @MainActor in
-                        await state.refresh()
-                    }
-                }
+        Window("AI Critic(Remote)", id: MainWindowController.windowID) {
+            RemoteMainWindow(
+                state: state,
+                menuBarDisplayMode: $state.menuBarDisplayMode
             )
         }
-        .windowResizability(.contentSize)
+        .defaultSize(width: 820, height: 600)
         .defaultLaunchBehavior(.suppressed)
 
         MenuBarExtra {
             RemoteMenuBarDropdown(
                 state: state,
-                autoStart: $autoStart,
-                showSettings: showSettingsWindow
+                autoStart: $autoStart
             )
+            .modifier(RegisterMainWindowOpener())
         } label: {
             Text(state.menuLabel)
-        }
-    }
-
-    private func showSettingsWindow(openWindow: OpenWindowAction) {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        openWindow(id: "settings")
-        if let window = NSApp.windows.first(where: { $0.title == "Settings" }) {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        Task { @MainActor in
-            for _ in 0..<15 {
-                openWindow(id: "settings")
-                if let window = NSApp.windows.first(where: { $0.title == "Settings" }) {
-                    window.makeKeyAndOrderFront(nil)
-                    return
-                }
-                try? await Task.sleep(nanoseconds: 100_000_000)
-            }
         }
     }
 }
@@ -515,8 +518,6 @@ private struct RemoteMenuBarDropdown: View {
     @ObservedObject var state: RemoteAppState
     @Binding var autoStart: Bool
     @AppStorage("defaultBrowser") private var defaultBrowser = BrowserPreference.default.rawValue
-    @Environment(\.openWindow) private var openWindow
-    let showSettings: (OpenWindowAction) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -524,6 +525,14 @@ private struct RemoteMenuBarDropdown: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            Button(MainWindowFormatter.formatShowAppLabel()) {
+                MainWindowController.open()
+            }
+            .keyboardShortcut("o", modifiers: [.command])
+            .accessibilityIdentifier("show-app-menu-button")
 
             Divider()
 
@@ -766,7 +775,7 @@ private struct RemoteMenuBarDropdown: View {
             Divider()
 
             Button("Settings…") {
-                showSettings(openWindow)
+                MainWindowController.open(page: .settings)
             }
             .accessibilityIdentifier("settings-menu-button")
 
