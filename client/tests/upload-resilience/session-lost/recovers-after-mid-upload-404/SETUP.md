@@ -19,9 +19,13 @@ No additional setup.
 Leaf asserts upload completes despite session loss.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.SessionDropAfterChunk != 28 {
 		t.Fatalf("SessionDropAfterChunk=%d, want 28", req.SessionDropAfterChunk)
 	}

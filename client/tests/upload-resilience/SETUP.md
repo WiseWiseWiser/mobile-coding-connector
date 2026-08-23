@@ -23,9 +23,13 @@ local file -> Client.UploadFile -> init -> chunk POSTs (with retry) -> complete 
 Transport-layer unit tests — no real `remote-agent` or `server/fileupload` process.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.TotalBytes <= 0 {
 		req.TotalBytes = 5 * 1024 * 1024
 	}

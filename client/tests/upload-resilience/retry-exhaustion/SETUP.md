@@ -20,9 +20,13 @@ Small file; chunk 0 permanently fails.
 Ensures bounded retry does not loop forever.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.TotalBytes = 3 * 1024 * 1024
 	req.AlwaysFailChunk = 0
 	req.FailStatus = 502

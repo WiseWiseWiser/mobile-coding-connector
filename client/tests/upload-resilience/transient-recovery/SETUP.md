@@ -20,9 +20,13 @@ Five-chunk file (10 MiB). Chunk index 2 fails twice then succeeds.
 Proves retry reuses same session without restarting from chunk 0.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.TotalBytes = 10 * 1024 * 1024 // 5 x 2 MiB chunks
 	req.FlakyChunkIndex = 2
 	req.TransientFails = 2

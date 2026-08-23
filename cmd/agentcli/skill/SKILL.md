@@ -1,89 +1,80 @@
 ---
 name: remote-agent
 description: >-
-  Use the remote-agent CLI to operate an ai-critic server remotely: upload
-  files, run commands, manage git repos, inspect proxies, build the next
-  server binary, and restart the server.
+  Operate ai-critic via remote-agent CLI (config, exec, upload, service, cron,
+  git, server, request). Sealed SMC+SSH: remote-devbox. Triggers: remote-agent,
+  remote service, remote upload/exec. Slash: /remote-agent.
+  Multi-topic: remote-agent skill --show <topic>.
 ---
 
-# Remote Agent Skill
+# remote-agent (CLI hub)
 
-Use `remote-agent` when you need to control an `ai-critic` server over HTTP from
-the terminal.
+Control a configured ai-critic server over HTTP. **Sealed SMC + SSH** → skill
+**remote-devbox** + `$AI/devbox/SETUP.md` §8 (link; do not restate pack flags).
 
-## Getting Started
-
-Configure the target server and auth token:
+This skill is an **index**. Load a topic:
 
 ```bash
-remote-agent config
+remote-agent skill --show
+remote-agent skill --show upload
+remote-agent skill --show service
+remote-agent skill service --show
+remote-agent skill --list
 ```
 
-After that, `remote-agent` commands can use the saved default domain without
-needing `--server` and `--token` each time.
+## When to use
 
-## Commands
+- `remote-agent` exec / upload / service / cron / git / server / request
+- Long-lived remote processes; scheduled **remote** shell; Mac→remote files
 
-### Upload Files
+## When not to use
 
-Upload a local file to the remote server:
+- Pack / validate sealed bins → **remote-devbox**
+- Create/register devbox SSH keys → **create-devbox-ssh**
+- CodeLens watchdog ops → `$AI/knowledges/codelens/server/watchdog/TOPIC.md`
 
-```bash
-remote-agent upload ./ai-critic-server /tmp/ai-critic-server
-remote-agent upload ./bundle.tar.gz /tmp/
-```
+## Hard rules
 
-If the local file is executable, the uploaded file is marked executable on the
-remote server as part of the upload flow.
+| Rule | Detail |
+|------|--------|
+| Host of work | `exec` / `service` / `cron` run **on the remote**, not the Mac |
+| Pack credentials | Pack Mac SMC/SSH on the **Mac**; ship with `upload` |
+| Cron ≠ upload | `cron` cannot pack Mac tokens or run Mac `upload` |
+| Transport | Prefer `remote-agent` over ad-hoc scp for this server |
+| Secrets | No tokens/keys/app secrets in skill text, cron logs, or dumps |
 
-### Execute Remote Commands
+## Topics
 
-Run a command on the remote server and stream stdout/stderr live:
+| Topic | Covers |
+|-------|--------|
+| `config` | Default domain / `config --web` |
+| `exec` | Verbatim remote shell |
+| `upload` | Gzip default, `--no-compress`, resume |
+| `service` | Lifecycle + **`service upgrade`** |
+| `cron` | Remote schedules |
+| `seal` | `remote-devbox refresh` + `/root/.smc` sync |
+| `git` | Remote clone/fetch/pull/push |
+| `server` | `build-next` / `restart` streams |
+| `request` | Arbitrary API paths |
+| `proxy` | List configured HTTP proxies |
 
-```bash
-remote-agent exec ls -la /tmp
-remote-agent exec sh -c 'uname -a && whoami'
-```
+## Command map
 
-### Call Remote APIs
+| Need | Use |
+|------|-----|
+| Default server | → topic **`config`** |
+| One-shot shell | → **`exec`** |
+| Mac→remote files | → **`upload`** |
+| Long-lived / replace binary | → **`service`** |
+| Scheduled remote shell | → **`cron`** |
+| Token refresh | → **`seal`** |
+| Remote git | → **`git`** |
+| Build-next / restart | → **`server`** |
+| Raw HTTP API | → **`request`** |
 
-Call arbitrary API endpoints on the configured server:
+## Related
 
-```bash
-remote-agent request /api/services
-remote-agent request /api/services/start?id=svc-123 '{}'
-echo '{"name":"demo"}' | remote-agent request /api/some
-```
-
-### Manage Remote Git Repositories
-
-Clone, fetch, pull, or push repositories on the remote machine:
-
-```bash
-remote-agent git clone https://github.com/example/project.git
-remote-agent git clone https://github.com/example/private-project.git ~/project --git-token ghp_example
-remote-agent git -C ~/project fetch
-remote-agent git -C ~/project pull
-remote-agent git -C ~/project push
-```
-
-### Server Management
-
-Trigger the same server-management actions exposed by the Manage Server page:
-
-```bash
-remote-agent server build-next
-remote-agent server build-next --project my-project-id
-remote-agent server restart
-```
-
-`build-next` streams build logs from `/api/build/build-next`, and `restart`
-streams restart progress from `/api/server/exec-restart`.
-
-### Inspect Proxy Configuration
-
-List proxy servers configured on the remote `ai-critic` server:
-
-```bash
-remote-agent proxy list
-```
+| Path | Role |
+|------|------|
+| **remote-devbox** | Pack / refresh / run-remote sealed SMC+SSH |
+| `$AI/knowledges/codelens/server/watchdog/TOPIC.md` | CodeLens watchdog (consumer of `service upgrade`) |

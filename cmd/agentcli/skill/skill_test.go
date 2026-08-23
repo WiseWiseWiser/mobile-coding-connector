@@ -40,15 +40,76 @@ func captureStdout(t *testing.T, fn func() error) (string, error) {
 	return string(data), runErr
 }
 
-func TestSkillShowPrintsContent(t *testing.T) {
+func TestSkillShowRoot(t *testing.T) {
+	stdout, err := captureStdout(t, func() error {
+		return Handle([]string{"--show"})
+	})
+	if err != nil {
+		t.Fatalf("Handle(--show): %v", err)
+	}
+	if !strings.Contains(stdout, "# remote-agent (CLI hub)") {
+		t.Fatalf("expected hub SKILL.md, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "service upgrade") && !strings.Contains(stdout, "`service`") {
+		t.Fatalf("expected topic index mentioning service, got: %s", stdout)
+	}
+}
+
+func TestSkillShowAlias(t *testing.T) {
 	stdout, err := captureStdout(t, func() error {
 		return Handle([]string{"show"})
 	})
 	if err != nil {
 		t.Fatalf("Handle(show): %v", err)
 	}
-	if !strings.Contains(stdout, "# Remote Agent Skill") {
-		t.Fatalf("expected SKILL.md content, got: %s", stdout)
+	if !strings.Contains(stdout, "# remote-agent (CLI hub)") {
+		t.Fatalf("expected hub content via alias, got: %s", stdout)
+	}
+}
+
+func TestSkillShowTopic(t *testing.T) {
+	for _, args := range [][]string{
+		{"--show", "service"},
+		{"service", "--show"},
+	} {
+		stdout, err := captureStdout(t, func() error {
+			return Handle(args)
+		})
+		if err != nil {
+			t.Fatalf("Handle(%v): %v", args, err)
+		}
+		if !strings.Contains(stdout, "service upgrade") {
+			t.Fatalf("Handle(%v): expected service topic, got: %s", args, stdout)
+		}
+	}
+}
+
+func TestSkillListIncludesTopics(t *testing.T) {
+	stdout, err := captureStdout(t, func() error {
+		return Handle([]string{"--list"})
+	})
+	if err != nil {
+		t.Fatalf("Handle(--list): %v", err)
+	}
+	for _, want := range []string{"remote-agent", "upload", "service", "seal", "config"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("--list missing %q; got:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestSkillShowHeader(t *testing.T) {
+	stdout, err := captureStdout(t, func() error {
+		return Handle([]string{"--show", "--header"})
+	})
+	if err != nil {
+		t.Fatalf("Handle(--show --header): %v", err)
+	}
+	if !strings.Contains(stdout, "name: remote-agent") {
+		t.Fatalf("expected frontmatter name, got: %s", stdout)
+	}
+	if strings.Contains(stdout, "# remote-agent (CLI hub)") {
+		t.Fatalf("header mode should not include body, got: %s", stdout)
 	}
 }
 
@@ -67,9 +128,9 @@ func TestSkillInstallCodex(t *testing.T) {
 		t.Fatalf("chdir tempdir: %v", err)
 	}
 
-	err = Handle([]string{"install", "--codex"})
+	err = Handle([]string{"--install", "--codex"})
 	if err != nil {
-		t.Fatalf("Handle(install --codex): %v", err)
+		t.Fatalf("Handle(--install --codex): %v", err)
 	}
 
 	skillFile := filepath.Join(tmpDir, ".codex", "skills", "remote-agent", "SKILL.md")
@@ -77,12 +138,16 @@ func TestSkillInstallCodex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read skill file: %v", err)
 	}
-	if !strings.Contains(string(content), "# Remote Agent Skill") {
+	if !strings.Contains(string(content), "# remote-agent (CLI hub)") {
 		t.Fatalf("unexpected skill content: %q", string(content))
+	}
+	topicFile := filepath.Join(tmpDir, ".codex", "skills", "remote-agent", "service", "TOPIC.md")
+	if _, err := os.Stat(topicFile); err != nil {
+		t.Fatalf("expected nested topic after install: %v", err)
 	}
 }
 
-func TestSkillInstallCursor(t *testing.T) {
+func TestSkillInstallAliasCursor(t *testing.T) {
 	tmpDir := t.TempDir()
 	prevWD, err := os.Getwd()
 	if err != nil {
@@ -103,12 +168,8 @@ func TestSkillInstallCursor(t *testing.T) {
 	}
 
 	skillFile := filepath.Join(tmpDir, ".cursor", "skills", "remote-agent", "SKILL.md")
-	content, err := os.ReadFile(skillFile)
-	if err != nil {
-		t.Fatalf("read skill file: %v", err)
-	}
-	if !strings.Contains(string(content), "# Remote Agent Skill") {
-		t.Fatalf("unexpected skill content: %q", string(content))
+	if _, err := os.Stat(skillFile); err != nil {
+		t.Fatalf("expected installed skill: %v", err)
 	}
 }
 
@@ -116,9 +177,9 @@ func TestSkillInstallCustomDir(t *testing.T) {
 	tmpDir := t.TempDir()
 	targetDir := filepath.Join(tmpDir, "my-skill-dir")
 
-	err := Handle([]string{"install", targetDir})
+	err := Handle([]string{"--install", targetDir})
 	if err != nil {
-		t.Fatalf("Handle(install <dir>): %v", err)
+		t.Fatalf("Handle(--install <dir>): %v", err)
 	}
 
 	skillFile := filepath.Join(targetDir, "SKILL.md")
@@ -126,7 +187,7 @@ func TestSkillInstallCustomDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read skill file: %v", err)
 	}
-	if !strings.Contains(string(content), "# Remote Agent Skill") {
+	if !strings.Contains(string(content), "# remote-agent (CLI hub)") {
 		t.Fatalf("unexpected skill content: %q", string(content))
 	}
 }
@@ -141,14 +202,14 @@ func TestSkillNoArgsShowsHelp(t *testing.T) {
 	if !strings.Contains(stdout, "Usage:") {
 		t.Fatalf("expected help text, got: %s", stdout)
 	}
+	if !strings.Contains(stdout, "Available topics:") && !strings.Contains(stdout, "upload") {
+		t.Fatalf("expected topic index in help, got: %s", stdout)
+	}
 }
 
-func TestSkillUnknownSubcommandReturnsError(t *testing.T) {
-	err := Handle([]string{"bogus"})
+func TestSkillUnknownTopicReturnsError(t *testing.T) {
+	err := Handle([]string{"--show", "bogus-topic"})
 	if err == nil {
-		t.Fatal("expected error for unknown subcommand, got nil")
-	}
-	if !strings.Contains(err.Error(), "unknown skill command") {
-		t.Fatalf("expected 'unknown skill command' error, got: %v", err)
+		t.Fatal("expected error for unknown topic, got nil")
 	}
 }

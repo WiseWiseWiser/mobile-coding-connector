@@ -9,7 +9,7 @@ import (
 	"github.com/xhd2015/ai-critic/client"
 )
 
-const uploadHelp = `Usage: remote-agent upload [--dry-run] <LOCAL_PATH> [REMOTE_PATH]
+const uploadHelp = `Usage: remote-agent upload [--dry-run] [--no-compress] <LOCAL_PATH> [REMOTE_PATH]
 
 Upload a local file or directory to the server using chunked upload.
 
@@ -20,7 +20,8 @@ Arguments:
                 appended. For directories, REMOTE_PATH is the mirror root.
 
 Options:
-  --dry-run     Print the upload plan without making changes.
+  --dry-run       Print the upload plan without making changes.
+  --no-compress   Skip whole-file gzip before chunking (default: compress when smaller).
 
 Examples:
   remote-agent upload ./foo.txt /tmp/foo.txt
@@ -28,6 +29,7 @@ Examples:
   remote-agent upload ./foo.txt                # uses saved config + basename
   remote-agent upload ./srcdir uploads/mirror  # mirror directory tree
   remote-agent upload --dry-run ./srcdir uploads/mirror
+  remote-agent upload --no-compress ./bin /tmp/bin
 `
 
 func runUpload(cli *client.Client, args []string) error {
@@ -36,7 +38,7 @@ func runUpload(cli *client.Client, args []string) error {
 		return nil
 	}
 
-	dryRun, args := parseTransferFlags(args)
+	dryRun, noCompress, args := parseUploadFlags(args)
 	if len(args) < 1 {
 		return fmt.Errorf("upload requires <LOCAL_PATH> [REMOTE_PATH]; see 'remote-agent upload --help'")
 	}
@@ -59,7 +61,7 @@ func runUpload(cli *client.Client, args []string) error {
 		return fmt.Errorf("failed to stat local path: %w", err)
 	}
 	if stat.IsDir() {
-		return runUploadDir(cli, localPath, remotePath, dryRun)
+		return runUploadDir(cli, localPath, remotePath, dryRun, noCompress)
 	}
 
 	chmodExec := isExecutableMode(stat.Mode())
@@ -67,8 +69,9 @@ func runUpload(cli *client.Client, args []string) error {
 	fmt.Printf("Uploading %s (%s) -> %s\n", localPath, formatSize(stat.Size()), describeRemote(remotePath))
 
 	uploadOpts := client.UploadOptions{
-		ChmodExec: chmodExec,
-		DryRun:    dryRun,
+		ChmodExec:  chmodExec,
+		NoCompress: noCompress,
+		DryRun:     dryRun,
 	}
 	progressFn := printUploadProgress
 	if dryRun {
@@ -91,7 +94,7 @@ func runUpload(cli *client.Client, args []string) error {
 	return nil
 }
 
-func runUploadDir(cli *client.Client, localDir, remotePath string, dryRun bool) error {
+func runUploadDir(cli *client.Client, localDir, remotePath string, dryRun, noCompress bool) error {
 	itemCount, _, totalSize, err := client.CountUploadDirItems(localDir)
 	if err != nil {
 		return err
@@ -101,7 +104,7 @@ func runUploadDir(cli *client.Client, localDir, remotePath string, dryRun bool) 
 	fmt.Printf("Uploading %s/ (%d items, %s) -> %s\n",
 		localDir, itemCount, formatSize(totalSize), logicalRemote)
 
-	uploadOpts := client.UploadOptions{DryRun: dryRun}
+	uploadOpts := client.UploadOptions{DryRun: dryRun, NoCompress: noCompress}
 	progressFn := printUploadDirProgress
 	if dryRun {
 		progressFn = printUploadDirDryRunProgress

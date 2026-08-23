@@ -78,10 +78,18 @@ func IsRetryableUploadError(err error) bool {
 	var he *uploadHTTPError
 	if errors.As(err, &he) {
 		switch he.statusCode {
-		case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		case http.StatusTooManyRequests,
+			http.StatusRequestTimeout,
+			http.StatusBadGateway,
+			http.StatusServiceUnavailable,
+			http.StatusGatewayTimeout:
 			return true
 		}
 		if he.statusCode >= 500 {
+			return true
+		}
+		// Legacy servers returned ReadTimeout during multipart parse as 400.
+		if he.statusCode == http.StatusBadRequest && isUploadBodyTimeoutMessage(he.body) {
 			return true
 		}
 		if he.statusCode >= 400 && he.statusCode < 500 {
@@ -102,6 +110,14 @@ func IsRetryableUploadError(err error) bool {
 		strings.Contains(msg, "reset") ||
 		strings.Contains(msg, "eof") ||
 		strings.Contains(msg, "broken pipe")
+}
+
+func isUploadBodyTimeoutMessage(body string) bool {
+	msg := strings.ToLower(body)
+	if strings.Contains(msg, "i/o timeout") {
+		return true
+	}
+	return strings.Contains(msg, "parse form") && strings.Contains(msg, "timeout")
 }
 
 func readUploadAPIError(resp *http.Response) error {

@@ -1,6 +1,7 @@
 package fileupload
 
 import (
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -20,6 +21,7 @@ type uploadMeta struct {
 	TotalChunks int    `json:"total_chunks"`
 	TotalSize   int64  `json:"total_size"`
 	ChmodExec   bool   `json:"chmod_exec"`
+	Compressed  bool   `json:"compressed,omitempty"` // whole-file gzip payload; gunzip on assemble
 }
 
 func isFileHash(id string) bool {
@@ -164,30 +166,88 @@ func chunkMatchesHash(path string, data []byte) bool {
 }
 
 func assembleCachedFile(dir string, meta uploadMeta, destPath string) (int64, error) {
-	dst, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	assemblePath := destPath
+	var gzTmp string
+	if meta.Compressed {
+		gzTmp = destPath + ".upload.gz.tmp"
+		assemblePath = gzTmp
+		defer os.Remove(gzTmp)
+	}
+
+	dst, err := os.OpenFile(assemblePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return 0, err
 	}
-	defer dst.Close()
 
 	var total int64
 	for i := 0; i < meta.TotalChunks; i++ {
 		path, ok := findCachedChunk(dir, i)
 		if !ok {
+			dst.Close()
 			return 0, fmt.Errorf("missing chunk %d", i)
 		}
 		src, err := os.Open(path)
 		if err != nil {
+			dst.Close()
 			return 0, err
 		}
 		n, err := io.Copy(dst, src)
 		src.Close()
 		if err != nil {
+			dst.Close()
 			return 0, err
 		}
 		total += n
 	}
+	if err := dst.Close(); err != nil {
+		return 0, err
+	}
+
+	if meta.Compressed {
+		n, err := gunzipFileTo(gzTmp, destPath)
+		if err != nil {
+			os.Remove(destPath)
+			return 0, err
+		}
+		return n, nil
+	}
 	return total, nil
+}
+
+// gunzipFileTo decompresses srcGz into destPath via a sibling temp file + rename.
+func gunzipFileTo(srcGz, destPath string) (int64, error) {
+	in, err := os.Open(srcGz)
+	if err != nil {
+		return 0, err
+	}
+	defer in.Close()
+
+	gr, err := gzip.NewReader(in)
+	if err != nil {
+		return 0, err
+	}
+	defer gr.Close()
+
+	tmp := destPath + ".upload.tmp"
+	out, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return 0, err
+	}
+	n, copyErr := io.Copy(out, gr)
+	closeErr := out.Close()
+	if copyErr != nil {
+		os.Remove(tmp)
+		return 0, copyErr
+	}
+	if closeErr != nil {
+		os.Remove(tmp)
+		return 0, closeErr
+	}
+	if err := os.Rename(tmp, destPath); err != nil {
+		os.Remove(tmp)
+		return 0, err
+	}
+	return n, nil
 }
 
 func removeUploadCache(dir string) error {

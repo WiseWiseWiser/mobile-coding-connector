@@ -93,6 +93,7 @@ func (c *Client) UploadDir(localDir, remotePath string, opts UploadOptions, onPr
 			priorCompleted := completedBytes
 			fileOpts := UploadOptions{
 				ChmodExec:  f.chmodExec,
+				NoCompress: opts.NoCompress,
 				ChunkRetry: opts.ChunkRetry,
 				DryRun:     opts.DryRun,
 			}

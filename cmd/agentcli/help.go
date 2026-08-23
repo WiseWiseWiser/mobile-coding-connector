@@ -125,7 +125,7 @@ Commands:
 
   Local & tooling
     local                Local-machine utilities
-    skill                Install remote-agent skill docs
+    skill                Show/install remote-agent skill (--show / --install / --list)
     config               Manage saved server domains (local web UI)
     sync                 Unison pair store (local↔remote sync profiles)
     ssh                  SSH tunnel relay (serve + client)

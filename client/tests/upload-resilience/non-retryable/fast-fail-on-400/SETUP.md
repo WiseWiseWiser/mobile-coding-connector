@@ -22,9 +22,10 @@ Leaf asserts single POST on failed chunk.
 import (
 	"net/http"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.FlakyChunkIndex != 1 || req.PermanentStatus != http.StatusBadRequest {
 		t.Fatalf("parent setup: FlakyChunkIndex=%d PermanentStatus=%d, want 1/400", req.FlakyChunkIndex, req.PermanentStatus)
 	}

@@ -13,9 +13,13 @@ Re-upload does not re-transfer the 39 cached chunks (~73% of file).
 - `TotalChunkPosts > 1` (full re-upload bug).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("Run returned unexpected error: %v", err)
 	}

@@ -23,9 +23,10 @@ Five-chunk file; chunk 1 returns HTTP 400.
 import (
 	"net/http"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.TotalBytes = 5 * 1024 * 1024
 	req.FlakyChunkIndex = 1
 	req.PermanentStatus = http.StatusBadRequest

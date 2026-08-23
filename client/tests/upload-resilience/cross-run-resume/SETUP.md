@@ -24,9 +24,10 @@ import (
 	"testing"
 
 	"github.com/xhd2015/ai-critic/client"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.TotalBytes = 40 * int64(client.ChunkSize)
 	req.PrefilledChunks = 39
 	req.AlwaysFailChunk = -1

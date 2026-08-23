@@ -4,13 +4,16 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -22,9 +25,28 @@ type chunkSession struct {
 	TotalChunks int
 	TotalSize   int64
 	ChmodExec   bool
+	Compressed  bool // payload is whole-file gzip; gunzip on complete
 	TempDir     string
 	CreatedAt   time.Time
 	Received    map[int]bool // chunk index -> received
+}
+
+// isMultipartBodyTimeout reports whether ParseMultipartForm failed because the
+// request body timed out or the peer stalled (should be retryable, not 400).
+func isMultipartBodyTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "i/o timeout") ||
+		strings.Contains(msg, "timeout")
 }
 
 var (
@@ -77,6 +99,7 @@ func handleUploadInit(w http.ResponseWriter, r *http.Request, home string) {
 		TotalSize   int64  `json:"total_size"`
 		ChmodExec   bool   `json:"chmod_exec"`
 		FileHash    string `json:"file_hash"`
+		Compressed  bool   `json:"compressed"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -108,6 +131,7 @@ func handleUploadInit(w http.ResponseWriter, r *http.Request, home string) {
 			TotalChunks: req.TotalChunks,
 			TotalSize:   req.TotalSize,
 			ChmodExec:   req.ChmodExec,
+			Compressed:  req.Compressed,
 		}); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save upload meta: %v", err))
 			return
@@ -138,6 +162,7 @@ func handleUploadInit(w http.ResponseWriter, r *http.Request, home string) {
 		TotalChunks: req.TotalChunks,
 		TotalSize:   req.TotalSize,
 		ChmodExec:   req.ChmodExec,
+		Compressed:  req.Compressed,
 		TempDir:     tempDir,
 		CreatedAt:   time.Now(),
 		Received:    make(map[int]bool),
@@ -163,6 +188,11 @@ func handleUploadChunk(w http.ResponseWriter, r *http.Request, home string) {
 
 	// Parse multipart form (max 4MB per chunk)
 	if err := r.ParseMultipartForm(4 << 20); err != nil {
+		if isMultipartBodyTimeout(err) {
+			// 408 so clients retry the chunk (legacy path returned 400 → non-retryable).
+			writeJSONError(w, http.StatusRequestTimeout, fmt.Sprintf("failed to parse form: %v", err))
+			return
+		}
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("failed to parse form: %v", err))
 		return
 	}
@@ -286,15 +316,6 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request, home string) {
 		return
 	}
 
-	// Combine chunks in order
-	dst, err := os.OpenFile(session.DestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		os.RemoveAll(session.TempDir)
-		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to create destination file: %v", err))
-		return
-	}
-	defer dst.Close()
-
 	// List and sort chunk files
 	chunkFiles, err := filepath.Glob(filepath.Join(session.TempDir, "chunk_*"))
 	if err != nil {
@@ -304,10 +325,26 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request, home string) {
 	}
 	sort.Strings(chunkFiles) // chunk_00000, chunk_00001, ... sorts correctly
 
+	assemblePath := session.DestPath
+	var gzTmp string
+	if session.Compressed {
+		gzTmp = session.DestPath + ".upload.gz.tmp"
+		assemblePath = gzTmp
+		defer os.Remove(gzTmp)
+	}
+
+	dst, err := os.OpenFile(assemblePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		os.RemoveAll(session.TempDir)
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to create destination file: %v", err))
+		return
+	}
+
 	var totalWritten int64
 	for _, chunkPath := range chunkFiles {
 		src, err := os.Open(chunkPath)
 		if err != nil {
+			dst.Close()
 			os.RemoveAll(session.TempDir)
 			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to read chunk: %v", err))
 			return
@@ -315,11 +352,28 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request, home string) {
 		n, err := io.Copy(dst, src)
 		src.Close()
 		if err != nil {
+			dst.Close()
 			os.RemoveAll(session.TempDir)
 			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to write chunk to destination: %v", err))
 			return
 		}
 		totalWritten += n
+	}
+	if err := dst.Close(); err != nil {
+		os.RemoveAll(session.TempDir)
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to close destination file: %v", err))
+		return
+	}
+
+	if session.Compressed {
+		n, err := gunzipFileTo(gzTmp, session.DestPath)
+		if err != nil {
+			os.RemoveAll(session.TempDir)
+			os.Remove(session.DestPath)
+			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to decompress upload: %v", err))
+			return
+		}
+		totalWritten = n
 	}
 
 	// Cleanup temp directory

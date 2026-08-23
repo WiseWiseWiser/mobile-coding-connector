@@ -19,9 +19,13 @@ No additional setup.
 Leaf asserts attempt cap and failure.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.AlwaysFailChunk != 0 || req.MaxChunkAttempts != 3 {
 		t.Fatalf("parent setup: AlwaysFailChunk=%d MaxChunkAttempts=%d, want 0/3", req.AlwaysFailChunk, req.MaxChunkAttempts)
 	}

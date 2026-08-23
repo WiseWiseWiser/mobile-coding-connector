@@ -28,10 +28,10 @@ func ServeComponent(port int, opts ServeOptions) error {
 
 	mux := http.NewServeMux()
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", port),
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 5 * time.Minute, // Long timeout for SSE streaming
-		Handler:      mux,
+		Addr:              fmt.Sprintf(":%d", port),
+		ReadHeaderTimeout: 30 * time.Second, // headers only; body reads (chunk upload) must not share a 30s cap
+		WriteTimeout:      5 * time.Minute,  // Long timeout for SSE streaming
+		Handler:           mux,
 	}
 
 	if opts.Dev {

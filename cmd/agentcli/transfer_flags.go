@@ -11,3 +11,18 @@ func parseTransferFlags(args []string) (dryRun bool, rest []string) {
 	}
 	return dryRun, rest
 }
+
+// parseUploadFlags extracts upload-specific flags (--dry-run, --no-compress).
+func parseUploadFlags(args []string) (dryRun, noCompress bool, rest []string) {
+	for _, arg := range args {
+		switch arg {
+		case "--dry-run":
+			dryRun = true
+		case "--no-compress":
+			noCompress = true
+		default:
+			rest = append(rest, arg)
+		}
+	}
+	return dryRun, noCompress, rest
+}

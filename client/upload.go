@@ -77,7 +77,9 @@ type UploadResult struct {
 
 // UploadOptions configures optional server-side handling for uploads.
 type UploadOptions struct {
-	ChmodExec  bool
+	ChmodExec bool
+	// NoCompress disables whole-file gzip before chunking (default: compress when smaller).
+	NoCompress bool
 	ChunkRetry *ChunkRetryConfig
 	DryRun     bool
 }
@@ -128,23 +130,31 @@ func (c *Client) uploadFileResolved(localFile string, remotePath string, logical
 		return nil, fmt.Errorf("local path is a directory, not a file: %s", localFile)
 	}
 
-	totalSize := stat.Size()
+	origSize := stat.Size()
 	if opts.DryRun {
-		SimulateUploadChunks(totalSize, ChunkSize, onProgress)
+		payload, compressed, prepErr := prepareUploadPayload(localFile, opts.NoCompress)
+		if prepErr != nil {
+			return nil, fmt.Errorf("failed to read local file: %w", prepErr)
+		}
+		wireSize := int64(len(payload))
+		SimulateUploadChunks(wireSize, ChunkSize, onProgress)
+		_ = compressed
 		return &UploadResult{
 			Path: logicalRemote,
-			Size: totalSize,
+			Size: origSize,
 		}, nil
 	}
 
-	fileHash, chunks, err := computeFileChunkPlan(localFile, ChunkSize)
+	payload, compressed, err := prepareUploadPayload(localFile, opts.NoCompress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read local file: %w", err)
 	}
+	fileHash, chunks := computeBytesChunkPlan(payload, ChunkSize)
+	totalSize := int64(len(payload))
 
 	totalChunks := len(chunks)
 
-	sess, err := c.initUpload(remotePath, fileHash, totalChunks, totalSize, opts)
+	sess, err := c.initUpload(remotePath, fileHash, totalChunks, totalSize, compressed, opts)
 	if err != nil {
 		return nil, fmt.Errorf("init upload failed: %w", err)
 	}
@@ -177,7 +187,7 @@ func (c *Client) uploadFileResolved(localFile string, remotePath string, logical
 			}
 		})
 		if err != nil && isUploadSessionNotFound(err) {
-			sess, initErr := c.initUpload(remotePath, fileHash, totalChunks, totalSize, opts)
+			sess, initErr := c.initUpload(remotePath, fileHash, totalChunks, totalSize, compressed, opts)
 			if initErr != nil {
 				return nil, fmt.Errorf("re-init upload after session loss failed: %w", initErr)
 			}
@@ -235,13 +245,14 @@ type uploadSession struct {
 	Received map[int]bool
 }
 
-func (c *Client) initUpload(remotePath, fileHash string, totalChunks int, totalSize int64, opts UploadOptions) (*uploadSession, error) {
+func (c *Client) initUpload(remotePath, fileHash string, totalChunks int, totalSize int64, compressed bool, opts UploadOptions) (*uploadSession, error) {
 	body := map[string]any{
 		"path":         remotePath,
 		"total_chunks": totalChunks,
 		"total_size":   totalSize,
 		"chmod_exec":   opts.ChmodExec,
 		"file_hash":    fileHash,
+		"compressed":   compressed,
 	}
 	buf, err := json.Marshal(body)
 	if err != nil {

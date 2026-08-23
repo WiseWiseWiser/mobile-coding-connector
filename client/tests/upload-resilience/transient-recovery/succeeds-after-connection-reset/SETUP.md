@@ -20,9 +20,13 @@ Inherited from `transient-recovery/SETUP.md` with transport injection.
 Exercises full `UploadFile` → `uploadChunkWithRetry` → `http.Client.Do` transport error path.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	req.TransportFailChunk = 2
 	req.TransportFailCount = 2
 	req.TransientFails = 0

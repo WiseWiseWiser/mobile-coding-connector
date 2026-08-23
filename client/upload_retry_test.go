@@ -9,20 +9,23 @@ import (
 func TestIsRetryableUploadError_HTTPStatus(t *testing.T) {
 	cases := []struct {
 		code int
+		body string
 		want bool
 	}{
-		{http.StatusBadGateway, true},
-		{http.StatusServiceUnavailable, true},
-		{http.StatusGatewayTimeout, true},
-		{http.StatusTooManyRequests, true},
-		{http.StatusInternalServerError, true},
-		{http.StatusBadRequest, false},
-		{http.StatusNotFound, false},
+		{http.StatusBadGateway, "", true},
+		{http.StatusServiceUnavailable, "", true},
+		{http.StatusGatewayTimeout, "", true},
+		{http.StatusTooManyRequests, "", true},
+		{http.StatusRequestTimeout, "", true},
+		{http.StatusInternalServerError, "", true},
+		{http.StatusBadRequest, "", false},
+		{http.StatusBadRequest, "failed to parse form: read tcp 127.0.0.1:1->127.0.0.1:2: i/o timeout", true},
+		{http.StatusNotFound, "", false},
 	}
 	for _, tc := range cases {
-		err := &uploadHTTPError{statusCode: tc.code, status: http.StatusText(tc.code)}
+		err := &uploadHTTPError{statusCode: tc.code, status: http.StatusText(tc.code), body: tc.body}
 		if got := IsRetryableUploadError(err); got != tc.want {
-			t.Errorf("status %d: got %v want %v", tc.code, got, tc.want)
+			t.Errorf("status %d body=%q: got %v want %v", tc.code, tc.body, got, tc.want)
 		}
 	}
 }

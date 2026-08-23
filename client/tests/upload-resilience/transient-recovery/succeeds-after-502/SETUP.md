@@ -20,9 +20,13 @@ No additional setup beyond parent.
 Leaf asserts retry count and successful assembly.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	if req.FlakyChunkIndex != 2 || req.TransientFails != 2 {
 		t.Fatalf("parent setup: FlakyChunkIndex=%d TransientFails=%d, want 2/2", req.FlakyChunkIndex, req.TransientFails)
 	}

@@ -23,7 +23,7 @@ ai-critic server file-upload API.
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -34,6 +34,7 @@ ai-critic server file-upload API.
  |    |
  |    +-- succeeds-after-502/                  (LEAF)  flaky chunk recovers; full file OK
  |    +-- succeeds-after-connection-reset/     (LEAF)  transport error then succeeds
+ |    +-- succeeds-after-parse-form-timeout/   (LEAF)  legacy 400 + i/o timeout body retries
  |
  +-- retry-exhaustion/
  |    |
@@ -49,7 +50,7 @@ ai-critic server file-upload API.
  |
  +-- non-retryable/
       |
-      +-- fast-fail-on-400/             (LEAF)  400 → no retry
+      +-- fast-fail-on-400/             (LEAF)  generic 400 → no retry
 ```
 
 ## Test Index
@@ -58,10 +59,11 @@ ai-critic server file-upload API.
 |---|------|-------------|
 | 1 | `transient-recovery/succeeds-after-502` | Chunk fails twice with 502, succeeds on 3rd try; file intact |
 | 2 | `transient-recovery/succeeds-after-connection-reset` | Transport reset twice on chunk 2, succeeds on 3rd try |
-| 3 | `retry-exhaustion/aborts-after-max-attempts` | Permanent 502 exhausts attempts and errors |
-| 4 | `session-lost/recovers-after-mid-upload-404` | Session dies after chunk 28; upload still completes |
-| 5 | `cross-run-resume/skips-cached-chunks-on-reupload` | Chunks 0..N-2 cached; only missing chunk uploaded |
-| 6 | `non-retryable/fast-fail-on-400` | HTTP 400 on chunk → single POST, immediate fail |
+| 3 | `transient-recovery/succeeds-after-parse-form-timeout` | Legacy 400 parse-form i/o timeout retries then succeeds |
+| 4 | `retry-exhaustion/aborts-after-max-attempts` | Permanent 502 exhausts attempts and errors |
+| 5 | `session-lost/recovers-after-mid-upload-404` | Session dies after chunk 28; upload still completes |
+| 6 | `cross-run-resume/skips-cached-chunks-on-reupload` | Chunks 0..N-2 cached; only missing chunk uploaded |
+| 7 | `non-retryable/fast-fail-on-400` | HTTP 400 on chunk → single POST, immediate fail |
 
 ## How to Run
 
@@ -85,19 +87,21 @@ import (
 	"testing"
 
 	"github.com/xhd2015/ai-critic/client"
+	"github.com/xhd2015/doctest/session"
 )
 
 type Request struct {
-	TotalBytes         int64
-	FlakyChunkIndex    int
-	TransientFails     int
-	FailStatus         int
-	PermanentStatus    int
-	MaxChunkAttempts   int
-	AlwaysFailChunk    int // -1 disables; >=0 fails that chunk on every HTTP attempt
-	TransportFailChunk     int
-	TransportFailCount     int
-	SessionDropAfterChunk int  // after storing this index, session becomes invalid
+	TotalBytes            int64
+	FlakyChunkIndex       int
+	TransientFails        int
+	FailStatus            int
+	FailBody              string // optional JSON error body for injected failures
+	PermanentStatus       int
+	MaxChunkAttempts      int
+	AlwaysFailChunk       int // -1 disables; >=0 fails that chunk on every HTTP attempt
+	TransportFailChunk    int
+	TransportFailCount    int
+	SessionDropAfterChunk int // after storing this index, session becomes invalid
 	PrefilledChunks       int // chunks 0..N-1 already on server before upload
 }
 
@@ -113,7 +117,8 @@ type Response struct {
 	UploadID           string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
+	_ = d
 	resp := &Response{
 		ChunkAttempts:     make(map[int]int),
 		TransportAttempts: make(map[int]int),
@@ -219,6 +224,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 				chunkFailCounts[idx]++
 				mu.Unlock()
 				status := failStatus(req, idx)
+				if req.FailBody != "" {
+					writeJSONErr(w, status, req.FailBody)
+					return
+				}
 				w.Header().Set("Content-Type", "text/plain")
 				w.WriteHeader(status)
 				fmt.Fprintf(w, "error code: %d", status)
@@ -283,6 +292,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	})
 	c.HTTPClient = base
 	uploadOpts := client.UploadOptions{
+		// Resilience leaves cover retry/resume, not gzip; keep raw payload for byte identity.
+		NoCompress: true,
 		ChunkRetry: &client.ChunkRetryConfig{
 			MaxAttempts: req.MaxChunkAttempts,
 			Backoff:     func(int) int64 { return 0 },
