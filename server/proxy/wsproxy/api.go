@@ -14,6 +14,8 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/ws-proxy/stop", handleStop)
 	mux.HandleFunc("GET /api/ws-proxy/config", handleGetConfig)
 	mux.HandleFunc("PUT /api/ws-proxy/config", handlePutConfig)
+	mux.HandleFunc("GET /api/ws-proxy/remote-direct", handleGetRemoteDirect)
+	mux.HandleFunc("PUT /api/ws-proxy/remote-direct", handlePutRemoteDirect)
 	mux.HandleFunc("GET /api/ws-proxy/vmess-link", handleVMessLink)
 	mux.HandleFunc("GET /api/ws-proxy/doctor", handleDoctor)
 	mux.HandleFunc("GET /api/ws-proxy/doctor/stream", handleDoctorStream)
@@ -142,6 +144,56 @@ func handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, cfg)
+}
+
+func handleGetRemoteDirect(w http.ResponseWriter, r *http.Request) {
+	cfg, err := LoadConfig()
+	if err != nil {
+		writeAPIErr(w, newError(ErrInternal, "failed to load config"))
+		return
+	}
+	if cfg == nil {
+		cfg = defaultConfig()
+	}
+	patterns := cfg.RemoteDirect
+	if patterns == nil {
+		patterns = []string{}
+	}
+	writeJSON(w, map[string]interface{}{
+		"patterns": patterns,
+	})
+}
+
+func handlePutRemoteDirect(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Patterns []string `json:"patterns"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIErr(w, newError(ErrBadRequest, "invalid request body"))
+		return
+	}
+	if req.Patterns == nil {
+		req.Patterns = []string{}
+	}
+
+	m := GetManager()
+	if err := m.SetRemoteDirect(req.Patterns); err != nil {
+		writeAPIErr(w, toAPIError(err))
+		return
+	}
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		writeAPIErr(w, newError(ErrInternal, "failed to load config"))
+		return
+	}
+	patterns := cfg.RemoteDirect
+	if patterns == nil {
+		patterns = []string{}
+	}
+	writeJSON(w, map[string]interface{}{
+		"patterns": patterns,
+	})
 }
 
 func handleDoctor(w http.ResponseWriter, r *http.Request) {

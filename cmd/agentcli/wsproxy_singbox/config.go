@@ -255,6 +255,8 @@ func buildSingBoxHttpOnlyTunConfig(vmess *VMessParams, opts *BuildConfigOptions)
 	}
 	routeRules = appendBuiltinBypassRules(routeRules, vmess, localSocksPort)
 	routeRules = appendPolicyRouteRules(routeRules, opts.Policy, webSelectorTag, true)
+	// After HTTP catch-all: non-HTTP ports (e.g. :22, :6606) still match here.
+	routeRules = appendAlsoProxyRouteRules(routeRules, opts.AlsoProxy, webSelectorTag)
 
 	bindIface := defaultOutboundBindInterface()
 	if bindIface != "" && opts.BindInterface == "" {

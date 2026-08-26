@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -90,10 +91,6 @@ type xrayProxyServer struct {
 	Port    int    `json:"port"`
 }
 
-type xrayOutboundSettings struct {
-	Servers []xrayProxyServer `json:"servers"`
-}
-
 type xrayInbound struct {
 	Port           int                 `json:"port"`
 	Protocol       string              `json:"protocol"`
@@ -102,14 +99,34 @@ type xrayInbound struct {
 }
 
 type xrayOutbound struct {
-	Protocol string               `json:"protocol"`
-	Settings xrayOutboundSettings `json:"settings"`
+	Tag      string `json:"tag,omitempty"`
+	Protocol string `json:"protocol"`
+	Settings any    `json:"settings,omitempty"`
+}
+
+type xrayRouteRule struct {
+	Type        string   `json:"type"`
+	Domain      []string `json:"domain,omitempty"`
+	Port        string   `json:"port,omitempty"`
+	Network     string   `json:"network,omitempty"`
+	OutboundTag string   `json:"outboundTag"`
+}
+
+type xrayRouting struct {
+	DomainStrategy string          `json:"domainStrategy,omitempty"`
+	Rules          []xrayRouteRule `json:"rules"`
 }
 
 type xrayConfig struct {
 	Inbounds  []xrayInbound  `json:"inbounds"`
 	Outbounds []xrayOutbound `json:"outbounds"`
+	Routing   *xrayRouting   `json:"routing,omitempty"`
 }
+
+const (
+	xrayOutboundProxy  = "proxy"
+	xrayOutboundDirect = "direct"
+)
 
 var (
 	inst     *Manager
@@ -593,6 +610,86 @@ func (m *Manager) startPermanentTunnel(cfg *Config) error {
 	return m.addPermanentTunnelMapping(cfg, hostname, cfg.ListenPort)
 }
 
+// SetRemoteDirect replaces freedom-egress patterns, regenerates xray config,
+// and restarts xray when it is already running (tunnel mapping is left intact).
+func (m *Manager) SetRemoteDirect(patterns []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.setRemoteDirectLocked(patterns)
+}
+
+func (m *Manager) setRemoteDirectLocked(patterns []string) error {
+	parsed, err := ParseRemoteDirectPatterns(patterns)
+	if err != nil {
+		return newError(ErrBadRequest, err.Error())
+	}
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+	if cfg == nil {
+		cfg = defaultConfig()
+	}
+
+	cfg.RemoteDirect = remoteDirectRaws(parsed)
+	if err := SaveConfig(cfg); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	// No xray yet — patterns persist for the next ws-proxy start.
+	if cfg.UUID == "" || cfg.ListenPort == 0 || cfg.UpstreamProxy == "" {
+		return nil
+	}
+
+	if err := ensureXrayBinary(); err != nil {
+		return fmt.Errorf("failed to setup xray: %w", err)
+	}
+	if err := generateXrayConfig(cfg); err != nil {
+		return fmt.Errorf("failed to generate xray config: %w", err)
+	}
+
+	mgr := subprocess.GetManager()
+	alive := mgr.IsRunning(xrayProcID) || isXrayAlive(cfg.ListenPort, cfg.WSPath)
+	if !alive {
+		return nil
+	}
+	if mgr.IsRunning(xrayProcID) {
+		mgr.StopProcess(xrayProcID)
+	} else {
+		return newError(ErrInternal, "xray is running outside ws-proxy manager; restart ws-proxy to apply remote_direct")
+	}
+	return m.startXrayProcessLocked(cfg)
+}
+
+func (m *Manager) startXrayProcessLocked(cfg *Config) error {
+	mgr := subprocess.GetManager()
+	listenPort := cfg.ListenPort
+
+	xrayCmd := exec.Command(xrayBinaryPath(), "run", "-c", xrayConfigPath())
+	xrayCmd.Stdout = os.Stdout
+	xrayCmd.Stderr = os.Stderr
+
+	healthCheck := func() bool {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", listenPort), 2*time.Second)
+		if err != nil {
+			return false
+		}
+		conn.Close()
+		return true
+	}
+
+	proc, err := mgr.StartProcess(xrayProcID, "ws-proxy-xray", xrayCmd, healthCheck)
+	if err != nil {
+		return fmt.Errorf("failed to start xray: %w", err)
+	}
+	if !proc.WaitForRunning(30 * time.Second) {
+		mgr.StopProcess(xrayProcID)
+		return fmt.Errorf("xray failed to become healthy within 30s")
+	}
+	return nil
+}
+
 func (m *Manager) Stop() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -774,6 +871,17 @@ func ensureXrayBinary() error {
 }
 
 func generateXrayConfig(cfg *Config) error {
+	httpOutbound := xrayOutbound{
+		Tag:      xrayOutboundProxy,
+		Protocol: "http",
+		Settings: map[string]any{
+			"servers": []map[string]any{{
+				"address": extractHost(cfg.UpstreamProxy),
+				"port":    extractPort(cfg.UpstreamProxy),
+			}},
+		},
+	}
+
 	xrayCfg := xrayConfig{
 		Inbounds: []xrayInbound{
 			{
@@ -792,19 +900,33 @@ func generateXrayConfig(cfg *Config) error {
 				},
 			},
 		},
-		Outbounds: []xrayOutbound{
-			{
-				Protocol: "http",
-				Settings: xrayOutboundSettings{
-					Servers: []xrayProxyServer{
-						{
-							Address: extractHost(cfg.UpstreamProxy),
-							Port:    extractPort(cfg.UpstreamProxy),
-						},
-					},
-				},
-			},
-		},
+		Outbounds: []xrayOutbound{httpOutbound},
+	}
+
+	patterns, err := ParseRemoteDirectPatterns(cfg.RemoteDirect)
+	if err != nil {
+		return err
+	}
+	if len(patterns) > 0 {
+		xrayCfg.Outbounds = append(xrayCfg.Outbounds, xrayOutbound{
+			Tag:      xrayOutboundDirect,
+			Protocol: "freedom",
+			Settings: map[string]any{},
+		})
+		var rules []xrayRouteRule
+		for _, p := range patterns {
+			rules = append(rules, remoteDirectXrayRule(p))
+		}
+		// Explicit default to Squid HTTP outbound.
+		rules = append(rules, xrayRouteRule{
+			Type:        "field",
+			Network:     "tcp,udp",
+			OutboundTag: xrayOutboundProxy,
+		})
+		xrayCfg.Routing = &xrayRouting{
+			DomainStrategy: "AsIs",
+			Rules:          rules,
+		}
 	}
 
 	if err := os.MkdirAll(xrayDir(), 0755); err != nil {
@@ -817,6 +939,24 @@ func generateXrayConfig(cfg *Config) error {
 	}
 
 	return os.WriteFile(xrayConfigPath(), data, 0644)
+}
+
+func remoteDirectXrayRule(p RemoteDirectPattern) xrayRouteRule {
+	rule := xrayRouteRule{
+		Type:        "field",
+		OutboundTag: xrayOutboundDirect,
+	}
+	if p.Wildcard {
+		// Host is ".zone"; xray "domain:zone" matches zone and *.zone.
+		zone := strings.TrimPrefix(p.Host, ".")
+		rule.Domain = []string{"domain:" + zone}
+	} else {
+		rule.Domain = []string{"full:" + p.Host}
+	}
+	if p.Port > 0 {
+		rule.Port = strconv.Itoa(p.Port)
+	}
+	return rule
 }
 
 func extractHost(proxyURL string) string {

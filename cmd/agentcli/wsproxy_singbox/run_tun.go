@@ -34,6 +34,13 @@ func RunTun(getClient func() (*client.Client, error), opts RunTunOptions) error 
 		MaybeWarnDNSPollution(opts.DNSHijack)
 	}
 
+	// Control plane first: tell the server which dests use freedom egress.
+	if len(opts.RemoteDirect) > 0 {
+		if err := pushRemoteDirect(getClient, opts.RemoteDirect); err != nil {
+			return err
+		}
+	}
+
 	bundle, err := prepareTunRun(getClient, opts)
 	if err != nil {
 		return err
@@ -151,12 +158,16 @@ func prepareTunRun(getClient func() (*client.Client, error), opts RunTunOptions)
 	buildOpts := buildTunConfigOptions(sidecar.Port)
 	buildOpts.HttpOnly = opts.HttpOnly
 	buildOpts.Policy = opts.Policy
+	buildOpts.AlsoProxy = opts.AlsoProxy
 	buildOpts.DNSHijack = opts.DNSHijack
 	if opts.HttpOnly {
 		buildOpts.InitialUseProxy = ProbeUpstreamProxy(sidecar.Port)
 		if !buildOpts.InitialUseProxy {
 			fmt.Println("Upstream xray SOCKS unreachable; starting in direct-fallback mode.")
 		}
+	}
+	if len(opts.AlsoProxy) > 0 && !opts.DNSHijack {
+		fmt.Fprintf(os.Stderr, "warning: --also-proxy without --dns-hijack may miss hosts that resolve to TUN-excluded private IPs (e.g. 10.0.0.0/8)\n")
 	}
 
 	if opts.HttpOnly {

@@ -23,15 +23,16 @@ const (
 )
 
 type Config struct {
-	UpstreamProxy string `json:"upstream_proxy"`
-	ListenPort    int    `json:"listen_port"`
-	WSPath        string `json:"ws_path"`
-	UUID          string `json:"uuid"`
-	Subdomain     string `json:"subdomain"`
-	InstanceID    string `json:"instance_id"`
-	AutoStart     bool   `json:"auto_start"`
-	PublicURL     string `json:"public_url,omitempty"`
-	IsTmp         bool   `json:"is_tmp,omitempty"`
+	UpstreamProxy string   `json:"upstream_proxy"`
+	ListenPort    int      `json:"listen_port"`
+	WSPath        string   `json:"ws_path"`
+	UUID          string   `json:"uuid"`
+	Subdomain     string   `json:"subdomain"`
+	InstanceID    string   `json:"instance_id"`
+	AutoStart     bool     `json:"auto_start"`
+	PublicURL     string   `json:"public_url,omitempty"`
+	IsTmp         bool     `json:"is_tmp,omitempty"`
+	RemoteDirect  []string `json:"remote_direct,omitempty"` // freedom egress patterns (host / host:port / *.zone / *.zone:port)
 }
 
 var _testConfigDir string
@@ -44,6 +45,9 @@ func configPath() string {
 }
 
 func xrayDir() string {
+	if _testConfigDir != "" {
+		return filepath.Join(_testConfigDir, xrayDirName)
+	}
 	return filepath.Join(config.DataDir, xrayDirName)
 }
 

@@ -21,7 +21,7 @@ Subcommands:
       Same as ws-proxy vpn — start sing-box TUN tunnel.
 
 Options:
-  --http-only, --whitelist, --blacklist, --include, --exclude, --dns-hijack
+  --http-only, --whitelist, --blacklist, --include, --exclude, --also-proxy, --remote-direct, --dns-hijack
   --yes, --no-install, --no-setup-sudo, --config FILE, --detach
 
 Examples:

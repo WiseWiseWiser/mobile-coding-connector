@@ -51,14 +51,16 @@ type ClientConfigOptions struct {
 }
 
 type RunTunOptions struct {
-	ConfigFile  string
-	Yes         bool
-	NoInstall   bool
-	NoSetupSudo bool
-	Detach      bool
-	HttpOnly    bool
-	Policy      *DomainPolicy
-	DNSHijack   bool
+	ConfigFile   string
+	Yes          bool
+	NoInstall    bool
+	NoSetupSudo  bool
+	Detach       bool
+	HttpOnly     bool
+	Policy       *DomainPolicy
+	AlsoProxy    []AlsoProxyPattern // --also-proxy; requires HttpOnly
+	RemoteDirect []AlsoProxyPattern // --remote-direct; server freedom egress
+	DNSHijack    bool
 }
 
 // RunHttpOnlyOptions is deprecated; use RunTunOptions with HttpOnly set.
@@ -69,8 +71,9 @@ type BuildConfigOptions struct {
 	LocalSocksPort  int // when > 0, proxy outbound is SOCKS to local xray sidecar
 	HttpOnly        bool
 	Policy          *DomainPolicy
-	DNSHijack       bool // http-only: optional; full VPN always hijacks DNS
-	InitialUseProxy bool // http-only selector default when ws-proxy is up
+	AlsoProxy       []AlsoProxyPattern // http-only TCP exceptions via ws-proxy
+	DNSHijack       bool               // http-only: optional; full VPN always hijacks DNS
+	InitialUseProxy bool               // http-only selector default when ws-proxy is up
 }
 
 type TestHooks struct {

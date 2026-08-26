@@ -105,6 +105,68 @@ func TestBuildSingBoxFullVPNBlacklistExclude(t *testing.T) {
 	}
 }
 
+func TestBuildSingBoxHttpOnlyAlsoProxyRules(t *testing.T) {
+	vmess := &VMessParams{Host: "proxy.example.com", Port: "443", UUID: "u", Path: "/ws", TLS: "tls"}
+	also, err := ParseAlsoProxyPatterns([]string{
+		"git.example.com:22",
+		"*.db.internal:6606",
+	})
+	if err != nil {
+		t.Fatalf("ParseAlsoProxyPatterns: %v", err)
+	}
+	data, err := BuildSingBoxHttpOnlyTunConfig(vmess, &HttpOnlyConfigOptions{
+		LocalSocksPort: 11080,
+		AlsoProxy:      also,
+	})
+	if err != nil {
+		t.Fatalf("BuildSingBoxHttpOnlyTunConfig: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	rules := routeRulesFromCfg(cfg)
+	if !rulesContainCatchAll(rules) {
+		t.Fatalf("http-only catch-all should remain: %v", rules)
+	}
+	foundSSH := false
+	foundMySQL := false
+	for _, r := range rules {
+		if r["outbound"] != webSelectorTag {
+			continue
+		}
+		if dom, _ := r["domain"].([]any); len(dom) == 1 && dom[0] == "git.example.com" {
+			if port, ok := asInt(r["port"]); ok && port == 22 {
+				foundSSH = true
+			}
+		}
+		if suf, _ := r["domain_suffix"].([]any); len(suf) == 1 && suf[0] == ".db.internal" {
+			if port, ok := asInt(r["port"]); ok && port == 6606 {
+				foundMySQL = true
+			}
+		}
+	}
+	if !foundSSH {
+		t.Fatalf("missing git.example.com:22 also-proxy rule: %v", rules)
+	}
+	if !foundMySQL {
+		t.Fatalf("missing *.db.internal:6606 also-proxy rule: %v", rules)
+	}
+}
+
+func asInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case float64:
+		return int(n), true
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	default:
+		return 0, false
+	}
+}
+
 func TestBuildSingBoxHttpOnlyWhitelistOmitsCatchAll(t *testing.T) {
 	vmess := &VMessParams{Host: "proxy.example.com", Port: "443", UUID: "u", Path: "/ws", TLS: "tls"}
 	policy, err := ParseDomainPolicy(PolicyInput{Include: []string{"*.corp.com"}})

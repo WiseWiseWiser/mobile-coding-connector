@@ -71,7 +71,7 @@ Options:
                        <repo> to SSH. Only consulted together with
                        --private-key. Defaults to 'git'. Use 'gitlab'
                        for self-hosted GitLab instances that require
-                       it (e.g. git.garena.com).
+                       it (e.g. git.example.com).
   -h, --help           Show this help message.
 
 URL rewriting:

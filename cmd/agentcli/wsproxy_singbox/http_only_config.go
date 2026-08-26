@@ -12,6 +12,7 @@ type HttpOnlyConfigOptions struct {
 	LocalSocksPort  int
 	InitialUseProxy bool
 	Policy          *DomainPolicy
+	AlsoProxy       []AlsoProxyPattern
 	DNSHijack       bool
 }
 
@@ -119,6 +120,7 @@ func BuildSingBoxHttpOnlyTunConfig(vmess *VMessParams, opts *HttpOnlyConfigOptio
 		LocalSocksPort:  opts.LocalSocksPort,
 		HttpOnly:        true,
 		Policy:          opts.Policy,
+		AlsoProxy:       opts.AlsoProxy,
 		DNSHijack:       opts.DNSHijack,
 		InitialUseProxy: opts.InitialUseProxy,
 	})

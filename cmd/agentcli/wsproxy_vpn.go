@@ -1,6 +1,9 @@
 package agentcli
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/xhd2015/ai-critic/client"
 	singbox "github.com/xhd2015/ai-critic/cmd/agentcli/wsproxy_singbox"
 	"github.com/xhd2015/less-gen/flags"
@@ -19,6 +22,14 @@ Options:
   --blacklist            Proxy except --exclude (default when patterns given in --http-only)
   --include PATTERN      Repeatable; exact.com or *.zone patterns
   --exclude PATTERN      Repeatable; holes within the active mode
+  --also-proxy PATTERN   With --http-only: also send matching TCP via ws-proxy (repeatable).
+                         Forms: host, host:port, *.zone, *.zone:port (not :port alone).
+                         Prefer --dns-hijack for private/corp hosts under 10.0.0.0/8.
+  --remote-direct PATTERN
+                         Before TUN start, push patterns to the server so those dests
+                         use freedom (direct) egress instead of Squid HTTP CONNECT.
+                         Same pattern forms as --also-proxy. Requires a server that
+                         supports PUT /api/ws-proxy/remote-direct.
   --dns-hijack           Hijack DNS via TUN fakeip (default in full VPN; optional in --http-only)
   --yes                  Skip sing-box install confirmation
   --no-install           Fail if sing-box is not on PATH
@@ -37,6 +48,10 @@ Examples:
   remote-agent ws-proxy vpn --http-only --dns-hijack
   remote-agent ws-proxy vpn --blacklist --exclude github.com
   remote-agent ws-proxy vpn --http-only --whitelist --include '*.internal.corp'
+  remote-agent ws-proxy vpn --http-only --dns-hijack \
+    --also-proxy git.example.com:22 \
+    --also-proxy '*.db.internal:6606' \
+    --remote-direct '*.db.internal:6606'
 `
 
 func wsproxyVpn(getClient func() (*client.Client, error), args []string) error {
@@ -53,6 +68,8 @@ func parseVpnFlags(args []string, help string) (singbox.RunTunOptions, error) {
 	var blacklist bool
 	var includes []string
 	var excludes []string
+	var alsoProxy []string
+	var remoteDirect []string
 
 	_, err := flags.
 		Bool("--http-only", &opts.HttpOnly).
@@ -66,6 +83,8 @@ func parseVpnFlags(args []string, help string) (singbox.RunTunOptions, error) {
 		Bool("--blacklist", &blacklist).
 		StringSlice("--include", &includes).
 		StringSlice("--exclude", &excludes).
+		StringSlice("--also-proxy", &alsoProxy).
+		StringSlice("--remote-direct", &remoteDirect).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
@@ -84,5 +103,30 @@ func parseVpnFlags(args []string, help string) (singbox.RunTunOptions, error) {
 		}
 		opts.Policy = policy
 	}
+
+	if len(alsoProxy) > 0 {
+		if !opts.HttpOnly {
+			return opts, fmt.Errorf("--also-proxy requires --http-only")
+		}
+		patterns, err := singbox.ParseAlsoProxyPatterns(alsoProxy)
+		if err != nil {
+			return opts, err
+		}
+		opts.AlsoProxy = patterns
+	}
+
+	if len(remoteDirect) > 0 {
+		patterns, err := singbox.ParseAlsoProxyPatterns(remoteDirect)
+		if err != nil {
+			return opts, fmt.Errorf("%w", rewriteAlsoProxyErr(err, "--remote-direct"))
+		}
+		opts.RemoteDirect = patterns
+	}
 	return opts, nil
+}
+
+func rewriteAlsoProxyErr(err error, flag string) error {
+	msg := strings.ReplaceAll(err.Error(), "--also-proxy", flag)
+	msg = strings.ReplaceAll(msg, "invalid --also-proxy", "invalid "+flag)
+	return fmt.Errorf("%s", msg)
 }
