@@ -103,6 +103,57 @@ func TestUseUnknown(t *testing.T) {
 	}
 }
 
+func TestAddNewAndDuplicateNote(t *testing.T) {
+	h := handler(t)
+	p := filepath.Join(h.Store.ConfigDir, "draft.md")
+	rec := serve(h, postAdd(AddRequest{Path: p, Note: "future", NoteSet: true}))
+	if rec.Code != 200 {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var out AddResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Duplicate || out.File.Path != p || out.File.Note != "future" {
+		t.Fatalf("out=%+v", out)
+	}
+
+	rec = serve(h, postAdd(AddRequest{Path: p, Note: "renamed", NoteSet: true}))
+	if rec.Code != 200 {
+		t.Fatalf("dup code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !out.Duplicate || out.File.Note != "renamed" {
+		t.Fatalf("dup out=%+v", out)
+	}
+
+	list := serve(h, httptest.NewRequest(http.MethodGet, ListPath, nil))
+	var listed ListResponse
+	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Files) != 1 || listed.Files[0].Note != "renamed" {
+		t.Fatalf("listed=%+v", listed.Files)
+	}
+}
+
+func TestAddEmptyPath(t *testing.T) {
+	h := handler(t)
+	rec := serve(h, postAdd(AddRequest{Path: "  "}))
+	if rec.Code != 400 {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func postAdd(req AddRequest) *http.Request {
+	body, _ := json.Marshal(req)
+	r := httptest.NewRequest(http.MethodPost, AddPath, bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	return r
+}
+
 func handler(t *testing.T) *Handler {
 	t.Helper()
 	cfg := t.TempDir()

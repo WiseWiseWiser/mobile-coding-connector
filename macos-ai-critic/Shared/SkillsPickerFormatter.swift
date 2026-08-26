@@ -189,14 +189,67 @@ public enum SkillsPickerFormatter {
     public static func formatEmptyHint(sidebarID: String) -> String {
         switch normalizeSidebarID(sidebarID) {
         case sidebarTemplates:
-            return "register a root with: my templates --add-dir"
+            return "Add a template below, or: my templates --add-dir"
         case sidebarSkills:
             return "register a root with: my skills --add-dir"
         case sidebarFiles:
-            return "register with: my files --add"
+            return "Add a file below, or: my files --add"
         default:
             return "register with: my skills / my templates / my files"
         }
+    }
+
+    public static func formatAddButtonTitle(sidebarID: String) -> String {
+        switch normalizeSidebarID(sidebarID) {
+        case sidebarTemplates:
+            return "New template"
+        case sidebarFiles:
+            return "Add file or folder"
+        default:
+            return ""
+        }
+    }
+
+    public static func shouldShowAddButton(sidebarID: String) -> Bool {
+        switch normalizeSidebarID(sidebarID) {
+        case sidebarTemplates, sidebarFiles:
+            return true
+        default:
+            return false
+        }
+    }
+
+    public static func formatChooseTemplateFolderTitle() -> String {
+        "Choose template folder…"
+    }
+
+    public static func formatNewTemplateSheetTitle() -> String {
+        "New template"
+    }
+
+    public static func formatAddFileSheetTitle() -> String {
+        "Add file or folder"
+    }
+
+    /// Flat .md basename from a display name (mirrors server slugify).
+    public static func slugifyTemplateFilename(_ name: String) -> String {
+        var s = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        s = String(s.map { ch -> Character in
+            ch.isWhitespace ? "-" : ch
+        })
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
+        s = String(s.unicodeScalars.map { scalar -> Character in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        })
+        while s.contains("--") {
+            s = s.replacingOccurrences(of: "--", with: "-")
+        }
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: "-._"))
+        if s.isEmpty { s = "template" }
+        if !s.lowercased().hasSuffix(".md") {
+            s += ".md"
+        }
+        return s
     }
 
     public static func formatNoResults() -> String {

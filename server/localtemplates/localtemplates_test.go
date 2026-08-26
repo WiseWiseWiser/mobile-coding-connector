@@ -29,6 +29,9 @@ func TestListEmpty(t *testing.T) {
 	if out.MissingRoots == nil || len(out.MissingRoots) != 0 {
 		t.Fatalf("missing=%v", out.MissingRoots)
 	}
+	if out.Roots == nil || len(out.Roots) != 0 {
+		t.Fatalf("roots=%v", out.Roots)
+	}
 }
 
 func TestListRankedAfterUse(t *testing.T) {
@@ -107,6 +110,114 @@ func TestUseMissingPath(t *testing.T) {
 	if rec.Code != http.StatusNotFound && rec.Code != http.StatusBadRequest {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
+}
+
+func TestAddDirAndCreate(t *testing.T) {
+	h := handler(t)
+	root := filepath.Join(h.Store.ConfigDir, "prompts")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	add := serve(h, postJSON(AddDirPath, AddDirRequest{Path: root, Note: "stubs", NoteSet: true}))
+	if add.Code != 200 {
+		t.Fatalf("add-dir code=%d body=%s", add.Code, add.Body.String())
+	}
+	var addOut AddDirResponse
+	if err := json.Unmarshal(add.Body.Bytes(), &addOut); err != nil {
+		t.Fatal(err)
+	}
+	if addOut.Duplicate || addOut.Root.Path != root || addOut.Root.Note != "stubs" {
+		t.Fatalf("addOut=%+v", addOut)
+	}
+
+	dup := serve(h, postJSON(AddDirPath, AddDirRequest{Path: root}))
+	if dup.Code != 200 {
+		t.Fatalf("dup code=%d body=%s", dup.Code, dup.Body.String())
+	}
+	if err := json.Unmarshal(dup.Body.Bytes(), &addOut); err != nil {
+		t.Fatal(err)
+	}
+	if !addOut.Duplicate {
+		t.Fatal("expected duplicate")
+	}
+
+	create := serve(h, postJSON(CreatePath, CreateRequest{
+		Name:        "brainstorm sink",
+		Description: "Sink X",
+		Tags:        []string{"brainstorm", "sink"},
+		Body:        "/brainstorm following SINK.md about X",
+	}))
+	if create.Code != 200 {
+		t.Fatalf("create code=%d body=%s", create.Code, create.Body.String())
+	}
+	var created CreateResponse
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	wantPath := filepath.Join(root, "brainstorm-sink.md")
+	if created.Template.Path != wantPath {
+		t.Fatalf("path=%q want %q", created.Template.Path, wantPath)
+	}
+	if created.Template.Name != "brainstorm sink" {
+		t.Fatalf("name=%q", created.Template.Name)
+	}
+	if created.Template.Body != "/brainstorm following SINK.md about X" {
+		t.Fatalf("body=%q", created.Template.Body)
+	}
+
+	list := serve(h, httptest.NewRequest(http.MethodGet, ListPath, nil))
+	var listed ListResponse
+	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Roots) != 1 || listed.Roots[0].Path != root {
+		t.Fatalf("roots=%+v", listed.Roots)
+	}
+	if len(listed.Templates) != 1 || listed.Templates[0].Path != wantPath {
+		t.Fatalf("templates=%+v", listed.Templates)
+	}
+
+	conflict := serve(h, postJSON(CreatePath, CreateRequest{
+		Name: "brainstorm sink",
+		Body: "other",
+	}))
+	if conflict.Code != http.StatusConflict {
+		t.Fatalf("conflict code=%d body=%s", conflict.Code, conflict.Body.String())
+	}
+}
+
+func TestCreateRequiresRootWhenNone(t *testing.T) {
+	h := handler(t)
+	rec := serve(h, postJSON(CreatePath, CreateRequest{Name: "x", Body: "y"}))
+	if rec.Code != 400 {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAddDirRejectsMissing(t *testing.T) {
+	h := handler(t)
+	missing := filepath.Join(h.Store.ConfigDir, "no-such-dir")
+	rec := serve(h, postJSON(AddDirPath, AddDirRequest{Path: missing}))
+	if rec.Code != 400 {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSlugifyFilename(t *testing.T) {
+	if got := slugifyFilename("brainstorm sink"); got != "brainstorm-sink.md" {
+		t.Fatalf("got %q", got)
+	}
+	if got := slugifyFilename("  Hello $AI  "); got != "Hello-AI.md" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func postJSON(path string, v any) *http.Request {
+	body, _ := json.Marshal(v)
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	return req
 }
 
 func TestListNeverUsesHome(t *testing.T) {

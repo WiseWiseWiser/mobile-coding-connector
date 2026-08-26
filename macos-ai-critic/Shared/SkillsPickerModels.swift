@@ -113,21 +113,102 @@ public enum SkillsPickerHotKey {
 public struct TemplatesListResponse: Decodable, Equatable {
     public let templates: [TemplatesPickerItem]
     public let missingRoots: [String]
+    public let roots: [TemplatesRootItem]
 
     enum CodingKeys: String, CodingKey {
         case templates
         case missingRoots = "missing_roots"
+        case roots
     }
 
-    public init(templates: [TemplatesPickerItem] = [], missingRoots: [String] = []) {
+    public init(
+        templates: [TemplatesPickerItem] = [],
+        missingRoots: [String] = [],
+        roots: [TemplatesRootItem] = []
+    ) {
         self.templates = templates
         self.missingRoots = missingRoots
+        self.roots = roots
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         templates = try c.decodeIfPresent([TemplatesPickerItem].self, forKey: .templates) ?? []
         missingRoots = try c.decodeIfPresent([String].self, forKey: .missingRoots) ?? []
+        roots = try c.decodeIfPresent([TemplatesRootItem].self, forKey: .roots) ?? []
+    }
+}
+
+/// One registered template root from list / add-dir.
+public struct TemplatesRootItem: Decodable, Equatable, Identifiable {
+    public var id: String { path }
+    public let path: String
+    public let note: String
+
+    enum CodingKeys: String, CodingKey {
+        case path, note
+    }
+
+    public init(path: String, note: String = "") {
+        self.path = path
+        self.note = note
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
+        note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+    }
+}
+
+/// POST /api/local/templates/add-dir
+public struct TemplatesAddDirResponse: Decodable, Equatable {
+    public let root: TemplatesRootItem
+    public let duplicate: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case root, duplicate
+    }
+
+    public init(root: TemplatesRootItem, duplicate: Bool = false) {
+        self.root = root
+        self.duplicate = duplicate
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        root = try c.decodeIfPresent(TemplatesRootItem.self, forKey: .root) ?? TemplatesRootItem(path: "")
+        duplicate = try c.decodeIfPresent(Bool.self, forKey: .duplicate) ?? false
+    }
+}
+
+/// POST /api/local/templates/create
+public struct TemplatesCreateResponse: Decodable, Equatable {
+    public let template: TemplatesPickerItem
+
+    public init(template: TemplatesPickerItem) {
+        self.template = template
+    }
+}
+
+/// POST /api/local/files/add
+public struct FilesAddResponse: Decodable, Equatable {
+    public let file: FilesPickerItem
+    public let duplicate: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case file, duplicate
+    }
+
+    public init(file: FilesPickerItem, duplicate: Bool = false) {
+        self.file = file
+        self.duplicate = duplicate
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        file = try c.decodeIfPresent(FilesPickerItem.self, forKey: .file) ?? FilesPickerItem(path: "")
+        duplicate = try c.decodeIfPresent(Bool.self, forKey: .duplicate) ?? false
     }
 }
 

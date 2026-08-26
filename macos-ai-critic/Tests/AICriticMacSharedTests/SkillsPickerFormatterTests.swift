@@ -158,10 +158,32 @@ final class SkillsPickerFormatterTests: XCTestCase {
 
     func testEmptyHintsBySidebar() {
         XCTAssertTrue(SkillsPickerFormatter.formatEmptyHint(sidebarID: "skills").contains("my skills"))
-        XCTAssertTrue(SkillsPickerFormatter.formatEmptyHint(sidebarID: "templates").contains("my templates"))
-        XCTAssertTrue(SkillsPickerFormatter.formatEmptyHint(sidebarID: "files").contains("my files"))
+        XCTAssertTrue(SkillsPickerFormatter.formatEmptyHint(sidebarID: "templates").contains("Add a template"))
+        XCTAssertTrue(SkillsPickerFormatter.formatEmptyHint(sidebarID: "files").contains("Add a file"))
         XCTAssertEqual(SkillsPickerFormatter.formatEmptyTitle(sidebarID: "templates"), "No templates registered")
         XCTAssertEqual(SkillsPickerFormatter.formatEmptyTitle(sidebarID: "files"), "No files registered")
+        XCTAssertEqual(SkillsPickerFormatter.formatAddButtonTitle(sidebarID: "templates"), "New template")
+        XCTAssertEqual(SkillsPickerFormatter.formatAddButtonTitle(sidebarID: "files"), "Add file or folder")
+        XCTAssertTrue(SkillsPickerFormatter.shouldShowAddButton(sidebarID: "templates"))
+        XCTAssertTrue(SkillsPickerFormatter.shouldShowAddButton(sidebarID: "files"))
+        XCTAssertFalse(SkillsPickerFormatter.shouldShowAddButton(sidebarID: "skills"))
+        XCTAssertFalse(SkillsPickerFormatter.shouldShowAddButton(sidebarID: "all"))
+    }
+
+    func testSlugifyTemplateFilename() {
+        XCTAssertEqual(SkillsPickerFormatter.slugifyTemplateFilename("brainstorm sink"), "brainstorm-sink.md")
+        XCTAssertEqual(SkillsPickerFormatter.slugifyTemplateFilename("  Hello $AI  "), "Hello-AI.md")
+        XCTAssertEqual(SkillsPickerFormatter.slugifyTemplateFilename(""), "template.md")
+    }
+
+    func testDecodeTemplatesListWithRoots() throws {
+        let json = """
+        {"templates":[],"missing_roots":[],"roots":[{"path":"/t/root","note":"stubs"}]}
+        """
+        let resp = try JSONDecoder().decode(TemplatesListResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(resp.roots.count, 1)
+        XCTAssertEqual(resp.roots[0].path, "/t/root")
+        XCTAssertEqual(resp.roots[0].note, "stubs")
     }
 
     func testDisplaySpansFallbackWhenEmpty() {

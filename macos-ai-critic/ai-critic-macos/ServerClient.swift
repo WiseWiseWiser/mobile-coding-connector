@@ -330,6 +330,56 @@ final class ServerClient {
         }
     }
 
+    /// Register a template root directory via POST /api/local/templates/add-dir.
+    func addTemplateDir(path: String, note: String? = nil) async throws -> TemplatesAddDirResponse {
+        var body: [String: Any] = ["path": path]
+        if let note {
+            body["note"] = note
+            body["note_set"] = true
+        }
+        let (data, response) = try await postJSON(path: "/api/local/templates/add-dir", body: body)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "templates add-dir request failed"))
+        }
+        return try JSONDecoder().decode(TemplatesAddDirResponse.self, from: data)
+    }
+
+    /// Create a new .md template under a registered root via POST /api/local/templates/create.
+    func createTemplate(
+        name: String,
+        body: String,
+        description: String = "",
+        tags: [String] = [],
+        root: String? = nil,
+        filename: String? = nil
+    ) async throws -> TemplatesCreateResponse {
+        var payload: [String: Any] = [
+            "name": name,
+            "body": body,
+        ]
+        let desc = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !desc.isEmpty {
+            payload["description"] = desc
+        }
+        if !tags.isEmpty {
+            payload["tags"] = tags
+        }
+        if let root, !root.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["root"] = root
+        }
+        if let filename, !filename.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["filename"] = filename
+        }
+        let (data, response) = try await postJSON(path: "/api/local/templates/create", body: payload)
+        guard let http = response as? HTTPURLResponse else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "templates create request failed"))
+        }
+        if http.statusCode == 200 {
+            return try JSONDecoder().decode(TemplatesCreateResponse.self, from: data)
+        }
+        throw ServerClientError.unreachable(jsonError(data, fallback: "templates create request failed"))
+    }
+
     /// Ranked path bookmarks for the ⌘⇧; picker via GET /api/local/files.
     func listFiles(query: String = "") async throws -> FilesListResponse {
         var path = "/api/local/files"
@@ -354,6 +404,20 @@ final class ServerClient {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw ServerClientError.unreachable(jsonError(data, fallback: "files use request failed"))
         }
+    }
+
+    /// Register a path bookmark via POST /api/local/files/add.
+    func addFile(path: String, note: String? = nil) async throws -> FilesAddResponse {
+        var body: [String: Any] = ["path": path]
+        if let note {
+            body["note"] = note
+            body["note_set"] = true
+        }
+        let (data, response) = try await postJSON(path: "/api/local/files/add", body: body)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "files add request failed"))
+        }
+        return try JSONDecoder().decode(FilesAddResponse.self, from: data)
     }
 
     /// Live Desktops + iTerm sessions + notes via GET /api/local/iterm2/inventory.

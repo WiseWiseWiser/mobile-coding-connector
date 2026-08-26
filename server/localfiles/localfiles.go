@@ -1,4 +1,4 @@
-// Package localfiles serves GET /api/local/files and POST /api/local/files/use
+// Package localfiles serves GET /api/local/files and POST use/add endpoints
 // for the macOS insert picker. Tests inject Store so List never reads $HOME.
 package localfiles
 
@@ -17,6 +17,8 @@ const (
 	ListPath = "/api/local/files"
 	// UsePath is POST: increment usage for a registered path.
 	UsePath = "/api/local/files/use"
+	// AddPath is POST: register a file or directory path bookmark.
+	AddPath = "/api/local/files/add"
 )
 
 // ListResponse is the GET ListPath body.
@@ -42,18 +44,34 @@ type UseResponse struct {
 	File libfiles.Entry `json:"file"`
 }
 
+// AddRequest is the POST AddPath body.
+type AddRequest struct {
+	Path string `json:"path"`
+	Note string `json:"note,omitempty"`
+	// NoteSet is true when the client intends to set/clear note (including empty).
+	// When omitted/false and Note is empty, existing note is left unchanged on duplicate.
+	NoteSet bool `json:"note_set,omitempty"`
+}
+
+// AddResponse is the POST AddPath body.
+type AddResponse struct {
+	File      libfiles.Entry `json:"file"`
+	Duplicate bool           `json:"duplicate"`
+}
+
 // Handler serves local files endpoints. Nil Store uses DefaultConfigDir.
 type Handler struct {
 	Store *libfiles.Store
 }
 
-// Register mounts list and use on mux.
+// Register mounts list, use, and add on mux.
 func Register(mux *http.ServeMux, h *Handler) {
 	if h == nil {
 		h = &Handler{}
 	}
 	mux.HandleFunc(ListPath, h.handleList)
 	mux.HandleFunc(UsePath, h.handleUse)
+	mux.HandleFunc(AddPath, h.handleAdd)
 }
 
 func (h *Handler) store() *libfiles.Store {
@@ -164,6 +182,34 @@ func (h *Handler) handleUse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, UseResponse{File: *ent})
+}
+
+func (h *Handler) handleAdd(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req AddRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	path := strings.TrimSpace(req.Path)
+	if path == "" {
+		writeJSONError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	noteSet := req.NoteSet || strings.TrimSpace(req.Note) != ""
+	ent, dup, err := h.store().Add(path, req.Note, noteSet)
+	if err != nil {
+		if err.Error() == "path is required" {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, AddResponse{File: ent, Duplicate: dup})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

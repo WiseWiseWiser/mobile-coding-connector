@@ -133,6 +133,21 @@ struct SkillsPickerView: View {
     @State private var searchTask: Task<Void, Never>?
     @FocusState private var searchFocused: Bool
 
+    @State private var templateRoots: [TemplatesRootItem] = []
+    @State private var showCreateTemplate = false
+    @State private var showAddFile = false
+    @State private var creatingBusy = false
+    @State private var formError: String?
+
+    @State private var newTemplateName = ""
+    @State private var newTemplateDescription = ""
+    @State private var newTemplateTags = ""
+    @State private var newTemplateBody = ""
+    @State private var newTemplateRootPath = ""
+
+    @State private var addFilePath = ""
+    @State private var addFileNote = ""
+
     private var resolvedSidebar: String {
         SkillsPickerFormatter.normalizeSidebarID(sidebarID ?? storedSidebar)
     }
@@ -141,17 +156,34 @@ struct SkillsPickerView: View {
         SkillsPickerFormatter.shouldShowSidebarTitles(width: Double(sidebarWidth))
     }
 
+    private var showAddChrome: Bool {
+        SkillsPickerFormatter.shouldShowAddButton(sidebarID: resolvedSidebar)
+            && query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && errorText == nil
+            && !(loading && items.isEmpty)
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            searchRow
-            Divider()
-            HStack(spacing: 0) {
-                sidebar
-                    .frame(width: sidebarWidth)
-                    .frame(maxHeight: .infinity)
-                sidebarResizeHandle
-                contentPane
-                    .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
+        ZStack {
+            VStack(spacing: 0) {
+                searchRow
+                Divider()
+                HStack(spacing: 0) {
+                    sidebar
+                        .frame(width: sidebarWidth)
+                        .frame(maxHeight: .infinity)
+                    sidebarResizeHandle
+                    contentPane
+                        .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .disabled(showCreateTemplate || showAddFile)
+
+            if showCreateTemplate {
+                createTemplateOverlay
+            }
+            if showAddFile {
+                addFileOverlay
             }
         }
         .frame(width: 640, height: 420)
@@ -179,18 +211,22 @@ struct SkillsPickerView: View {
         }
         .onExitCommand { handleEscape() }
         .onKeyPress(.upArrow) {
+            guard !showCreateTemplate, !showAddFile else { return .ignored }
             moveSelection(-1)
             return .handled
         }
         .onKeyPress(.downArrow) {
+            guard !showCreateTemplate, !showAddFile else { return .ignored }
             moveSelection(1)
             return .handled
         }
         .onKeyPress(.leftArrow) {
+            guard !showCreateTemplate, !showAddFile else { return .ignored }
             moveSidebar(-1)
             return .handled
         }
         .onKeyPress(.rightArrow) {
+            guard !showCreateTemplate, !showAddFile else { return .ignored }
             moveSidebar(1)
             return .handled
         }
@@ -285,95 +321,128 @@ struct SkillsPickerView: View {
 
     @ViewBuilder
     private var contentPane: some View {
-        if let errorText {
-            Text(errorText)
-                .foregroundStyle(.red)
-                .font(.caption)
-                .padding(8)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        } else if loading && items.isEmpty {
-            ProgressView()
-                .controlSize(.small)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if items.isEmpty {
-            VStack(spacing: 6) {
-                Text(emptyTitle)
-                    .font(.headline)
-                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(SkillsPickerFormatter.formatEmptyHint(sidebarID: resolvedSidebar))
+        VStack(spacing: 0) {
+            Group {
+                if let errorText {
+                    Text(errorText)
+                        .foregroundStyle(.red)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else if loading && items.isEmpty {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if items.isEmpty {
+                    VStack(spacing: 6) {
+                        Text(emptyTitle)
+                            .font(.headline)
+                        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text(SkillsPickerFormatter.formatEmptyHint(sidebarID: resolvedSidebar))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollViewReader { proxy in
+                        List(items, selection: $selectedID) { item in
+                            listRow(item)
+                        }
+                        .listStyle(.sidebar)
+                        .scrollContentBackground(.hidden)
+                        .onChange(of: selectedID) { _, id in
+                            scrollList(proxy, to: id)
+                        }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            ScrollViewReader { proxy in
-                List(items, selection: $selectedID) { item in
-                    HStack(alignment: .top, spacing: 8) {
-                        if resolvedSidebar == SkillsPickerFormatter.sidebarAll {
-                            Text(SkillsPickerFormatter.formatKindBadge(item.kind))
-                                .font(.caption2.weight(.semibold))
+
+            if showAddChrome {
+                Divider()
+                addFooter
+            }
+        }
+    }
+
+    private func listRow(_ item: InsertPickerItem) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            if resolvedSidebar == SkillsPickerFormatter.sidebarAll {
+                Text(SkillsPickerFormatter.formatKindBadge(item.kind))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 64, alignment: .leading)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    spanText(
+                        item.titleSpans,
+                        fallback: item.title,
+                        caption: false
+                    )
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                    Spacer(minLength: 8)
+                    if item.kind == .template {
+                        let desc = item.trailingDescription
+                        if !desc.isEmpty {
+                            Text(desc)
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .frame(width: 64, alignment: .leading)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                spanText(
-                                    item.titleSpans,
-                                    fallback: item.title,
-                                    caption: false
-                                )
                                 .lineLimit(1)
-                                .layoutPriority(1)
-                                Spacer(minLength: 8)
-                                if item.kind == .template {
-                                    let desc = item.trailingDescription
-                                    if !desc.isEmpty {
-                                        Text(desc)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                            .truncationMode(.tail)
-                                    }
-                                }
-                                let count = SkillsPickerFormatter.formatUseCount(item.useCount)
-                                if !count.isEmpty {
-                                    Text(count)
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            if item.kind == .template {
-                                spanText(
-                                    item.bodySpans,
-                                    fallback: item.subtitle,
-                                    caption: true
-                                )
-                                .font(.caption)
-                                .lineLimit(1)
-                            } else {
-                                spanText(
-                                    item.pathSpans,
-                                    fallback: item.subtitle,
-                                    caption: true
-                                )
-                                .font(.caption)
-                                .lineLimit(1)
-                            }
+                                .truncationMode(.tail)
                         }
                     }
-                    .tag(item.id)
-                    .id(item.id)
-                    .contentShape(Rectangle())
-                    .onTapGesture { pick(item) }
+                    let count = SkillsPickerFormatter.formatUseCount(item.useCount)
+                    if !count.isEmpty {
+                        Text(count)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
-                .onChange(of: selectedID) { _, id in
-                    scrollList(proxy, to: id)
+                if item.kind == .template {
+                    spanText(
+                        item.bodySpans,
+                        fallback: item.subtitle,
+                        caption: true
+                    )
+                    .font(.caption)
+                    .lineLimit(1)
+                } else {
+                    spanText(
+                        item.pathSpans,
+                        fallback: item.subtitle,
+                        caption: true
+                    )
+                    .font(.caption)
+                    .lineLimit(1)
                 }
             }
         }
+        .tag(item.id)
+        .id(item.id)
+        .contentShape(Rectangle())
+        .onTapGesture { pick(item) }
+    }
+
+    private var addFooter: some View {
+        HStack {
+            Button {
+                beginAdd()
+            } label: {
+                Label(
+                    SkillsPickerFormatter.formatAddButtonTitle(sidebarID: resolvedSidebar),
+                    systemImage: "plus"
+                )
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("insert-picker-add")
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     private func scrollList(_ proxy: ScrollViewProxy, to id: String?) {
@@ -462,11 +531,284 @@ struct SkillsPickerView: View {
     }
 
     private func handleEscape() {
+        if showCreateTemplate {
+            showCreateTemplate = false
+            formError = nil
+            return
+        }
+        if showAddFile {
+            showAddFile = false
+            formError = nil
+            return
+        }
         if !query.isEmpty {
             query = ""
             return
         }
         onDismiss()
+    }
+
+    private var createTemplateOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.28)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    if !creatingBusy {
+                        showCreateTemplate = false
+                        formError = nil
+                    }
+                }
+            VStack(alignment: .leading, spacing: 10) {
+                Text(SkillsPickerFormatter.formatNewTemplateSheetTitle())
+                    .font(.headline)
+                TextField("Name", text: $newTemplateName)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Description (optional)", text: $newTemplateDescription)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Tags (comma-separated)", text: $newTemplateTags)
+                    .textFieldStyle(.roundedBorder)
+                if templateRoots.count > 1 {
+                    Picker("Root", selection: $newTemplateRootPath) {
+                        ForEach(templateRoots) { root in
+                            Text(root.path).tag(root.path)
+                        }
+                    }
+                } else if let only = templateRoots.first {
+                    Text(only.path)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Text("Body")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextEditor(text: $newTemplateBody)
+                    .font(.body)
+                    .frame(minHeight: 100, maxHeight: 140)
+                    .border(Color(nsColor: .separatorColor), width: 1)
+                if let formError {
+                    Text(formError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        showCreateTemplate = false
+                        formError = nil
+                    }
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(creatingBusy)
+                    Button("Create") {
+                        Task { await submitCreateTemplate() }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(creatingBusy)
+                }
+            }
+            .padding(16)
+            .frame(width: 420)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .shadow(radius: 12)
+        }
+        .accessibilityIdentifier("insert-picker-create-template")
+    }
+
+    private var addFileOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.28)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    if !creatingBusy {
+                        showAddFile = false
+                        formError = nil
+                    }
+                }
+            VStack(alignment: .leading, spacing: 10) {
+                Text(SkillsPickerFormatter.formatAddFileSheetTitle())
+                    .font(.headline)
+                HStack(spacing: 8) {
+                    TextField("Path", text: $addFilePath)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Browse…") {
+                        browseAddFilePath()
+                    }
+                }
+                TextField("Note (optional)", text: $addFileNote)
+                    .textFieldStyle(.roundedBorder)
+                if let formError {
+                    Text(formError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        showAddFile = false
+                        formError = nil
+                    }
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(creatingBusy)
+                    Button("Add") {
+                        Task { await submitAddFile() }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(creatingBusy)
+                }
+            }
+            .padding(16)
+            .frame(width: 420)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .shadow(radius: 12)
+        }
+        .accessibilityIdentifier("insert-picker-add-file")
+    }
+
+    private func beginAdd() {
+        formError = nil
+        switch resolvedSidebar {
+        case SkillsPickerFormatter.sidebarTemplates:
+            beginAddTemplate()
+        case SkillsPickerFormatter.sidebarFiles:
+            addFilePath = ""
+            addFileNote = ""
+            showAddFile = true
+        default:
+            break
+        }
+    }
+
+    private func beginAddTemplate() {
+        if templateRoots.isEmpty {
+            Task { await chooseAndRegisterTemplateRoot(thenCreate: true) }
+            return
+        }
+        resetCreateTemplateForm()
+        showCreateTemplate = true
+    }
+
+    private func resetCreateTemplateForm() {
+        newTemplateName = ""
+        newTemplateDescription = ""
+        newTemplateTags = ""
+        newTemplateBody = ""
+        newTemplateRootPath = templateRoots.first?.path ?? ""
+        formError = nil
+    }
+
+    private func browseAddFilePath() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.prompt = "Choose"
+        panel.message = SkillsPickerFormatter.formatAddFileSheetTitle()
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        addFilePath = url.path
+    }
+
+    private func chooseAndRegisterTemplateRoot(thenCreate: Bool) async {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Choose"
+        panel.message = SkillsPickerFormatter.formatChooseTemplateFolderTitle()
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        creatingBusy = true
+        formError = nil
+        defer { creatingBusy = false }
+        do {
+            let resp = try await ServerClient.shared.addTemplateDir(path: url.path)
+            if !templateRoots.contains(where: { $0.path == resp.root.path }) {
+                templateRoots.append(resp.root)
+            }
+            await reload(query: query)
+            if thenCreate {
+                resetCreateTemplateForm()
+                newTemplateRootPath = resp.root.path
+                showCreateTemplate = true
+            }
+        } catch {
+            formError = error.localizedDescription
+            errorText = error.localizedDescription
+        }
+    }
+
+    private func submitCreateTemplate() async {
+        let name = newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = newTemplateBody
+        guard !name.isEmpty else {
+            formError = "name is required"
+            return
+        }
+        guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            formError = "body is required"
+            return
+        }
+        if templateRoots.isEmpty {
+            formError = "no template roots registered"
+            return
+        }
+        creatingBusy = true
+        formError = nil
+        defer { creatingBusy = false }
+        let tags = newTemplateTags
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let root: String? = templateRoots.count > 1 ? newTemplateRootPath : nil
+        do {
+            let created = try await ServerClient.shared.createTemplate(
+                name: name,
+                body: body,
+                description: newTemplateDescription,
+                tags: tags,
+                root: root
+            )
+            showCreateTemplate = false
+            await reload(query: query)
+            selectedID = InsertPickerItem(
+                kind: .template,
+                skill: nil,
+                template: created.template,
+                file: nil
+            ).id
+        } catch {
+            formError = error.localizedDescription
+        }
+    }
+
+    private func submitAddFile() async {
+        let path = addFilePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else {
+            formError = "path is required"
+            return
+        }
+        creatingBusy = true
+        formError = nil
+        defer { creatingBusy = false }
+        let note = addFileNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let added = try await ServerClient.shared.addFile(
+                path: path,
+                note: note.isEmpty ? nil : note
+            )
+            showAddFile = false
+            await reload(query: query)
+            selectedID = InsertPickerItem(
+                kind: .file,
+                skill: nil,
+                template: nil,
+                file: added.file
+            ).id
+        } catch {
+            formError = error.localizedDescription
+        }
     }
 
     private func moveSelection(_ delta: Int) {
@@ -536,6 +878,7 @@ struct SkillsPickerView: View {
                 next = resp.skills.map { InsertPickerItem(kind: .skill, skill: $0, template: nil, file: nil) }
             case SkillsPickerFormatter.sidebarTemplates:
                 let resp = try await ServerClient.shared.listTemplates(query: query)
+                templateRoots = resp.roots
                 next = resp.templates.map { InsertPickerItem(kind: .template, skill: nil, template: $0, file: nil) }
             case SkillsPickerFormatter.sidebarFiles:
                 let resp = try await ServerClient.shared.listFiles(query: query)
@@ -547,6 +890,7 @@ struct SkillsPickerView: View {
                 let skills = try await skillsResp
                 let templates = try await templatesResp
                 let files = try await filesResp
+                templateRoots = templates.roots
                 next = SkillsPickerFormatter.mergeAllItems(
                     skills: skills.skills,
                     templates: templates.templates,
@@ -565,9 +909,11 @@ struct SkillsPickerView: View {
             errorText = error.localizedDescription
         }
         loading = false
-        searchFocused = true
-        DispatchQueue.main.async {
+        if !showCreateTemplate && !showAddFile {
             searchFocused = true
+            DispatchQueue.main.async {
+                searchFocused = true
+            }
         }
     }
 }
