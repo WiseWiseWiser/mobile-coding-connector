@@ -108,3 +108,178 @@ public enum SkillsPickerHotKey {
     /// cmdKey | shiftKey (Carbon)
     public static let defaultModifiers = 256 | 512
 }
+
+/// GET /api/local/templates
+public struct TemplatesListResponse: Decodable, Equatable {
+    public let templates: [TemplatesPickerItem]
+    public let missingRoots: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case templates
+        case missingRoots = "missing_roots"
+    }
+
+    public init(templates: [TemplatesPickerItem] = [], missingRoots: [String] = []) {
+        self.templates = templates
+        self.missingRoots = missingRoots
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        templates = try c.decodeIfPresent([TemplatesPickerItem].self, forKey: .templates) ?? []
+        missingRoots = try c.decodeIfPresent([String].self, forKey: .missingRoots) ?? []
+    }
+}
+
+public struct TemplatesPickerItem: Decodable, Equatable, Identifiable {
+    public var id: String { path }
+    public let name: String
+    public let fmName: String
+    public let description: String
+    public let tags: [String]
+    public let path: String
+    public let body: String
+    public let useCount: Int
+    public let lastUsed: String
+    public let score: Int
+    public let titleSpans: [FuzzySpan]
+    public let pathSpans: [FuzzySpan]
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case fmName = "fm_name"
+        case description
+        case tags
+        case path
+        case body
+        case useCount = "use_count"
+        case lastUsed = "last_used"
+        case score
+        case titleSpans = "title_spans"
+        case pathSpans = "path_spans"
+    }
+
+    public init(
+        name: String,
+        fmName: String = "",
+        description: String = "",
+        tags: [String] = [],
+        path: String,
+        body: String = "",
+        useCount: Int = 0,
+        lastUsed: String = "",
+        score: Int = 0,
+        titleSpans: [FuzzySpan] = [],
+        pathSpans: [FuzzySpan] = []
+    ) {
+        self.name = name
+        self.fmName = fmName
+        self.description = description
+        self.tags = tags
+        self.path = path
+        self.body = body
+        self.useCount = useCount
+        self.lastUsed = lastUsed
+        self.score = score
+        self.titleSpans = titleSpans
+        self.pathSpans = pathSpans
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        fmName = try c.decodeIfPresent(String.self, forKey: .fmName) ?? ""
+        description = try c.decodeIfPresent(String.self, forKey: .description) ?? ""
+        tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
+        path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
+        body = try c.decodeIfPresent(String.self, forKey: .body) ?? ""
+        useCount = try c.decodeIfPresent(Int.self, forKey: .useCount) ?? 0
+        lastUsed = try c.decodeIfPresent(String.self, forKey: .lastUsed) ?? ""
+        score = try c.decodeIfPresent(Int.self, forKey: .score) ?? 0
+        titleSpans = try c.decodeIfPresent([FuzzySpan].self, forKey: .titleSpans) ?? []
+        pathSpans = try c.decodeIfPresent([FuzzySpan].self, forKey: .pathSpans) ?? []
+    }
+}
+
+/// GET /api/local/files
+public struct FilesListResponse: Decodable, Equatable {
+    public let files: [FilesPickerItem]
+
+    enum CodingKeys: String, CodingKey {
+        case files
+    }
+
+    public init(files: [FilesPickerItem] = []) {
+        self.files = files
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        files = try c.decodeIfPresent([FilesPickerItem].self, forKey: .files) ?? []
+    }
+}
+
+public struct FilesPickerItem: Decodable, Equatable, Identifiable {
+    public var id: String { path }
+    public let path: String
+    public let name: String
+    public let note: String
+    public let exists: Bool
+    public let isDir: Bool
+    public let useCount: Int
+    public let lastUsed: String
+    public let score: Int
+    public let titleSpans: [FuzzySpan]
+    public let pathSpans: [FuzzySpan]
+
+    enum CodingKeys: String, CodingKey {
+        case path
+        case name
+        case note
+        case exists
+        case isDir = "is_dir"
+        case useCount = "use_count"
+        case lastUsed = "last_used"
+        case score
+        case titleSpans = "title_spans"
+        case pathSpans = "path_spans"
+    }
+
+    public init(
+        path: String,
+        name: String = "",
+        note: String = "",
+        exists: Bool = false,
+        isDir: Bool = false,
+        useCount: Int = 0,
+        lastUsed: String = "",
+        score: Int = 0,
+        titleSpans: [FuzzySpan] = [],
+        pathSpans: [FuzzySpan] = []
+    ) {
+        self.path = path
+        self.name = name
+        self.note = note
+        self.exists = exists
+        self.isDir = isDir
+        self.useCount = useCount
+        self.lastUsed = lastUsed
+        self.score = score
+        self.titleSpans = titleSpans
+        self.pathSpans = pathSpans
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+        exists = try c.decodeIfPresent(Bool.self, forKey: .exists) ?? false
+        isDir = try c.decodeIfPresent(Bool.self, forKey: .isDir) ?? false
+        useCount = try c.decodeIfPresent(Int.self, forKey: .useCount) ?? 0
+        lastUsed = try c.decodeIfPresent(String.self, forKey: .lastUsed) ?? ""
+        score = try c.decodeIfPresent(Int.self, forKey: .score) ?? 0
+        titleSpans = try c.decodeIfPresent([FuzzySpan].self, forKey: .titleSpans) ?? []
+        pathSpans = try c.decodeIfPresent([FuzzySpan].self, forKey: .pathSpans) ?? []
+    }
+}

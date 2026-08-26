@@ -93,12 +93,12 @@ github.com/xhd2015/go-objpath v0.0.0-20220820085723-d7e6bd98f5c7/go.mod h1:kr5we
 github.com/xhd2015/go-objpath v0.0.1/go.mod h1:kr5weGR7DdeWPHrZM/PIEU6UgjLMSqCOfiadbrUJ7tg=
 github.com/xhd2015/kool v0.0.151 h1:PMnBaiduHwD8SKBSOTprMf1HS0nxpRt8Jpm3CTwLuyA=
 github.com/xhd2015/kool v0.0.151/go.mod h1:lFLLBFyO9NP5hlYFazW+EwqruLp2KG4dlcq3WcMcst0=
-github.com/xhd2015/less-flags v1.0.5 h1:PZH0v8wZVdscDcSxLyRFEtybN/Xz341bWQ4JRCQqAQ0=
-github.com/xhd2015/less-flags v1.0.5/go.mod h1:HGGM7JrrfZm/RvmxBQT96jF916m9UQE8vELpejQaoIo=
+github.com/xhd2015/less-flags v1.0.6 h1:AhOBXezoNPpvjT+CtKCpWDDwjY+2LxY4DwBNR5xXDs8=
+github.com/xhd2015/less-flags v1.0.6/go.mod h1:HGGM7JrrfZm/RvmxBQT96jF916m9UQE8vELpejQaoIo=
 github.com/xhd2015/less-gen v0.0.19 h1:JllrPhx3HzN+f2AB6cTvW9aRCpvuODJFx7affpa0zQY=
 github.com/xhd2015/less-gen v0.0.19/go.mod h1:Ym5HW/yfVnf2mgSo48QsuHAKnMTPv/u7oqty+raTnTQ=
-github.com/xhd2015/my v0.0.6 h1:+STEs1scpK4daCoIN9i0a22SS7VSUKdhxkknPi0GQfs=
-github.com/xhd2015/my v0.0.6/go.mod h1:hEkENY4NeesEe2C5OO+ATpuvwMgWuQjf3NwG8cWB/c4=
+github.com/xhd2015/my v0.0.7 h1:OQzIRgag9KBzTRkcvrtxXa0Q/V4wcJDOPiPi+bnw0w0=
+github.com/xhd2015/my v0.0.7/go.mod h1:64p4pOjg9iVUvVVJRb2vc7xUXXMesRCsbbmgsS6hazU=
 github.com/xhd2015/skills v0.0.26 h1:jrk0DnWkz6xOyHAPMoUno8E9nx8zGyy3UShtjZrERMc=
 github.com/xhd2015/skills v0.0.26/go.mod h1:FcLPyHVpFrLUBDO4Rk2XpoPWmtMkQkrBMbSu4qjDmck=
 github.com/xhd2015/tty-watch v0.0.7 h1:ShW4ikRKNenwYDQ8h802Avrq3mJAgl55Llx1bOK2FrY=

@@ -304,6 +304,58 @@ final class ServerClient {
         }
     }
 
+    /// Ranked templates for the ⌘⇧; picker via GET /api/local/templates.
+    func listTemplates(query: String = "") async throws -> TemplatesListResponse {
+        var path = "/api/local/templates"
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !q.isEmpty, var comps = URLComponents(string: path) {
+            comps.queryItems = [URLQueryItem(name: "q", value: q)]
+            path = comps.string ?? path
+        }
+        let (data, response) = try await get(path: path)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "templates list request failed"))
+        }
+        return try JSONDecoder().decode(TemplatesListResponse.self, from: data)
+    }
+
+    /// Increment usage for a template .md path via POST /api/local/templates/use.
+    func recordTemplateUse(path: String) async throws {
+        let (data, response) = try await postJSON(
+            path: "/api/local/templates/use",
+            body: ["path": path]
+        )
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "templates use request failed"))
+        }
+    }
+
+    /// Ranked path bookmarks for the ⌘⇧; picker via GET /api/local/files.
+    func listFiles(query: String = "") async throws -> FilesListResponse {
+        var path = "/api/local/files"
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !q.isEmpty, var comps = URLComponents(string: path) {
+            comps.queryItems = [URLQueryItem(name: "q", value: q)]
+            path = comps.string ?? path
+        }
+        let (data, response) = try await get(path: path)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "files list request failed"))
+        }
+        return try JSONDecoder().decode(FilesListResponse.self, from: data)
+    }
+
+    /// Increment usage for a registered path via POST /api/local/files/use.
+    func recordFileUse(path: String) async throws {
+        let (data, response) = try await postJSON(
+            path: "/api/local/files/use",
+            body: ["path": path]
+        )
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "files use request failed"))
+        }
+    }
+
     /// Live Desktops + iTerm sessions + notes via GET /api/local/iterm2/inventory.
     /// Pass refresh=true to wait for a smart recapture (`?refresh=1`).
     /// Pass spaceID to recapture that Desktop only (`space_id=`).

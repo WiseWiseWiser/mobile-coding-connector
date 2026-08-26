@@ -19,7 +19,7 @@ struct ITermSwitcherHotKeySection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Skills picker: \(SkillsPickerFormatter.formatHotKey()) copies a SKILL.md path.")
+            Text("Insert picker: \(SkillsPickerFormatter.formatHotKey()) — skills/files copy path, templates copy body.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

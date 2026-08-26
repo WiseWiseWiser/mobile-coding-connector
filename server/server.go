@@ -54,6 +54,8 @@ import (
 	"github.com/xhd2015/ai-critic/server/keepalive"
 	"github.com/xhd2015/ai-critic/server/localiterm2"
 	"github.com/xhd2015/ai-critic/server/localskills"
+	"github.com/xhd2015/ai-critic/server/localfiles"
+	"github.com/xhd2015/ai-critic/server/localtemplates"
 	"github.com/xhd2015/ai-critic/server/logs"
 	openclawapi "github.com/xhd2015/ai-critic/server/openclaw"
 	"github.com/xhd2015/ai-critic/server/projects"
@@ -641,6 +643,8 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Local skills picker (⌘⇧;); auth required. Tests inject Store.
 	localskills.Register(mux, &localskills.Handler{})
+	localtemplates.Register(mux, &localtemplates.Handler{})
+	localfiles.Register(mux, &localfiles.Handler{})
 
 	// Server status API
 	RegisterServerStatusAPI(mux)

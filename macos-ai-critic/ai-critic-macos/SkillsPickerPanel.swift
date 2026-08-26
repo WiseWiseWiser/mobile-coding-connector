@@ -29,9 +29,11 @@ final class SkillsPickerController {
         let view = SkillsPickerView(onDismiss: { [weak self] in
             self?.hide()
         })
+        let width: CGFloat = 640
+        let height: CGFloat = 420
         if let panel {
             let host = NSHostingView(rootView: view)
-            host.frame = NSRect(x: 0, y: 0, width: 520, height: 400)
+            host.frame = NSRect(x: 0, y: 0, width: width, height: height)
             panel.contentView = host
             hosting = host
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -41,7 +43,7 @@ final class SkillsPickerController {
             return
         }
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 400),
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.titled, .closable, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -56,7 +58,7 @@ final class SkillsPickerController {
         panel.isMovableByWindowBackground = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let host = NSHostingView(rootView: view)
-        host.frame = NSRect(x: 0, y: 0, width: 520, height: 400)
+        host.frame = NSRect(x: 0, y: 0, width: width, height: height)
         panel.contentView = host
         panel.isReleasedWhenClosed = false
         self.panel = panel
@@ -118,81 +120,59 @@ final class SkillsPickerController {
 struct SkillsPickerView: View {
     let onDismiss: () -> Void
 
+    @AppStorage(SkillsPickerFormatter.sidebarDefaultsKey) private var storedSidebar = SkillsPickerFormatter.sidebarAll
+    @AppStorage(SkillsPickerFormatter.sidebarWidthDefaultsKey) private var storedSidebarWidth = SkillsPickerFormatter.sidebarIconWidth
+    @State private var sidebarID: String? = nil
+    @State private var sidebarWidth: CGFloat = CGFloat(SkillsPickerFormatter.sidebarIconWidth)
+    @State private var sidebarDragStartWidth: CGFloat?
     @State private var query = ""
-    @State private var skills: [SkillsPickerItem] = []
+    @State private var items: [InsertPickerItem] = []
     @State private var selectedID: String?
     @State private var loading = true
     @State private var errorText: String?
     @State private var searchTask: Task<Void, Never>?
     @FocusState private var searchFocused: Bool
 
+    private var resolvedSidebar: String {
+        SkillsPickerFormatter.normalizeSidebarID(sidebarID ?? storedSidebar)
+    }
+
+    private var showSidebarTitles: Bool {
+        SkillsPickerFormatter.shouldShowSidebarTitles(width: Double(sidebarWidth))
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             searchRow
             Divider()
-            if let errorText {
-                Text(errorText)
-                    .foregroundStyle(.red)
-                    .font(.caption)
-                    .padding(8)
-            }
-            if loading && skills.isEmpty {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if visible.isEmpty {
-                VStack(spacing: 6) {
-                    Text(emptyTitle)
-                        .font(.headline)
-                    if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text(SkillsPickerFormatter.formatEmptyHint())
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(visible, selection: $selectedID) { skill in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            spanText(
-                                skill.titleSpans,
-                                fallback: SkillsPickerFormatter.formatTitle(skill),
-                                caption: false
-                            )
-                            .lineLimit(1)
-                            spanText(
-                                skill.pathSpans,
-                                fallback: SkillsPickerFormatter.formatSubtitle(skill),
-                                caption: true
-                            )
-                            .font(.caption)
-                            .lineLimit(1)
-                        }
-                        Spacer()
-                        let count = SkillsPickerFormatter.formatUseCount(skill.useCount)
-                        if !count.isEmpty {
-                            Text(count)
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .tag(skill.path)
-                    .contentShape(Rectangle())
-                    .onTapGesture { pick(skill) }
-                }
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
+            HStack(spacing: 0) {
+                sidebar
+                    .frame(width: sidebarWidth)
+                    .frame(maxHeight: .infinity)
+                sidebarResizeHandle
+                contentPane
+                    .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(width: 520, height: 400)
+        .frame(width: 640, height: 420)
         .defaultFocus($searchFocused, true)
         .accessibilityIdentifier("skills-picker")
-        .onAppear { focusSearch() }
+        .onAppear {
+            if sidebarID == nil {
+                sidebarID = SkillsPickerFormatter.normalizeSidebarID(storedSidebar)
+            }
+            sidebarWidth = CGFloat(SkillsPickerFormatter.clampSidebarWidth(storedSidebarWidth))
+            focusSearch()
+        }
         .onChange(of: query) { _, q in
             scheduleReload(q)
         }
-        .onChange(of: visible.map(\.path)) { _, ids in
+        .onChange(of: sidebarID) { _, id in
+            let normalized = SkillsPickerFormatter.normalizeSidebarID(id)
+            storedSidebar = normalized
+            scheduleReload(query)
+        }
+        .onChange(of: items.map(\.id)) { _, ids in
             if selectedID == nil || !(ids.contains(selectedID ?? "")) {
                 selectedID = ids.first
             }
@@ -206,9 +186,181 @@ struct SkillsPickerView: View {
             moveSelection(1)
             return .handled
         }
+        .onKeyPress(.leftArrow) {
+            moveSidebar(-1)
+            return .handled
+        }
+        .onKeyPress(.rightArrow) {
+            moveSidebar(1)
+            return .handled
+        }
         .onKeyPress(.escape) {
             handleEscape()
             return .handled
+        }
+    }
+
+    private var sidebar: some View {
+        List(selection: $sidebarID) {
+            sidebarRow(id: SkillsPickerFormatter.sidebarAll)
+            sidebarRow(id: SkillsPickerFormatter.sidebarSkills)
+            sidebarRow(id: SkillsPickerFormatter.sidebarTemplates)
+            sidebarRow(id: SkillsPickerFormatter.sidebarFiles)
+        }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("insert-picker-sidebar")
+    }
+
+    private var sidebarResizeHandle: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(width: 1)
+            Color.clear
+                .frame(width: 6)
+                .contentShape(Rectangle())
+        }
+        .frame(width: 6)
+        .frame(maxHeight: .infinity)
+        .onHover { hovering in
+            if hovering {
+                NSCursor.resizeLeftRight.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    applySidebarDrag(translation: value.translation.width)
+                }
+                .onEnded { value in
+                    applySidebarDrag(translation: value.translation.width)
+                    sidebarDragStartWidth = nil
+                }
+        )
+        .accessibilityIdentifier("insert-picker-sidebar-resize")
+        .accessibilityLabel("Resize sidebar")
+    }
+
+    private func applySidebarDrag(translation: CGFloat) {
+        if sidebarDragStartWidth == nil {
+            sidebarDragStartWidth = sidebarWidth
+        }
+        guard let start = sidebarDragStartWidth else { return }
+        let next = CGFloat(SkillsPickerFormatter.clampSidebarWidth(Double(start + translation)))
+        // Width tracks the drag immediately; title opacity animates via showSidebarTitles.
+        if abs(next - sidebarWidth) > 0.25 {
+            sidebarWidth = next
+        }
+        let stored = SkillsPickerFormatter.clampSidebarWidth(Double(next))
+        if abs(stored - storedSidebarWidth) > 0.5 {
+            storedSidebarWidth = stored
+        }
+    }
+
+    private func sidebarRow(id: String) -> some View {
+        let title = SkillsPickerFormatter.formatSidebarTitle(id: id)
+        let symbol = SkillsPickerFormatter.formatSidebarSymbol(id: id)
+        return HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .frame(width: 20, alignment: .center)
+            Text(title)
+                .lineLimit(1)
+                .opacity(showSidebarTitles ? 1 : 0)
+                .frame(maxWidth: showSidebarTitles ? .infinity : 0, alignment: .leading)
+                .clipped()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .tag(id)
+        .id(id)
+        .accessibilityLabel(title)
+        .animation(
+            .easeInOut(duration: SkillsPickerFormatter.sidebarTitleAnimationSeconds),
+            value: showSidebarTitles
+        )
+    }
+
+    @ViewBuilder
+    private var contentPane: some View {
+        if let errorText {
+            Text(errorText)
+                .foregroundStyle(.red)
+                .font(.caption)
+                .padding(8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else if loading && items.isEmpty {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if items.isEmpty {
+            VStack(spacing: 6) {
+                Text(emptyTitle)
+                    .font(.headline)
+                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(SkillsPickerFormatter.formatEmptyHint(sidebarID: resolvedSidebar))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollViewReader { proxy in
+                List(items, selection: $selectedID) { item in
+                    HStack(alignment: .top, spacing: 8) {
+                        if resolvedSidebar == SkillsPickerFormatter.sidebarAll {
+                            Text(SkillsPickerFormatter.formatKindBadge(item.kind))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 64, alignment: .leading)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            spanText(
+                                item.titleSpans,
+                                fallback: item.title,
+                                caption: false
+                            )
+                            .lineLimit(1)
+                            spanText(
+                                item.pathSpans.isEmpty && item.kind == .template
+                                    ? []
+                                    : item.pathSpans,
+                                fallback: item.subtitle,
+                                caption: true
+                            )
+                            .font(.caption)
+                            .lineLimit(1)
+                        }
+                        Spacer()
+                        let count = SkillsPickerFormatter.formatUseCount(item.useCount)
+                        if !count.isEmpty {
+                            Text(count)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .tag(item.id)
+                    .id(item.id)
+                    .contentShape(Rectangle())
+                    .onTapGesture { pick(item) }
+                }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+                .onChange(of: selectedID) { _, id in
+                    scrollList(proxy, to: id)
+                }
+            }
+        }
+    }
+
+    private func scrollList(_ proxy: ScrollViewProxy, to id: String?) {
+        guard let id, !id.isEmpty else { return }
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                proxy.scrollTo(id, anchor: .center)
+            }
         }
     }
 
@@ -216,7 +368,7 @@ struct SkillsPickerView: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField(SkillsPickerFormatter.formatSearchPrompt(), text: $query)
+            TextField(SkillsPickerFormatter.formatSearchPrompt(sidebarID: resolvedSidebar), text: $query)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
                 .onSubmit { activateSelection() }
@@ -226,6 +378,14 @@ struct SkillsPickerView: View {
                 }
                 .onKeyPress(.downArrow) {
                     moveSelection(1)
+                    return .handled
+                }
+                .onKeyPress(.leftArrow) {
+                    moveSidebar(-1)
+                    return .handled
+                }
+                .onKeyPress(.rightArrow) {
+                    moveSidebar(1)
                     return .handled
                 }
                 .onKeyPress(.escape) {
@@ -273,15 +433,11 @@ struct SkillsPickerView: View {
         }
     }
 
-    private var visible: [SkillsPickerItem] {
-        skills
-    }
-
     private var emptyTitle: String {
         if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return SkillsPickerFormatter.formatNoResults()
         }
-        return SkillsPickerFormatter.formatEmptyTitle()
+        return SkillsPickerFormatter.formatEmptyTitle(sidebarID: resolvedSidebar)
     }
 
     private func handleEscape() {
@@ -293,45 +449,93 @@ struct SkillsPickerView: View {
     }
 
     private func moveSelection(_ delta: Int) {
-        let items = visible
-        guard !items.isEmpty else { return }
-        let current = items.firstIndex(where: { $0.path == selectedID }) ?? (delta > 0 ? -1 : 0)
+        let list = items
+        let current = selectedID.flatMap { id in list.firstIndex(where: { $0.id == id }) }
+        guard let next = SkillsPickerFormatter.nextListSelectionIndex(
+            count: list.count,
+            current: current,
+            delta: delta
+        ) else { return }
+        selectedID = list[next].id
+    }
+
+    private func moveSidebar(_ delta: Int) {
+        let ids = [
+            SkillsPickerFormatter.sidebarAll,
+            SkillsPickerFormatter.sidebarSkills,
+            SkillsPickerFormatter.sidebarTemplates,
+            SkillsPickerFormatter.sidebarFiles,
+        ]
+        let current = ids.firstIndex(of: resolvedSidebar) ?? 0
         var next = current + delta
         if next < 0 { next = 0 }
-        if next >= items.count { next = items.count - 1 }
-        selectedID = items[next].path
+        if next >= ids.count { next = ids.count - 1 }
+        sidebarID = ids[next]
     }
 
     private func activateSelection() {
-        guard let id = selectedID, let skill = visible.first(where: { $0.path == id }) else {
-            if let first = visible.first {
+        guard let id = selectedID, let item = items.first(where: { $0.id == id }) else {
+            if let first = items.first {
                 pick(first)
             }
             return
         }
-        pick(skill)
+        pick(item)
     }
 
-    private func pick(_ skill: SkillsPickerItem) {
+    private func pick(_ item: InsertPickerItem) {
+        let text = item.clipboardText
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(skill.path, forType: .string)
-        let path = skill.path
+        NSPasteboard.general.setString(text, forType: .string)
+        let path = item.path
+        let kind = item.kind
         onDismiss()
         CopiedToastController.shared.show()
         Task {
-            try? await ServerClient.shared.recordSkillUse(path: path)
+            switch kind {
+            case .skill:
+                try? await ServerClient.shared.recordSkillUse(path: path)
+            case .template:
+                try? await ServerClient.shared.recordTemplateUse(path: path)
+            case .file:
+                try? await ServerClient.shared.recordFileUse(path: path)
+            }
         }
     }
 
     private func reload(query: String) async {
-        loading = skills.isEmpty
+        loading = items.isEmpty
         errorText = nil
+        let sidebar = resolvedSidebar
         do {
-            let resp = try await ServerClient.shared.listSkills(query: query)
+            let next: [InsertPickerItem]
+            switch sidebar {
+            case SkillsPickerFormatter.sidebarSkills:
+                let resp = try await ServerClient.shared.listSkills(query: query)
+                next = resp.skills.map { InsertPickerItem(kind: .skill, skill: $0, template: nil, file: nil) }
+            case SkillsPickerFormatter.sidebarTemplates:
+                let resp = try await ServerClient.shared.listTemplates(query: query)
+                next = resp.templates.map { InsertPickerItem(kind: .template, skill: nil, template: $0, file: nil) }
+            case SkillsPickerFormatter.sidebarFiles:
+                let resp = try await ServerClient.shared.listFiles(query: query)
+                next = resp.files.map { InsertPickerItem(kind: .file, skill: nil, template: nil, file: $0) }
+            default:
+                async let skillsResp = ServerClient.shared.listSkills(query: query)
+                async let templatesResp = ServerClient.shared.listTemplates(query: query)
+                async let filesResp = ServerClient.shared.listFiles(query: query)
+                let skills = try await skillsResp
+                let templates = try await templatesResp
+                let files = try await filesResp
+                next = SkillsPickerFormatter.mergeAllItems(
+                    skills: skills.skills,
+                    templates: templates.templates,
+                    files: files.files
+                )
+            }
             guard !Task.isCancelled else { return }
-            skills = resp.skills
-            if selectedID == nil || !skills.contains(where: { $0.path == selectedID }) {
-                selectedID = skills.first?.path
+            items = next
+            if selectedID == nil || !items.contains(where: { $0.id == selectedID }) {
+                selectedID = items.first?.id
             }
         } catch {
             if SkillsPickerFormatter.isIgnorableSearchError(error) || Task.isCancelled {
