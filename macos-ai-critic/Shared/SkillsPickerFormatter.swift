@@ -110,6 +110,9 @@ public enum SkillsPickerFormatter {
         skill.path
     }
 
+    /// Max characters for template body preview (second list line).
+    public static let templateBodyPreviewMaxChars: Int = 96
+
     public static func formatTemplateTitle(_ template: TemplatesPickerItem) -> String {
         let fm = template.fmName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !fm.isEmpty { return fm }
@@ -118,13 +121,37 @@ public enum SkillsPickerFormatter {
         return URL(fileURLWithPath: template.path).deletingPathExtension().lastPathComponent
     }
 
+    /// Trailing description on the title row (secondary). Empty when unset.
+    public static func formatTemplateDescription(_ template: TemplatesPickerItem) -> String {
+        template.description.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Second-line body preview: whitespace collapsed, truncated. Path if body empty.
+    public static func formatTemplateBodyPreview(_ template: TemplatesPickerItem) -> String {
+        let collapsed = collapseWhitespace(template.body)
+        if collapsed.isEmpty { return template.path }
+        if collapsed.count <= templateBodyPreviewMaxChars { return collapsed }
+        let keep = max(0, templateBodyPreviewMaxChars - 1)
+        return String(collapsed.prefix(keep)) + "…"
+    }
+
+    /// Second list line for templates (body preview).
     public static func formatTemplateSubtitle(_ template: TemplatesPickerItem) -> String {
-        let desc = template.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !desc.isEmpty { return desc }
-        let body = template.body.trimmingCharacters(in: .whitespacesAndNewlines)
-        if body.isEmpty { return template.path }
-        if body.count <= 72 { return body }
-        return String(body.prefix(69)) + "…"
+        formatTemplateBodyPreview(template)
+    }
+
+    /// Collapse runs of whitespace/newlines to a single space for one-line preview.
+    public static func collapseWhitespace(_ text: String) -> String {
+        let parts = text.split { $0.isWhitespace || $0.isNewline }.filter { !$0.isEmpty }
+        return parts.joined(separator: " ")
+    }
+
+    /// Body fuzzy spans for the preview line when they still align (no newline collapse).
+    public static func formatTemplateBodyPreviewSpans(_ template: TemplatesPickerItem) -> [FuzzySpan] {
+        if template.bodySpans.isEmpty { return [] }
+        let trimmed = template.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        if collapseWhitespace(template.body) != trimmed { return [] }
+        return template.bodySpans
     }
 
     public static func formatFileTitle(_ file: FilesPickerItem) -> String {
@@ -289,6 +316,16 @@ public struct InsertPickerItem: Equatable, Identifiable {
         }
     }
 
+    /// Trailing description on the title row (templates only).
+    public var trailingDescription: String {
+        switch kind {
+        case .template:
+            return template.map(SkillsPickerFormatter.formatTemplateDescription) ?? ""
+        case .skill, .file:
+            return ""
+        }
+    }
+
     public var useCount: Int {
         switch kind {
         case .skill: return skill?.useCount ?? 0
@@ -318,6 +355,16 @@ public struct InsertPickerItem: Equatable, Identifiable {
         case .skill: return skill?.pathSpans ?? []
         case .template: return template?.pathSpans ?? []
         case .file: return file?.pathSpans ?? []
+        }
+    }
+
+    /// Body highlight spans for the template preview line.
+    public var bodySpans: [FuzzySpan] {
+        switch kind {
+        case .template:
+            return template.map(SkillsPickerFormatter.formatTemplateBodyPreviewSpans) ?? []
+        case .skill, .file:
+            return []
         }
     }
 

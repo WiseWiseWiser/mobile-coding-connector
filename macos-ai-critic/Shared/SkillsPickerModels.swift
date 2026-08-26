@@ -144,6 +144,7 @@ public struct TemplatesPickerItem: Decodable, Equatable, Identifiable {
     public let score: Int
     public let titleSpans: [FuzzySpan]
     public let pathSpans: [FuzzySpan]
+    public let bodySpans: [FuzzySpan]
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -157,6 +158,7 @@ public struct TemplatesPickerItem: Decodable, Equatable, Identifiable {
         case score
         case titleSpans = "title_spans"
         case pathSpans = "path_spans"
+        case bodySpans = "body_spans"
     }
 
     public init(
@@ -170,7 +172,8 @@ public struct TemplatesPickerItem: Decodable, Equatable, Identifiable {
         lastUsed: String = "",
         score: Int = 0,
         titleSpans: [FuzzySpan] = [],
-        pathSpans: [FuzzySpan] = []
+        pathSpans: [FuzzySpan] = [],
+        bodySpans: [FuzzySpan] = []
     ) {
         self.name = name
         self.fmName = fmName
@@ -183,6 +186,7 @@ public struct TemplatesPickerItem: Decodable, Equatable, Identifiable {
         self.score = score
         self.titleSpans = titleSpans
         self.pathSpans = pathSpans
+        self.bodySpans = bodySpans
     }
 
     public init(from decoder: Decoder) throws {
@@ -198,6 +202,7 @@ public struct TemplatesPickerItem: Decodable, Equatable, Identifiable {
         score = try c.decodeIfPresent(Int.self, forKey: .score) ?? 0
         titleSpans = try c.decodeIfPresent([FuzzySpan].self, forKey: .titleSpans) ?? []
         pathSpans = try c.decodeIfPresent([FuzzySpan].self, forKey: .pathSpans) ?? []
+        bodySpans = try c.decodeIfPresent([FuzzySpan].self, forKey: .bodySpans) ?? []
     }
 }
 

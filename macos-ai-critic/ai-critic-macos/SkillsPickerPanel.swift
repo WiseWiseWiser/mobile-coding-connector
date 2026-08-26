@@ -317,28 +317,49 @@ struct SkillsPickerView: View {
                                 .frame(width: 64, alignment: .leading)
                         }
                         VStack(alignment: .leading, spacing: 2) {
-                            spanText(
-                                item.titleSpans,
-                                fallback: item.title,
-                                caption: false
-                            )
-                            .lineLimit(1)
-                            spanText(
-                                item.pathSpans.isEmpty && item.kind == .template
-                                    ? []
-                                    : item.pathSpans,
-                                fallback: item.subtitle,
-                                caption: true
-                            )
-                            .font(.caption)
-                            .lineLimit(1)
-                        }
-                        Spacer()
-                        let count = SkillsPickerFormatter.formatUseCount(item.useCount)
-                        if !count.isEmpty {
-                            Text(count)
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                spanText(
+                                    item.titleSpans,
+                                    fallback: item.title,
+                                    caption: false
+                                )
+                                .lineLimit(1)
+                                .layoutPriority(1)
+                                Spacer(minLength: 8)
+                                if item.kind == .template {
+                                    let desc = item.trailingDescription
+                                    if !desc.isEmpty {
+                                        Text(desc)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                    }
+                                }
+                                let count = SkillsPickerFormatter.formatUseCount(item.useCount)
+                                if !count.isEmpty {
+                                    Text(count)
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            if item.kind == .template {
+                                spanText(
+                                    item.bodySpans,
+                                    fallback: item.subtitle,
+                                    caption: true
+                                )
+                                .font(.caption)
+                                .lineLimit(1)
+                            } else {
+                                spanText(
+                                    item.pathSpans,
+                                    fallback: item.subtitle,
+                                    caption: true
+                                )
+                                .font(.caption)
+                                .lineLimit(1)
+                            }
                         }
                     }
                     .tag(item.id)

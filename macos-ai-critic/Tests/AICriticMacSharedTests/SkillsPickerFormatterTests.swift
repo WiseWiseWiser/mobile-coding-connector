@@ -70,7 +70,7 @@ final class SkillsPickerFormatterTests: XCTestCase {
         XCTAssertEqual(SkillsPickerFormatter.nextListSelectionIndex(count: 3, current: -5, delta: -1), 2)
     }
 
-    func testTemplateTitleAndSubtitle() {
+    func testTemplateTitleDescriptionAndBodyPreview() {
         let t = TemplatesPickerItem(
             name: "brainstorm-sink",
             fmName: "brainstorm sink",
@@ -79,9 +79,49 @@ final class SkillsPickerFormatterTests: XCTestCase {
             body: "/brainstorm following SINK.md about X"
         )
         XCTAssertEqual(SkillsPickerFormatter.formatTemplateTitle(t), "brainstorm sink")
-        XCTAssertEqual(SkillsPickerFormatter.formatTemplateSubtitle(t), "Sink knowledge about X")
+        XCTAssertEqual(SkillsPickerFormatter.formatTemplateDescription(t), "Sink knowledge about X")
+        XCTAssertEqual(
+            SkillsPickerFormatter.formatTemplateBodyPreview(t),
+            "/brainstorm following SINK.md about X"
+        )
+        // Subtitle is the body preview (second list line), not description.
+        XCTAssertEqual(SkillsPickerFormatter.formatTemplateSubtitle(t), t.body)
         let noDesc = TemplatesPickerItem(name: "plain", path: "/t/plain.md", body: "hello body")
+        XCTAssertEqual(SkillsPickerFormatter.formatTemplateDescription(noDesc), "")
         XCTAssertEqual(SkillsPickerFormatter.formatTemplateSubtitle(noDesc), "hello body")
+        let item = InsertPickerItem(kind: .template, skill: nil, template: t, file: nil)
+        XCTAssertEqual(item.trailingDescription, "Sink knowledge about X")
+        XCTAssertEqual(item.subtitle, t.body)
+    }
+
+    func testTemplateBodyPreviewCollapsesNewlinesAndTruncates() {
+        let multiline = TemplatesPickerItem(
+            name: "m",
+            path: "/t/m.md",
+            body: "line one\n\n  line   two"
+        )
+        XCTAssertEqual(
+            SkillsPickerFormatter.formatTemplateBodyPreview(multiline),
+            "line one line two"
+        )
+        XCTAssertTrue(SkillsPickerFormatter.formatTemplateBodyPreviewSpans(multiline).isEmpty)
+
+        let long = String(repeating: "a", count: 120)
+        let longItem = TemplatesPickerItem(name: "l", path: "/t/l.md", body: long)
+        let preview = SkillsPickerFormatter.formatTemplateBodyPreview(longItem)
+        XCTAssertEqual(preview.count, SkillsPickerFormatter.templateBodyPreviewMaxChars)
+        XCTAssertTrue(preview.hasSuffix("…"))
+
+        let spanned = TemplatesPickerItem(
+            name: "s",
+            path: "/t/s.md",
+            body: "hello world",
+            bodySpans: [
+                FuzzySpan(text: "hello", matched: true),
+                FuzzySpan(text: " world", matched: false),
+            ]
+        )
+        XCTAssertEqual(SkillsPickerFormatter.formatTemplateBodyPreviewSpans(spanned).count, 2)
     }
 
     func testMergeAllItemsRanksByUseCount() {
