@@ -98,3 +98,72 @@ func (c *Client) PullLocalTruncate(dir, commit string) error {
 	body := map[string]string{"dir": dir, "commit": commit}
 	return c.postJSON("/api/remote-agent/project/pull-local/truncate", body, nil)
 }
+
+// PullLocalInspect describes a remote git dir for adhoc pull-local planning.
+type PullLocalInspect struct {
+	Dir              string `json:"dir"`
+	Commit           string `json:"commit"`
+	Branch           string `json:"branch"`
+	OriginURL        string `json:"origin_url"`
+	IsClean          bool   `json:"is_clean"`
+	AheadOfOrigin    int    `json:"ahead_of_origin"`
+	HasOrigin        bool   `json:"has_origin"`
+	DirtyTracked     int    `json:"dirty_tracked"`
+	DirtyUntracked   int    `json:"dirty_untracked"`
+	FullTreeBytes    int64  `json:"full_tree_bytes"`
+	DirtyPackageEst  int64  `json:"dirty_package_est_bytes"`
+	BundleNeededHint bool   `json:"bundle_needed_hint"`
+}
+
+// PullLocalInspect calls POST .../pull-local/inspect.
+func (c *Client) PullLocalInspect(dir string) (*PullLocalInspect, error) {
+	var out PullLocalInspect
+	if err := c.postJSON("/api/remote-agent/project/pull-local/inspect", map[string]string{"dir": dir}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// PullLocalBundle downloads a git bundle for commits needed to materialize tip.
+func (c *Client) PullLocalBundle(dir string) (io.ReadCloser, error) {
+	data, err := json.Marshal(map[string]string{"dir": dir})
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := c.NewRequest(http.MethodPost, "/api/remote-agent/project/pull-local/bundle", bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		return nil, readAPIError(resp)
+	}
+	return resp.Body, nil
+}
+
+// PullLocalDownload downloads a full worktree package (bundle + files).
+func (c *Client) PullLocalDownload(dir string) (io.ReadCloser, error) {
+	data, err := json.Marshal(map[string]string{"dir": dir})
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := c.NewRequest(http.MethodPost, "/api/remote-agent/project/pull-local/download", bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		return nil, readAPIError(resp)
+	}
+	return resp.Body, nil
+}

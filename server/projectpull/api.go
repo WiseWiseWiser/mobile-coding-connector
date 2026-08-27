@@ -10,6 +10,71 @@ import (
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/remote-agent/project/pull-local", handlePullLocal)
 	mux.HandleFunc("/api/remote-agent/project/pull-local/truncate", handleTruncate)
+	mux.HandleFunc("/api/remote-agent/project/pull-local/inspect", handleInspect)
+	mux.HandleFunc("/api/remote-agent/project/pull-local/bundle", handleBundle)
+	mux.HandleFunc("/api/remote-agent/project/pull-local/download", handleDownload)
+}
+
+func handleInspect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req InspectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
+		return
+	}
+	out, err := InspectRepo(req.Dir)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
+}
+
+func handleBundle(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req BundleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
+		return
+	}
+	if err := validateDir(req.Dir); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	if err := WriteBundle(w, req.Dir); err != nil {
+		// Headers may already be sent; best-effort log-style body.
+		fmt.Fprintf(w, "error: %v\n", err)
+		return
+	}
+}
+
+func handleDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req DownloadRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
+		return
+	}
+	if err := validateDir(req.Dir); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/gzip")
+	if err := WriteDownloadPackage(w, req.Dir); err != nil {
+		fmt.Fprintf(w, "error: %v\n", err)
+		return
+	}
 }
 
 func handlePullLocal(w http.ResponseWriter, r *http.Request) {

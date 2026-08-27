@@ -37,6 +37,9 @@ locally. `bind-local` remains local-config only.
 - `bind-local` upserts `(server, remote_dir) → local_path` after same-origin check.
 - `pull-local` refuses clean remotes, missing bindings on non-TTY stdin, origin
   mismatch, and dirty submodules (including before `--dry-run` plan output).
+- Adhoc targets require explicit `--mode git-fetch|download` (no auto strategy);
+  download requires `--local-path`. git-fetch may clone/fetch origin and pull a
+  remote git bundle so tip commits exist locally before applying dirty state.
 - Successful pull calls the server package endpoint, creates a **named-branch**
   worktree at the computed slug path (e.g. branch `main-1` for directory `main-1`,
   not detached HEAD), applies `patch.diff` and untracked members from the tarball,
@@ -75,6 +78,11 @@ locally. `bind-local` remains local-config only.
       +-- submodule-clean/               (LEAF)   clean submodule, dirty top-level → exit 0
       +-- submodule-dirty/               (LEAF)   dirty submodule path in error
       +-- dry-run-submodule-dirty/       (LEAF)   dry-run blocked before plan
+      |
+      +-- adhoc/                         (GROUP)  unregistered remote dir + explicit --mode
+      |    +-- mode-required/            (LEAF)   --adhoc without --mode → exit 1
+      |    +-- download-needs-local-path/(LEAF)   --mode download without --local-path → exit 1
+      |    +-- git-fetch-dry-run/        (LEAF)   --mode git-fetch --dry-run prints plan; remote stays dirty
       |
       +-- size-limits/                   (GROUP)  server byte caps + CLI overrides
            |

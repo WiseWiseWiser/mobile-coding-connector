@@ -29,8 +29,9 @@ Subcommands:
   bind-local <remote-dir> <local-path>
       Save a local git repo path for a remote project (same origin required).
 
-  pull-local <project-id-or-name-or-dir> [--local-path PATH] [--no-truncate-remote] [--dry-run] [--include-file PATH] [--max-size SIZE]
-      Copy dirty remote changes into a local git worktree.
+  pull-local <project-id-or-name-or-dir> [options]
+      Copy remote git state into a local worktree. Registered projects pull
+      dirty changes (default). Adhoc dirs need --adhoc/--mode git-fetch|download.
 `
 
 const projectListHelp = `Usage: remote-agent project list [--dirty]

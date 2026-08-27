@@ -20,14 +20,24 @@ import (
 
 const projectPullLocalHelp = `Usage: remote-agent project pull-local <project-id-or-name-or-dir> [options]
 
-Copy dirty remote project changes into a new local git worktree.
+Copy remote project git state into a local worktree.
+
+Registered projects (default): copy dirty remote changes into a new local git
+worktree (existing behavior).
+
+Adhoc remote dirs: pass --adhoc and/or an absolute remote path that is not in
+the project registry, and choose --mode explicitly.
 
 Options:
-  --local-path PATH       Local git repository (overrides saved binding)
+  --adhoc                 Treat target as a remote filesystem git dir
+  --mode git-fetch|download
+                          Required for adhoc. git-fetch uses origin+bundle+dirty
+                          package; download clones a remote worktree archive
+  --local-path PATH       Local git repository or download destination
   --no-truncate-remote    Keep remote dirty state after a successful pull
   --dry-run               Print the pull plan without making changes
   --include-file PATH     Include PATH in pull even if over 1 MB (repeatable)
-  --max-size SIZE         Max package size e.g. 64M, 100M (default 64M)
+  --max-size SIZE         Max dirty package size e.g. 64M, 100M (default 64M)
   -h, --help              Show this help message
 `
 
@@ -37,11 +47,15 @@ func runProjectPullLocal(resolve func() (*client.Client, error), args []string) 
 	var dryRun bool
 	var includeFiles []string
 	var maxSizeFlag string
+	var adhoc bool
+	var mode string
 
 	args, err := flags.
 		String("--local-path", &localPathFlag).
 		Bool("--no-truncate-remote", &noTruncate).
 		Bool("--dry-run", &dryRun).
+		Bool("--adhoc", &adhoc).
+		String("--mode", &mode).
 		StringSlice("--include-file", &includeFiles).
 		String("--max-size", &maxSizeFlag).
 		Help("-h,--help", projectPullLocalHelp).
@@ -63,16 +77,57 @@ func runProjectPullLocal(resolve func() (*client.Client, error), args []string) 
 		return err
 	}
 
-	project, err := resolveProjectTarget(cli, args[0])
+	project, isAdhoc, err := resolveAdhocOrRegistered(cli, args[0], adhoc)
 	if err != nil {
 		return err
 	}
 
+	mode = strings.TrimSpace(strings.ToLower(mode))
+	if isAdhoc {
+		if mode == "" {
+			return fmt.Errorf("--mode is required for adhoc pull-local (git-fetch or download)")
+		}
+		switch mode {
+		case "git-fetch":
+			localPath, err := resolveAdhocLocalPath(cli, project, strings.TrimSpace(localPathFlag), false)
+			if err != nil {
+				return err
+			}
+			return runAdhocGitFetch(cli, project, localPath, includeFiles, maxSizeBytes, noTruncate, dryRun)
+		case "download":
+			localPath, err := resolveAdhocLocalPath(cli, project, strings.TrimSpace(localPathFlag), true)
+			if err != nil {
+				return err
+			}
+			return runAdhocDownload(cli, project, localPath, noTruncate, dryRun)
+		default:
+			return fmt.Errorf("invalid --mode %q (want git-fetch or download)", mode)
+		}
+	}
+	if mode != "" {
+		return fmt.Errorf("--mode is only valid with adhoc targets; omit it for registered projects")
+	}
+
+	return runRegisteredPullLocal(cli, project, strings.TrimSpace(localPathFlag), includeFiles, maxSizeBytes, noTruncate, dryRun)
+}
+
+func resolveAdhocLocalPath(cli *client.Client, project *client.ProjectInfo, flagPath string, requireFlag bool) (string, error) {
+	if flagPath != "" {
+		return filepath.Abs(flagPath)
+	}
+	if requireFlag {
+		return "", fmt.Errorf("--local-path is required for --mode download")
+	}
+	path, _, err := resolvePullLocalPath(cli, project, "")
+	return path, err
+}
+
+func runRegisteredPullLocal(cli *client.Client, project *client.ProjectInfo, localPathFlag string, includeFiles []string, maxSizeBytes int64, noTruncate, dryRun bool) error {
 	if project.GitStatus.IsClean {
 		return fmt.Errorf("nothing to pull: remote worktree is clean")
 	}
 
-	localPath, savedBinding, err := resolvePullLocalPath(cli, project, strings.TrimSpace(localPathFlag))
+	localPath, savedBinding, err := resolvePullLocalPath(cli, project, localPathFlag)
 	if err != nil {
 		return err
 	}
