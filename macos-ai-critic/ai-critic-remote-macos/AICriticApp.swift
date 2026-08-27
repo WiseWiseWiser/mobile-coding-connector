@@ -36,7 +36,7 @@ final class RemoteAppState: ObservableObject {
     /// Shared HTTP client for remote service/cron APIs (base URL + Bearer token).
     /// Uses configured server baseURL + Authorization Bearer — not keep-alive port 23312.
     let serviceClient = ServiceClient()
-    /// Stream + archive_token download client for machine backup.
+    /// Poll + archive_token download client for machine backup.
     let machineBackupClient = MachineBackupClient()
 
     /// Override for tests; empty means use default CLI path.
@@ -249,6 +249,7 @@ final class RemoteAppState: ObservableObject {
         let filename = BackupMenuFormatter.backupArchiveFilename(utc: now)
         let dest = (dir as NSString).appendingPathComponent(filename)
 
+        let resumeJobID = PeriodicBackupStore.state(for: name).jobID
         do {
             try PeriodicBackupStore.update(serverName: name) { st in
                 st.lastStartedAt = PeriodicBackupStore.formatRFC3339(now)
@@ -258,9 +259,16 @@ final class RemoteAppState: ObservableObject {
         } catch {}
 
         do {
-            // Stream path + archive_token download; consume intermediate SSE frames for the progress window.
-            let size = try await machineBackupClient.downloadBackupArchive(to: dest) { event in
-                // onProgress callback: map section/progress/log/error/done (and download phase).
+            let size = try await machineBackupClient.downloadBackupArchive(
+                to: dest,
+                resumeJobID: resumeJobID,
+                onJobID: { id in
+                    try? PeriodicBackupStore.update(serverName: name) { st in
+                        st.jobID = id
+                        st.lastStatus = "running"
+                    }
+                }
+            ) { event in
                 let line: String
                 switch event.type {
                 case "section":
@@ -299,6 +307,7 @@ final class RemoteAppState: ObservableObject {
                 st.lastError = ""
                 st.lastOutputPath = dest
                 st.lastSizeBytes = size
+                st.jobID = ""
                 // One-shot when disabled: do not set nextRunAt unless enabled.
                 if st.enabled {
                     st.nextRunAt = PeriodicBackupStore.formatRFC3339(next)
@@ -318,6 +327,7 @@ final class RemoteAppState: ObservableObject {
                 st.lastFinishedAt = PeriodicBackupStore.formatRFC3339(finished)
                 st.lastStatus = "error"
                 st.lastError = msg
+                st.jobID = ""
                 if st.enabled {
                     st.nextRunAt = PeriodicBackupStore.formatRFC3339(
                         finished.addingTimeInterval(TimeInterval(BackupMenuFormatter.backupIntervalSeconds))
@@ -352,8 +362,14 @@ final class RemoteAppState: ObservableObject {
 
     func checkBackupDue() async {
         reloadBackupStateFromDisk()
-        let interval = TimeInterval(BackupMenuFormatter.backupIntervalSeconds)
-        _ = interval
+        let name = backupServerName
+        if !name.isEmpty {
+            let st = PeriodicBackupStore.state(for: name)
+            if !st.jobID.isEmpty && st.lastStatus == "running" {
+                await runBackupNow(triggeredBySchedule: true)
+                return
+            }
+        }
         let due = BackupMenuFormatter.shouldRunDue(
             enabled: backupEnabled,
             running: backupRunning,

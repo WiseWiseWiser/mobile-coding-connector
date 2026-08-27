@@ -9,14 +9,14 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/ulikunitz/xz v0.5.12
 	github.com/xhd2015/agent-pro v0.0.168
-	github.com/xhd2015/bak-files v0.0.2
-	github.com/xhd2015/doctest v0.0.98
+	github.com/xhd2015/bak-files v0.0.3
+	github.com/xhd2015/doctest v0.0.117
 	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.151
 	github.com/xhd2015/gitops v0.0.31
 	github.com/xhd2015/kool v0.0.151
 	github.com/xhd2015/less-gen v0.0.19
 	github.com/xhd2015/my v0.0.7
-	github.com/xhd2015/skills v0.0.26
+	github.com/xhd2015/skills v0.0.28
 	github.com/xhd2015/tty-watch v0.0.7
 	github.com/xhd2015/wrk v0.0.91
 	github.com/xhd2015/xgo v1.2.8

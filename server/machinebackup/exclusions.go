@@ -49,8 +49,9 @@ type builtinExclude struct {
 // plus the synthetic **(binary) row (content-based detect, not a Classify rule).
 func builtinExclusionEntries() []builtinExclude {
 	cat := pathflag.Catalog()
-	entries := make([]builtinExclude, 0, len(cat)+1)
+	entries := make([]builtinExclude, 0, len(cat)+2)
 	entries = append(entries, builtinExclude{binaryRule, binaryRuleReason})
+	entries = append(entries, builtinExclude{".xgo", "xgo toolchain / instrument cache"})
 	for _, c := range cat {
 		entries = append(entries, builtinExclude{c.Rule, c.Reason})
 	}
@@ -64,11 +65,22 @@ var specialExclusionRules = map[string]bool{
 	binaryRule:       true,
 }
 
+func catalogGlobRules() map[string]bool {
+	out := make(map[string]bool)
+	for _, c := range pathflag.Catalog() {
+		if pathflag.IsGlob(c.Rule) {
+			out[c.Rule] = true
+		}
+	}
+	return out
+}
+
 // ExclusionRules describes merged built-in and custom backup exclusions.
 type ExclusionRules struct {
 	ExcludedList  []ExcludePathEntry
 	fullTrees     map[string]bool
 	prefixes      []string
+	globs         []string // catalog glob patterns (not treated as literal prefixes)
 	reasons       map[string]string
 	includedPaths map[string]bool
 }
@@ -303,12 +315,20 @@ func MergeExclusions(user *ExclusionConfig, customExclude, customInclude []strin
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].Path < list[j].Path })
 
+	catalogGlobs := catalogGlobRules()
 	full := make(map[string]bool)
 	var prefixes []string
+	var globs []string
 	reasons := make(map[string]string, len(list))
 	for _, e := range list {
 		reasons[e.Path] = e.Reason
 		if specialExclusionRules[e.Path] {
+			continue
+		}
+		// Only builtin catalog globs use pathflag.Match. User/CLI excludes keep
+		// prior prefix/full-tree handling (no new user-glob support in this change).
+		if catalogGlobs[e.Path] {
+			globs = append(globs, e.Path)
 			continue
 		}
 		if strings.Contains(e.Path, "/") {
@@ -318,11 +338,13 @@ func MergeExclusions(user *ExclusionConfig, customExclude, customInclude []strin
 		full[e.Path] = true
 	}
 	sort.Strings(prefixes)
+	sort.Strings(globs)
 
 	return ExclusionRules{
 		ExcludedList:  list,
 		fullTrees:     full,
 		prefixes:      prefixes,
+		globs:         globs,
 		reasons:       reasons,
 		includedPaths: included,
 	}
@@ -384,6 +406,11 @@ func (r ExclusionRules) ruleKeyForPath(rel string) string {
 		}
 		if rel == prefix || strings.HasPrefix(rel, prefix+"/") {
 			return prefix
+		}
+	}
+	for _, g := range r.globs {
+		if pathflag.Match(g, rel) {
+			return g
 		}
 	}
 	// pathflag catalog: segment rules, **/*.log, and any prefix rule still active

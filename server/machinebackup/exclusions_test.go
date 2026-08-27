@@ -12,19 +12,25 @@ func TestBuiltinExclusionConfigV11(t *testing.T) {
 		t.Fatalf("version = %q, want 1.1", cfg.Version)
 	}
 	want := map[string]string{
-		binaryRule:                            "executable binaries (reinstallable)",
-		logSuffixRule:                         "log files",
-		uploadChunksRule:                      "incomplete upload temp state",
-		".local/share/cursor-agent/versions":  "Cursor agent version cache",
-		".opencode/bin":                       "OpenCode binary (reinstallable)",
-		".codex/.tmp":                         "Codex temporary plugin cache",
-		".codex/skills/.system":               "Codex system skills cache",
-		".local/share/opencode/repos":         "OpenCode repo clone cache",
-		".local/share/opencode/snapshot":      "OpenCode snapshot cache",
-		".local/share/opencode/log":           "OpenCode application logs",
-		".grok/marketplace-cache":             "Grok plugin marketplace git cache",
-		".grok/vendor":                        "Grok vendored dependencies cache",
-		".grok/logs":                          "Grok application logs",
+		binaryRule:                           "executable binaries (reinstallable)",
+		logSuffixRule:                        "log files",
+		uploadChunksRule:                     "incomplete upload temp state",
+		".local/share/cursor-agent/versions": "Cursor agent version cache",
+		".opencode/bin":                      "OpenCode binary (reinstallable)",
+		".codex/.tmp":                        "Codex temporary plugin cache",
+		".codex/skills/.system":              "Codex system skills cache",
+		".local/share/opencode/repos":        "OpenCode repo clone cache",
+		".local/share/opencode/snapshot":     "OpenCode snapshot cache",
+		".local/share/opencode/log":          "OpenCode application logs",
+		".grok/marketplace-cache":            "Grok plugin marketplace git cache",
+		".grok/vendor":                       "Grok vendored dependencies cache",
+		".grok/logs":                         "Grok application logs",
+		".grok/memtrace":                     "Grok memory-trace dumps",
+		".xgo":                               "xgo toolchain / instrument cache",
+		".ai-critic/upload-cache":            "incomplete upload temp state",
+		".ai-critic/file-transfer":           "file-transfer scratch payloads",
+		".openclaw/agents/*/sessions/*.trajectory.jsonl": "OpenClaw session trajectories",
+		".cache": "temporary application cache",
 	}
 	for path, reason := range want {
 		found := false
@@ -39,6 +45,41 @@ func TestBuiltinExclusionConfigV11(t *testing.T) {
 		if !found {
 			t.Fatalf("missing exclude path %q", path)
 		}
+	}
+}
+
+func TestXgoAndCacheAreBuiltinFullTrees(t *testing.T) {
+	rules := MergeExclusions(nil, nil, nil)
+	if got := rules.pathReasonFor(".xgo/bin/xgo"); got == "" {
+		t.Fatal(".xgo should be excluded")
+	}
+	if got := rules.pathReasonFor(".cache/go-build/x"); got == "" {
+		t.Fatal(".cache should be excluded")
+	}
+}
+
+func TestBuiltinMemtraceUploadAndOpenclawTrajectory(t *testing.T) {
+	rules := MergeExclusions(nil, nil, nil)
+	if got := rules.pathReasonFor(".grok/memtrace/1.jsonl"); got == "" {
+		t.Fatal(".grok/memtrace should be excluded")
+	}
+	if got := rules.pathReasonFor(".ai-critic/upload-cache/a/chunk"); got == "" {
+		t.Fatal(".ai-critic/upload-cache should be excluded")
+	}
+	if got := rules.pathReasonFor(".ai-critic/file-transfer/Archive.zip"); got == "" {
+		t.Fatal(".ai-critic/file-transfer should be excluded")
+	}
+	traj := ".openclaw/agents/main/sessions/abc.trajectory.jsonl"
+	if got := rules.pathReasonFor(traj); got == "" {
+		t.Fatal("openclaw trajectory should be excluded")
+	}
+	plain := ".openclaw/agents/main/sessions/abc.jsonl"
+	if got := rules.pathReasonFor(plain); got != "" {
+		t.Fatalf("plain session jsonl should remain included, got reason %q", got)
+	}
+	cfg := ".openclaw/openclaw.json"
+	if got := rules.pathReasonFor(cfg); got != "" {
+		t.Fatalf("openclaw config should remain included, got reason %q", got)
 	}
 }
 

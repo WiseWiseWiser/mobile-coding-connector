@@ -1,6 +1,6 @@
 ## Expected
 
-1. `UsesStreamTokenDownload` is true (stream endpoint + `archive_token` / archiveToken).
+1. `UsesStreamTokenDownload` is true (jobs poll or stream endpoint + `archive_token` / archiveToken).
 
 ## Side Effects
 

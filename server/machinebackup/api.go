@@ -36,12 +36,16 @@ func RegisterAPIForHome(mux *http.ServeMux, home string) {
 		handleBackupStream(w, r, homeFn())
 	})
 	mux.HandleFunc("/api/remote-agent/machine/backup/archive", handleBackupArchiveDownload)
+	backupJobs := newJobManager(homeFn)
+	registerBackupJobRoutes(mux, backupJobs)
 	mux.HandleFunc("/api/remote-agent/machine/restore", func(w http.ResponseWriter, r *http.Request) {
 		handleRestore(w, r, homeFn())
 	})
 	mux.HandleFunc("/api/remote-agent/machine/restore/stream", func(w http.ResponseWriter, r *http.Request) {
 		handleRestoreStream(w, r, homeFn())
 	})
+	restoreJobs := newRestoreJobManager(homeFn)
+	registerRestoreJobRoutes(mux, restoreJobs)
 	mux.HandleFunc("/api/remote-agent/machine/config", handleBuiltinConfig)
 	mux.HandleFunc("/api/remote-agent/machine/backup-config", func(w http.ResponseWriter, r *http.Request) {
 		handleBackupConfig(w, r, homeFn())

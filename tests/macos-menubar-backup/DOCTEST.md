@@ -22,8 +22,8 @@ Default task is **OFF**. Interval is **1 hour**. Archives are **`.tar.xz`** unde
 - **Remote macOS menu bar (`ai-critic-remote-macos`)** — Backup submenu under the
   menubar dropdown, scoped to the active Server selection (same context as
   Services/Terminals).
-- **Remote machine backup API** — `POST …/machine/backup/stream` → `archive_token`
-  in `done` frame → GET archive by token (no live calls in this tree).
+- **Remote machine backup API** — `POST …/machine/backup/jobs` → poll status →
+  `archive_token` → GET archive by token (no live calls in this tree).
 - **Test harness** — invokes Go helpers with fixed `now` and entry structs, or
   inspects remote Swift sources; no UI automation, no network download.
 
@@ -546,13 +546,16 @@ func hasDefaultBackupOff(src string) bool {
 }
 
 func hasStreamTokenDownload(src string) bool {
+	hasJobs := strings.Contains(src, "/api/remote-agent/machine/backup/jobs") ||
+		strings.Contains(src, "machine/backup/jobs") ||
+		regexp.MustCompile(`(?i)backup/jobs`).MatchString(src)
 	hasStream := strings.Contains(src, "/api/remote-agent/machine/backup/stream") ||
 		strings.Contains(src, "machine/backup/stream") ||
 		regexp.MustCompile(`(?i)backup/stream`).MatchString(src)
 	hasToken := strings.Contains(src, "archive_token") ||
 		strings.Contains(src, "archiveToken") ||
 		strings.Contains(src, "ArchiveToken")
-	return hasStream && hasToken
+	return (hasJobs || hasStream) && hasToken
 }
 
 // pathSetEqual reports whether a and b contain the same paths (order-independent).

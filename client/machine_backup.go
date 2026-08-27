@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/xhd2015/ai-critic/server/machinebackup"
 )
@@ -117,6 +118,184 @@ func (c *Client) MachineBackupPlan(exclude, include []string) (*MachineBackupPla
 		return nil, err
 	}
 	return &out, nil
+}
+
+// MachineBackupStartJob starts a daemon backup job (202) or attaches on 409.
+func (c *Client) MachineBackupStartJob(req machinebackup.BackupStreamRequest) (*machinebackup.BackupJobView, error) {
+	if req.Exclude == nil {
+		req.Exclude = []string{}
+	}
+	if req.Include == nil {
+		req.Include = []string{}
+	}
+	data, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal backup job: %w", err)
+	}
+	httpReq, err := c.NewRequest(http.MethodPost, "/api/remote-agent/machine/backup/jobs", bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusConflict {
+		var wrapped struct {
+			Job machinebackup.BackupJobView `json:"job"`
+		}
+		if err := json.Unmarshal(body, &wrapped); err != nil {
+			return nil, fmt.Errorf("decode conflict job: %w", err)
+		}
+		if wrapped.Job.ID == "" {
+			return nil, fmt.Errorf("%s: backup job already running", resp.Status)
+		}
+		return &wrapped.Job, nil
+	}
+	if resp.StatusCode != http.StatusAccepted && (resp.StatusCode < 200 || resp.StatusCode >= 300) {
+		return nil, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var view machinebackup.BackupJobView
+	if err := json.Unmarshal(body, &view); err != nil {
+		return nil, fmt.Errorf("decode backup job: %w", err)
+	}
+	return &view, nil
+}
+
+// MachineBackupGetJob polls one backup job.
+func (c *Client) MachineBackupGetJob(id string) (*machinebackup.BackupJobView, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, fmt.Errorf("job id is required")
+	}
+	var view machinebackup.BackupJobView
+	if err := c.getJSON("/api/remote-agent/machine/backup/jobs/"+url.PathEscape(id), &view); err != nil {
+		return nil, err
+	}
+	return &view, nil
+}
+
+// MachineBackupWaitJob polls until the job is terminal.
+func (c *Client) MachineBackupWaitJob(id string, every time.Duration, onUpdate func(machinebackup.BackupJobView)) (*machinebackup.BackupJobView, error) {
+	if every <= 0 {
+		every = 2 * time.Second
+	}
+	for {
+		view, err := c.MachineBackupGetJob(id)
+		if err != nil {
+			return nil, err
+		}
+		if onUpdate != nil {
+			onUpdate(*view)
+		}
+		switch view.Status {
+		case machinebackup.JobDone, machinebackup.JobError, machinebackup.JobCanceled:
+			if view.Status != machinebackup.JobDone {
+				msg := view.Error
+				if msg == "" {
+					msg = view.Status
+				}
+				return view, fmt.Errorf("backup job %s", msg)
+			}
+			return view, nil
+		}
+		time.Sleep(every)
+	}
+}
+
+// MachineRestoreStartJob uploads an archive and starts a restore job.
+func (c *Client) MachineRestoreStartJob(archive io.Reader, dryRun bool, exclude, include []string) (*machinebackup.RestoreJobView, error) {
+	query := url.Values{}
+	if dryRun {
+		query.Set("dry_run", "true")
+	}
+	for _, ex := range exclude {
+		query.Add("exclude", ex)
+	}
+	for _, inc := range include {
+		query.Add("include", inc)
+	}
+	path := "/api/remote-agent/machine/restore/jobs"
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+	httpReq, err := c.NewRequest(http.MethodPost, path, archive)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/x-xz")
+	resp, err := c.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusConflict {
+		var wrapped struct {
+			Job machinebackup.RestoreJobView `json:"job"`
+		}
+		if json.Unmarshal(body, &wrapped) == nil && wrapped.Job.ID != "" {
+			return &wrapped.Job, nil
+		}
+	}
+	if resp.StatusCode != http.StatusAccepted && (resp.StatusCode < 200 || resp.StatusCode >= 300) {
+		return nil, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var view machinebackup.RestoreJobView
+	if err := json.Unmarshal(body, &view); err != nil {
+		return nil, fmt.Errorf("decode restore job: %w", err)
+	}
+	return &view, nil
+}
+
+// MachineRestoreGetJob polls one restore job.
+func (c *Client) MachineRestoreGetJob(id string) (*machinebackup.RestoreJobView, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, fmt.Errorf("job id is required")
+	}
+	var view machinebackup.RestoreJobView
+	if err := c.getJSON("/api/remote-agent/machine/restore/jobs/"+url.PathEscape(id), &view); err != nil {
+		return nil, err
+	}
+	return &view, nil
+}
+
+// MachineRestoreWaitJob polls until the restore job is terminal.
+func (c *Client) MachineRestoreWaitJob(id string, every time.Duration, onUpdate func(machinebackup.RestoreJobView)) (*machinebackup.RestoreJobView, error) {
+	if every <= 0 {
+		every = 2 * time.Second
+	}
+	for {
+		view, err := c.MachineRestoreGetJob(id)
+		if err != nil {
+			return nil, err
+		}
+		if onUpdate != nil {
+			onUpdate(*view)
+		}
+		switch view.Status {
+		case machinebackup.JobDone, machinebackup.JobError, machinebackup.JobCanceled:
+			if view.Status != machinebackup.JobDone {
+				msg := view.Error
+				if msg == "" {
+					msg = view.Status
+				}
+				return view, fmt.Errorf("restore job %s", msg)
+			}
+			return view, nil
+		}
+		time.Sleep(every)
+	}
 }
 
 // MachineBackupArchiveByToken downloads a tar.xz archive prepared by backup/stream with archive=true.

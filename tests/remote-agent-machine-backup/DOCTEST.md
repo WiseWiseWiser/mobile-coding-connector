@@ -32,8 +32,9 @@ real restore.
 - **L2: agentcli.Run** — in-process `machine backup|restore` CLI against the
   local mux (stdout/stderr captured; serialized with a process mutex).
 - **L2: machinebackup HTTP** — `RegisterAPIForHome` on ephemeral port; same
-  wire paths as production (`/backup`, `/backup/stream`, `/restore/stream`,
-  `/backup-config`, archive token download).
+  wire paths as production (`/backup`, `/backup/stream`, `/backup/jobs`,
+  `/restore/stream`, `/restore/jobs`, `/backup-config`, archive token download).
+  Real `machine backup` (no `--dry-run`) uses job+poll then GET archive.
 - **L3: remote-agent + ai-critic-server subprocesses** — only for sparse
   `UseCLI` smokes (`backup/stream`, `backup/dry-run`, `restore/apply`).
 - **serverHome** — temp fake machine home seeded with dot fixtures, built-in

@@ -13,7 +13,7 @@ enabled / lastFinished / nextRunAt -> ShouldRunOnEnable / ShouldRunDue
 AICriticApp (remote) -> Backup submenu
   Status: … ▸ Enable | Disable
   Backup Now… | Recent | Reveal in Finder…
-download -> POST backup/stream -> archive_token -> local .tar.xz
+download -> POST backup/jobs -> poll -> archive_token -> local .tar.xz
 ```
 
 ## Preconditions

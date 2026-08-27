@@ -22,6 +22,7 @@ type BackupStreamRequest struct {
 	SkipGitDirsScan        bool     `json:"skip_git_dirs_scan,omitempty"`
 	GitDirsScanMaxDepth    int      `json:"git_dirs_scan_max_depth,omitempty"` // 0 = unlimited
 	Archive                bool     `json:"archive,omitempty"`                 // pack archive after summary; download via archive_token
+	DryRun                 bool     `json:"dry_run,omitempty"`                 // job API: walk only, no archive
 }
 
 // GitScanOptions configures git repo discovery during backup.
@@ -101,15 +102,15 @@ type GitWorktreeEntry struct {
 
 // MachineBackupPlan is returned when dry_run is true or in a stream done frame.
 type MachineBackupPlan struct {
-	Home          string        `json:"home"`
-	DotFiles      []FileStat    `json:"dot_files"`
-	AllFiles      []FileStat    `json:"all_files"`
-	DotFilesTotal SectionTotals `json:"dot_files_total"`
-	DirStats      []DirStat     `json:"dir_stats"`
-	DotDirsTotal  SectionTotals `json:"dot_dirs_total"`
-	GrandTotal    SectionTotals `json:"grand_total"`
-	Excluded      []ExcludePathEntry `json:"excluded"`
-	Included      []string           `json:"included"`
+	Home          string                    `json:"home"`
+	DotFiles      []FileStat                `json:"dot_files"`
+	AllFiles      []FileStat                `json:"all_files"`
+	DotFilesTotal SectionTotals             `json:"dot_files_total"`
+	DirStats      []DirStat                 `json:"dir_stats"`
+	DotDirsTotal  SectionTotals             `json:"dot_dirs_total"`
+	GrandTotal    SectionTotals             `json:"grand_total"`
+	Excluded      []ExcludePathEntry        `json:"excluded"`
+	Included      []string                  `json:"included"`
 	GitRepos      *GitRepoWorktreesSnapshot `json:"git_repos,omitempty"`
 }
 

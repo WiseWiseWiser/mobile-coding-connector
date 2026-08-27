@@ -126,18 +126,6 @@ func packBackupArchive(pw *progress.Writer, prepared *backupPrepared) (token str
 	if err := pw.EmitSection("PACKING"); err != nil {
 		return "", 0, err
 	}
-	tmp, err := os.CreateTemp("", "machine-backup-*.tar.xz")
-	if err != nil {
-		return "", 0, fmt.Errorf("create temp archive: %w", err)
-	}
-	tmpPath := tmp.Name()
-	cleanup := func() { os.Remove(tmpPath) }
-	defer func() {
-		if err != nil {
-			cleanup()
-		}
-	}()
-
 	onPack := func(name, detail string) error {
 		return pw.EmitProgress(progress.Item{
 			Layer:  "pack",
@@ -145,6 +133,31 @@ func packBackupArchive(pw *progress.Writer, prepared *backupPrepared) (token str
 			Detail: detail,
 		})
 	}
+	tmpPath, archiveBytes, err := packArchiveFile(prepared, onPack)
+	if err != nil {
+		return "", 0, err
+	}
+	token, err = registerArchiveSession(tmpPath)
+	if err != nil {
+		os.Remove(tmpPath)
+		return "", 0, err
+	}
+	return token, archiveBytes, nil
+}
+
+// packArchiveFile writes a temp tar.xz and returns its path and size.
+// The caller owns the file (register a session or remove it).
+func packArchiveFile(prepared *backupPrepared, onPack ArchivePackProgress) (tmpPath string, archiveBytes int64, err error) {
+	tmp, err := os.CreateTemp("", "machine-backup-*.tar.xz")
+	if err != nil {
+		return "", 0, fmt.Errorf("create temp archive: %w", err)
+	}
+	tmpPath = tmp.Name()
+	defer func() {
+		if err != nil {
+			os.Remove(tmpPath)
+		}
+	}()
 	if err := writeArchiveFromWalk(tmp, prepared.Home, prepared.Rules, prepared.Walk, prepared.GitRepos, prepared.GitSkipped, onPack); err != nil {
 		tmp.Close()
 		return "", 0, err
@@ -156,11 +169,7 @@ func packBackupArchive(pw *progress.Writer, prepared *backupPrepared) (token str
 	if err != nil {
 		return "", 0, fmt.Errorf("stat temp archive: %w", err)
 	}
-	token, err = registerArchiveSession(tmpPath)
-	if err != nil {
-		return "", 0, err
-	}
-	return token, info.Size(), nil
+	return tmpPath, info.Size(), nil
 }
 
 // backupStreamDone is the SSE done payload. It omits the full included path list

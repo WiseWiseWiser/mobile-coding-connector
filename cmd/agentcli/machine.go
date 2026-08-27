@@ -28,7 +28,7 @@ Subcommands:
       Scan server HOME; stream per-entry blocks and a summary.
 
   backup [--output PATH] [--dry-run] [--show-config] [--set-config] [--exclude PATH]... [--include PATH]...
-      Snapshot server HOME as a streamed tar.xz archive.
+      Snapshot server HOME as a tar.xz archive (job+poll) or SSE dry-run plan.
 
   restore [backup.tar.xz] [--dry-run] [--show-config] [--show-meta] [--exclude PATH]... [--include PATH]...
       Restore a machine backup archive to server HOME.
@@ -46,6 +46,8 @@ Options:
 const machineBackupHelp = `Usage: remote-agent machine backup [--output PATH] [--dry-run] [--large-dir-threshold SIZE] [--show-config] [--set-config] [--exclude PATH]... [--include PATH]...
 
 Snapshot the server user's home directory dot-files and dot-directories.
+Real backups use the daemon job API (start/poll/download). --dry-run still
+streams an SSE plan.
 
 Options:
   --output PATH              Destination archive (default: machine-backup-<timestamp>.tar.xz)
@@ -204,34 +206,71 @@ func runMachineBackup(resolve func() (*client.Client, error), args []string) err
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil && filepath.Dir(outputPath) != "." {
 		return fmt.Errorf("create output directory: %w", err)
 	}
-	spec.After = func(done map[string]any) error {
-		token, _ := done["archive_token"].(string)
-		if strings.TrimSpace(token) == "" {
-			return fmt.Errorf("backup stream missing archive_token")
-		}
-		cli, err := resolve()
-		if err != nil {
-			return err
-		}
-		body, err := cli.MachineBackupArchiveByToken(token)
-		if err != nil {
-			return err
-		}
-		defer body.Close()
+	return runMachineBackupJob(resolve, machinebackup.BackupStreamRequest{
+		Exclude:                exclude,
+		Include:                include,
+		LargeDirThresholdBytes: largeDirThresholdBytes,
+		SkipGitDirsScan:        skipGitDirsScan,
+		GitDirsScanMaxDepth:    gitDirsScanMaxDepth,
+		Archive:                true,
+	}, outputPath)
+}
 
+func runMachineBackupJob(resolve func() (*client.Client, error), req machinebackup.BackupStreamRequest, outputPath string) error {
+	cli, err := resolve()
+	if err != nil {
+		return err
+	}
+	view, err := cli.MachineBackupStartJob(req)
+	if err != nil {
+		return err
+	}
+	var lastLine string
+	done, err := cli.MachineBackupWaitJob(view.ID, 500*time.Millisecond, func(v machinebackup.BackupJobView) {
+		line := fmt.Sprintf("backup job %s %s files=%d/%d", v.Status, v.Phase, v.FilesDone, v.FilesTotal)
+		if line != lastLine {
+			fmt.Fprintln(os.Stderr, line)
+			lastLine = line
+		}
+	})
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(done.ArchiveToken) == "" {
+		return fmt.Errorf("backup job missing archive_token")
+	}
+	var lastDownloadErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		body, err := cli.MachineBackupArchiveByToken(done.ArchiveToken)
+		if err != nil {
+			lastDownloadErr = err
+			time.Sleep(time.Second)
+			continue
+		}
 		out, err := os.Create(outputPath)
 		if err != nil {
+			body.Close()
 			return fmt.Errorf("create archive %s: %w", outputPath, err)
 		}
-		defer out.Close()
-
-		if _, err := io.Copy(out, body); err != nil {
-			return fmt.Errorf("write archive %s: %w", outputPath, err)
+		_, copyErr := io.Copy(out, body)
+		body.Close()
+		closeErr := out.Close()
+		if copyErr != nil {
+			lastDownloadErr = copyErr
+			_ = os.Remove(outputPath)
+			time.Sleep(time.Second)
+			continue
+		}
+		if closeErr != nil {
+			return fmt.Errorf("write archive %s: %w", outputPath, closeErr)
 		}
 		fmt.Println(outputPath)
 		return nil
 	}
-	return streamcmd.Run(resolve, spec)
+	if lastDownloadErr == nil {
+		lastDownloadErr = fmt.Errorf("archive download failed")
+	}
+	return fmt.Errorf("write archive %s: %w", outputPath, lastDownloadErr)
 }
 
 func machineBackupStreamBody(exclude, include []string, largeDirThresholdBytes int64, skipGitDirsScan bool, gitDirsScanMaxDepth int, archive bool) map[string]any {

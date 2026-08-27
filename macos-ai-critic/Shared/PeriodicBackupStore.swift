@@ -12,6 +12,7 @@ public struct PeriodicBackupServerState: Codable, Equatable {
     public var lastOutputPath: String
     public var lastSizeBytes: Int64
     public var nextRunAt: String
+    public var jobID: String
 
     public init(
         enabled: Bool = false,
@@ -22,7 +23,8 @@ public struct PeriodicBackupServerState: Codable, Equatable {
         lastError: String = "",
         lastOutputPath: String = "",
         lastSizeBytes: Int64 = 0,
-        nextRunAt: String = ""
+        nextRunAt: String = "",
+        jobID: String = ""
     ) {
         self.enabled = enabled
         self.intervalSeconds = intervalSeconds
@@ -33,6 +35,7 @@ public struct PeriodicBackupServerState: Codable, Equatable {
         self.lastOutputPath = lastOutputPath
         self.lastSizeBytes = lastSizeBytes
         self.nextRunAt = nextRunAt
+        self.jobID = jobID
     }
 
     enum CodingKeys: String, CodingKey {
@@ -45,6 +48,21 @@ public struct PeriodicBackupServerState: Codable, Equatable {
         case lastOutputPath = "last_output_path"
         case lastSizeBytes = "last_size_bytes"
         case nextRunAt = "next_run_at"
+        case jobID = "job_id"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        intervalSeconds = try c.decodeIfPresent(Int.self, forKey: .intervalSeconds) ?? BackupMenuFormatter.backupIntervalSeconds
+        lastStartedAt = try c.decodeIfPresent(String.self, forKey: .lastStartedAt) ?? ""
+        lastFinishedAt = try c.decodeIfPresent(String.self, forKey: .lastFinishedAt) ?? ""
+        lastStatus = try c.decodeIfPresent(String.self, forKey: .lastStatus) ?? "idle"
+        lastError = try c.decodeIfPresent(String.self, forKey: .lastError) ?? ""
+        lastOutputPath = try c.decodeIfPresent(String.self, forKey: .lastOutputPath) ?? ""
+        lastSizeBytes = try c.decodeIfPresent(Int64.self, forKey: .lastSizeBytes) ?? 0
+        nextRunAt = try c.decodeIfPresent(String.self, forKey: .nextRunAt) ?? ""
+        jobID = try c.decodeIfPresent(String.self, forKey: .jobID) ?? ""
     }
 }
 
