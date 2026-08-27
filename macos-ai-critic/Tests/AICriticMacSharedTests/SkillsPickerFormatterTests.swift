@@ -33,14 +33,64 @@ final class SkillsPickerFormatterTests: XCTestCase {
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarSkills), "Skills")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarTemplates), "Templates")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarFiles), "Files")
+        XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarClipboard), "Clipboard")
+        XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarAdhoc), "Adhoc text")
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID(nil), SkillsPickerFormatter.sidebarAll)
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("bogus"), SkillsPickerFormatter.sidebarAll)
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("templates"), SkillsPickerFormatter.sidebarTemplates)
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("files"), SkillsPickerFormatter.sidebarFiles)
+        XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("clipboard"), SkillsPickerFormatter.sidebarClipboard)
+        XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("adhoc"), SkillsPickerFormatter.sidebarAdhoc)
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "all"), "square.grid.2x2")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "skills"), "wrench.and.screwdriver")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "templates"), "doc.text")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "files"), "folder")
+        XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "clipboard"), "doc.on.clipboard")
+        XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "adhoc"), "note.text")
+        XCTAssertTrue(SkillsPickerFormatter.isSearchableSidebar("all"))
+        XCTAssertTrue(SkillsPickerFormatter.isSearchableSidebar("files"))
+        XCTAssertFalse(SkillsPickerFormatter.isSearchableSidebar("clipboard"))
+        XCTAssertFalse(SkillsPickerFormatter.isSearchableSidebar("adhoc"))
+        XCTAssertEqual(SkillsPickerFormatter.sidebarOrder.count, 6)
+        XCTAssertEqual(SkillsPickerFormatter.sidebarOrder.last, SkillsPickerFormatter.sidebarAdhoc)
+    }
+
+    func testClipboardAndAdhocFormatters() {
+        XCTAssertEqual(SkillsPickerFormatter.formatClipboardKind("TEXT"), "text")
+        XCTAssertEqual(SkillsPickerFormatter.formatClipboardKind("empty"), "empty")
+        XCTAssertEqual(SkillsPickerFormatter.formatClipboardSize(bytes: 0), "0 B")
+        XCTAssertEqual(SkillsPickerFormatter.formatClipboardSize(bytes: 512), "512 B")
+        XCTAssertEqual(SkillsPickerFormatter.formatClipboardSize(bytes: 184 * 1024), "184.0 KB")
+        XCTAssertFalse(SkillsPickerFormatter.canDumpClipboard(kind: "empty"))
+        XCTAssertFalse(SkillsPickerFormatter.canDumpClipboard(kind: "unsupported"))
+        XCTAssertTrue(SkillsPickerFormatter.canDumpClipboard(kind: "text"))
+        XCTAssertTrue(SkillsPickerFormatter.canDumpClipboard(kind: "image"))
+        XCTAssertEqual(SkillsPickerFormatter.formatDumpToFileTitle(), "Dump to file")
+        XCTAssertEqual(SkillsPickerFormatter.formatCopyFilePathTitle(), "Copy file path")
+        XCTAssertEqual(SkillsPickerFormatter.formatPathCopiedToast(), "Path copied")
+        XCTAssertEqual(SkillsPickerFormatter.adhocSaveDebounceNanoseconds, 400_000_000)
+        XCTAssertEqual(SkillsPickerFormatter.formatSearchPrompt(sidebarID: "clipboard"), "")
+        XCTAssertEqual(SkillsPickerFormatter.formatSearchPrompt(sidebarID: "adhoc"), "")
+        XCTAssertEqual(SkillsPickerFormatter.clipboardPathPrefixDefaultsKey, "insertPickerClipboardPathPrefix")
+        XCTAssertEqual(SkillsPickerFormatter.formatPathPrefixLabel(), "Path prefix")
+        XCTAssertEqual(
+            SkillsPickerFormatter.formatClipboardCopyText(prefix: "image ", path: "/tmp/a.png"),
+            "image /tmp/a.png"
+        )
+        XCTAssertEqual(
+            SkillsPickerFormatter.formatClipboardCopyText(prefix: "", path: "/tmp/a.png"),
+            "/tmp/a.png"
+        )
+        XCTAssertEqual(
+            SkillsPickerFormatter.formatClipboardCopyText(prefix: "image ", path: "  /tmp/a.png\n"),
+            "image /tmp/a.png"
+        )
+        XCTAssertEqual(SkillsPickerFormatter.formatClipboardCopyText(prefix: "image ", path: ""), "")
+        XCTAssertEqual(
+            SkillsPickerFormatter.formatCopyWillUsePreview(prefix: "image ", path: "/tmp/a.png"),
+            "Copy will use: image /tmp/a.png"
+        )
+        XCTAssertEqual(SkillsPickerFormatter.formatCopyWillUsePreview(prefix: "x", path: ""), "")
     }
 
     func testSidebarWidthTitleReveal() {

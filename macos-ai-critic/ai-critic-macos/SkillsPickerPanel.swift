@@ -122,6 +122,7 @@ struct SkillsPickerView: View {
 
     @AppStorage(SkillsPickerFormatter.sidebarDefaultsKey) private var storedSidebar = SkillsPickerFormatter.sidebarAll
     @AppStorage(SkillsPickerFormatter.sidebarWidthDefaultsKey) private var storedSidebarWidth = SkillsPickerFormatter.sidebarIconWidth
+    @AppStorage(SkillsPickerFormatter.clipboardPathPrefixDefaultsKey) private var clipboardPathPrefix = ""
     @State private var sidebarID: String? = nil
     @State private var sidebarWidth: CGFloat = CGFloat(SkillsPickerFormatter.sidebarIconWidth)
     @State private var sidebarDragStartWidth: CGFloat?
@@ -148,8 +149,27 @@ struct SkillsPickerView: View {
     @State private var addFilePath = ""
     @State private var addFileNote = ""
 
+    @State private var clipboardPeek: ClipboardPeekResponse?
+    @State private var clipboardLoading = false
+    @State private var clipboardBusy = false
+    @State private var clipboardError: String?
+    @State private var lastDumpPath: String = ""
+
+    @State private var adhocText = ""
+    @State private var adhocPath = ""
+    @State private var adhocLoading = false
+    @State private var adhocSaveStatus = ""
+    @State private var adhocSaveTask: Task<Void, Never>?
+    @State private var adhocDirty = false
+    @State private var adhocSuppressChange = false
+    @FocusState private var adhocFocused: Bool
+
     private var resolvedSidebar: String {
         SkillsPickerFormatter.normalizeSidebarID(sidebarID ?? storedSidebar)
+    }
+
+    private var isSearchableSidebar: Bool {
+        SkillsPickerFormatter.isSearchableSidebar(resolvedSidebar)
     }
 
     private var showSidebarTitles: Bool {
@@ -166,8 +186,10 @@ struct SkillsPickerView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                searchRow
-                Divider()
+                if isSearchableSidebar {
+                    searchRow
+                    Divider()
+                }
                 HStack(spacing: 0) {
                     sidebar
                         .frame(width: sidebarWidth)
@@ -196,7 +218,11 @@ struct SkillsPickerView: View {
             sidebarWidth = CGFloat(SkillsPickerFormatter.clampSidebarWidth(storedSidebarWidth))
             focusSearch()
         }
+        .onDisappear {
+            flushAdhocSave()
+        }
         .onChange(of: query) { _, q in
+            guard isSearchableSidebar else { return }
             scheduleReload(q)
         }
         .onChange(of: sidebarID) { _, id in
@@ -209,14 +235,21 @@ struct SkillsPickerView: View {
                 selectedID = ids.first
             }
         }
+        .onChange(of: adhocText) { _, _ in
+            guard resolvedSidebar == SkillsPickerFormatter.sidebarAdhoc else { return }
+            guard !adhocLoading, !adhocSuppressChange else { return }
+            adhocDirty = true
+            adhocSaveStatus = SkillsPickerFormatter.formatAdhocDirtyStatus()
+            scheduleAdhocSave()
+        }
         .onExitCommand { handleEscape() }
         .onKeyPress(.upArrow) {
-            guard !showCreateTemplate, !showAddFile else { return .ignored }
+            guard !showCreateTemplate, !showAddFile, isSearchableSidebar else { return .ignored }
             moveSelection(-1)
             return .handled
         }
         .onKeyPress(.downArrow) {
-            guard !showCreateTemplate, !showAddFile else { return .ignored }
+            guard !showCreateTemplate, !showAddFile, isSearchableSidebar else { return .ignored }
             moveSelection(1)
             return .handled
         }
@@ -242,6 +275,10 @@ struct SkillsPickerView: View {
             sidebarRow(id: SkillsPickerFormatter.sidebarSkills)
             sidebarRow(id: SkillsPickerFormatter.sidebarTemplates)
             sidebarRow(id: SkillsPickerFormatter.sidebarFiles)
+            // Draw the rule inside the Clipboard row — a bare Divider list row
+            // gets sidebar min-height and shows as a large empty gap.
+            sidebarRow(id: SkillsPickerFormatter.sidebarClipboard, separatorAbove: true)
+            sidebarRow(id: SkillsPickerFormatter.sidebarAdhoc)
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
@@ -296,17 +333,29 @@ struct SkillsPickerView: View {
         }
     }
 
-    private func sidebarRow(id: String) -> some View {
+    private func sidebarRow(id: String, separatorAbove: Bool = false) -> some View {
         let title = SkillsPickerFormatter.formatSidebarTitle(id: id)
         let symbol = SkillsPickerFormatter.formatSidebarSymbol(id: id)
-        return HStack(spacing: 8) {
-            Image(systemName: symbol)
-                .frame(width: 20, alignment: .center)
-            Text(title)
-                .lineLimit(1)
-                .opacity(showSidebarTitles ? 1 : 0)
-                .frame(maxWidth: showSidebarTitles ? .infinity : 0, alignment: .leading)
-                .clipped()
+        return VStack(spacing: 0) {
+            if separatorAbove {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(height: 1)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 2)
+                    .padding(.bottom, 6)
+                    .accessibilityIdentifier("insert-picker-sidebar-separator")
+            }
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .frame(width: 20, alignment: .center)
+                Text(title)
+                    .lineLimit(1)
+                    .opacity(showSidebarTitles ? 1 : 0)
+                    .frame(maxWidth: showSidebarTitles ? .infinity : 0, alignment: .leading)
+                    .clipped()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -321,6 +370,18 @@ struct SkillsPickerView: View {
 
     @ViewBuilder
     private var contentPane: some View {
+        switch resolvedSidebar {
+        case SkillsPickerFormatter.sidebarClipboard:
+            clipboardPane
+        case SkillsPickerFormatter.sidebarAdhoc:
+            adhocPane
+        default:
+            searchableContentPane
+        }
+    }
+
+    @ViewBuilder
+    private var searchableContentPane: some View {
         VStack(spacing: 0) {
             Group {
                 if let errorText {
@@ -365,6 +426,159 @@ struct SkillsPickerView: View {
                 addFooter
             }
         }
+    }
+
+    private var clipboardPane: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(SkillsPickerFormatter.formatClipboardHeading())
+                .font(.headline)
+            if clipboardLoading && clipboardPeek == nil {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                if let clipboardError {
+                    Text(clipboardError)
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
+                let peek = clipboardPeek ?? ClipboardPeekResponse()
+                let kindLabel = SkillsPickerFormatter.formatClipboardKind(peek.kind)
+                let canDump = SkillsPickerFormatter.canDumpClipboard(kind: peek.kind)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(SkillsPickerFormatter.formatClipboardKindLabel())
+                        .foregroundStyle(.secondary)
+                    Text(kindLabel)
+                    if !peek.ext.isEmpty, peek.kind.lowercased() == "image" {
+                        Text("/ \(peek.ext)")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .font(.callout)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(SkillsPickerFormatter.formatClipboardSizeLabel())
+                        .foregroundStyle(.secondary)
+                    Text(SkillsPickerFormatter.formatClipboardSize(bytes: peek.bytes))
+                }
+                .font(.callout)
+                if !peek.preview.isEmpty {
+                    ScrollView {
+                        Text(peek.preview)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxHeight: 140)
+                    .padding(8)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else if peek.kind.lowercased() == "empty" {
+                    Text(SkillsPickerFormatter.formatEmptyHint(sidebarID: SkillsPickerFormatter.sidebarClipboard))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(SkillsPickerFormatter.formatPathPrefixLabel())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField(
+                        SkillsPickerFormatter.formatPathPrefixPlaceholder(),
+                        text: $clipboardPathPrefix
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .accessibilityIdentifier("insert-picker-clipboard-path-prefix")
+                    let copyPreview = SkillsPickerFormatter.formatCopyWillUsePreview(
+                        prefix: clipboardPathPrefix,
+                        path: lastDumpPath
+                    )
+                    if !copyPreview.isEmpty {
+                        Text(copyPreview)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .textSelection(.enabled)
+                            .accessibilityIdentifier("insert-picker-clipboard-copy-preview")
+                    }
+                }
+                HStack(spacing: 12) {
+                    Button(SkillsPickerFormatter.formatDumpToFileTitle()) {
+                        Task { await dumpClipboard() }
+                    }
+                    .disabled(!canDump || clipboardBusy)
+                    .accessibilityIdentifier("insert-picker-clipboard-dump")
+                    Button(SkillsPickerFormatter.formatCopyFilePathTitle()) {
+                        copyDumpPath()
+                    }
+                    .disabled(lastDumpPath.isEmpty || clipboardBusy)
+                    .accessibilityIdentifier("insert-picker-clipboard-copy-path")
+                    Spacer()
+                    Button(SkillsPickerFormatter.formatRefreshTitle()) {
+                        Task { await loadClipboardPeek() }
+                    }
+                    .disabled(clipboardBusy || clipboardLoading)
+                    .accessibilityIdentifier("insert-picker-clipboard-refresh")
+                }
+                .buttonStyle(.borderless)
+                if !lastDumpPath.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(SkillsPickerFormatter.formatLastDumpLabel())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(lastDumpPath)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityIdentifier("insert-picker-clipboard")
+    }
+
+    private var adhocPane: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(SkillsPickerFormatter.formatAdhocHeading())
+                    .font(.headline)
+                Spacer()
+                if !adhocSaveStatus.isEmpty {
+                    Text(adhocSaveStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("insert-picker-adhoc-status")
+                }
+            }
+            if adhocLoading && adhocText.isEmpty {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                TextEditor(text: $adhocText)
+                    .font(.system(.body, design: .monospaced))
+                    .focused($adhocFocused)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .accessibilityIdentifier("insert-picker-adhoc-editor")
+                HStack {
+                    Button(SkillsPickerFormatter.formatCopyTextTitle()) {
+                        copyAdhocText()
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(adhocText.isEmpty)
+                    .accessibilityIdentifier("insert-picker-adhoc-copy")
+                    Spacer()
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityIdentifier("insert-picker-adhoc")
     }
 
     private func listRow(_ item: InsertPickerItem) -> some View {
@@ -504,15 +718,26 @@ struct SkillsPickerView: View {
     }
 
     private func focusSearch() {
-        searchFocused = true
-        DispatchQueue.main.async {
+        if isSearchableSidebar {
             searchFocused = true
+            DispatchQueue.main.async {
+                searchFocused = true
+            }
         }
         scheduleReload(query)
     }
 
     private func scheduleReload(_ q: String) {
         searchTask?.cancel()
+        let sidebar = resolvedSidebar
+        if sidebar == SkillsPickerFormatter.sidebarClipboard {
+            Task { await loadClipboardPeek() }
+            return
+        }
+        if sidebar == SkillsPickerFormatter.sidebarAdhoc {
+            Task { await loadAdhocText() }
+            return
+        }
         searchTask = Task {
             let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
@@ -521,6 +746,102 @@ struct SkillsPickerView: View {
             guard !Task.isCancelled else { return }
             await reload(query: q)
         }
+    }
+
+    private func loadClipboardPeek() async {
+        clipboardLoading = true
+        clipboardError = nil
+        defer { clipboardLoading = false }
+        do {
+            clipboardPeek = try await ServerClient.shared.peekClipboard()
+        } catch {
+            clipboardError = error.localizedDescription
+        }
+    }
+
+    private func dumpClipboard() async {
+        clipboardBusy = true
+        clipboardError = nil
+        defer { clipboardBusy = false }
+        do {
+            let dumped = try await ServerClient.shared.dumpClipboard()
+            lastDumpPath = dumped.path
+        } catch {
+            clipboardError = error.localizedDescription
+        }
+    }
+
+    private func copyDumpPath() {
+        let text = SkillsPickerFormatter.formatClipboardCopyText(
+            prefix: clipboardPathPrefix,
+            path: lastDumpPath
+        )
+        guard !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        CopiedToastController.shared.show(message: SkillsPickerFormatter.formatPathCopiedToast())
+    }
+
+    private func loadAdhocText() async {
+        adhocLoading = true
+        defer { adhocLoading = false }
+        do {
+            let resp = try await ServerClient.shared.getAdhocText()
+            adhocSuppressChange = true
+            adhocText = resp.content
+            adhocPath = resp.path
+            adhocDirty = false
+            adhocSaveStatus = SkillsPickerFormatter.formatAdhocSavedStatus()
+            DispatchQueue.main.async {
+                adhocSuppressChange = false
+                adhocFocused = true
+            }
+        } catch {
+            errorText = error.localizedDescription
+            adhocSaveStatus = ""
+        }
+    }
+
+    private func scheduleAdhocSave() {
+        adhocSaveTask?.cancel()
+        adhocSaveTask = Task {
+            try? await Task.sleep(nanoseconds: SkillsPickerFormatter.adhocSaveDebounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            await saveAdhocText()
+        }
+    }
+
+    private func flushAdhocSave() {
+        adhocSaveTask?.cancel()
+        adhocSaveTask = nil
+        guard adhocDirty else { return }
+        let content = adhocText
+        Task {
+            do {
+                _ = try await ServerClient.shared.putAdhocText(content: content)
+            } catch {
+                // best-effort on dismiss
+            }
+        }
+        adhocDirty = false
+    }
+
+    private func saveAdhocText() async {
+        adhocSaveStatus = SkillsPickerFormatter.formatAdhocSavingStatus()
+        do {
+            let resp = try await ServerClient.shared.putAdhocText(content: adhocText)
+            adhocPath = resp.path
+            adhocDirty = false
+            adhocSaveStatus = SkillsPickerFormatter.formatAdhocSavedStatus()
+        } catch {
+            adhocSaveStatus = error.localizedDescription
+        }
+    }
+
+    private func copyAdhocText() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(adhocText, forType: .string)
+        CopiedToastController.shared.show()
     }
 
     private var emptyTitle: String {
@@ -541,10 +862,11 @@ struct SkillsPickerView: View {
             formError = nil
             return
         }
-        if !query.isEmpty {
+        if isSearchableSidebar, !query.isEmpty {
             query = ""
             return
         }
+        flushAdhocSave()
         onDismiss()
     }
 
@@ -823,16 +1145,16 @@ struct SkillsPickerView: View {
     }
 
     private func moveSidebar(_ delta: Int) {
-        let ids = [
-            SkillsPickerFormatter.sidebarAll,
-            SkillsPickerFormatter.sidebarSkills,
-            SkillsPickerFormatter.sidebarTemplates,
-            SkillsPickerFormatter.sidebarFiles,
-        ]
+        let ids = SkillsPickerFormatter.sidebarOrder
         let current = ids.firstIndex(of: resolvedSidebar) ?? 0
         var next = current + delta
         if next < 0 { next = 0 }
         if next >= ids.count { next = ids.count - 1 }
+        // Flush pending adhoc edits when leaving that pane.
+        if resolvedSidebar == SkillsPickerFormatter.sidebarAdhoc,
+           ids[next] != SkillsPickerFormatter.sidebarAdhoc {
+            flushAdhocSave()
+        }
         sidebarID = ids[next]
     }
 
@@ -867,9 +1189,17 @@ struct SkillsPickerView: View {
     }
 
     private func reload(query: String) async {
+        let sidebar = resolvedSidebar
+        if sidebar == SkillsPickerFormatter.sidebarClipboard {
+            await loadClipboardPeek()
+            return
+        }
+        if sidebar == SkillsPickerFormatter.sidebarAdhoc {
+            await loadAdhocText()
+            return
+        }
         loading = items.isEmpty
         errorText = nil
-        let sidebar = resolvedSidebar
         do {
             let next: [InsertPickerItem]
             switch sidebar {
@@ -909,7 +1239,7 @@ struct SkillsPickerView: View {
             errorText = error.localizedDescription
         }
         loading = false
-        if !showCreateTemplate && !showAddFile {
+        if !showCreateTemplate && !showAddFile && SkillsPickerFormatter.isSearchableSidebar(sidebar) {
             searchFocused = true
             DispatchQueue.main.async {
                 searchFocused = true

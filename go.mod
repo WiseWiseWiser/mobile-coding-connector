@@ -11,7 +11,7 @@ require (
 	github.com/xhd2015/agent-pro v0.0.168
 	github.com/xhd2015/bak-files v0.0.3
 	github.com/xhd2015/doctest v0.0.117
-	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.151
+	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.152
 	github.com/xhd2015/gitops v0.0.31
 	github.com/xhd2015/kool v0.0.151
 	github.com/xhd2015/less-gen v0.0.19
@@ -37,6 +37,7 @@ require (
 	github.com/clipperhouse/displaywidth v0.9.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
+	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -53,6 +54,11 @@ require (
 	github.com/xhd2015/go-inspect v0.0.49 // indirect
 	github.com/xhd2015/less-flags v1.0.6 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
+	golang.design/x/clipboard v0.8.0 // indirect
+	golang.design/x/x11 v0.2.0 // indirect
+	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
+	golang.org/x/image v0.28.0 // indirect
+	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.33.0 // indirect

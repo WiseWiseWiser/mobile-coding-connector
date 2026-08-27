@@ -420,6 +420,42 @@ final class ServerClient {
         return try JSONDecoder().decode(FilesAddResponse.self, from: data)
     }
 
+    /// Non-destructive clipboard summary via GET /api/local/clipboard/peek.
+    func peekClipboard() async throws -> ClipboardPeekResponse {
+        let (data, response) = try await get(path: "/api/local/clipboard/peek")
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "clipboard peek failed"))
+        }
+        return try JSONDecoder().decode(ClipboardPeekResponse.self, from: data)
+    }
+
+    /// Dump clipboard to a temp file via POST /api/local/clipboard/dump.
+    func dumpClipboard() async throws -> ClipboardDumpResponse {
+        let (data, response) = try await postJSON(path: "/api/local/clipboard/dump", body: [:])
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "clipboard dump failed"))
+        }
+        return try JSONDecoder().decode(ClipboardDumpResponse.self, from: data)
+    }
+
+    /// Load adhoc text via GET /api/local/adhoc.
+    func getAdhocText() async throws -> AdhocTextResponse {
+        let (data, response) = try await get(path: "/api/local/adhoc")
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "adhoc get failed"))
+        }
+        return try JSONDecoder().decode(AdhocTextResponse.self, from: data)
+    }
+
+    /// Persist adhoc text via PUT /api/local/adhoc.
+    func putAdhocText(content: String) async throws -> AdhocTextResponse {
+        let (data, response) = try await putJSON(path: "/api/local/adhoc", body: ["content": content])
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "adhoc put failed"))
+        }
+        return try JSONDecoder().decode(AdhocTextResponse.self, from: data)
+    }
+
     /// Live Desktops + iTerm sessions + notes via GET /api/local/iterm2/inventory.
     /// Pass refresh=true to wait for a smart recapture (`?refresh=1`).
     /// Pass spaceID to recapture that Desktop only (`space_id=`).
@@ -579,6 +615,18 @@ final class ServerClient {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(&request)
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try await session.data(for: request)
+    }
+
+    private func putJSON(path: String, body: [String: Any]) async throws -> (Data, URLResponse) {
+        guard let url = URL(string: baseURL + path) else {
+            throw ServerClientError.unreachable("invalid url")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         applyAuth(&request)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

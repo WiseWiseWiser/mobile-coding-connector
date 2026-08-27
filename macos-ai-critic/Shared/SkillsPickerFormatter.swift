@@ -6,8 +6,20 @@ public enum SkillsPickerFormatter {
     public static let sidebarSkills = "skills"
     public static let sidebarTemplates = "templates"
     public static let sidebarFiles = "files"
+    public static let sidebarClipboard = "clipboard"
+    public static let sidebarAdhoc = "adhoc"
     public static let sidebarDefaultsKey = "insertPickerSidebarID"
     public static let sidebarWidthDefaultsKey = "insertPickerSidebarWidth"
+    /// Persisted clipboard "Copy file path" prefix (as typed, including trailing space).
+    public static let clipboardPathPrefixDefaultsKey = "insertPickerClipboardPathPrefix"
+
+    /// Ordered sidebar ids (All → Files, then non-search Clipboard / Adhoc).
+    public static let sidebarOrder: [String] = [
+        sidebarAll, sidebarSkills, sidebarTemplates, sidebarFiles, sidebarClipboard, sidebarAdhoc,
+    ]
+
+    /// Debounce for adhoc text PUT (trailing).
+    public static let adhocSaveDebounceNanoseconds: UInt64 = 400_000_000
 
     /// Default / collapsed icon-rail width (points).
     public static let sidebarIconWidth: Double = 52
@@ -35,9 +47,22 @@ public enum SkillsPickerFormatter {
         case sidebarSkills: return "wrench.and.screwdriver"
         case sidebarTemplates: return "doc.text"
         case sidebarFiles: return "folder"
+        case sidebarClipboard: return "doc.on.clipboard"
+        case sidebarAdhoc: return "note.text"
         default: return "square.grid.2x2"
         }
     }
+
+    /// Searchable sidebars hit list APIs; clipboard/adhoc do not.
+    public static func isSearchableSidebar(_ id: String) -> Bool {
+        switch normalizeSidebarID(id) {
+        case sidebarClipboard, sidebarAdhoc:
+            return false
+        default:
+            return true
+        }
+    }
+
 
     public static func formatWindowTitle() -> String {
         "Insert"
@@ -57,6 +82,8 @@ public enum SkillsPickerFormatter {
         case sidebarSkills: return "Skills"
         case sidebarTemplates: return "Templates"
         case sidebarFiles: return "Files"
+        case sidebarClipboard: return "Clipboard"
+        case sidebarAdhoc: return "Adhoc text"
         default: return ""
         }
     }
@@ -64,7 +91,7 @@ public enum SkillsPickerFormatter {
     public static func normalizeSidebarID(_ id: String?) -> String {
         let trimmed = (id ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         switch trimmed {
-        case sidebarAll, sidebarSkills, sidebarTemplates, sidebarFiles:
+        case sidebarAll, sidebarSkills, sidebarTemplates, sidebarFiles, sidebarClipboard, sidebarAdhoc:
             return trimmed
         default:
             return sidebarAll
@@ -181,6 +208,10 @@ public enum SkillsPickerFormatter {
             return "No skills registered"
         case sidebarFiles:
             return "No files registered"
+        case sidebarClipboard:
+            return "Clipboard empty"
+        case sidebarAdhoc:
+            return "Adhoc text"
         default:
             return "Nothing registered"
         }
@@ -194,8 +225,84 @@ public enum SkillsPickerFormatter {
             return "register a root with: my skills --add-dir"
         case sidebarFiles:
             return "Add a file below, or: my files --add"
+        case sidebarClipboard:
+            return "Copy something, then Refresh"
+        case sidebarAdhoc:
+            return "Compose temporary text; auto-saves"
         default:
             return "register with: my skills / my templates / my files"
+        }
+    }
+
+    public static func formatClipboardHeading() -> String { "Clipboard" }
+    public static func formatAdhocHeading() -> String { "Adhoc text" }
+    public static func formatDumpToFileTitle() -> String { "Dump to file" }
+    public static func formatCopyFilePathTitle() -> String { "Copy file path" }
+    public static func formatCopyTextTitle() -> String { "Copy text" }
+    public static func formatRefreshTitle() -> String { "Refresh" }
+    public static func formatLastDumpLabel() -> String { "Last dump:" }
+    public static func formatClipboardKindLabel() -> String { "Kind:" }
+    public static func formatClipboardSizeLabel() -> String { "Size:" }
+    public static func formatPathPrefixLabel() -> String { "Path prefix" }
+    public static func formatPathPrefixPlaceholder() -> String { "optional, e.g. image " }
+    public static func formatCopyWillUseLabel() -> String { "Copy will use:" }
+    public static func formatAdhocSavedStatus() -> String { "Saved" }
+    public static func formatAdhocSavingStatus() -> String { "Saving…" }
+    public static func formatAdhocDirtyStatus() -> String { "Unsaved" }
+    public static func formatPathCopiedToast() -> String { "Path copied" }
+
+    /// Pasteboard string for Copy file path: prefix as typed + path (no auto space).
+    /// Empty path → empty string. Empty prefix → path only.
+    public static func formatClipboardCopyText(prefix: String, path: String) -> String {
+        let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedPath.isEmpty { return "" }
+        if prefix.isEmpty { return trimmedPath }
+        return prefix + trimmedPath
+    }
+
+    /// Live preview line under the prefix field (empty path → empty).
+    public static func formatCopyWillUsePreview(prefix: String, path: String) -> String {
+        let text = formatClipboardCopyText(prefix: prefix, path: path)
+        if text.isEmpty { return "" }
+        return "\(formatCopyWillUseLabel()) \(text)"
+    }
+
+    public static func formatClipboardKind(_ kind: String) -> String {
+        let k = kind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch k {
+        case "", "empty": return "empty"
+        case "text": return "text"
+        case "image": return "image"
+        case "html": return "html"
+        case "svg": return "svg"
+        case "rtf": return "rtf"
+        case "pdf": return "pdf"
+        case "unsupported": return "unsupported"
+        default: return k
+        }
+    }
+
+    public static func formatClipboardSize(bytes: Int) -> String {
+        if bytes <= 0 { return "0 B" }
+        let units = ["B", "KB", "MB", "GB"]
+        var value = Double(bytes)
+        var i = 0
+        while value >= 1024 && i < units.count - 1 {
+            value /= 1024
+            i += 1
+        }
+        if i == 0 {
+            return "\(bytes) B"
+        }
+        return String(format: "%.1f %@", value, units[i])
+    }
+
+    public static func canDumpClipboard(kind: String) -> Bool {
+        switch kind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "", "empty", "unsupported":
+            return false
+        default:
+            return true
         }
     }
 
@@ -264,6 +371,8 @@ public enum SkillsPickerFormatter {
             return "Search skills"
         case sidebarFiles:
             return "Search files"
+        case sidebarClipboard, sidebarAdhoc:
+            return ""
         default:
             return "Search skills, templates & files"
         }

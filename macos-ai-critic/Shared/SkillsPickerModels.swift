@@ -109,6 +109,94 @@ public enum SkillsPickerHotKey {
     public static let defaultModifiers = 256 | 512
 }
 
+/// GET /api/local/clipboard/peek
+public struct ClipboardPeekResponse: Decodable, Equatable {
+    public let kind: String
+    public let ext: String
+    public let bytes: Int
+    public let preview: String
+    public let mime: String
+    public let available: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case kind, ext, bytes, preview, mime, available
+    }
+
+    public init(
+        kind: String = "empty",
+        ext: String = "",
+        bytes: Int = 0,
+        preview: String = "",
+        mime: String = "",
+        available: [String] = []
+    ) {
+        self.kind = kind
+        self.ext = ext
+        self.bytes = bytes
+        self.preview = preview
+        self.mime = mime
+        self.available = available
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "empty"
+        ext = try c.decodeIfPresent(String.self, forKey: .ext) ?? ""
+        bytes = try c.decodeIfPresent(Int.self, forKey: .bytes) ?? 0
+        preview = try c.decodeIfPresent(String.self, forKey: .preview) ?? ""
+        mime = try c.decodeIfPresent(String.self, forKey: .mime) ?? ""
+        available = try c.decodeIfPresent([String].self, forKey: .available) ?? []
+    }
+}
+
+/// POST /api/local/clipboard/dump
+public struct ClipboardDumpResponse: Decodable, Equatable {
+    public let path: String
+    public let kind: String
+    public let ext: String
+    public let bytes: Int
+
+    enum CodingKeys: String, CodingKey {
+        case path, kind, ext, bytes
+    }
+
+    public init(path: String, kind: String = "", ext: String = "", bytes: Int = 0) {
+        self.path = path
+        self.kind = kind
+        self.ext = ext
+        self.bytes = bytes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
+        kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        ext = try c.decodeIfPresent(String.self, forKey: .ext) ?? ""
+        bytes = try c.decodeIfPresent(Int.self, forKey: .bytes) ?? 0
+    }
+}
+
+/// GET/PUT /api/local/adhoc
+public struct AdhocTextResponse: Decodable, Equatable {
+    public let content: String
+    public let path: String
+
+    enum CodingKeys: String, CodingKey {
+        case content, path
+    }
+
+    public init(content: String = "", path: String = "") {
+        self.content = content
+        self.path = path
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        content = try c.decodeIfPresent(String.self, forKey: .content) ?? ""
+        path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
+    }
+}
+
 /// GET /api/local/templates
 public struct TemplatesListResponse: Decodable, Equatable {
     public let templates: [TemplatesPickerItem]

@@ -53,6 +53,8 @@ import (
 	"github.com/xhd2015/ai-critic/server/github"
 	"github.com/xhd2015/ai-critic/server/keepalive"
 	"github.com/xhd2015/ai-critic/server/localiterm2"
+	"github.com/xhd2015/ai-critic/server/localadhoc"
+	"github.com/xhd2015/ai-critic/server/localclipboard"
 	"github.com/xhd2015/ai-critic/server/localskills"
 	"github.com/xhd2015/ai-critic/server/localfiles"
 	"github.com/xhd2015/ai-critic/server/localtemplates"
@@ -648,6 +650,8 @@ func RegisterAPI(mux *http.ServeMux) error {
 	localskills.Register(mux, &localskills.Handler{})
 	localtemplates.Register(mux, &localtemplates.Handler{})
 	localfiles.Register(mux, &localfiles.Handler{})
+	localclipboard.Register(mux, &localclipboard.Handler{})
+	localadhoc.Register(mux, &localadhoc.Handler{})
 
 	// Server status API
 	RegisterServerStatusAPI(mux)
