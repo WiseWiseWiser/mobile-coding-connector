@@ -299,6 +299,7 @@ func Serve(port int, dev bool) error {
 		sig := <-c
 		// Kill agent children immediately so SIGTERM shutdown completes before test/process timeouts.
 		agents.Shutdown()
+		terminal.Shutdown()
 		// SIGTERM from tests expects the process to exit promptly; avoid blocking on extension cleanup.
 		if sig == syscall.SIGTERM {
 			os.Exit(0)
@@ -332,6 +333,8 @@ func Serve(port int, dev bool) error {
 			// Stop agent children first — highest priority for orphan cleanup on shutdown.
 			fmt.Println("Stopping agents module...")
 			agents.Shutdown()
+			fmt.Println("Stopping terminal PTY sessions...")
+			terminal.Shutdown()
 
 			// Stop all domain health check goroutines
 			fmt.Println("Stopping domain health check goroutines...")

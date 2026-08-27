@@ -70,6 +70,13 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/terminal/config", handleConfig)
 }
 
+// Shutdown reaps in-process ptywrap sessions (default shells and SSH PTYs).
+func Shutdown() {
+	if adapterMgr != nil {
+		adapterMgr.Close()
+	}
+}
+
 type sshControlMessage struct {
 	Type string `json:"type"`
 	Key  string `json:"key,omitempty"`
