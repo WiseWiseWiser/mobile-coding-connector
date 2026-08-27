@@ -1,0 +1,6 @@
+{
+  "lastRunAt": "2026-08-26T13:31:50Z",
+  "exitCode": 3,
+  "message": "missing unison-fsmonitor",
+  "outcome": "failed"
+}

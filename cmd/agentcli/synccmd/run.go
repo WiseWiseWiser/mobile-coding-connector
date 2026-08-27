@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,8 @@ type RunOpts struct {
 	Name                              string
 	SkipDoctor                        bool
 	Interactive                       bool
+	Watch                             bool // -repeat watch (foreground until cancel)
+	IntervalSeconds                   int  // -repeat N when >0 (polled continuous; exclusive with Watch)
 	LocalUnisonPath                   string // empty → "unison"
 	Exec                              ExecFunc
 	Stdout, Stderr                    io.Writer
@@ -62,6 +65,15 @@ func BuildUnisonCmd(opts RunOpts) (argv []string, env []string, workdir string, 
 	// Non-interactive + pair.Batch → -batch; Interactive always omits -batch.
 	if !opts.Interactive && pair.Batch {
 		argv = append(argv, "-batch")
+	}
+	if opts.Watch && opts.IntervalSeconds > 0 {
+		return nil, nil, "", fmt.Errorf("--watch and --interval cannot both be set")
+	}
+	// Watch → FS-event continuous mode; IntervalSeconds → polled -repeat N.
+	if opts.Watch {
+		argv = append(argv, "-repeat", "watch")
+	} else if opts.IntervalSeconds > 0 {
+		argv = append(argv, "-repeat", fmt.Sprintf("%d", opts.IntervalSeconds))
 	}
 
 	env = buildChildEnv(pair.LocalHostname, opts.UnisonDir)
@@ -163,7 +175,8 @@ func RunPair(opts RunOpts) (RunResult, error) {
 	result.Duration = time.Since(start)
 	result.ExitCode = exitCode
 
-	outcome, detail, transferred, failed, skipped := parseUnisonOutcome(exitCode, capture.String())
+	captured := capture.String()
+	outcome, detail, transferred, failed, skipped := parseUnisonOutcome(exitCode, captured)
 	msg := detail
 	if msg == "" {
 		if exitCode != 0 {
@@ -176,6 +189,11 @@ func RunPair(opts RunOpts) (RunResult, error) {
 		msg = execErr.Error()
 		outcome = OutcomeFailed
 	}
+	missingFS := exitCode != 0 && isMissingFsmonitorOutput(captured)
+	if missingFS {
+		msg = "missing unison-fsmonitor"
+		outcome = OutcomeFailed
+	}
 	result.Message = msg
 
 	// Write enriched state after Exec returns (including non-zero exit).
@@ -186,6 +204,9 @@ func RunPair(opts RunOpts) (RunResult, error) {
 	}
 
 	if exitCode != 0 {
+		if missingFS {
+			return result, fsmonitorMissingError(exitCode)
+		}
 		if execErr != nil {
 			return result, fmt.Errorf("unison exit code %d: %w", exitCode, execErr)
 		}
@@ -196,6 +217,24 @@ func RunPair(opts RunOpts) (RunResult, error) {
 	}
 	_ = workdir
 	return result, nil
+}
+
+// isMissingFsmonitorOutput detects Unison's missing file-monitor helper failure.
+func isMissingFsmonitorOutput(output string) bool {
+	low := strings.ToLower(output)
+	if strings.Contains(low, "file monitoring helper") {
+		return true
+	}
+	return strings.Contains(low, "unison-fsmonitor") && strings.Contains(low, "not found")
+}
+
+// fsmonitorMissingError is the actionable CLI error for --watch without helpers.
+func fsmonitorMissingError(exitCode int) error {
+	return fmt.Errorf("--watch needs unison-fsmonitor on both sides (unison exit %d: no file monitoring helper)\n"+
+		"  local:  brew install autozimu/homebrew-formulas/unison-fsmonitor\n"+
+		"  remote: place unison-fsmonitor next to servercmd (e.g. /usr/local/bin), same Unison version\n"+
+		"          older glibc (e.g. Debian 11): use the official Unison *static* linux release build",
+		exitCode)
 }
 
 // defaultExec runs the binary via os/exec with child-only env (no Setenv).

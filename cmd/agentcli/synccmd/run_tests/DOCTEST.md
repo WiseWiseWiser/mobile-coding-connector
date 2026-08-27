@@ -35,7 +35,7 @@ last-run state under `{StoreDir}/state/<name>.json`.
   `(ctx, name, argv, env, stdout, stderr) (exitCode int, err error)`; production
   default uses `os/exec` with `cmd.Env` merge (no `Setenv` on the parent process).
 - **synccmd.RunCLI** — argv after `sync`; dispatches `unison run <name>
-  [--skip-doctor] [--interactive]`; wires CLIOpts.Exec + doctor probe hooks.
+  [--skip-doctor] [--interactive] [--watch|--interval DUR]`; wires CLIOpts.Exec + doctor probe hooks.
 - **Store / pairs.json** — pair definitions (P1); run requires a resolvable name.
 - **State file** — `{StoreDir}/state/<name>.json` written after Exec returns
   (exit code, lastRunAt, message; optional duration/versions).
@@ -46,7 +46,8 @@ last-run state under `{StoreDir}/state/<name>.json`.
 
 - Argv: binary from `LocalUnisonPath` or `"unison"`; profile arg
   `remote-agent-<name>`; non-interactive may pass `-batch` when pair/batch policy
-  wants batch; `--interactive` omits `-batch`.
+  wants batch; `--interactive` omits `-batch`; `--watch` appends `-repeat watch`;
+  `--interval DUR` appends `-repeat N` (seconds).
 - Child env always sets `UNISONLOCALHOSTNAME=<pair.LocalHostname>`; may set
   `UNISON=<UnisonDir>` so profile discovery finds `.prf` files.
 - Skip doctor false + doctor fail → non-nil error, **no** Exec, **no** state write.
@@ -66,15 +67,18 @@ last-run state under `{StoreDir}/state/<name>.json`.
 cmd/agentcli/synccmd/run_tests/     [Request{Mode, PairName, flags, Exec…}]
 │                                   Run: seed → BuildUnisonCmd | RunPair | RunCLI
 ├── help/
-│   └── lists-run/                  # unison help includes run
+│   └── lists-run/                  # unison help includes run + --watch
 ├── build/                          # BuildUnisonCmd pure
 │   ├── batch-default/              # profile + UNISONLOCALHOSTNAME (+ batch)
-│   └── interactive/                # interactive → no -batch in argv
+│   ├── interactive/                # interactive → no -batch in argv
+│   ├── watch-repeat/               # Watch → -repeat watch (+ batch)
+│   └── interval-repeat/            # IntervalSeconds → -repeat N (+ batch)
 ├── library/                        # RunPair
 │   ├── success/
 │   │   └── writes-state-exit-0/    # fake Exec 0 → state exitCode 0
 │   ├── non-zero/
-│   │   └── writes-state-and-error/ # fake Exec non-zero → state + error
+│   │   ├── writes-state-and-error/ # fake Exec non-zero → state + error
+│   │   └── fsmonitor-missing-hint/ # helper-missing output → install hints
 │   ├── doctor-gate/
 │   │   ├── aborts-when-doctor-fails/       # no skip → no Exec
 │   │   └── skip-doctor-allows-serve-down/  # skip → Exec despite serve down
@@ -82,8 +86,14 @@ cmd/agentcli/synccmd/run_tests/     [Request{Mode, PairName, flags, Exec…}]
 │       ├── unknown-pair/
 │       └── missing-name/
 └── cli/
-    └── success-skip-doctor/        # RunCLI run --skip-doctor + fake Exec
+    ├── success-skip-doctor/        # RunCLI run --skip-doctor + fake Exec
+    ├── watch-skip-doctor/          # --watch → Exec argv -repeat watch
+    ├── watch-interactive-conflict/ # --watch + --interactive → error
+    ├── interval-skip-doctor/       # --interval 60s → -repeat 60
+    ├── interval-watch-conflict/    # --interval + --watch → error
+    └── interval-invalid/           # bare --interval 60 → parse error
 ```
+
 
 **Significance order:** surface (help | build | library | cli) → outcome class
 (success | non-zero | doctor-gate | resolve | flag variant) → concrete leaf.
@@ -92,16 +102,24 @@ cmd/agentcli/synccmd/run_tests/     [Request{Mode, PairName, flags, Exec…}]
 
 | # | Leaf | Description |
 |---|------|-------------|
-| 1 | `help/lists-run` | `unison --help` stdout lists `run` |
+| 1 | `help/lists-run` | `unison --help` stdout lists `run`, `--watch`, `--interval` |
 | 2 | `build/batch-default` | BuildUnisonCmd: profile name + `UNISONLOCALHOSTNAME` in env |
 | 3 | `build/interactive` | Interactive build omits `-batch` |
-| 4 | `library/success/writes-state-exit-0` | RunPair Exec 0 → state exitCode 0 |
-| 5 | `library/non-zero/writes-state-and-error` | RunPair Exec ≠0 → state + error |
-| 6 | `library/doctor-gate/aborts-when-doctor-fails` | doctor fail, no skip → no Exec |
-| 7 | `library/doctor-gate/skip-doctor-allows-serve-down` | --skip-doctor + serve down → Exec |
-| 8 | `library/resolve/unknown-pair` | unknown name → `unknown pair` |
-| 9 | `library/resolve/missing-name` | empty name → requires name error |
-| 10 | `cli/success-skip-doctor` | `unison run mad-max --skip-doctor` → state, nil err |
+| 4 | `build/watch-repeat` | Watch build includes `-repeat watch` (+ `-batch`) |
+| 5 | `build/interval-repeat` | IntervalSeconds → `-repeat N` (+ `-batch`) |
+| 6 | `library/success/writes-state-exit-0` | RunPair Exec 0 → state exitCode 0 |
+| 7 | `library/non-zero/writes-state-and-error` | RunPair Exec ≠0 → state + error |
+| 8 | `library/non-zero/fsmonitor-missing-hint` | missing fsmonitor output → install hints |
+| 9 | `library/doctor-gate/aborts-when-doctor-fails` | doctor fail, no skip → no Exec |
+| 10 | `library/doctor-gate/skip-doctor-allows-serve-down` | --skip-doctor + serve down → Exec |
+| 11 | `library/resolve/unknown-pair` | unknown name → `unknown pair` |
+| 12 | `library/resolve/missing-name` | empty name → requires name error |
+| 13 | `cli/success-skip-doctor` | `unison run mad-max --skip-doctor` → state, nil err |
+| 14 | `cli/watch-skip-doctor` | `run --watch --skip-doctor` → Exec argv has `-repeat watch` |
+| 15 | `cli/watch-interactive-conflict` | `--watch --interactive` → error |
+| 16 | `cli/interval-skip-doctor` | `--interval 60s --skip-doctor` → `-repeat 60` |
+| 17 | `cli/interval-watch-conflict` | `--interval` + `--watch` → error |
+| 18 | `cli/interval-invalid` | bare `--interval 60` → parse error |
 
 ## Exported APIs (implementer contract — P3)
 
@@ -110,13 +128,13 @@ Package `github.com/xhd2015/ai-critic/cmd/agentcli/synccmd` (additions on top of
 | Symbol | Role |
 |--------|------|
 | `ExecFunc` | `func(ctx context.Context, name string, argv []string, env []string, stdout, stderr io.Writer) (exitCode int, err error)` |
-| `RunOpts` | StoreDir, UnisonDir, SSHConfigDir, Name, SkipDoctor, Interactive, LocalUnisonPath, Exec, Stdout, Stderr, Context, doctor probe hooks |
+| `RunOpts` | StoreDir, UnisonDir, SSHConfigDir, Name, SkipDoctor, Interactive, Watch, IntervalSeconds, LocalUnisonPath, Exec, Stdout, Stderr, Context, doctor probe hooks |
 | `RunResult` | ExitCode int, Message string, Duration (time.Duration or ms), Argv []string (optional echo) |
 | `BuildUnisonCmd` | `(opts RunOpts) (argv []string, env []string, workdir string, err error)` |
 | `RunPair` | `(opts RunOpts) (RunResult, error)` |
 | `CLIOpts` | + `Exec ExecFunc` (doctor hooks already from P2) |
-| `RunCLI` | dispatches `unison run <name> [--skip-doctor] [--interactive]` |
-| `UnisonUsage` | includes `run` |
+| `RunCLI` | dispatches `unison run <name> [--skip-doctor] [--interactive] [--watch|--interval DUR]` |
+| `UnisonUsage` | includes `run`, `--watch`, `--interval` |
 
 ### RunOpts fields
 
@@ -128,6 +146,8 @@ type RunOpts struct {
     Name                              string
     SkipDoctor                        bool
     Interactive                       bool
+    Watch                             bool // -repeat watch
+    IntervalSeconds                   int  // -repeat N when >0
     LocalUnisonPath                   string // empty → "unison"
     Exec                              ExecFunc
     Stdout, Stderr                    io.Writer
@@ -155,6 +175,8 @@ type RunResult struct {
 | profile | contains `remote-agent-<name>` (Unison profile basename without `.prf`) |
 | batch | non-interactive + pair.Batch (default true): include `-batch` somewhere in argv |
 | interactive | `opts.Interactive` true → argv must **not** contain `-batch` |
+| watch | `opts.Watch` true → argv includes adjacent `-repeat` `watch` |
+| interval | `opts.IntervalSeconds` > 0 → argv includes adjacent `-repeat` and decimal seconds string |
 | env | slice suitable for `cmd.Env` (full child env or overlay); **must** include `UNISONLOCALHOSTNAME=<pair.LocalHostname>` |
 | UNISON | may set `UNISON=<UnisonDir>` so Unison finds profiles under UnisonDir |
 | process env | **never** `os.Setenv` for hostname; child env only |
@@ -200,8 +222,13 @@ Compatible with P2 `Status` reader (`lastRunAt`, `exitCode`, `message`).
 | `unison run <name>` | RunPair; doctor on; batch from pair |
 | `unison run <name> --skip-doctor` | skip doctor gate |
 | `unison run <name> --interactive` | interactive (no `-batch`) |
+| `unison run <name> --watch` | continuous `-repeat watch` (foreground) |
+| `unison run <name> --interval 60s` | continuous `-repeat 60` (foreground) |
+| `unison run <name> --watch --interactive` | error: incompatible flags |
+| `unison run <name> --interval 60s --watch` | error: incompatible flags |
+| `unison run <name> --interval 60` | error: duration needs unit |
 | `unison run` (no name) | error (missing name) |
-| `unison` / `unison --help` | Usage listing `run` (+ P1/P2 verbs) |
+| `unison` / `unison --help` | Usage listing `run` + `--watch` + `--interval` (+ P1/P2 verbs) |
 
 ### Error substring contracts
 
@@ -211,6 +238,7 @@ Compatible with P2 `Status` reader (`lastRunAt`, `exitCode`, `message`).
 | missing name | non-empty; prefer `run` and/or `name` / `require` |
 | doctor fail (no skip) | non-nil (prefer `doctor` / `fail` / `check`) |
 | Exec non-zero | exit code digit(s) or non-empty failure text |
+| missing fsmonitor helper text | error mentions `unison-fsmonitor` + install hints (not bare exit only) |
 | nil Exec in library when required | non-nil (tests inject Exec) |
 
 ## How to Run
@@ -262,6 +290,8 @@ type Request struct {
 	// Flags for library RunPair / BuildUnisonCmd.
 	SkipDoctor      bool
 	Interactive     bool
+	Watch           bool
+	IntervalSeconds int
 	LocalUnisonPath string
 
 	// FakeExitCode is returned by the harness default Exec when Exec is nil.
@@ -377,6 +407,8 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 			Name:            req.PairName,
 			SkipDoctor:      req.SkipDoctor,
 			Interactive:     req.Interactive,
+			Watch:           req.Watch,
+			IntervalSeconds: req.IntervalSeconds,
 			LocalUnisonPath: req.LocalUnisonPath,
 		})
 		resp.Argv = argv
@@ -396,6 +428,8 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 			Name:            req.PairName,
 			SkipDoctor:      req.SkipDoctor,
 			Interactive:     req.Interactive,
+			Watch:           req.Watch,
+			IntervalSeconds: req.IntervalSeconds,
 			LocalUnisonPath: req.LocalUnisonPath,
 			Exec:            makeExec(),
 			Stdout:          &outBuf,
@@ -606,6 +640,16 @@ func argvJoined(argv []string) string {
 func argvHasToken(argv []string, tok string) bool {
 	for _, a := range argv {
 		if a == tok {
+			return true
+		}
+	}
+	return false
+}
+
+// argvHasAdjacent reports that a is immediately followed by b in argv.
+func argvHasAdjacent(argv []string, a, b string) bool {
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] == a && argv[i+1] == b {
 			return true
 		}
 	}

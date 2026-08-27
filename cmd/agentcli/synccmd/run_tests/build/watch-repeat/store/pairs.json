@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "defaultPair": "",
+  "pairs": [
+    {
+      "name": "mad-max",
+      "backend": "unison",
+      "local": "/Users/xhd2015/.wrk/worktrees/ai-master-2026-08-26-sync-the-construction-workspace/external/ai-critic/cmd/agentcli/synccmd/run_tests/build/watch-repeat/workspace-local",
+      "remote": "/Users/xhd2015/.wrk/worktrees/ai-master-2026-08-26-sync-the-construction-workspace/external/ai-critic/cmd/agentcli/synccmd/run_tests/build/watch-repeat/workspace-remote",
+      "prefer": "newer",
+      "ignore": [
+        "Name .DS_Store"
+      ],
+      "localHostname": "remote-agent-mad-max",
+      "remoteUnison": "/usr/local/bin/unison",
+      "times": true,
+      "auto": true,
+      "batch": true
+    }
+  ]
+}

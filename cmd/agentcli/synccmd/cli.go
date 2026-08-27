@@ -1,10 +1,14 @@
 package synccmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // CLIOpts configures RunCLI (injectable dirs + writers + probe hooks + Exec; parallel-safe).
@@ -61,7 +65,7 @@ Commands:
                                      Remove pair (default: purge profile)
   doctor [<name>]                    Run readiness checks for a pair
   status [<name>] [--check]          Serve + SYNC + LAST SYNC + DETAIL
-  run [<name>] [--skip-doctor] [--interactive]
+  run [<name>] [--skip-doctor] [--interactive] [--watch|--interval DUR]
                                      Run Unison (default pair if name omitted)
   install [--local|--remote|--both]  Ensure Unison binary (default: both)
 
@@ -94,7 +98,7 @@ Flags:
   -h, --help
 `
 
-	runHelp = `Usage: remote-agent sync unison run [<name>] [--skip-doctor] [--interactive]
+	runHelp = `Usage: remote-agent sync unison run [<name>] [--skip-doctor] [--interactive] [--watch|--interval DUR]
        remote-agent sync run [<name>] …
 
 Run Unison for a pair. Name may be omitted when defaultPair is set or only one pair exists.
@@ -102,7 +106,11 @@ Run Unison for a pair. Name may be omitted when defaultPair is set or only one p
 Flags:
   --skip-doctor    skip readiness checks
   --interactive    non-batch Unison (may prompt)
+  --watch          keep running; resync on filesystem changes (-repeat watch)
+  --interval DUR   keep running; resync every DUR (e.g. 60s, 5m, 1h → -repeat N)
   -h, --help
+
+--watch and --interval cannot be combined. Continuous modes require batch (not --interactive).
 
 Prerequisite: remote-agent ssh --serve
 `
@@ -301,7 +309,7 @@ func runInstall(args []string, opts CLIOpts) error {
 	return err
 }
 
-// runRun handles `run [<name>] [--skip-doctor] [--interactive]`.
+// runRun handles `run [<name>] [--skip-doctor] [--interactive] [--watch|--interval DUR]`.
 func runRun(args []string, opts CLIOpts) error {
 	if hasHelpFlag(args) {
 		printUsage(opts.stdout(), runHelp)
@@ -310,6 +318,9 @@ func runRun(args []string, opts CLIOpts) error {
 	name := ""
 	skipDoctor := false
 	interactive := false
+	watch := false
+	intervalSeconds := 0
+	intervalSet := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if strings.HasPrefix(a, "-") {
@@ -318,6 +329,19 @@ func runRun(args []string, opts CLIOpts) error {
 				skipDoctor = true
 			case "--interactive":
 				interactive = true
+			case "--watch":
+				watch = true
+			case "--interval":
+				if i+1 >= len(args) {
+					return fmt.Errorf("--interval requires a duration (e.g. 60s, 5m, 1h)\nRun 'remote-agent sync run --help'")
+				}
+				i++
+				sec, err := parseIntervalSeconds(args[i])
+				if err != nil {
+					return err
+				}
+				intervalSeconds = sec
+				intervalSet = true
 			default:
 				return fmt.Errorf("unknown run flag: %s\nRun 'remote-agent sync run --help'", a)
 			}
@@ -328,6 +352,15 @@ func runRun(args []string, opts CLIOpts) error {
 			continue
 		}
 		return fmt.Errorf("run: unexpected argument %q", a)
+	}
+	if watch && intervalSet {
+		return fmt.Errorf("--interval and --watch cannot be combined")
+	}
+	if watch && interactive {
+		return fmt.Errorf("--watch cannot be combined with --interactive")
+	}
+	if intervalSet && interactive {
+		return fmt.Errorf("--interval cannot be combined with --interactive")
 	}
 	// Resolve empty name via store (defaultPair / sole pair).
 	if name == "" {
@@ -341,22 +374,47 @@ func runRun(args []string, opts CLIOpts) error {
 		}
 		name = resolved
 	}
+	ctx := context.Background()
+	if watch || intervalSet {
+		var stop context.CancelFunc
+		ctx, stop = signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+	}
 	_, err := RunPair(RunOpts{
-		StoreDir:      opts.StoreDir,
-		UnisonDir:     opts.UnisonDir,
-		SSHConfigDir:  opts.SSHConfigDir,
-		Name:          name,
-		SkipDoctor:    skipDoctor,
-		Interactive:   interactive,
-		Exec:          opts.Exec,
-		Stdout:        opts.stdout(),
-		Stderr:        opts.stderr(),
-		LocalVersion:  opts.LocalVersion,
-		RemoteVersion: opts.RemoteVersion,
-		ServeOK:       opts.ServeOK,
-		RemotePathOK:  opts.RemotePathOK,
+		StoreDir:        opts.StoreDir,
+		UnisonDir:       opts.UnisonDir,
+		SSHConfigDir:    opts.SSHConfigDir,
+		Name:            name,
+		SkipDoctor:      skipDoctor,
+		Interactive:     interactive,
+		Watch:           watch,
+		IntervalSeconds: intervalSeconds,
+		Exec:            opts.Exec,
+		Stdout:          opts.stdout(),
+		Stderr:          opts.stderr(),
+		Context:         ctx,
+		LocalVersion:    opts.LocalVersion,
+		RemoteVersion:   opts.RemoteVersion,
+		ServeOK:         opts.ServeOK,
+		RemotePathOK:    opts.RemotePathOK,
 	})
 	return err
+}
+
+// parseIntervalSeconds parses a Go duration (60s, 5m, 1h) into whole seconds for Unison -repeat.
+func parseIntervalSeconds(raw string) (int, error) {
+	d, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, fmt.Errorf("invalid --interval: %v (want e.g. 60s, 5m, 1h)", err)
+	}
+	if d < time.Second {
+		return 0, fmt.Errorf("--interval must be at least 1s")
+	}
+	sec := int(d / time.Second)
+	if sec < 1 {
+		return 0, fmt.Errorf("--interval must be at least 1s")
+	}
+	return sec, nil
 }
 
 func runDoctor(args []string, opts CLIOpts) error {

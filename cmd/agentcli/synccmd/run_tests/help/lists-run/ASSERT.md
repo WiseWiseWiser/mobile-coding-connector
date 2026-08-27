@@ -2,7 +2,9 @@
 
 1. `RunErr` empty.
 2. Stdout contains `run`.
-3. Trailing newline.
+3. Stdout contains `--watch`.
+4. Stdout contains `--interval`.
+5. Trailing newline.
 
 ## Side Effects
 
@@ -37,6 +39,12 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	out := resp.Stdout
 	if !strings.Contains(out, "run") {
 		t.Fatalf("stdout missing %q; got:\n%s", "run", out)
+	}
+	if !strings.Contains(out, "--watch") {
+		t.Fatalf("stdout missing %q; got:\n%s", "--watch", out)
+	}
+	if !strings.Contains(out, "--interval") {
+		t.Fatalf("stdout missing %q; got:\n%s", "--interval", out)
 	}
 	if !strings.HasSuffix(out, "\n") {
 		t.Fatalf("stdout must end with trailing newline; got %q", out)
