@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/fuzzy"
-	"github.com/xhd2015/my/libskills"
+	libskills "github.com/xhd2015/my/lib/skills"
 )
 
 func TestListEmpty(t *testing.T) {

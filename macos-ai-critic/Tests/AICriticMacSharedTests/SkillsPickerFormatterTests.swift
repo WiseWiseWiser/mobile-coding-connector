@@ -24,7 +24,11 @@ final class SkillsPickerFormatterTests: XCTestCase {
         XCTAssertEqual(SkillsPickerFormatter.formatSearchPrompt(sidebarID: SkillsPickerFormatter.sidebarSkills), "Search skills")
         XCTAssertEqual(SkillsPickerFormatter.formatSearchPrompt(sidebarID: SkillsPickerFormatter.sidebarTemplates), "Search templates")
         XCTAssertEqual(SkillsPickerFormatter.formatSearchPrompt(sidebarID: SkillsPickerFormatter.sidebarFiles), "Search files")
-        XCTAssertEqual(SkillsPickerFormatter.formatSearchPrompt(sidebarID: SkillsPickerFormatter.sidebarAll), "Search skills, templates & files")
+        XCTAssertEqual(SkillsPickerFormatter.formatSearchPrompt(sidebarID: SkillsPickerFormatter.sidebarCommands), "Search commands")
+        XCTAssertEqual(
+            SkillsPickerFormatter.formatSearchPrompt(sidebarID: SkillsPickerFormatter.sidebarAll),
+            "Search skills, templates, files & commands"
+        )
         XCTAssertEqual(SkillsPickerHotKey.defaultKeyCode, 41)
     }
 
@@ -33,25 +37,30 @@ final class SkillsPickerFormatterTests: XCTestCase {
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarSkills), "Skills")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarTemplates), "Templates")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarFiles), "Files")
+        XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarCommands), "Commands")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarClipboard), "Clipboard")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarAdhoc), "Adhoc text")
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID(nil), SkillsPickerFormatter.sidebarAll)
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("bogus"), SkillsPickerFormatter.sidebarAll)
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("templates"), SkillsPickerFormatter.sidebarTemplates)
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("files"), SkillsPickerFormatter.sidebarFiles)
+        XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("commands"), SkillsPickerFormatter.sidebarCommands)
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("clipboard"), SkillsPickerFormatter.sidebarClipboard)
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("adhoc"), SkillsPickerFormatter.sidebarAdhoc)
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "all"), "square.grid.2x2")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "skills"), "wrench.and.screwdriver")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "templates"), "doc.text")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "files"), "folder")
+        XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "commands"), "terminal")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "clipboard"), "doc.on.clipboard")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "adhoc"), "note.text")
         XCTAssertTrue(SkillsPickerFormatter.isSearchableSidebar("all"))
         XCTAssertTrue(SkillsPickerFormatter.isSearchableSidebar("files"))
+        XCTAssertTrue(SkillsPickerFormatter.isSearchableSidebar("commands"))
         XCTAssertFalse(SkillsPickerFormatter.isSearchableSidebar("clipboard"))
         XCTAssertFalse(SkillsPickerFormatter.isSearchableSidebar("adhoc"))
-        XCTAssertEqual(SkillsPickerFormatter.sidebarOrder.count, 6)
+        XCTAssertEqual(SkillsPickerFormatter.sidebarOrder.count, 7)
+        XCTAssertEqual(SkillsPickerFormatter.sidebarOrder[4], SkillsPickerFormatter.sidebarCommands)
         XCTAssertEqual(SkillsPickerFormatter.sidebarOrder.last, SkillsPickerFormatter.sidebarAdhoc)
     }
 
@@ -185,16 +194,32 @@ final class SkillsPickerFormatterTests: XCTestCase {
         let files = [
             FilesPickerItem(path: "/f/draft.md", name: "draft.md", note: "future", useCount: 4),
         ]
-        let merged = SkillsPickerFormatter.mergeAllItems(skills: skills, templates: templates, files: files)
-        XCTAssertEqual(merged.map(\.title), ["beta", "future", "sink", "alpha"])
-        XCTAssertEqual(merged[0].kind, .skill)
-        XCTAssertEqual(merged[1].kind, .file)
-        XCTAssertEqual(merged[2].kind, .template)
-        XCTAssertEqual(merged[1].clipboardText, "/f/draft.md")
-        XCTAssertEqual(merged[2].clipboardText, "body")
-        XCTAssertEqual(merged[0].clipboardText, "/s/beta/SKILL.md")
+        let commands = [
+            CommandsPickerItem(
+                command: "kool iterm2 tab-set run services",
+                name: "tab-set",
+                note: "tab-set run services",
+                useCount: 6
+            ),
+        ]
+        let merged = SkillsPickerFormatter.mergeAllItems(
+            skills: skills,
+            templates: templates,
+            files: files,
+            commands: commands
+        )
+        XCTAssertEqual(merged.map(\.title), ["tab-set run services", "beta", "future", "sink", "alpha"])
+        XCTAssertEqual(merged[0].kind, .command)
+        XCTAssertEqual(merged[1].kind, .skill)
+        XCTAssertEqual(merged[2].kind, .file)
+        XCTAssertEqual(merged[3].kind, .template)
+        XCTAssertEqual(merged[0].clipboardText, "kool iterm2 tab-set run services")
+        XCTAssertEqual(merged[2].clipboardText, "/f/draft.md")
+        XCTAssertEqual(merged[3].clipboardText, "body")
+        XCTAssertEqual(merged[1].clipboardText, "/s/beta/SKILL.md")
         XCTAssertEqual(SkillsPickerFormatter.formatKindBadge(.template), "TEMPLATE")
         XCTAssertEqual(SkillsPickerFormatter.formatKindBadge(.file), "FILE")
+        XCTAssertEqual(SkillsPickerFormatter.formatKindBadge(.command), "CMD")
     }
 
     func testFileTitleAndMissingSubtitle() {
@@ -206,16 +231,35 @@ final class SkillsPickerFormatterTests: XCTestCase {
         XCTAssertEqual(SkillsPickerFormatter.formatFileSubtitle(ok), "/ok/b.md")
     }
 
+    func testCommandTitleAndSubtitle() {
+        let noted = CommandsPickerItem(
+            command: "kool iterm2 sessions save --file ~/tmp/iterm2-session-spaces-all.json",
+            name: "iTerm2 save sessions",
+            note: "iTerm2 save sessions"
+        )
+        XCTAssertEqual(SkillsPickerFormatter.formatCommandTitle(noted), "iTerm2 save sessions")
+        XCTAssertEqual(
+            SkillsPickerFormatter.formatCommandSubtitle(noted),
+            "kool iterm2 sessions save --file ~/tmp/iterm2-session-spaces-all.json"
+        )
+        let bare = CommandsPickerItem(command: "echo hello")
+        XCTAssertEqual(SkillsPickerFormatter.formatCommandTitle(bare), "echo hello")
+    }
+
     func testEmptyHintsBySidebar() {
         XCTAssertTrue(SkillsPickerFormatter.formatEmptyHint(sidebarID: "skills").contains("my skills"))
         XCTAssertTrue(SkillsPickerFormatter.formatEmptyHint(sidebarID: "templates").contains("Add a template"))
         XCTAssertTrue(SkillsPickerFormatter.formatEmptyHint(sidebarID: "files").contains("Add a file"))
+        XCTAssertTrue(SkillsPickerFormatter.formatEmptyHint(sidebarID: "commands").contains("my commands --add"))
         XCTAssertEqual(SkillsPickerFormatter.formatEmptyTitle(sidebarID: "templates"), "No templates registered")
         XCTAssertEqual(SkillsPickerFormatter.formatEmptyTitle(sidebarID: "files"), "No files registered")
+        XCTAssertEqual(SkillsPickerFormatter.formatEmptyTitle(sidebarID: "commands"), "No commands registered")
         XCTAssertEqual(SkillsPickerFormatter.formatAddButtonTitle(sidebarID: "templates"), "New template")
         XCTAssertEqual(SkillsPickerFormatter.formatAddButtonTitle(sidebarID: "files"), "Add file or folder")
+        XCTAssertEqual(SkillsPickerFormatter.formatAddButtonTitle(sidebarID: "commands"), "Add command")
         XCTAssertTrue(SkillsPickerFormatter.shouldShowAddButton(sidebarID: "templates"))
         XCTAssertTrue(SkillsPickerFormatter.shouldShowAddButton(sidebarID: "files"))
+        XCTAssertTrue(SkillsPickerFormatter.shouldShowAddButton(sidebarID: "commands"))
         XCTAssertFalse(SkillsPickerFormatter.shouldShowAddButton(sidebarID: "skills"))
         XCTAssertFalse(SkillsPickerFormatter.shouldShowAddButton(sidebarID: "all"))
     }
@@ -272,6 +316,18 @@ final class SkillsPickerFormatterTests: XCTestCase {
         XCTAssertFalse(resp.files[0].exists)
         XCTAssertEqual(resp.files[0].useCount, 1)
         XCTAssertEqual(resp.files[0].titleSpans.first?.matched, true)
+    }
+
+    func testDecodeCommandsList() throws {
+        let json = """
+        {"commands":[{"command":"kool iterm2 tab-set run services","name":"tab-set","note":"tab-set","use_count":2,"title_spans":[{"text":"tab","matched":true}],"command_spans":[{"text":"kool","matched":true}]}]}
+        """
+        let resp = try JSONDecoder().decode(CommandsListResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(resp.commands.count, 1)
+        XCTAssertEqual(resp.commands[0].command, "kool iterm2 tab-set run services")
+        XCTAssertEqual(resp.commands[0].useCount, 2)
+        XCTAssertEqual(resp.commands[0].titleSpans.first?.matched, true)
+        XCTAssertEqual(resp.commands[0].commandSpans.first?.text, "kool")
     }
 
     func testDisplaySpansKeepsServerHighlights() {

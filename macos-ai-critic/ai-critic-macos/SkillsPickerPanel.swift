@@ -137,6 +137,7 @@ struct SkillsPickerView: View {
     @State private var templateRoots: [TemplatesRootItem] = []
     @State private var showCreateTemplate = false
     @State private var showAddFile = false
+    @State private var showAddCommand = false
     @State private var creatingBusy = false
     @State private var formError: String?
 
@@ -148,6 +149,9 @@ struct SkillsPickerView: View {
 
     @State private var addFilePath = ""
     @State private var addFileNote = ""
+
+    @State private var addCommandText = ""
+    @State private var addCommandNote = ""
 
     @State private var clipboardPeek: ClipboardPeekResponse?
     @State private var clipboardLoading = false
@@ -199,13 +203,16 @@ struct SkillsPickerView: View {
                         .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .disabled(showCreateTemplate || showAddFile)
+            .disabled(showCreateTemplate || showAddFile || showAddCommand)
 
             if showCreateTemplate {
                 createTemplateOverlay
             }
             if showAddFile {
                 addFileOverlay
+            }
+            if showAddCommand {
+                addCommandOverlay
             }
         }
         .frame(width: 640, height: 420)
@@ -244,22 +251,22 @@ struct SkillsPickerView: View {
         }
         .onExitCommand { handleEscape() }
         .onKeyPress(.upArrow) {
-            guard !showCreateTemplate, !showAddFile, isSearchableSidebar else { return .ignored }
+            guard !showCreateTemplate, !showAddFile, !showAddCommand, isSearchableSidebar else { return .ignored }
             moveSelection(-1)
             return .handled
         }
         .onKeyPress(.downArrow) {
-            guard !showCreateTemplate, !showAddFile, isSearchableSidebar else { return .ignored }
+            guard !showCreateTemplate, !showAddFile, !showAddCommand, isSearchableSidebar else { return .ignored }
             moveSelection(1)
             return .handled
         }
         .onKeyPress(.leftArrow) {
-            guard !showCreateTemplate, !showAddFile else { return .ignored }
+            guard !showCreateTemplate, !showAddFile, !showAddCommand else { return .ignored }
             moveSidebar(-1)
             return .handled
         }
         .onKeyPress(.rightArrow) {
-            guard !showCreateTemplate, !showAddFile else { return .ignored }
+            guard !showCreateTemplate, !showAddFile, !showAddCommand else { return .ignored }
             moveSidebar(1)
             return .handled
         }
@@ -275,6 +282,7 @@ struct SkillsPickerView: View {
             sidebarRow(id: SkillsPickerFormatter.sidebarSkills)
             sidebarRow(id: SkillsPickerFormatter.sidebarTemplates)
             sidebarRow(id: SkillsPickerFormatter.sidebarFiles)
+            sidebarRow(id: SkillsPickerFormatter.sidebarCommands)
             // Draw the rule inside the Clipboard row — a bare Divider list row
             // gets sidebar min-height and shows as a large empty gap.
             sidebarRow(id: SkillsPickerFormatter.sidebarClipboard, separatorAbove: true)
@@ -862,6 +870,11 @@ struct SkillsPickerView: View {
             formError = nil
             return
         }
+        if showAddCommand {
+            showAddCommand = false
+            formError = nil
+            return
+        }
         if isSearchableSidebar, !query.isEmpty {
             query = ""
             return
@@ -988,6 +1001,52 @@ struct SkillsPickerView: View {
         .accessibilityIdentifier("insert-picker-add-file")
     }
 
+    private var addCommandOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.28)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    if !creatingBusy {
+                        showAddCommand = false
+                        formError = nil
+                    }
+                }
+            VStack(alignment: .leading, spacing: 10) {
+                Text(SkillsPickerFormatter.formatAddCommandSheetTitle())
+                    .font(.headline)
+                TextField("Command", text: $addCommandText)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Note (optional)", text: $addCommandNote)
+                    .textFieldStyle(.roundedBorder)
+                if let formError {
+                    Text(formError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        showAddCommand = false
+                        formError = nil
+                    }
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(creatingBusy)
+                    Button("Add") {
+                        Task { await submitAddCommand() }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(creatingBusy)
+                }
+            }
+            .padding(16)
+            .frame(width: 420)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .shadow(radius: 12)
+        }
+        .accessibilityIdentifier("insert-picker-add-command")
+    }
+
     private func beginAdd() {
         formError = nil
         switch resolvedSidebar {
@@ -997,6 +1056,10 @@ struct SkillsPickerView: View {
             addFilePath = ""
             addFileNote = ""
             showAddFile = true
+        case SkillsPickerFormatter.sidebarCommands:
+            addCommandText = ""
+            addCommandNote = ""
+            showAddCommand = true
         default:
             break
         }
@@ -1133,6 +1196,35 @@ struct SkillsPickerView: View {
         }
     }
 
+    private func submitAddCommand() async {
+        let command = addCommandText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !command.isEmpty else {
+            formError = "command is required"
+            return
+        }
+        creatingBusy = true
+        formError = nil
+        defer { creatingBusy = false }
+        let note = addCommandNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let added = try await ServerClient.shared.addCommand(
+                command: command,
+                note: note.isEmpty ? nil : note
+            )
+            showAddCommand = false
+            await reload(query: query)
+            selectedID = InsertPickerItem(
+                kind: .command,
+                skill: nil,
+                template: nil,
+                file: nil,
+                command: added.command
+            ).id
+        } catch {
+            formError = error.localizedDescription
+        }
+    }
+
     private func moveSelection(_ delta: Int) {
         let list = items
         let current = selectedID.flatMap { id in list.firstIndex(where: { $0.id == id }) }
@@ -1184,6 +1276,8 @@ struct SkillsPickerView: View {
                 try? await ServerClient.shared.recordTemplateUse(path: path)
             case .file:
                 try? await ServerClient.shared.recordFileUse(path: path)
+            case .command:
+                try? await ServerClient.shared.recordCommandUse(command: path)
             }
         }
     }
@@ -1213,18 +1307,26 @@ struct SkillsPickerView: View {
             case SkillsPickerFormatter.sidebarFiles:
                 let resp = try await ServerClient.shared.listFiles(query: query)
                 next = resp.files.map { InsertPickerItem(kind: .file, skill: nil, template: nil, file: $0) }
+            case SkillsPickerFormatter.sidebarCommands:
+                let resp = try await ServerClient.shared.listCommands(query: query)
+                next = resp.commands.map {
+                    InsertPickerItem(kind: .command, skill: nil, template: nil, file: nil, command: $0)
+                }
             default:
                 async let skillsResp = ServerClient.shared.listSkills(query: query)
                 async let templatesResp = ServerClient.shared.listTemplates(query: query)
                 async let filesResp = ServerClient.shared.listFiles(query: query)
+                async let commandsResp = ServerClient.shared.listCommands(query: query)
                 let skills = try await skillsResp
                 let templates = try await templatesResp
                 let files = try await filesResp
+                let commands = try await commandsResp
                 templateRoots = templates.roots
                 next = SkillsPickerFormatter.mergeAllItems(
                     skills: skills.skills,
                     templates: templates.templates,
-                    files: files.files
+                    files: files.files,
+                    commands: commands.commands
                 )
             }
             guard !Task.isCancelled else { return }
@@ -1239,7 +1341,7 @@ struct SkillsPickerView: View {
             errorText = error.localizedDescription
         }
         loading = false
-        if !showCreateTemplate && !showAddFile && SkillsPickerFormatter.isSearchableSidebar(sidebar) {
+        if !showCreateTemplate && !showAddFile && !showAddCommand && SkillsPickerFormatter.isSearchableSidebar(sidebar) {
             searchFocused = true
             DispatchQueue.main.async {
                 searchFocused = true

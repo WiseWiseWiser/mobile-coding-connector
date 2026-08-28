@@ -457,3 +457,97 @@ public struct FilesPickerItem: Decodable, Equatable, Identifiable {
         pathSpans = try c.decodeIfPresent([FuzzySpan].self, forKey: .pathSpans) ?? []
     }
 }
+
+/// POST /api/local/commands/add
+public struct CommandsAddResponse: Decodable, Equatable {
+    public let command: CommandsPickerItem
+    public let duplicate: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case command, duplicate
+    }
+
+    public init(command: CommandsPickerItem, duplicate: Bool = false) {
+        self.command = command
+        self.duplicate = duplicate
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        command = try c.decodeIfPresent(CommandsPickerItem.self, forKey: .command) ?? CommandsPickerItem(command: "")
+        duplicate = try c.decodeIfPresent(Bool.self, forKey: .duplicate) ?? false
+    }
+}
+
+/// GET /api/local/commands
+public struct CommandsListResponse: Decodable, Equatable {
+    public let commands: [CommandsPickerItem]
+
+    enum CodingKeys: String, CodingKey {
+        case commands
+    }
+
+    public init(commands: [CommandsPickerItem] = []) {
+        self.commands = commands
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        commands = try c.decodeIfPresent([CommandsPickerItem].self, forKey: .commands) ?? []
+    }
+}
+
+public struct CommandsPickerItem: Decodable, Equatable, Identifiable {
+    public var id: String { command }
+    public let command: String
+    public let name: String
+    public let note: String
+    public let useCount: Int
+    public let lastUsed: String
+    public let score: Int
+    public let titleSpans: [FuzzySpan]
+    public let commandSpans: [FuzzySpan]
+
+    enum CodingKeys: String, CodingKey {
+        case command
+        case name
+        case note
+        case useCount = "use_count"
+        case lastUsed = "last_used"
+        case score
+        case titleSpans = "title_spans"
+        case commandSpans = "command_spans"
+    }
+
+    public init(
+        command: String,
+        name: String = "",
+        note: String = "",
+        useCount: Int = 0,
+        lastUsed: String = "",
+        score: Int = 0,
+        titleSpans: [FuzzySpan] = [],
+        commandSpans: [FuzzySpan] = []
+    ) {
+        self.command = command
+        self.name = name
+        self.note = note
+        self.useCount = useCount
+        self.lastUsed = lastUsed
+        self.score = score
+        self.titleSpans = titleSpans
+        self.commandSpans = commandSpans
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        command = try c.decodeIfPresent(String.self, forKey: .command) ?? ""
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+        useCount = try c.decodeIfPresent(Int.self, forKey: .useCount) ?? 0
+        lastUsed = try c.decodeIfPresent(String.self, forKey: .lastUsed) ?? ""
+        score = try c.decodeIfPresent(Int.self, forKey: .score) ?? 0
+        titleSpans = try c.decodeIfPresent([FuzzySpan].self, forKey: .titleSpans) ?? []
+        commandSpans = try c.decodeIfPresent([FuzzySpan].self, forKey: .commandSpans) ?? []
+    }
+}

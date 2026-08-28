@@ -15,7 +15,7 @@ require (
 	github.com/xhd2015/gitops v0.0.31
 	github.com/xhd2015/kool v0.0.151
 	github.com/xhd2015/less-gen v0.0.19
-	github.com/xhd2015/my v0.0.7
+	github.com/xhd2015/my v0.0.8
 	github.com/xhd2015/skills v0.0.28
 	github.com/xhd2015/tty-watch v0.0.7
 	github.com/xhd2015/wrk v0.0.91

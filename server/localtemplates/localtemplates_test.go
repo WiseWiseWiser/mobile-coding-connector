@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xhd2015/my/libtemplates"
+	libtemplates "github.com/xhd2015/my/lib/templates"
 )
 
 func TestListEmpty(t *testing.T) {

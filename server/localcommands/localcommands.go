@@ -1,6 +1,6 @@
-// Package localfiles serves GET /api/local/files and POST use/add endpoints
+// Package localcommands serves GET /api/local/commands and POST use/add endpoints
 // for the macOS insert picker. Tests inject Store so List never reads $HOME.
-package localfiles
+package localcommands
 
 import (
 	"encoding/json"
@@ -9,45 +9,45 @@ import (
 	"strings"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/fuzzy"
-	"github.com/xhd2015/my/lib/files"
+	libcommands "github.com/xhd2015/my/lib/commands"
 )
 
 const (
-	// ListPath is GET: ranked path bookmarks.
-	ListPath = "/api/local/files"
-	// UsePath is POST: increment usage for a registered path.
-	UsePath = "/api/local/files/use"
-	// AddPath is POST: register a file or directory path bookmark.
-	AddPath = "/api/local/files/add"
+	// ListPath is GET: ranked command bookmarks.
+	ListPath = "/api/local/commands"
+	// UsePath is POST: increment usage for a registered command.
+	UsePath = "/api/local/commands/use"
+	// AddPath is POST: register a shell command bookmark.
+	AddPath = "/api/local/commands/add"
 )
 
 // ListResponse is the GET ListPath body.
 type ListResponse struct {
-	Files []FileItem `json:"files"`
+	Commands []CommandItem `json:"commands"`
 }
 
-// FileItem is one picker row, with optional fzf highlight spans when ?q= is set.
-type FileItem struct {
-	files.Entry
-	Score      int          `json:"score,omitempty"`
-	TitleSpans []fuzzy.Span `json:"title_spans,omitempty"`
-	PathSpans  []fuzzy.Span `json:"path_spans,omitempty"`
+// CommandItem is one picker row, with optional fzf highlight spans when ?q= is set.
+type CommandItem struct {
+	libcommands.Entry
+	Score        int          `json:"score,omitempty"`
+	TitleSpans   []fuzzy.Span `json:"title_spans,omitempty"`
+	CommandSpans []fuzzy.Span `json:"command_spans,omitempty"`
 }
 
 // UseRequest is the POST UsePath body.
 type UseRequest struct {
-	Path string `json:"path"`
+	Command string `json:"command"`
 }
 
 // UseResponse is the POST UsePath body.
 type UseResponse struct {
-	File files.Entry `json:"file"`
+	Command libcommands.Entry `json:"command"`
 }
 
 // AddRequest is the POST AddPath body.
 type AddRequest struct {
-	Path string `json:"path"`
-	Note string `json:"note,omitempty"`
+	Command string `json:"command"`
+	Note    string `json:"note,omitempty"`
 	// NoteSet is true when the client intends to set/clear note (including empty).
 	// When omitted/false and Note is empty, existing note is left unchanged on duplicate.
 	NoteSet bool `json:"note_set,omitempty"`
@@ -55,13 +55,13 @@ type AddRequest struct {
 
 // AddResponse is the POST AddPath body.
 type AddResponse struct {
-	File      files.Entry `json:"file"`
-	Duplicate bool           `json:"duplicate"`
+	Command   libcommands.Entry `json:"command"`
+	Duplicate bool              `json:"duplicate"`
 }
 
-// Handler serves local files endpoints. Nil Store uses DefaultConfigDir.
+// Handler serves local commands endpoints. Nil Store uses DefaultConfigDir.
 type Handler struct {
-	Store *files.Store
+	Store *libcommands.Store
 }
 
 // Register mounts list, use, and add on mux.
@@ -74,11 +74,11 @@ func Register(mux *http.ServeMux, h *Handler) {
 	mux.HandleFunc(AddPath, h.handleAdd)
 }
 
-func (h *Handler) store() *files.Store {
+func (h *Handler) store() *libcommands.Store {
 	if h != nil && h.Store != nil {
 		return h.Store
 	}
-	return &files.Store{}
+	return &libcommands.Store{}
 }
 
 func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
@@ -92,40 +92,40 @@ func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if entries == nil {
-		entries = []files.Entry{}
+		entries = []libcommands.Entry{}
 	}
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	writeJSON(w, http.StatusOK, ListResponse{
-		Files: filterFiles(entries, q),
+		Commands: filterCommands(entries, q),
 	})
 }
 
-func filterFiles(entries []files.Entry, q string) []FileItem {
+func filterCommands(entries []libcommands.Entry, q string) []CommandItem {
 	tokens := fuzzy.Tokens(q)
 	if len(tokens) == 0 {
-		ranked := files.Rank(entries)
-		out := make([]FileItem, len(ranked))
+		ranked := libcommands.Rank(entries)
+		out := make([]CommandItem, len(ranked))
 		for i, e := range ranked {
-			out[i] = FileItem{Entry: e}
+			out[i] = CommandItem{Entry: e}
 		}
 		return out
 	}
-	out := make([]FileItem, 0, len(entries))
+	out := make([]CommandItem, 0, len(entries))
 	for _, e := range entries {
-		title := files.Title(e)
+		title := libcommands.Title(e)
 		tr := fuzzy.MatchAll(title, tokens)
-		pr := fuzzy.MatchAll(e.Path, tokens, fuzzy.WithPathScheme())
+		cr := fuzzy.MatchAll(e.Command, tokens)
 		nr := fuzzy.MatchAll(e.Name, tokens)
 		noteR := fuzzy.MatchAll(e.Note, tokens)
-		if !tr.OK && !pr.OK && !nr.OK && !noteR.OK {
+		if !tr.OK && !cr.OK && !nr.OK && !noteR.OK {
 			continue
 		}
 		score := 0
 		if tr.OK && tr.Score > score {
 			score = tr.Score
 		}
-		if pr.OK && pr.Score > score {
-			score = pr.Score
+		if cr.OK && cr.Score > score {
+			score = cr.Score
 		}
 		if nr.OK && nr.Score > score {
 			score = nr.Score
@@ -133,12 +133,12 @@ func filterFiles(entries []files.Entry, q string) []FileItem {
 		if noteR.OK && noteR.Score > score {
 			score = noteR.Score
 		}
-		item := FileItem{Entry: e, Score: score}
+		item := CommandItem{Entry: e, Score: score}
 		if tr.OK {
 			item.TitleSpans = tr.Spans
 		}
-		if pr.OK {
-			item.PathSpans = pr.Spans
+		if cr.OK {
+			item.CommandSpans = cr.Spans
 		}
 		out = append(out, item)
 	}
@@ -152,7 +152,7 @@ func filterFiles(entries []files.Entry, q string) []FileItem {
 		if out[i].Name != out[j].Name {
 			return out[i].Name < out[j].Name
 		}
-		return out[i].Path < out[j].Path
+		return out[i].Command < out[j].Command
 	})
 	return out
 }
@@ -167,21 +167,21 @@ func (h *Handler) handleUse(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	path := strings.TrimSpace(req.Path)
-	if path == "" {
-		writeJSONError(w, http.StatusBadRequest, "path is required")
+	command := strings.TrimSpace(req.Command)
+	if command == "" {
+		writeJSONError(w, http.StatusBadRequest, "command is required")
 		return
 	}
-	ent, err := h.store().RecordUse(path)
+	ent, err := h.store().RecordUse(command)
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "path not registered:") || err.Error() == "path is required" {
+		if strings.HasPrefix(err.Error(), "command not registered:") || err.Error() == "command is required" {
 			writeJSONError(w, http.StatusNotFound, err.Error())
 			return
 		}
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, UseResponse{File: *ent})
+	writeJSON(w, http.StatusOK, UseResponse{Command: *ent})
 }
 
 func (h *Handler) handleAdd(w http.ResponseWriter, r *http.Request) {
@@ -194,22 +194,22 @@ func (h *Handler) handleAdd(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	path := strings.TrimSpace(req.Path)
-	if path == "" {
-		writeJSONError(w, http.StatusBadRequest, "path is required")
+	command := strings.TrimSpace(req.Command)
+	if command == "" {
+		writeJSONError(w, http.StatusBadRequest, "command is required")
 		return
 	}
 	noteSet := req.NoteSet || strings.TrimSpace(req.Note) != ""
-	ent, dup, err := h.store().Add(path, req.Note, noteSet)
+	ent, dup, err := h.store().Add(command, req.Note, noteSet)
 	if err != nil {
-		if err.Error() == "path is required" {
+		if err.Error() == "command is required" {
 			writeJSONError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, AddResponse{File: ent, Duplicate: dup})
+	writeJSON(w, http.StatusOK, AddResponse{Command: ent, Duplicate: dup})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -55,8 +55,9 @@ import (
 	"github.com/xhd2015/ai-critic/server/localiterm2"
 	"github.com/xhd2015/ai-critic/server/localadhoc"
 	"github.com/xhd2015/ai-critic/server/localclipboard"
-	"github.com/xhd2015/ai-critic/server/localskills"
+	"github.com/xhd2015/ai-critic/server/localcommands"
 	"github.com/xhd2015/ai-critic/server/localfiles"
+	"github.com/xhd2015/ai-critic/server/localskills"
 	"github.com/xhd2015/ai-critic/server/localtemplates"
 	"github.com/xhd2015/ai-critic/server/logs"
 	openclawapi "github.com/xhd2015/ai-critic/server/openclaw"
@@ -650,6 +651,7 @@ func RegisterAPI(mux *http.ServeMux) error {
 	localskills.Register(mux, &localskills.Handler{})
 	localtemplates.Register(mux, &localtemplates.Handler{})
 	localfiles.Register(mux, &localfiles.Handler{})
+	localcommands.Register(mux, &localcommands.Handler{})
 	localclipboard.Register(mux, &localclipboard.Handler{})
 	localadhoc.Register(mux, &localadhoc.Handler{})
 

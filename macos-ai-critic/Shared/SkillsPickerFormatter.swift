@@ -1,11 +1,12 @@
 import Foundation
 
-/// Pure formatters for the ⌘⇧; insert picker (skills + templates + files).
+/// Pure formatters for the ⌘⇧; insert picker (skills + templates + files + commands).
 public enum SkillsPickerFormatter {
     public static let sidebarAll = "all"
     public static let sidebarSkills = "skills"
     public static let sidebarTemplates = "templates"
     public static let sidebarFiles = "files"
+    public static let sidebarCommands = "commands"
     public static let sidebarClipboard = "clipboard"
     public static let sidebarAdhoc = "adhoc"
     public static let sidebarDefaultsKey = "insertPickerSidebarID"
@@ -13,9 +14,9 @@ public enum SkillsPickerFormatter {
     /// Persisted clipboard "Copy file path" prefix (as typed, including trailing space).
     public static let clipboardPathPrefixDefaultsKey = "insertPickerClipboardPathPrefix"
 
-    /// Ordered sidebar ids (All → Files, then non-search Clipboard / Adhoc).
+    /// Ordered sidebar ids (All → Commands, then non-search Clipboard / Adhoc).
     public static let sidebarOrder: [String] = [
-        sidebarAll, sidebarSkills, sidebarTemplates, sidebarFiles, sidebarClipboard, sidebarAdhoc,
+        sidebarAll, sidebarSkills, sidebarTemplates, sidebarFiles, sidebarCommands, sidebarClipboard, sidebarAdhoc,
     ]
 
     /// Debounce for adhoc text PUT (trailing).
@@ -47,6 +48,7 @@ public enum SkillsPickerFormatter {
         case sidebarSkills: return "wrench.and.screwdriver"
         case sidebarTemplates: return "doc.text"
         case sidebarFiles: return "folder"
+        case sidebarCommands: return "terminal"
         case sidebarClipboard: return "doc.on.clipboard"
         case sidebarAdhoc: return "note.text"
         default: return "square.grid.2x2"
@@ -82,6 +84,7 @@ public enum SkillsPickerFormatter {
         case sidebarSkills: return "Skills"
         case sidebarTemplates: return "Templates"
         case sidebarFiles: return "Files"
+        case sidebarCommands: return "Commands"
         case sidebarClipboard: return "Clipboard"
         case sidebarAdhoc: return "Adhoc text"
         default: return ""
@@ -91,7 +94,7 @@ public enum SkillsPickerFormatter {
     public static func normalizeSidebarID(_ id: String?) -> String {
         let trimmed = (id ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         switch trimmed {
-        case sidebarAll, sidebarSkills, sidebarTemplates, sidebarFiles, sidebarClipboard, sidebarAdhoc:
+        case sidebarAll, sidebarSkills, sidebarTemplates, sidebarFiles, sidebarCommands, sidebarClipboard, sidebarAdhoc:
             return trimmed
         default:
             return sidebarAll
@@ -103,6 +106,7 @@ public enum SkillsPickerFormatter {
         case .skill: return "SKILL"
         case .template: return "TEMPLATE"
         case .file: return "FILE"
+        case .command: return "CMD"
         }
     }
 
@@ -196,6 +200,18 @@ public enum SkillsPickerFormatter {
         return "\(file.path)  (missing)"
     }
 
+    public static func formatCommandTitle(_ command: CommandsPickerItem) -> String {
+        let note = command.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !note.isEmpty { return note }
+        let name = command.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty { return name }
+        return command.command
+    }
+
+    public static func formatCommandSubtitle(_ command: CommandsPickerItem) -> String {
+        command.command
+    }
+
     public static func formatUseCount(_ n: Int) -> String {
         n > 0 ? "\(n)" : ""
     }
@@ -208,6 +224,8 @@ public enum SkillsPickerFormatter {
             return "No skills registered"
         case sidebarFiles:
             return "No files registered"
+        case sidebarCommands:
+            return "No commands registered"
         case sidebarClipboard:
             return "Clipboard empty"
         case sidebarAdhoc:
@@ -225,12 +243,14 @@ public enum SkillsPickerFormatter {
             return "register a root with: my skills --add-dir"
         case sidebarFiles:
             return "Add a file below, or: my files --add"
+        case sidebarCommands:
+            return "Add a command below, or: my commands --add"
         case sidebarClipboard:
             return "Copy something, then Refresh"
         case sidebarAdhoc:
             return "Compose temporary text; auto-saves"
         default:
-            return "register with: my skills / my templates / my files"
+            return "register with: my skills / my templates / my files / my commands"
         }
     }
 
@@ -312,6 +332,8 @@ public enum SkillsPickerFormatter {
             return "New template"
         case sidebarFiles:
             return "Add file or folder"
+        case sidebarCommands:
+            return "Add command"
         default:
             return ""
         }
@@ -319,7 +341,7 @@ public enum SkillsPickerFormatter {
 
     public static func shouldShowAddButton(sidebarID: String) -> Bool {
         switch normalizeSidebarID(sidebarID) {
-        case sidebarTemplates, sidebarFiles:
+        case sidebarTemplates, sidebarFiles, sidebarCommands:
             return true
         default:
             return false
@@ -336,6 +358,10 @@ public enum SkillsPickerFormatter {
 
     public static func formatAddFileSheetTitle() -> String {
         "Add file or folder"
+    }
+
+    public static func formatAddCommandSheetTitle() -> String {
+        "Add command"
     }
 
     /// Flat .md basename from a display name (mirrors server slugify).
@@ -371,10 +397,12 @@ public enum SkillsPickerFormatter {
             return "Search skills"
         case sidebarFiles:
             return "Search files"
+        case sidebarCommands:
+            return "Search commands"
         case sidebarClipboard, sidebarAdhoc:
             return ""
         default:
-            return "Search skills, templates & files"
+            return "Search skills, templates, files & commands"
         }
     }
 
@@ -405,22 +433,26 @@ public enum SkillsPickerFormatter {
         return ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled
     }
 
-    /// Merge ranked skill + template + file lists for the All sidebar (score/useCount desc).
+    /// Merge ranked skill + template + file + command lists for the All sidebar (score/useCount desc).
     public static func mergeAllItems(
         skills: [SkillsPickerItem],
         templates: [TemplatesPickerItem],
-        files: [FilesPickerItem] = []
+        files: [FilesPickerItem] = [],
+        commands: [CommandsPickerItem] = []
     ) -> [InsertPickerItem] {
         var out: [InsertPickerItem] = []
-        out.reserveCapacity(skills.count + templates.count + files.count)
+        out.reserveCapacity(skills.count + templates.count + files.count + commands.count)
         for s in skills {
-            out.append(InsertPickerItem(kind: .skill, skill: s, template: nil, file: nil))
+            out.append(InsertPickerItem(kind: .skill, skill: s, template: nil, file: nil, command: nil))
         }
         for t in templates {
-            out.append(InsertPickerItem(kind: .template, skill: nil, template: t, file: nil))
+            out.append(InsertPickerItem(kind: .template, skill: nil, template: t, file: nil, command: nil))
         }
         for f in files {
-            out.append(InsertPickerItem(kind: .file, skill: nil, template: nil, file: f))
+            out.append(InsertPickerItem(kind: .file, skill: nil, template: nil, file: f, command: nil))
+        }
+        for c in commands {
+            out.append(InsertPickerItem(kind: .command, skill: nil, template: nil, file: nil, command: c))
         }
         out.sort { a, b in
             let sa = a.score
@@ -439,6 +471,7 @@ public enum InsertPickerKind: String, Equatable {
     case skill
     case template
     case file
+    case command
 }
 
 public struct InsertPickerItem: Equatable, Identifiable {
@@ -447,12 +480,14 @@ public struct InsertPickerItem: Equatable, Identifiable {
     public let skill: SkillsPickerItem?
     public let template: TemplatesPickerItem?
     public let file: FilesPickerItem?
+    public let command: CommandsPickerItem?
 
     public var path: String {
         switch kind {
         case .skill: return skill?.path ?? ""
         case .template: return template?.path ?? ""
         case .file: return file?.path ?? ""
+        case .command: return command?.command ?? ""
         }
     }
 
@@ -464,6 +499,8 @@ public struct InsertPickerItem: Equatable, Identifiable {
             return template.map(SkillsPickerFormatter.formatTemplateTitle) ?? ""
         case .file:
             return file.map(SkillsPickerFormatter.formatFileTitle) ?? ""
+        case .command:
+            return command.map(SkillsPickerFormatter.formatCommandTitle) ?? ""
         }
     }
 
@@ -475,6 +512,8 @@ public struct InsertPickerItem: Equatable, Identifiable {
             return template.map(SkillsPickerFormatter.formatTemplateSubtitle) ?? ""
         case .file:
             return file.map(SkillsPickerFormatter.formatFileSubtitle) ?? ""
+        case .command:
+            return command.map(SkillsPickerFormatter.formatCommandSubtitle) ?? ""
         }
     }
 
@@ -483,7 +522,7 @@ public struct InsertPickerItem: Equatable, Identifiable {
         switch kind {
         case .template:
             return template.map(SkillsPickerFormatter.formatTemplateDescription) ?? ""
-        case .skill, .file:
+        case .skill, .file, .command:
             return ""
         }
     }
@@ -493,6 +532,7 @@ public struct InsertPickerItem: Equatable, Identifiable {
         case .skill: return skill?.useCount ?? 0
         case .template: return template?.useCount ?? 0
         case .file: return file?.useCount ?? 0
+        case .command: return command?.useCount ?? 0
         }
     }
 
@@ -501,6 +541,7 @@ public struct InsertPickerItem: Equatable, Identifiable {
         case .skill: return 0
         case .template: return template?.score ?? 0
         case .file: return file?.score ?? 0
+        case .command: return command?.score ?? 0
         }
     }
 
@@ -509,6 +550,7 @@ public struct InsertPickerItem: Equatable, Identifiable {
         case .skill: return skill?.titleSpans ?? []
         case .template: return template?.titleSpans ?? []
         case .file: return file?.titleSpans ?? []
+        case .command: return command?.titleSpans ?? []
         }
     }
 
@@ -517,6 +559,7 @@ public struct InsertPickerItem: Equatable, Identifiable {
         case .skill: return skill?.pathSpans ?? []
         case .template: return template?.pathSpans ?? []
         case .file: return file?.pathSpans ?? []
+        case .command: return command?.commandSpans ?? []
         }
     }
 
@@ -525,7 +568,7 @@ public struct InsertPickerItem: Equatable, Identifiable {
         switch kind {
         case .template:
             return template.map(SkillsPickerFormatter.formatTemplateBodyPreviewSpans) ?? []
-        case .skill, .file:
+        case .skill, .file, .command:
             return []
         }
     }
@@ -538,13 +581,22 @@ public struct InsertPickerItem: Equatable, Identifiable {
             return template?.body ?? ""
         case .file:
             return file?.path ?? ""
+        case .command:
+            return command?.command ?? ""
         }
     }
 
-    public init(kind: InsertPickerKind, skill: SkillsPickerItem?, template: TemplatesPickerItem?, file: FilesPickerItem? = nil) {
+    public init(
+        kind: InsertPickerKind,
+        skill: SkillsPickerItem?,
+        template: TemplatesPickerItem?,
+        file: FilesPickerItem? = nil,
+        command: CommandsPickerItem? = nil
+    ) {
         self.kind = kind
         self.skill = skill
         self.template = template
         self.file = file
+        self.command = command
     }
 }

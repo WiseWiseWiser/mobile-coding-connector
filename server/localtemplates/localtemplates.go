@@ -15,7 +15,7 @@ import (
 	"unicode"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/fuzzy"
-	"github.com/xhd2015/my/libtemplates"
+	libtemplates "github.com/xhd2015/my/lib/templates"
 )
 
 const (

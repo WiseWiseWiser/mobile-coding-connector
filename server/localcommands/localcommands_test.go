@@ -1,15 +1,14 @@
-package localfiles
+package localcommands
 
 import (
 	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/xhd2015/my/lib/files"
+	libcommands "github.com/xhd2015/my/lib/commands"
 )
 
 func TestListEmpty(t *testing.T) {
@@ -22,15 +21,15 @@ func TestListEmpty(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if out.Files == nil || len(out.Files) != 0 {
-		t.Fatalf("files=%v", out.Files)
+	if out.Commands == nil || len(out.Commands) != 0 {
+		t.Fatalf("commands=%v", out.Commands)
 	}
 }
 
 func TestListRankedAfterUse(t *testing.T) {
 	h := handler(t)
-	a := filepath.Join(h.Store.ConfigDir, "a.md")
-	b := filepath.Join(h.Store.ConfigDir, "b.md")
+	a := "echo a"
+	b := "echo b"
 	if _, _, err := h.Store.Add(a, "", false); err != nil {
 		t.Fatal(err)
 	}
@@ -55,28 +54,28 @@ func TestListRankedAfterUse(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Files) != 2 {
-		t.Fatalf("len=%d", len(out.Files))
+	if len(out.Commands) != 2 {
+		t.Fatalf("len=%d", len(out.Commands))
 	}
-	if out.Files[0].Path != b || out.Files[0].UseCount != 2 {
-		t.Fatalf("first=%+v", out.Files[0])
+	if out.Commands[0].Command != b || out.Commands[0].UseCount != 2 {
+		t.Fatalf("first=%+v", out.Commands[0])
 	}
-	if out.Files[1].Path != a || out.Files[1].UseCount != 0 {
-		t.Fatalf("second=%+v", out.Files[1])
+	if out.Commands[1].Command != a || out.Commands[1].UseCount != 0 {
+		t.Fatalf("second=%+v", out.Commands[1])
 	}
 }
 
-func TestListQueryPathAndMissing(t *testing.T) {
+func TestListQueryNoteAndCommand(t *testing.T) {
 	h := handler(t)
-	missing := filepath.Join(h.Store.ConfigDir, "gone", "draft.md")
-	other := filepath.Join(h.Store.ConfigDir, "other.txt")
-	if _, _, err := h.Store.Add(missing, "future draft", true); err != nil {
+	save := "kool iterm2 sessions save --file ~/tmp/iterm2-session-spaces-all.json"
+	other := "echo other"
+	if _, _, err := h.Store.Add(save, "iTerm2 save sessions", true); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := h.Store.Add(other, "", false); err != nil {
 		t.Fatal(err)
 	}
-	rec := serve(h, httptest.NewRequest(http.MethodGet, ListPath+"?q=draft", nil))
+	rec := serve(h, httptest.NewRequest(http.MethodGet, ListPath+"?q=save", nil))
 	if rec.Code != 200 {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -84,20 +83,17 @@ func TestListQueryPathAndMissing(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Files) != 1 || out.Files[0].Path != missing {
-		t.Fatalf("files=%+v", out.Files)
+	if len(out.Commands) != 1 || out.Commands[0].Command != save {
+		t.Fatalf("commands=%+v", out.Commands)
 	}
-	if out.Files[0].Exists {
-		t.Fatal("expected missing path Exists=false")
-	}
-	if out.Files[0].Note != "future draft" {
-		t.Fatalf("note=%q", out.Files[0].Note)
+	if out.Commands[0].Note != "iTerm2 save sessions" {
+		t.Fatalf("note=%q", out.Commands[0].Note)
 	}
 }
 
 func TestUseUnknown(t *testing.T) {
 	h := handler(t)
-	rec := serve(h, postUse(filepath.Join(h.Store.ConfigDir, "nope.md")))
+	rec := serve(h, postUse("echo nope"))
 	if rec.Code != 404 {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -105,8 +101,8 @@ func TestUseUnknown(t *testing.T) {
 
 func TestAddNewAndDuplicateNote(t *testing.T) {
 	h := handler(t)
-	p := filepath.Join(h.Store.ConfigDir, "draft.md")
-	rec := serve(h, postAdd(AddRequest{Path: p, Note: "future", NoteSet: true}))
+	cmd := "kool iterm2 tab-set run services"
+	rec := serve(h, postAdd(AddRequest{Command: cmd, Note: "tab-set", NoteSet: true}))
 	if rec.Code != 200 {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -114,18 +110,18 @@ func TestAddNewAndDuplicateNote(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if out.Duplicate || out.File.Path != p || out.File.Note != "future" {
+	if out.Duplicate || out.Command.Command != cmd || out.Command.Note != "tab-set" {
 		t.Fatalf("out=%+v", out)
 	}
 
-	rec = serve(h, postAdd(AddRequest{Path: p, Note: "renamed", NoteSet: true}))
+	rec = serve(h, postAdd(AddRequest{Command: cmd, Note: "renamed", NoteSet: true}))
 	if rec.Code != 200 {
 		t.Fatalf("dup code=%d body=%s", rec.Code, rec.Body.String())
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if !out.Duplicate || out.File.Note != "renamed" {
+	if !out.Duplicate || out.Command.Note != "renamed" {
 		t.Fatalf("dup out=%+v", out)
 	}
 
@@ -134,14 +130,14 @@ func TestAddNewAndDuplicateNote(t *testing.T) {
 	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Files) != 1 || listed.Files[0].Note != "renamed" {
-		t.Fatalf("listed=%+v", listed.Files)
+	if len(listed.Commands) != 1 || listed.Commands[0].Note != "renamed" {
+		t.Fatalf("listed=%+v", listed.Commands)
 	}
 }
 
-func TestAddEmptyPath(t *testing.T) {
+func TestAddEmptyCommand(t *testing.T) {
 	h := handler(t)
-	rec := serve(h, postAdd(AddRequest{Path: "  "}))
+	rec := serve(h, postAdd(AddRequest{Command: "  "}))
 	if rec.Code != 400 {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -158,7 +154,7 @@ func handler(t *testing.T) *Handler {
 	t.Helper()
 	cfg := t.TempDir()
 	fixed := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
-	return &Handler{Store: &files.Store{
+	return &Handler{Store: &libcommands.Store{
 		ConfigDir: cfg,
 		Now:       func() time.Time { return fixed },
 	}}
@@ -172,7 +168,7 @@ func serve(h *Handler, req *http.Request) *httptest.ResponseRecorder {
 	return rec
 }
 
-func postUse(path string) *http.Request {
-	body, _ := json.Marshal(UseRequest{Path: path})
+func postUse(command string) *http.Request {
+	body, _ := json.Marshal(UseRequest{Command: command})
 	return httptest.NewRequest(http.MethodPost, UsePath, bytes.NewReader(body))
 }

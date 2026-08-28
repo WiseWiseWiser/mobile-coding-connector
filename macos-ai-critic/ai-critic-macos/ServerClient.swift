@@ -420,6 +420,46 @@ final class ServerClient {
         return try JSONDecoder().decode(FilesAddResponse.self, from: data)
     }
 
+    /// Ranked command bookmarks for the ⌘⇧; picker via GET /api/local/commands.
+    func listCommands(query: String = "") async throws -> CommandsListResponse {
+        var path = "/api/local/commands"
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !q.isEmpty, var comps = URLComponents(string: path) {
+            comps.queryItems = [URLQueryItem(name: "q", value: q)]
+            path = comps.string ?? path
+        }
+        let (data, response) = try await get(path: path)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "commands list request failed"))
+        }
+        return try JSONDecoder().decode(CommandsListResponse.self, from: data)
+    }
+
+    /// Increment usage for a registered command via POST /api/local/commands/use.
+    func recordCommandUse(command: String) async throws {
+        let (data, response) = try await postJSON(
+            path: "/api/local/commands/use",
+            body: ["command": command]
+        )
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "commands use request failed"))
+        }
+    }
+
+    /// Register a command bookmark via POST /api/local/commands/add.
+    func addCommand(command: String, note: String? = nil) async throws -> CommandsAddResponse {
+        var body: [String: Any] = ["command": command]
+        if let note {
+            body["note"] = note
+            body["note_set"] = true
+        }
+        let (data, response) = try await postJSON(path: "/api/local/commands/add", body: body)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "commands add request failed"))
+        }
+        return try JSONDecoder().decode(CommandsAddResponse.self, from: data)
+    }
+
     /// Non-destructive clipboard summary via GET /api/local/clipboard/peek.
     func peekClipboard() async throws -> ClipboardPeekResponse {
         let (data, response) = try await get(path: "/api/local/clipboard/peek")
