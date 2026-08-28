@@ -1,22 +1,14 @@
 # Scenario
 
-**Feature**: mock script failure → service error status
+**Feature**: injected error fetcher → service error status
 
 ```
-GROK_SHOW_USAGE_COMMAND=mock-fail.sh -> tty fetch error -> status error
+FetchMode=fail -> status error
 ```
-
-## Preconditions
-
-`mock-fail.sh` fake TUI writes stderr and exits 1 after prompt.
 
 ## Steps
 
-1. `MockScript=mock-fail.sh`.
-
-## Context
-
-REQUIREMENT leaf: `fetch/mock-command-fails`.
+1. `FetchMode=fail`.
 
 ```go
 import (
@@ -26,7 +18,7 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	req.MockScript = "mock-fail.sh"
+	req.FetchMode = "fail"
 	return nil
 }
 ```

@@ -12,7 +12,7 @@ daemon via `CODEX_SHOW_STATUS_COMMAND` (no `CODEX_SHOW_STATUS_BIN` shell wrapper
 - **Parser (`macosapp/codexusage`)** — `ParseStatusOutput` extracts
   `Monthly usage:`, `Credits used:`, and `Next reset:` lines from command stdout.
 - **Codex usage service (daemon)** — calls `agent/usage.Fetch(ctx, Codex)` in-process,
-  caches `CodexUsageResponse`, refreshes every 60s, skips overlapping in-flight fetches.
+  caches `CodexUsageResponse`, refreshes every 10m, skips overlapping in-flight fetches.
   On success derives structured reset fields (`reset_at` RFC3339, `reset_display`,
   `time_left`); on each `Get()` recomputes `time_left` from cached `reset_at` + now
   without re-fetch.

@@ -2,6 +2,7 @@ package codexusage
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -12,9 +13,10 @@ import (
 	agentusage "github.com/xhd2015/agent-pro/agent/usage"
 	"github.com/xhd2015/ai-critic/macosapp/debuglog"
 	"github.com/xhd2015/ai-critic/macosapp/menubar"
+	dotcodexusage "github.com/xhd2015/dot-pkgs/go-pkgs/shell/codex/usage"
 )
 
-const refreshInterval = 60 * time.Second
+const refreshInterval = 10 * time.Minute
 
 // CodexUsageStatus is the fetch/cache state exposed to API clients.
 type CodexUsageStatus string
@@ -83,10 +85,33 @@ func (s *Service) now() time.Time {
 }
 
 func defaultFetcher(ctx context.Context) (*agentusage.Snapshot, error) {
-	return agentusage.Fetch(ctx, agentusage.Codex)
+	snap, err := dotcodexusage.Fetch(ctx, dotcodexusage.FetchOpts{})
+	if err != nil {
+		return nil, err
+	}
+	used := snap.UsedPercent
+	if used < 0 && snap.RemainingPercent >= 0 {
+		used = 100 - snap.RemainingPercent
+		if used < 0 {
+			used = 0
+		}
+	}
+	if used < 0 {
+		return nil, fmt.Errorf("codex usage: unknown used percent")
+	}
+	reset := ""
+	if !snap.ResetAt.IsZero() {
+		// Match /status shape expected by ResolveStructuredReset: "15:04 on 2 Jan".
+		reset = snap.ResetAt.In(time.Local).Format("15:04 on 2 Jan")
+	}
+	return &agentusage.Snapshot{
+		Provider:     agentusage.Codex,
+		UsagePercent: fmt.Sprintf("%d%%", used),
+		Reset:        reset,
+	}, nil
 }
 
-// Start begins the 60s background refresh loop.
+// Start begins the 10-minute background refresh loop.
 func (s *Service) Start() {
 	go s.refreshLoop()
 }
@@ -286,8 +311,7 @@ func TestExported_SetFetcher(s *Service, fn fetchFunc) {
 }
 
 // TestExported_SetEnv sets an extra environment variable applied only around
-// the in-process tty/usage fetch (child processes inherit via process env for
-// the duration of FetchOnce). Harness must not call os.Setenv itself.
+// the in-process usage fetch. Harness must not call os.Setenv itself.
 func (s *Service) TestExported_SetEnv(key, val string) {
 	if s.extraEnv == nil {
 		s.extraEnv = make(map[string]string)

@@ -3,20 +3,16 @@
 **Feature**: GET /api/grok/usage returns ready JSON
 
 ```
-server fetch (mock) -> GET :23712/api/grok/usage -> status ready
+server fetch (AI_CRITIC_GROK_USAGE_FIXTURE) -> GET :23712/api/grok/usage -> status ready
 ```
 
 ## Preconditions
 
-`mock-success.sh` path exported as `GROK_SHOW_USAGE_COMMAND` in daemon env.
+`testdata/usage-ready.json` exported as `AI_CRITIC_GROK_USAGE_FIXTURE` in daemon env.
 
 ## Steps
 
-1. `MockScript=mock-success.sh`, `WaitAPIReadySecs=15`.
-
-## Context
-
-REQUIREMENT leaf: `api/get-usage-ready`.
+1. `MockScript=usage-ready.json`, `WaitAPIReadySecs=15`.
 
 ```go
 import (
@@ -26,7 +22,7 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	req.MockScript = "mock-success.sh"
+	req.MockScript = "usage-ready.json"
 	req.WaitAPIReadySecs = 15
 	return nil
 }

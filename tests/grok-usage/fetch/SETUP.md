@@ -1,14 +1,14 @@
 # Scenario
 
-**Feature**: grok usage service fetch via tty library and mock command
+**Feature**: grok usage service fetch via injectable HTTP fetcher
 
 ```
-GROK_SHOW_USAGE_COMMAND fake TUI -> tty.FetchUsageWithOptions -> service FetchOnce -> GrokUsageResponse
+FetchMode mock -> service FetchOnce -> GrokUsageResponse
 ```
 
 ## Preconditions
 
-Mock fake-TUI scripts in `testdata/`; `TestExported_SetEnv` sets `GROK_SHOW_USAGE_COMMAND`.
+`TestExported_SetFetcher` injects HTTP-shaped `FetchResult` (no PTY).
 
 ## Steps
 
@@ -16,7 +16,7 @@ Mock fake-TUI scripts in `testdata/`; `TestExported_SetEnv` sets `GROK_SHOW_USAG
 
 ## Context
 
-Service-layer tests without full daemon HTTP; no `GROK_SHOW_USAGE_BIN` exec.
+Service-layer tests without full daemon HTTP.
 
 ```go
 import (

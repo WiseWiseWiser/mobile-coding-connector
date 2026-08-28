@@ -1,7 +1,3 @@
----
-label: e2e
-explanation: GROK_SHOW_USAGE_COMMAND mock TUI process boundary
----
 ## Expected
 
 1. `ServiceStatus` is `error`.

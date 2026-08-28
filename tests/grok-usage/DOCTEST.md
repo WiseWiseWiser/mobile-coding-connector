@@ -1,27 +1,28 @@
 # Grok Usage Parser, Service, and API Doctests
 
 Tests for `macosapp/grokusage` parsing, daemon-side grok usage fetch/cache, and
-`GET /api/grok/usage` on the keep-alive management server. Fetch leaves set
-`GROK_SHOW_USAGE_COMMAND` to fake-TUI scripts under `testdata/` so
-`github.com/xhd2015/agent-pro/agent/grok/tty.FetchUsageWithOptions` runs
-deterministically without a live grok binary.
+`GET /api/grok/usage` on the keep-alive management server. Fetch leaves inject a
+mock `fetchFunc` (HTTP-shaped `FetchResult`) — production uses
+`dot-pkgs/shell/grok/usage` against cli-chat-proxy billing, not PTY `/usage show`.
+Parse leaves still exercise `tty.ParseShowUsageOutput` via the parser wrapper.
 
 # DSN (Domain Specific Notion)
 
 **Participants**
 
 - **TTY library (`agent/grok/tty`)** — `ParseShowUsageOutput` regex-parses
-  scrollback; `FetchUsageWithOptions` PTY-launches `GROK_SHOW_USAGE_COMMAND`
-  (or real grok), submits `/usage show`, and returns `UsageInfo`.
+  scrollback (parse leaves only).
 - **Parser wrapper (`macosapp/grokusage`)** — delegates `ParseShowUsageOutput`
   to `tty` for API compatibility.
-- **Grok usage service (daemon)** — calls `tty.FetchUsageWithOptions` (no exec of
-  `debug-grok-show-usage`), caches `GrokUsageResponse`, refreshes every 60s,
-  skips overlapping in-flight fetches. On success derives structured reset fields
-  (`reset_at` RFC3339, `reset_display`, `time_left`); on each `Get()` recomputes
-  `time_left` from cached `reset_at` + now without re-PTY.
-- **Mock fake-TUI script** — shell fixtures under `testdata/`; mimic grok prompt,
-  read `/usage show`, emit usage lines; fail, slow, and no-TZ success variants.
+- **Grok usage service (daemon)** — default fetcher calls
+  `dot-pkgs/shell/grok/usage.Fetch` (HTTP billing + local auth token refresh).
+  Injectable `TestExported_SetFetcher` for L2 tests; optional
+  `AI_CRITIC_GROK_USAGE_FIXTURE` JSON for API subprocess tests. Caches
+  `GrokUsageResponse`, refreshes every 10m, skips overlapping in-flight fetches.
+  On success derives structured reset fields; `Get()` recomputes `time_left`
+  from cached `reset_at` + now without re-fetch.
+- **Mock fetch modes** — in-process `FetchMode` success / fail / success-no-tz /
+  slow (no PTY).
 - **ai-critic-server subprocess** — serves `GET /api/grok/usage` on main server port
   `23712` when API leaves run (started by keep-alive harness).
 - **Keep-alive daemon** — management port `23312` control plane only; spawns server.
@@ -37,19 +38,18 @@ deterministically without a live grok binary.
 - Grok 1.0.3 usage **modal panel** also parses: `Weekly limit (plan)` + bar `%` line +
   `Resets: Month D, HH:MM` → same `UsageInfo` fields (bare reset when TZ omitted).
 - No-TZ / junk-suffix fixtures must not invent a timezone from trailing scrollback.
-- `GROK_SHOW_USAGE_COMMAND=mock-success.sh` → service `status=ready` with parsed limits.
-- `GROK_SHOW_USAGE_COMMAND=mock-success-no-tz.sh` → ready + structured `reset_at` /
+- `FetchMode=success` → service `status=ready` with fixture limits.
+- `FetchMode=success-no-tz` → ready + structured `reset_at` /
   `reset_display` / `time_left` from bare local wall clock (no invented PT).
-- `GROK_SHOW_USAGE_COMMAND=mock-fail.sh` (exit 1) → `status=error` with message;
-  structured reset fields empty (no inventing).
+- `FetchMode=fail` → `status=error` with message; structured reset fields empty.
 - Successful fetch sets raw `next_reset` (back-compat) plus A/B fields:
   `reset_at` (RFC3339 absolute), `reset_display` (UI token for `Reset {…}`),
   `time_left` (`left Nd`, `left NdNh`, … per menubar unit policy).
 - `Get()` (and HTTP JSON serve) recomputes `time_left` from cached `reset_at` so
-  countdown advances between PTY refreshes; harness seeds cache + clock via
+  countdown advances between refreshes; harness seeds cache + clock via
   `TestExported_SeedReady` / `TestExported_SetNow` when present.
-- API returns ready JSON after library fetch completes (including structured fields).
-- Concurrent refresh while fetch in flight does not start a second PTY session (counter=1).
+- API returns ready JSON after fixture-backed fetch completes (including structured fields).
+- Concurrent refresh while fetch in flight does not start a second fetch (counter=1).
 
 ## Version
 
@@ -71,7 +71,7 @@ deterministically without a live grok binary.
  |    +-- missing-weekly/             (LEAF)   parse error
  |    +-- missing-reset/              (LEAF)   parse error
  |
- +-- fetch/                           (GROUP)  service fetch via tty + mock command
+ +-- fetch/                           (GROUP)  service fetch via injectable HTTP fetcher
  |    +-- mock-command-success/       (LEAF)   status ready (raw fields)
  |    +-- mock-command-fails/         (LEAF)   status error
  |    +-- structured-ready/           (LEAF)   A+B: reset_at, reset_display, time_left
@@ -100,10 +100,10 @@ deterministically without a live grok binary.
 | 7 | `parse/modal-panel` | Grok 1.0.3 panel: plan subtitle + bar % + `Resets:` |
 | 8 | `parse/missing-weekly` | Missing weekly line → error |
 | 9 | `parse/missing-reset` | Missing reset line → error |
-| 10 | `fetch/mock-command-success` | `GROK_SHOW_USAGE_COMMAND` mock → service ready |
-| 11 | `fetch/mock-command-fails` | Mock exit 1 → service error |
-| 12 | `fetch/structured-ready` | Bare local mock → ready + structured A+B fields |
-| 13 | `fetch/structured-error-empty` | Mock fail → empty reset_at/display/time_left |
+| 10 | `fetch/mock-command-success` | Injected success fetcher → service ready |
+| 11 | `fetch/mock-command-fails` | Injected error fetcher → service error |
+| 12 | `fetch/structured-ready` | Bare local fixture → ready + structured A+B fields |
+| 13 | `fetch/structured-error-empty` | Injected fail → empty reset_at/display/time_left |
 | 14 | `get/time-left-recomputed` | Seeded reset_at; second Get shortens time_left |
 | 15 | `api/get-usage-ready` | HTTP API on server port returns ready JSON |
 | 16 | `refresh/skips-overlap` | Overlapping refresh does not double-fetch |
@@ -121,13 +121,13 @@ deterministically without a live grok binary.
 | modal-panel | parse | show-usage-modal-panel.txt | false |
 | missing-weekly | parse | show-usage-missing-weekly.txt | true |
 | missing-reset | parse | show-usage-missing-reset.txt | true |
-| mock-command-success | fetch | GROK_SHOW_USAGE_COMMAND=mock-success.sh | false |
-| mock-command-fails | fetch | GROK_SHOW_USAGE_COMMAND=mock-fail.sh | false (service error status) |
-| structured-ready | fetch | GROK_SHOW_USAGE_COMMAND=mock-success-no-tz.sh | false |
-| structured-error-empty | fetch | GROK_SHOW_USAGE_COMMAND=mock-fail.sh | false (service error status) |
+| mock-command-success | fetch | FetchMode=success | false |
+| mock-command-fails | fetch | FetchMode=fail | false (service error status) |
+| structured-ready | fetch | FetchMode=success-no-tz | false |
+| structured-error-empty | fetch | FetchMode=fail | false (service error status) |
 | time-left-recomputed | get-recompute | SeedReady + SetNow (test hooks) | false |
-| get-usage-ready | api | GROK_SHOW_USAGE_COMMAND=mock-success.sh | false |
-| skips-overlap | refresh | GROK_SHOW_USAGE_COMMAND=mock-slow.sh | false |
+| get-usage-ready | api | AI_CRITIC_GROK_USAGE_FIXTURE JSON | false |
+| skips-overlap | refresh | FetchMode=slow | false |
 
 ## How to Run
 
@@ -138,6 +138,7 @@ doctest test ./tests/grok-usage/...
 
 ```go
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -149,6 +150,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -160,7 +162,7 @@ import (
 	"github.com/xhd2015/doctest/session"
 )
 
-const envGrokShowUsageCommand = "GROK_SHOW_USAGE_COMMAND"
+const envGrokUsageFixture = "AI_CRITIC_GROK_USAGE_FIXTURE"
 
 type Request struct {
 	Op string
@@ -168,16 +170,19 @@ type Request struct {
 	// Parse: fixture filename relative to tests/grok-usage/testdata/
 	FixtureFile string
 
-	// Fetch/API/Refresh: mock script basename under testdata/
+	// Fetch/Refresh: injectable mode (success | fail | success-no-tz | slow)
+	FetchMode string
+
+	// API: optional fixture basename under testdata/ (JSON); default usage-ready.json
 	MockScript string
 
 	// get-recompute: seed cache + controlled clock (TestExported hooks)
-	ResetAtRFC3339     string
-	ResetDisplaySeed   string
-	NextResetSeed      string
-	WeeklyLimitSeed    string
-	NowRFC3339         string
-	NowRFC3339Second   string
+	ResetAtRFC3339   string
+	ResetDisplaySeed string
+	NextResetSeed    string
+	WeeklyLimitSeed  string
+	NowRFC3339       string
+	NowRFC3339Second string
 
 	ExpectParseError bool
 	WaitAPIReadySecs int
@@ -282,10 +287,9 @@ func runParse(t *testing.T, req *Request, root string, resp *Response) (*Respons
 }
 
 func runFetch(t *testing.T, req *Request, root string, resp *Response) (*Response, error) {
-	svc, err := newServiceWithMockCommand(root, req.MockScript)
-	if err != nil {
-		return nil, err
-	}
+	_ = root
+	svc := grokusage.TestExported_NewService()
+	grokusage.TestExported_SetFetcher(svc, fetcherForMode(req.FetchMode, nil))
 	out := svc.TestExported_FetchOnce(t)
 	resp.ServiceStatus = string(out.Status)
 	resp.ServiceError = out.Error
@@ -352,7 +356,11 @@ func runAPI(t *testing.T, d *session.Doctest, req *Request, root string, resp *R
 	if req.WaitAPIReadySecs <= 0 {
 		req.WaitAPIReadySecs = 12
 	}
-	mockCommand, err := resolveMockScript(root, req.MockScript)
+	fixtureName := req.MockScript
+	if fixtureName == "" {
+		fixtureName = "usage-ready.json"
+	}
+	fixturePath, err := resolveFixtureJSON(root, fixtureName)
 	if err != nil {
 		return nil, err
 	}
@@ -389,11 +397,7 @@ func runAPI(t *testing.T, d *session.Doctest, req *Request, root string, resp *R
 	env := lib.AppendTestServerEnv(os.Environ(), configHome)
 	env = append(env,
 		"AI_CRITIC_TEST_SKIP_EXTENSION=1",
-		envGrokShowUsageCommand+"="+mockCommand,
-		// Isolate from ambient agent-run tty-watch pollution (child-only).
-		"TTY_WATCH_HOME="+filepath.Join(configHome, ".tty-watch"),
-		"TTY_WATCH_REGISTRY_SUBDIR=registry",
-		"TTY_WATCH_KEEP_ALIVE=",
+		envGrokUsageFixture+"="+fixturePath,
 	)
 	cmd.Env = env
 	if err := cmd.Start(); err != nil {
@@ -456,15 +460,11 @@ func runAPI(t *testing.T, d *session.Doctest, req *Request, root string, resp *R
 }
 
 func runRefreshOverlap(t *testing.T, req *Request, root string, resp *Response) (*Response, error) {
-	svc, err := newServiceWithMockCommand(root, req.MockScript)
-	if err != nil {
-		return nil, err
-	}
-	counterFile := filepath.Join(os.TempDir(), "grok-mock-counter-"+strconv.Itoa(os.Getpid()))
-	_ = os.Remove(counterFile)
-	t.Cleanup(func() { os.Remove(counterFile) })
-
-	svc.TestExported_SetEnv("GROK_MOCK_COUNTER_FILE", counterFile)
+	_ = root
+	_ = req
+	var invocations atomic.Int32
+	svc := grokusage.TestExported_NewService()
+	grokusage.TestExported_SetFetcher(svc, fetcherForMode("slow", &invocations))
 
 	var wg sync.WaitGroup
 	started := 0
@@ -480,29 +480,17 @@ func runRefreshOverlap(t *testing.T, req *Request, root string, resp *Response) 
 		}()
 	}
 	wg.Wait()
-
-	// Poll: under Parallel other leaves may briefly hold the service env mutex.
+	// Allow slow fetcher to finish at least once.
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		data, _ := os.ReadFile(counterFile)
-		if len(data) > 0 {
-			n, _ := strconv.Atoi(strings.TrimSpace(string(data)))
-			if n > 0 {
-				resp.MockInvocationCount = n
-				resp.FetchInvocationCount = n
-				break
-			}
+		if invocations.Load() > 0 {
+			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if resp.FetchInvocationCount == 0 {
-		data, _ := os.ReadFile(counterFile)
-		if len(data) > 0 {
-			n, _ := strconv.Atoi(strings.TrimSpace(string(data)))
-			resp.MockInvocationCount = n
-			resp.FetchInvocationCount = n
-		}
-	}
+	n := int(invocations.Load())
+	resp.MockInvocationCount = n
+	resp.FetchInvocationCount = n
 	resp.ConcurrentStarted = started
 	return resp, nil
 }
@@ -528,29 +516,51 @@ func grokUsageDoctestRoot(d *session.Doctest) string {
 	}
 }
 
-func newServiceWithMockCommand(root, mockScript string) (*grokusage.Service, error) {
-	scriptPath, err := resolveMockScript(root, mockScript)
-	if err != nil {
-		return nil, err
+func fetcherForMode(mode string, counter *atomic.Int32) func(context.Context) (*grokusage.FetchResult, error) {
+	switch mode {
+	case "success", "":
+		return func(ctx context.Context) (*grokusage.FetchResult, error) {
+			return &grokusage.FetchResult{
+				WeeklyLimit: "6%",
+				NextReset:   "July 9, 16:55 PT",
+			}, nil
+		}
+	case "success-no-tz":
+		return func(ctx context.Context) (*grokusage.FetchResult, error) {
+			return &grokusage.FetchResult{
+				WeeklyLimit: "61%",
+				NextReset:   "July 17, 08:55",
+			}, nil
+		}
+	case "fail":
+		return func(ctx context.Context) (*grokusage.FetchResult, error) {
+			return nil, fmt.Errorf("mock grok usage fetch failed")
+		}
+	case "slow":
+		return func(ctx context.Context) (*grokusage.FetchResult, error) {
+			if counter != nil {
+				counter.Add(1)
+			}
+			time.Sleep(2 * time.Second)
+			return &grokusage.FetchResult{
+				WeeklyLimit: "6%",
+				NextReset:   "July 9, 16:55 PT",
+			}, nil
+		}
+	default:
+		return func(ctx context.Context) (*grokusage.FetchResult, error) {
+			return nil, fmt.Errorf("unknown fetch mode %q", mode)
+		}
 	}
-	svc := grokusage.TestExported_NewService()
-	svc.TestExported_SetEnv(envGrokShowUsageCommand, scriptPath)
-	// Isolate in-process tty fetch from ambient agent-run pollution.
-	ttyHome := filepath.Join(os.TempDir(), fmt.Sprintf("grok-usage-tty-%d-%d", os.Getpid(), time.Now().UnixNano()))
-	_ = os.MkdirAll(ttyHome, 0o755)
-	svc.TestExported_SetEnv("TTY_WATCH_HOME", ttyHome)
-	svc.TestExported_SetEnv("TTY_WATCH_REGISTRY_SUBDIR", "registry")
-	svc.TestExported_SetEnv("TTY_WATCH_KEEP_ALIVE", "")
-	return svc, nil
 }
 
-func resolveMockScript(root, name string) (string, error) {
+func resolveFixtureJSON(root, name string) (string, error) {
 	path := filepath.Join(root, "testdata", name)
-	if err := os.Chmod(path, 0755); err != nil {
-		return "", err
-	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(abs); err != nil {
 		return "", err
 	}
 	return abs, nil

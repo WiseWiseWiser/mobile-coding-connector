@@ -1,22 +1,14 @@
 # Scenario
 
-**Feature**: mock script success → service ready
+**Feature**: injected success fetcher → service ready
 
 ```
-GROK_SHOW_USAGE_COMMAND=mock-success.sh -> tty fetch -> status ready + limits
+FetchMode=success -> status ready + limits
 ```
-
-## Preconditions
-
-`mock-success.sh` fake TUI emits canonical usage lines after `/usage show`.
 
 ## Steps
 
-1. `MockScript=mock-success.sh`.
-
-## Context
-
-REQUIREMENT leaf: `fetch/mock-command-success`.
+1. `FetchMode=success`.
 
 ```go
 import (
@@ -26,7 +18,7 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	req.MockScript = "mock-success.sh"
+	req.FetchMode = "success"
 	return nil
 }
 ```

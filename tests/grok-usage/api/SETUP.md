@@ -3,12 +3,12 @@
 **Feature**: HTTP API for grok usage on main server port
 
 ```
-keep-alive spawns server + GROK_SHOW_USAGE_COMMAND -> GET :23712/api/grok/usage
+keep-alive spawns server + AI_CRITIC_GROK_USAGE_FIXTURE -> GET :23712/api/grok/usage
 ```
 
 ## Preconditions
 
-Server exposes grok usage route on port `23712`; `GROK_SHOW_USAGE_COMMAND` in env; session lock held.
+Server exposes grok usage route on port `23712`; fixture env set; session lock held.
 
 ## Steps
 

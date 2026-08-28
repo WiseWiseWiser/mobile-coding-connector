@@ -3,20 +3,16 @@
 **Feature**: concurrent refresh does not double-fetch
 
 ```
-two concurrent refresh -> GROK_MOCK_COUNTER_FILE == 1
+two concurrent refresh -> FetchInvocationCount == 1
 ```
 
 ## Preconditions
 
-`mock-slow.sh` fake TUI with `GROK_MOCK_COUNTER_FILE` side-effect.
+Injectable slow fetcher increments a counter once while holding `fetching`.
 
 ## Steps
 
-1. `MockScript=mock-slow.sh`.
-
-## Context
-
-REQUIREMENT leaf: `refresh/skips-overlap`.
+1. `FetchMode=slow` (via refresh Run harness).
 
 ```go
 import (
@@ -26,7 +22,7 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	req.MockScript = "mock-slow.sh"
+	req.FetchMode = "slow"
 	return nil
 }
 ```
