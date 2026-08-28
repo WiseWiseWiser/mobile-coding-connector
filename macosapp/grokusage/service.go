@@ -34,6 +34,7 @@ const (
 type GrokUsageResponse struct {
 	Status       GrokUsageStatus `json:"status"`
 	WeeklyLimit  string          `json:"weekly_limit,omitempty"`
+	Period       string          `json:"period,omitempty"` // "weekly" | "monthly"
 	NextReset    string          `json:"next_reset,omitempty"`
 	ResetAt      string          `json:"reset_at,omitempty"`
 	ResetDisplay string          `json:"reset_display,omitempty"`
@@ -45,6 +46,7 @@ type GrokUsageResponse struct {
 // FetchResult is the normalized usage payload returned by a fetcher.
 type FetchResult struct {
 	WeeklyLimit string
+	Period      string // "weekly" | "monthly" | ""
 	NextReset   string
 }
 
@@ -105,12 +107,14 @@ func defaultFetcher(ctx context.Context) (*FetchResult, error) {
 }
 
 func mapBillingSnapshot(snap dotgrokusage.Snapshot) *FetchResult {
-	out := &FetchResult{}
+	out := &FetchResult{
+		Period: strings.TrimSpace(snap.PeriodType),
+	}
 	switch {
 	case snap.UsedPercent >= 0:
 		out.WeeklyLimit = fmt.Sprintf("%d%%", snap.UsedPercent)
 	default:
-		// No numeric monthly cap — surface absolute used without inventing %.
+		// No numeric cap — surface absolute used without inventing %.
 		out.WeeklyLimit = fmt.Sprintf("%d", snap.Used)
 	}
 	if !snap.ResetAt.IsZero() {
@@ -122,6 +126,7 @@ func mapBillingSnapshot(snap dotgrokusage.Snapshot) *FetchResult {
 
 type usageFixtureFile struct {
 	WeeklyLimit string `json:"weekly_limit"`
+	Period      string `json:"period"`
 	NextReset   string `json:"next_reset"`
 	Error       string `json:"error"`
 }
@@ -140,6 +145,7 @@ func loadUsageFixture(path string) (*FetchResult, error) {
 	}
 	return &FetchResult{
 		WeeklyLimit: strings.TrimSpace(fx.WeeklyLimit),
+		Period:      strings.TrimSpace(fx.Period),
 		NextReset:   strings.TrimSpace(fx.NextReset),
 	}, nil
 }
@@ -237,6 +243,7 @@ func (s *Service) fetchOnce() {
 	s.cached = GrokUsageResponse{
 		Status:       StatusReady,
 		WeeklyLimit:  info.WeeklyLimit,
+		Period:       info.Period,
 		NextReset:    info.NextReset,
 		ResetAt:      resetAt,
 		ResetDisplay: resetDisplay,

@@ -15,7 +15,8 @@ compile-green while this root stays RED until `ComposeGrokDropdownLine` /
 
 - **ComposeGrokDropdownLine (`macosapp/menubar`)** — concatenates ready grok
   structured fields into one dropdown line:
-  `"Grok: " + weekly + "(Weekly), Reset " + reset_display + optional ", " + time_left`.
+  `"Grok: " + weekly + "(" + periodLabel + "), Reset " + reset_display + optional ", " + time_left`
+  (`periodLabel` empty → `Weekly`).
   Does **not** parse `next_reset`, does not call `FormatResetDisplay` /
   `FormatTimeLeft`, does not perform `Date`/`time` math.
 - **ComposeCodexDropdownLine (`macosapp/menubar`)** — same compose-only contract
@@ -87,6 +88,7 @@ type Request struct {
 	// ComposeGrokDropdownLine
 	Status       string
 	WeeklyLimit  string
+	PeriodLabel  string // empty → Weekly
 	ResetDisplay string
 	TimeLeft     string
 	ErrorMsg     string
@@ -106,9 +108,14 @@ func Run(t *testing.T, _ *session.Doctest, req *Request) (*Response, error) {
 	switch req.Op {
 	case "grok-compose":
 		// Production API (implementer) — compose only; no parse of next_reset.
+		period := req.PeriodLabel
+		if period == "" {
+			period = "Weekly"
+		}
 		resp.DropdownLine = menubar.ComposeGrokDropdownLine(
 			req.Status,
 			req.WeeklyLimit,
+			period,
 			req.ResetDisplay,
 			req.TimeLeft,
 			req.ErrorMsg,

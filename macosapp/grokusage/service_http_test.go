@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	dotgrokusage "github.com/xhd2015/dot-pkgs/go-pkgs/shell/grok/usage"
 )
 
 func TestDefaultFetcher_FixtureEnv(t *testing.T) {
@@ -45,5 +48,35 @@ func TestDefaultFetcher_LiveHTTP(t *testing.T) {
 	}
 	if out.WeeklyLimit == "" {
 		t.Fatalf("empty weekly: %+v", out)
+	}
+	// This account is monthly-uncapped; preferred view is weekly credits ("N%").
+	if out.WeeklyLimit[len(out.WeeklyLimit)-1] != '%' {
+		t.Fatalf("want percent weekly_limit for uncapped monthly, got %+v", out)
+	}
+	if out.Period != "weekly" {
+		t.Fatalf("want period=weekly for this account, got %+v", out)
+	}
+}
+
+func TestMapBillingSnapshot_WeeklyCredits(t *testing.T) {
+	snap := dotgrokusage.Snapshot{
+		UsedPercent: 2,
+		PeriodType:  dotgrokusage.PeriodWeekly,
+		ResetAt:     time.Date(2026, 9, 4, 0, 55, 0, 0, time.UTC),
+	}
+	out := mapBillingSnapshot(snap)
+	if out.WeeklyLimit != "2%" || out.Period != "weekly" {
+		t.Fatalf("out = %+v", out)
+	}
+	if out.NextReset == "" {
+		t.Fatal("want NextReset")
+	}
+}
+
+func TestMapBillingSnapshot_UncappedNoInventPercent(t *testing.T) {
+	snap := dotgrokusage.Snapshot{Used: 73, UsedPercent: -1, MonthlyLimit: 0}
+	out := mapBillingSnapshot(snap)
+	if out.WeeklyLimit != "73" {
+		t.Fatalf("out = %+v", out)
 	}
 }

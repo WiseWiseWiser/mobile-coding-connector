@@ -2,6 +2,7 @@ package menubar
 
 import (
 	"fmt"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -65,13 +66,13 @@ func FormatGrokDropdownLine(status, weeklyLimit, reset, errorMsg string, now tim
 	switch status {
 	case "ready":
 		display := FormatResetDisplay(reset, now)
-		return ComposeGrokDropdownLine(status, weeklyLimit, display, FormatTimeLeft(reset, now), errorMsg)
+		return ComposeGrokDropdownLine(status, weeklyLimit, "Weekly", display, FormatTimeLeft(reset, now), errorMsg)
 	case "loading":
-		return ComposeGrokDropdownLine(status, weeklyLimit, "", "", errorMsg)
+		return ComposeGrokDropdownLine(status, weeklyLimit, "Weekly", "", "", errorMsg)
 	case "error":
-		return ComposeGrokDropdownLine(status, weeklyLimit, "", "", errorMsg)
+		return ComposeGrokDropdownLine(status, weeklyLimit, "Weekly", "", "", errorMsg)
 	default:
-		return ComposeGrokDropdownLine(status, weeklyLimit, "", "", errorMsg)
+		return ComposeGrokDropdownLine(status, weeklyLimit, "Weekly", "", "", errorMsg)
 	}
 }
 
@@ -93,10 +94,14 @@ func FormatCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, re
 
 // ComposeGrokDropdownLine builds the dropdown line from structured API fields only.
 // Does not parse next_reset; time_left is appended only when non-empty.
-func ComposeGrokDropdownLine(status, weeklyLimit, resetDisplay, timeLeft, errorMsg string) string {
+// periodLabel empty defaults to "Weekly" (historical menu wording).
+func ComposeGrokDropdownLine(status, weeklyLimit, periodLabel, resetDisplay, timeLeft, errorMsg string) string {
+	if strings.TrimSpace(periodLabel) == "" {
+		periodLabel = "Weekly"
+	}
 	switch status {
 	case "ready":
-		line := fmt.Sprintf("Grok: %s(Weekly), Reset %s", weeklyLimit, resetDisplay)
+		line := fmt.Sprintf("Grok: %s(%s), Reset %s", weeklyLimit, periodLabel, resetDisplay)
 		if timeLeft != "" {
 			line += ", " + timeLeft
 		}
@@ -107,6 +112,18 @@ func ComposeGrokDropdownLine(status, weeklyLimit, resetDisplay, timeLeft, errorM
 		return fmt.Sprintf("Grok: Error: %s", errorMsg)
 	default:
 		return "Grok: Loading..."
+	}
+}
+
+// PeriodLabelForAPI maps API period tokens to menu display labels.
+func PeriodLabelForAPI(period string) string {
+	switch strings.ToLower(strings.TrimSpace(period)) {
+	case "monthly":
+		return "Monthly"
+	case "weekly":
+		return "Weekly"
+	default:
+		return "Weekly"
 	}
 }
 

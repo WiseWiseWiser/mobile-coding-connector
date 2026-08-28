@@ -15,12 +15,13 @@ Parse leaves still exercise `tty.ParseShowUsageOutput` via the parser wrapper.
 - **Parser wrapper (`macosapp/grokusage`)** — delegates `ParseShowUsageOutput`
   to `tty` for API compatibility.
 - **Grok usage service (daemon)** — default fetcher calls
-  `dot-pkgs/shell/grok/usage.Fetch` (HTTP billing + local auth token refresh).
+  `dot-pkgs/shell/grok/usage.Fetch` (monthly billing + weekly credits; prefer
+  monthly when capped, else weekly credits percent + local auth refresh).
   Injectable `TestExported_SetFetcher` for L2 tests; optional
   `AI_CRITIC_GROK_USAGE_FIXTURE` JSON for API subprocess tests. Caches
-  `GrokUsageResponse`, refreshes every 10m, skips overlapping in-flight fetches.
-  On success derives structured reset fields; `Get()` recomputes `time_left`
-  from cached `reset_at` + now without re-fetch.
+  `GrokUsageResponse` (includes `period`), refreshes every 10m, skips overlapping
+  in-flight fetches. On success derives structured reset fields; `Get()`
+  recomputes `time_left` from cached `reset_at` + now without re-fetch.
 - **Mock fetch modes** — in-process `FetchMode` success / fail / success-no-tz /
   slow (no PTY).
 - **ai-critic-server subprocess** — serves `GET /api/grok/usage` on main server port

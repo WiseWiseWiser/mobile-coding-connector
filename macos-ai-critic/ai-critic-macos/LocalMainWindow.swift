@@ -19,7 +19,8 @@ struct LocalMainWindow: View {
                         weekly: state.grokUsage?.weeklyLimit ?? "",
                         resetDisplay: state.grokUsage?.resetDisplay ?? "",
                         timeLeft: state.grokUsage?.timeLeft ?? "",
-                        errorMsg: state.grokUsage?.error ?? ""
+                        errorMsg: state.grokUsage?.error ?? "",
+                        period: state.grokUsage?.period ?? ""
                     ),
                     codexLine: UsageLabelFormatter.composeCodexDropdownLine(
                         status: state.codexUsage?.status ?? "loading",

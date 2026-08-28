@@ -4,6 +4,7 @@ import AICriticMacShared
 struct GrokUsageResponse: Decodable {
     let status: String
     let weeklyLimit: String?
+    let period: String?
     let nextReset: String?
     let resetAt: String?
     let resetDisplay: String?
@@ -14,6 +15,7 @@ struct GrokUsageResponse: Decodable {
     enum CodingKeys: String, CodingKey {
         case status
         case weeklyLimit = "weekly_limit"
+        case period
         case nextReset = "next_reset"
         case resetAt = "reset_at"
         case resetDisplay = "reset_display"

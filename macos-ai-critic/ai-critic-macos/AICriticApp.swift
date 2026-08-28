@@ -312,7 +312,8 @@ private struct MenuBarDropdownContent: View {
                 weekly: state.grokUsage?.weeklyLimit ?? "",
                 resetDisplay: state.grokUsage?.resetDisplay ?? "",
                 timeLeft: state.grokUsage?.timeLeft ?? "",
-                errorMsg: state.grokUsage?.error ?? ""
+                errorMsg: state.grokUsage?.error ?? "",
+                period: state.grokUsage?.period ?? ""
             ))
             Text(UsageLabelFormatter.composeCodexDropdownLine(
                 status: state.codexUsage?.status ?? "loading",

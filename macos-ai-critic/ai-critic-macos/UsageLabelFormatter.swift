@@ -57,16 +57,19 @@ enum UsageLabelFormatter {
     }
 
     /// Compose-only dropdown from structured API fields (no parse of next_reset).
+    /// period empty defaults to Weekly label.
     static func composeGrokDropdownLine(
         status: String,
         weekly: String,
         resetDisplay: String,
         timeLeft: String,
-        errorMsg: String
+        errorMsg: String,
+        period: String = ""
     ) -> String {
+        let periodLabel = periodLabelForAPI(period)
         switch status {
         case "ready":
-            var line = "Grok: \(weekly)(Weekly), Reset \(resetDisplay)"
+            var line = "Grok: \(weekly)(\(periodLabel)), Reset \(resetDisplay)"
             if !timeLeft.isEmpty {
                 line += ", \(timeLeft)"
             }
@@ -77,6 +80,17 @@ enum UsageLabelFormatter {
             return "Grok: Error: \(errorMsg)"
         default:
             return "Grok: Loading..."
+        }
+    }
+
+    static func periodLabelForAPI(_ period: String) -> String {
+        switch period.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "monthly":
+            return "Monthly"
+        case "weekly":
+            return "Weekly"
+        default:
+            return "Weekly"
         }
     }
 
@@ -115,10 +129,11 @@ enum UsageLabelFormatter {
                 weekly: weekly,
                 resetDisplay: formatResetDisplay(reset: reset, now: now),
                 timeLeft: formatTimeLeft(reset: reset, now: now),
-                errorMsg: errorMsg
+                errorMsg: errorMsg,
+                period: "weekly"
             )
         default:
-            return composeGrokDropdownLine(status: status, weekly: weekly, resetDisplay: "", timeLeft: "", errorMsg: errorMsg)
+            return composeGrokDropdownLine(status: status, weekly: weekly, resetDisplay: "", timeLeft: "", errorMsg: errorMsg, period: "weekly")
         }
     }
 
