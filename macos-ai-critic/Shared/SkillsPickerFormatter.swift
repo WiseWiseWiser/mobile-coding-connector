@@ -13,6 +13,8 @@ public enum SkillsPickerFormatter {
     public static let sidebarWidthDefaultsKey = "insertPickerSidebarWidth"
     /// Persisted clipboard "Copy file path" prefix (as typed, including trailing space).
     public static let clipboardPathPrefixDefaultsKey = "insertPickerClipboardPathPrefix"
+    /// Persisted: when true, Copy file path appends OCR text after the dumped path.
+    public static let clipboardAppendOCRDefaultsKey = "insertPickerClipboardAppendOCR"
 
     /// Ordered sidebar ids (All → Commands, then non-search Clipboard / Adhoc).
     public static let sidebarOrder: [String] = [
@@ -266,6 +268,11 @@ public enum SkillsPickerFormatter {
     public static func formatPathPrefixLabel() -> String { "Path prefix" }
     public static func formatPathPrefixPlaceholder() -> String { "optional, e.g. image " }
     public static func formatCopyWillUseLabel() -> String { "Copy will use:" }
+    public static func formatOCRHeading() -> String { "OCR" }
+    public static func formatOCRCheckboxTitle() -> String { "OCR" }
+    public static func formatOCRCheckboxHelp() -> String { "Append OCR text after path when copying" }
+    public static func formatOCRRecognizing() -> String { "Recognizing…" }
+    public static func formatOCREmpty() -> String { "(no text recognized)" }
     public static func formatAdhocSavedStatus() -> String { "Saved" }
     public static func formatAdhocSavingStatus() -> String { "Saving…" }
     public static func formatAdhocDirtyStatus() -> String { "Unsaved" }
@@ -273,18 +280,37 @@ public enum SkillsPickerFormatter {
 
     /// Pasteboard string for Copy file path: prefix as typed + path (no auto space).
     /// Empty path → empty string. Empty prefix → path only.
-    public static func formatClipboardCopyText(prefix: String, path: String) -> String {
+    /// When `appendOCR` and `ocrText` is non-empty, appends `\n` + trimmed OCR after the path line.
+    public static func formatClipboardCopyText(
+        prefix: String,
+        path: String,
+        appendOCR: Bool = false,
+        ocrText: String = ""
+    ) -> String {
         let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedPath.isEmpty { return "" }
-        if prefix.isEmpty { return trimmedPath }
-        return prefix + trimmedPath
+        let base: String
+        if prefix.isEmpty {
+            base = trimmedPath
+        } else {
+            base = prefix + trimmedPath
+        }
+        guard appendOCR else { return base }
+        let ocr = ocrText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if ocr.isEmpty { return base }
+        return base + "\n" + ocr
     }
 
     /// Live preview line under the prefix field (empty path → empty).
+    /// Unused in the Clipboard UI (too much chrome); kept for tests / callers.
     public static func formatCopyWillUsePreview(prefix: String, path: String) -> String {
         let text = formatClipboardCopyText(prefix: prefix, path: path)
         if text.isEmpty { return "" }
         return "\(formatCopyWillUseLabel()) \(text)"
+    }
+
+    public static func isClipboardImageKind(_ kind: String) -> Bool {
+        kind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "image"
     }
 
     public static func formatClipboardKind(_ kind: String) -> String {

@@ -81,7 +81,13 @@ final class SkillsPickerFormatterTests: XCTestCase {
         XCTAssertEqual(SkillsPickerFormatter.formatSearchPrompt(sidebarID: "clipboard"), "")
         XCTAssertEqual(SkillsPickerFormatter.formatSearchPrompt(sidebarID: "adhoc"), "")
         XCTAssertEqual(SkillsPickerFormatter.clipboardPathPrefixDefaultsKey, "insertPickerClipboardPathPrefix")
+        XCTAssertEqual(SkillsPickerFormatter.clipboardAppendOCRDefaultsKey, "insertPickerClipboardAppendOCR")
         XCTAssertEqual(SkillsPickerFormatter.formatPathPrefixLabel(), "Path prefix")
+        XCTAssertEqual(SkillsPickerFormatter.formatOCRHeading(), "OCR")
+        XCTAssertEqual(SkillsPickerFormatter.formatOCRCheckboxTitle(), "OCR")
+        XCTAssertTrue(SkillsPickerFormatter.isClipboardImageKind("image"))
+        XCTAssertTrue(SkillsPickerFormatter.isClipboardImageKind("IMAGE"))
+        XCTAssertFalse(SkillsPickerFormatter.isClipboardImageKind("text"))
         XCTAssertEqual(
             SkillsPickerFormatter.formatClipboardCopyText(prefix: "image ", path: "/tmp/a.png"),
             "image /tmp/a.png"
@@ -95,6 +101,33 @@ final class SkillsPickerFormatterTests: XCTestCase {
             "image /tmp/a.png"
         )
         XCTAssertEqual(SkillsPickerFormatter.formatClipboardCopyText(prefix: "image ", path: ""), "")
+        XCTAssertEqual(
+            SkillsPickerFormatter.formatClipboardCopyText(
+                prefix: "image ",
+                path: "/tmp/a.png",
+                appendOCR: true,
+                ocrText: "hello\nworld"
+            ),
+            "image /tmp/a.png\nhello\nworld"
+        )
+        XCTAssertEqual(
+            SkillsPickerFormatter.formatClipboardCopyText(
+                prefix: "image ",
+                path: "/tmp/a.png",
+                appendOCR: true,
+                ocrText: "  \n"
+            ),
+            "image /tmp/a.png"
+        )
+        XCTAssertEqual(
+            SkillsPickerFormatter.formatClipboardCopyText(
+                prefix: "image ",
+                path: "/tmp/a.png",
+                appendOCR: false,
+                ocrText: "hello"
+            ),
+            "image /tmp/a.png"
+        )
         XCTAssertEqual(
             SkillsPickerFormatter.formatCopyWillUsePreview(prefix: "image ", path: "/tmp/a.png"),
             "Copy will use: image /tmp/a.png"

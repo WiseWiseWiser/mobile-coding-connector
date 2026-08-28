@@ -123,6 +123,7 @@ struct SkillsPickerView: View {
     @AppStorage(SkillsPickerFormatter.sidebarDefaultsKey) private var storedSidebar = SkillsPickerFormatter.sidebarAll
     @AppStorage(SkillsPickerFormatter.sidebarWidthDefaultsKey) private var storedSidebarWidth = SkillsPickerFormatter.sidebarIconWidth
     @AppStorage(SkillsPickerFormatter.clipboardPathPrefixDefaultsKey) private var clipboardPathPrefix = ""
+    @AppStorage(SkillsPickerFormatter.clipboardAppendOCRDefaultsKey) private var clipboardAppendOCR = false
     @State private var sidebarID: String? = nil
     @State private var sidebarWidth: CGFloat = CGFloat(SkillsPickerFormatter.sidebarIconWidth)
     @State private var sidebarDragStartWidth: CGFloat?
@@ -158,6 +159,10 @@ struct SkillsPickerView: View {
     @State private var clipboardBusy = false
     @State private var clipboardError: String?
     @State private var lastDumpPath: String = ""
+    @State private var clipboardOCRText: String = ""
+    @State private var clipboardOCRLoading = false
+    @State private var clipboardOCRError: String?
+    @State private var clipboardOCRTask: Task<Void, Never>?
 
     @State private var adhocText = ""
     @State private var adhocPath = ""
@@ -453,11 +458,12 @@ struct SkillsPickerView: View {
                 let peek = clipboardPeek ?? ClipboardPeekResponse()
                 let kindLabel = SkillsPickerFormatter.formatClipboardKind(peek.kind)
                 let canDump = SkillsPickerFormatter.canDumpClipboard(kind: peek.kind)
+                let isImage = SkillsPickerFormatter.isClipboardImageKind(peek.kind)
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(SkillsPickerFormatter.formatClipboardKindLabel())
                         .foregroundStyle(.secondary)
                     Text(kindLabel)
-                    if !peek.ext.isEmpty, peek.kind.lowercased() == "image" {
+                    if !peek.ext.isEmpty, isImage {
                         Text("/ \(peek.ext)")
                             .foregroundStyle(.secondary)
                     }
@@ -469,22 +475,7 @@ struct SkillsPickerView: View {
                     Text(SkillsPickerFormatter.formatClipboardSize(bytes: peek.bytes))
                 }
                 .font(.callout)
-                if !peek.preview.isEmpty {
-                    ScrollView {
-                        Text(peek.preview)
-                            .font(.system(.caption, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                    }
-                    .frame(maxHeight: 140)
-                    .padding(8)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                } else if peek.kind.lowercased() == "empty" {
-                    Text(SkillsPickerFormatter.formatEmptyHint(sidebarID: SkillsPickerFormatter.sidebarClipboard))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                clipboardContentPreview(peek: peek, isImage: isImage)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(SkillsPickerFormatter.formatPathPrefixLabel())
                         .font(.caption)
@@ -496,17 +487,16 @@ struct SkillsPickerView: View {
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.body, design: .monospaced))
                     .accessibilityIdentifier("insert-picker-clipboard-path-prefix")
-                    let copyPreview = SkillsPickerFormatter.formatCopyWillUsePreview(
-                        prefix: clipboardPathPrefix,
-                        path: lastDumpPath
-                    )
-                    if !copyPreview.isEmpty {
-                        Text(copyPreview)
-                            .font(.system(.caption, design: .monospaced))
+                    if isImage {
+                        Toggle(isOn: $clipboardAppendOCR) {
+                            Text(SkillsPickerFormatter.formatOCRCheckboxTitle())
+                        }
+                        .toggleStyle(.checkbox)
+                        .help(SkillsPickerFormatter.formatOCRCheckboxHelp())
+                        .accessibilityIdentifier("insert-picker-clipboard-append-ocr")
+                        Text(SkillsPickerFormatter.formatOCRCheckboxHelp())
+                            .font(.caption2)
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                            .textSelection(.enabled)
-                            .accessibilityIdentifier("insert-picker-clipboard-copy-preview")
                     }
                 }
                 HStack(spacing: 12) {
@@ -545,6 +535,69 @@ struct SkillsPickerView: View {
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityIdentifier("insert-picker-clipboard")
+    }
+
+    /// Shared preview box: plaintext shows peek text; image shows OCR (titled "OCR").
+    @ViewBuilder
+    private func clipboardContentPreview(peek: ClipboardPeekResponse, isImage: Bool) -> some View {
+        if isImage {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(SkillsPickerFormatter.formatOCRHeading())
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                clipboardPreviewBox {
+                    if clipboardOCRLoading && clipboardOCRText.isEmpty && clipboardOCRError == nil {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text(SkillsPickerFormatter.formatOCRRecognizing())
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } else if let clipboardOCRError {
+                        Text(clipboardOCRError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    } else if clipboardOCRText.isEmpty {
+                        Text(SkillsPickerFormatter.formatOCREmpty())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Text(clipboardOCRText)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                }
+                .accessibilityIdentifier("insert-picker-clipboard-ocr")
+            }
+        } else if !peek.preview.isEmpty {
+            clipboardPreviewBox {
+                Text(peek.preview)
+                    .font(.system(.caption, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            .accessibilityIdentifier("insert-picker-clipboard-preview")
+        } else if peek.kind.lowercased() == "empty" {
+            Text(SkillsPickerFormatter.formatEmptyHint(sidebarID: SkillsPickerFormatter.sidebarClipboard))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func clipboardPreviewBox<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        ScrollView {
+            content()
+        }
+        .frame(maxHeight: 140)
+        .padding(8)
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     private var adhocPane: some View {
@@ -761,9 +814,16 @@ struct SkillsPickerView: View {
         clipboardError = nil
         defer { clipboardLoading = false }
         do {
-            clipboardPeek = try await ServerClient.shared.peekClipboard()
+            let peek = try await ServerClient.shared.peekClipboard()
+            clipboardPeek = peek
+            if SkillsPickerFormatter.isClipboardImageKind(peek.kind) {
+                startClipboardOCR()
+            } else {
+                resetClipboardOCR()
+            }
         } catch {
             clipboardError = error.localizedDescription
+            resetClipboardOCR()
         }
     }
 
@@ -774,6 +834,11 @@ struct SkillsPickerView: View {
         do {
             let dumped = try await ServerClient.shared.dumpClipboard()
             lastDumpPath = dumped.path
+            if SkillsPickerFormatter.isClipboardImageKind(dumped.kind),
+               clipboardOCRText.isEmpty, !clipboardOCRLoading
+            {
+                startClipboardOCR(filePath: dumped.path)
+            }
         } catch {
             clipboardError = error.localizedDescription
         }
@@ -782,12 +847,56 @@ struct SkillsPickerView: View {
     private func copyDumpPath() {
         let text = SkillsPickerFormatter.formatClipboardCopyText(
             prefix: clipboardPathPrefix,
-            path: lastDumpPath
+            path: lastDumpPath,
+            appendOCR: clipboardAppendOCR,
+            ocrText: clipboardOCRText
         )
         guard !text.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         CopiedToastController.shared.show(message: SkillsPickerFormatter.formatPathCopiedToast())
+    }
+
+    private func resetClipboardOCR() {
+        clipboardOCRTask?.cancel()
+        clipboardOCRTask = nil
+        clipboardOCRText = ""
+        clipboardOCRError = nil
+        clipboardOCRLoading = false
+    }
+
+    /// Run Vision OCR from pasteboard (default) or an already-dumped file path.
+    private func startClipboardOCR(filePath: String? = nil) {
+        clipboardOCRTask?.cancel()
+        clipboardOCRLoading = true
+        clipboardOCRError = nil
+        let path = filePath
+        clipboardOCRTask = Task.detached(priority: .userInitiated) {
+            let result: Result<String, Error>
+            do {
+                let text: String
+                if let path, !path.isEmpty {
+                    text = try ClipboardOCR.recognize(filePath: path)
+                } else {
+                    text = try ClipboardOCR.recognizeFromPasteboard()
+                }
+                result = .success(text)
+            } catch {
+                result = .failure(error)
+            }
+            await MainActor.run {
+                guard !Task.isCancelled else { return }
+                clipboardOCRLoading = false
+                switch result {
+                case .success(let text):
+                    clipboardOCRText = text
+                    clipboardOCRError = nil
+                case .failure(let error):
+                    clipboardOCRText = ""
+                    clipboardOCRError = error.localizedDescription
+                }
+            }
+        }
     }
 
     private func loadAdhocText() async {
