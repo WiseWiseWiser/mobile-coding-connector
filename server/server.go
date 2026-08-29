@@ -59,6 +59,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/localfiles"
 	"github.com/xhd2015/ai-critic/server/localskills"
 	"github.com/xhd2015/ai-critic/server/localtemplates"
+	"github.com/xhd2015/ai-critic/server/textconvert"
 	"github.com/xhd2015/ai-critic/server/logs"
 	openclawapi "github.com/xhd2015/ai-critic/server/openclaw"
 	"github.com/xhd2015/ai-critic/server/projects"
@@ -654,6 +655,7 @@ func RegisterAPI(mux *http.ServeMux) error {
 	localcommands.Register(mux, &localcommands.Handler{})
 	localclipboard.Register(mux, &localclipboard.Handler{})
 	localadhoc.Register(mux, &localadhoc.Handler{})
+	textconvert.Register(mux, &textconvert.Handler{})
 
 	// Server status API
 	RegisterServerStatusAPI(mux)

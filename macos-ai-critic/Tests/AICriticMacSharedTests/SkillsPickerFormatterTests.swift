@@ -30,6 +30,8 @@ final class SkillsPickerFormatterTests: XCTestCase {
             "Search skills, templates, files & commands"
         )
         XCTAssertEqual(SkillsPickerHotKey.defaultKeyCode, 41)
+        // cmdKey | shiftKey (Carbon)
+        XCTAssertEqual(SkillsPickerHotKey.defaultModifiers, 256 | 512)
     }
 
     func testSidebarTitlesAndNormalize() {
@@ -40,6 +42,7 @@ final class SkillsPickerFormatterTests: XCTestCase {
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarCommands), "Commands")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarClipboard), "Clipboard")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarAdhoc), "Adhoc text")
+        XCTAssertEqual(SkillsPickerFormatter.formatSidebarTitle(id: SkillsPickerFormatter.sidebarConvert), "Convert text")
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID(nil), SkillsPickerFormatter.sidebarAll)
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("bogus"), SkillsPickerFormatter.sidebarAll)
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("templates"), SkillsPickerFormatter.sidebarTemplates)
@@ -47,6 +50,7 @@ final class SkillsPickerFormatterTests: XCTestCase {
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("commands"), SkillsPickerFormatter.sidebarCommands)
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("clipboard"), SkillsPickerFormatter.sidebarClipboard)
         XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("adhoc"), SkillsPickerFormatter.sidebarAdhoc)
+        XCTAssertEqual(SkillsPickerFormatter.normalizeSidebarID("convert"), SkillsPickerFormatter.sidebarConvert)
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "all"), "square.grid.2x2")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "skills"), "wrench.and.screwdriver")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "templates"), "doc.text")
@@ -54,14 +58,17 @@ final class SkillsPickerFormatterTests: XCTestCase {
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "commands"), "terminal")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "clipboard"), "doc.on.clipboard")
         XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "adhoc"), "note.text")
+        XCTAssertEqual(SkillsPickerFormatter.formatSidebarSymbol(id: "convert"), "arrow.triangle.2.circlepath")
         XCTAssertTrue(SkillsPickerFormatter.isSearchableSidebar("all"))
         XCTAssertTrue(SkillsPickerFormatter.isSearchableSidebar("files"))
         XCTAssertTrue(SkillsPickerFormatter.isSearchableSidebar("commands"))
         XCTAssertFalse(SkillsPickerFormatter.isSearchableSidebar("clipboard"))
         XCTAssertFalse(SkillsPickerFormatter.isSearchableSidebar("adhoc"))
-        XCTAssertEqual(SkillsPickerFormatter.sidebarOrder.count, 7)
+        XCTAssertFalse(SkillsPickerFormatter.isSearchableSidebar("convert"))
+        XCTAssertEqual(SkillsPickerFormatter.sidebarOrder.count, 8)
         XCTAssertEqual(SkillsPickerFormatter.sidebarOrder[4], SkillsPickerFormatter.sidebarCommands)
-        XCTAssertEqual(SkillsPickerFormatter.sidebarOrder.last, SkillsPickerFormatter.sidebarAdhoc)
+        XCTAssertEqual(SkillsPickerFormatter.sidebarOrder[SkillsPickerFormatter.sidebarOrder.count - 2], SkillsPickerFormatter.sidebarAdhoc)
+        XCTAssertEqual(SkillsPickerFormatter.sidebarOrder.last, SkillsPickerFormatter.sidebarConvert)
     }
 
     func testClipboardAndAdhocFormatters() {
@@ -78,8 +85,16 @@ final class SkillsPickerFormatterTests: XCTestCase {
         XCTAssertEqual(SkillsPickerFormatter.formatCopyFilePathTitle(), "Copy file path")
         XCTAssertEqual(SkillsPickerFormatter.formatPathCopiedToast(), "Path copied")
         XCTAssertEqual(SkillsPickerFormatter.adhocSaveDebounceNanoseconds, 400_000_000)
+        XCTAssertEqual(SkillsPickerFormatter.convertDebounceNanoseconds, 400_000_000)
+        XCTAssertEqual(SkillsPickerFormatter.formatConvertHeading(), "Convert text")
+        XCTAssertEqual(SkillsPickerFormatter.formatConvertResultHeading(), "Converted")
+        XCTAssertEqual(SkillsPickerFormatter.formatConvertingStatus(), "Converting…")
+        XCTAssertEqual(SkillsPickerFormatter.formatCopyConvertedTextTitle(), "Copy converted text")
+        XCTAssertFalse(SkillsPickerFormatter.formatConvertEmptyHint().isEmpty)
+        XCTAssertEqual(TextConvertConverter.shellSingleLine, "shell-single-line")
         XCTAssertEqual(SkillsPickerFormatter.formatSearchPrompt(sidebarID: "clipboard"), "")
         XCTAssertEqual(SkillsPickerFormatter.formatSearchPrompt(sidebarID: "adhoc"), "")
+        XCTAssertEqual(SkillsPickerFormatter.formatSearchPrompt(sidebarID: "convert"), "")
         XCTAssertEqual(SkillsPickerFormatter.clipboardPathPrefixDefaultsKey, "insertPickerClipboardPathPrefix")
         XCTAssertEqual(SkillsPickerFormatter.clipboardAppendOCRDefaultsKey, "insertPickerClipboardAppendOCR")
         XCTAssertEqual(SkillsPickerFormatter.formatPathPrefixLabel(), "Path prefix")
@@ -361,6 +376,15 @@ final class SkillsPickerFormatterTests: XCTestCase {
         XCTAssertEqual(resp.commands[0].useCount, 2)
         XCTAssertEqual(resp.commands[0].titleSpans.first?.matched, true)
         XCTAssertEqual(resp.commands[0].commandSpans.first?.text, "kool")
+    }
+
+    func testDecodeTextConvertResponse() throws {
+        let json = """
+        {"text":"cmd --flag","converter":"shell-single-line"}
+        """
+        let resp = try JSONDecoder().decode(TextConvertResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(resp.text, "cmd --flag")
+        XCTAssertEqual(resp.converter, TextConvertConverter.shellSingleLine)
     }
 
     func testDisplaySpansKeepsServerHighlights() {

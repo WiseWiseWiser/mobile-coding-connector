@@ -109,6 +109,32 @@ public enum SkillsPickerHotKey {
     public static let defaultModifiers = 256 | 512
 }
 
+/// Default converter id for POST /api/local/text/convert.
+public enum TextConvertConverter {
+    public static let shellSingleLine = "shell-single-line"
+}
+
+/// POST /api/local/text/convert
+public struct TextConvertResponse: Decodable, Equatable {
+    public let text: String
+    public let converter: String
+
+    enum CodingKeys: String, CodingKey {
+        case text, converter
+    }
+
+    public init(text: String = "", converter: String = TextConvertConverter.shellSingleLine) {
+        self.text = text
+        self.converter = converter
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        converter = try c.decodeIfPresent(String.self, forKey: .converter) ?? TextConvertConverter.shellSingleLine
+    }
+}
+
 /// GET /api/local/clipboard/peek
 public struct ClipboardPeekResponse: Decodable, Equatable {
     public let kind: String

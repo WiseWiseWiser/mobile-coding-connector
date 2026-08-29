@@ -9,6 +9,7 @@ public enum SkillsPickerFormatter {
     public static let sidebarCommands = "commands"
     public static let sidebarClipboard = "clipboard"
     public static let sidebarAdhoc = "adhoc"
+    public static let sidebarConvert = "convert"
     public static let sidebarDefaultsKey = "insertPickerSidebarID"
     public static let sidebarWidthDefaultsKey = "insertPickerSidebarWidth"
     /// Persisted clipboard "Copy file path" prefix (as typed, including trailing space).
@@ -16,13 +17,16 @@ public enum SkillsPickerFormatter {
     /// Persisted: when true, Copy file path appends OCR text after the dumped path.
     public static let clipboardAppendOCRDefaultsKey = "insertPickerClipboardAppendOCR"
 
-    /// Ordered sidebar ids (All → Commands, then non-search Clipboard / Adhoc).
+    /// Ordered sidebar ids (All → Commands, then non-search Clipboard / Adhoc / Convert).
     public static let sidebarOrder: [String] = [
-        sidebarAll, sidebarSkills, sidebarTemplates, sidebarFiles, sidebarCommands, sidebarClipboard, sidebarAdhoc,
+        sidebarAll, sidebarSkills, sidebarTemplates, sidebarFiles, sidebarCommands,
+        sidebarClipboard, sidebarAdhoc, sidebarConvert,
     ]
 
     /// Debounce for adhoc text PUT (trailing).
     public static let adhocSaveDebounceNanoseconds: UInt64 = 400_000_000
+    /// Debounce for convert-text preview (trailing).
+    public static let convertDebounceNanoseconds: UInt64 = 400_000_000
 
     /// Default / collapsed icon-rail width (points).
     public static let sidebarIconWidth: Double = 52
@@ -53,14 +57,15 @@ public enum SkillsPickerFormatter {
         case sidebarCommands: return "terminal"
         case sidebarClipboard: return "doc.on.clipboard"
         case sidebarAdhoc: return "note.text"
+        case sidebarConvert: return "arrow.triangle.2.circlepath"
         default: return "square.grid.2x2"
         }
     }
 
-    /// Searchable sidebars hit list APIs; clipboard/adhoc do not.
+    /// Searchable sidebars hit list APIs; clipboard/adhoc/convert do not.
     public static func isSearchableSidebar(_ id: String) -> Bool {
         switch normalizeSidebarID(id) {
-        case sidebarClipboard, sidebarAdhoc:
+        case sidebarClipboard, sidebarAdhoc, sidebarConvert:
             return false
         default:
             return true
@@ -89,6 +94,7 @@ public enum SkillsPickerFormatter {
         case sidebarCommands: return "Commands"
         case sidebarClipboard: return "Clipboard"
         case sidebarAdhoc: return "Adhoc text"
+        case sidebarConvert: return "Convert text"
         default: return ""
         }
     }
@@ -96,7 +102,8 @@ public enum SkillsPickerFormatter {
     public static func normalizeSidebarID(_ id: String?) -> String {
         let trimmed = (id ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         switch trimmed {
-        case sidebarAll, sidebarSkills, sidebarTemplates, sidebarFiles, sidebarCommands, sidebarClipboard, sidebarAdhoc:
+        case sidebarAll, sidebarSkills, sidebarTemplates, sidebarFiles, sidebarCommands,
+             sidebarClipboard, sidebarAdhoc, sidebarConvert:
             return trimmed
         default:
             return sidebarAll
@@ -232,6 +239,8 @@ public enum SkillsPickerFormatter {
             return "Clipboard empty"
         case sidebarAdhoc:
             return "Adhoc text"
+        case sidebarConvert:
+            return "Convert text"
         default:
             return "Nothing registered"
         }
@@ -251,6 +260,8 @@ public enum SkillsPickerFormatter {
             return "Copy something, then Refresh"
         case sidebarAdhoc:
             return "Compose temporary text; auto-saves"
+        case sidebarConvert:
+            return "Paste multiline text; converted preview appears after you pause typing"
         default:
             return "register with: my skills / my templates / my files / my commands"
         }
@@ -258,6 +269,7 @@ public enum SkillsPickerFormatter {
 
     public static func formatClipboardHeading() -> String { "Clipboard" }
     public static func formatAdhocHeading() -> String { "Adhoc text" }
+    public static func formatConvertHeading() -> String { "Convert text" }
     public static func formatDumpToFileTitle() -> String { "Dump to file" }
     public static func formatCopyFilePathTitle() -> String { "Copy file path" }
     public static func formatCopyTextTitle() -> String { "Copy text" }
@@ -276,6 +288,10 @@ public enum SkillsPickerFormatter {
     public static func formatAdhocSavedStatus() -> String { "Saved" }
     public static func formatAdhocSavingStatus() -> String { "Saving…" }
     public static func formatAdhocDirtyStatus() -> String { "Unsaved" }
+    public static func formatConvertResultHeading() -> String { "Converted" }
+    public static func formatConvertEmptyHint() -> String { "Converted preview appears after you pause typing" }
+    public static func formatConvertingStatus() -> String { "Converting…" }
+    public static func formatCopyConvertedTextTitle() -> String { "Copy converted text" }
     public static func formatPathCopiedToast() -> String { "Path copied" }
 
     /// Pasteboard string for Copy file path: prefix as typed + path (no auto space).
@@ -425,7 +441,7 @@ public enum SkillsPickerFormatter {
             return "Search files"
         case sidebarCommands:
             return "Search commands"
-        case sidebarClipboard, sidebarAdhoc:
+        case sidebarClipboard, sidebarAdhoc, sidebarConvert:
             return ""
         default:
             return "Search skills, templates, files & commands"

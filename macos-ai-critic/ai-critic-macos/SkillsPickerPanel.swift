@@ -171,7 +171,15 @@ struct SkillsPickerView: View {
     @State private var adhocSaveTask: Task<Void, Never>?
     @State private var adhocDirty = false
     @State private var adhocSuppressChange = false
-    @FocusState private var adhocFocused: Bool
+    @State private var adhocRequestFocus = false
+
+    @State private var convertText = ""
+    @State private var convertResult = ""
+    @State private var convertStatus = ""
+    @State private var convertError = ""
+    @State private var convertTask: Task<Void, Never>?
+    @State private var convertRequestID = 0
+    @State private var convertRequestFocus = false
 
     private var resolvedSidebar: String {
         SkillsPickerFormatter.normalizeSidebarID(sidebarID ?? storedSidebar)
@@ -231,6 +239,7 @@ struct SkillsPickerView: View {
             focusSearch()
         }
         .onDisappear {
+            convertTask?.cancel()
             flushAdhocSave()
         }
         .onChange(of: query) { _, q in
@@ -254,6 +263,10 @@ struct SkillsPickerView: View {
             adhocSaveStatus = SkillsPickerFormatter.formatAdhocDirtyStatus()
             scheduleAdhocSave()
         }
+        .onChange(of: convertText) { _, _ in
+            guard resolvedSidebar == SkillsPickerFormatter.sidebarConvert else { return }
+            scheduleConvert()
+        }
         .onExitCommand { handleEscape() }
         .onKeyPress(.upArrow) {
             guard !showCreateTemplate, !showAddFile, !showAddCommand, isSearchableSidebar else { return .ignored }
@@ -266,12 +279,13 @@ struct SkillsPickerView: View {
             return .handled
         }
         .onKeyPress(.leftArrow) {
-            guard !showCreateTemplate, !showAddFile, !showAddCommand else { return .ignored }
+            // Non-search panes (adhoc/convert/clipboard) need arrows for the text caret.
+            guard !showCreateTemplate, !showAddFile, !showAddCommand, isSearchableSidebar else { return .ignored }
             moveSidebar(-1)
             return .handled
         }
         .onKeyPress(.rightArrow) {
-            guard !showCreateTemplate, !showAddFile, !showAddCommand else { return .ignored }
+            guard !showCreateTemplate, !showAddFile, !showAddCommand, isSearchableSidebar else { return .ignored }
             moveSidebar(1)
             return .handled
         }
@@ -292,6 +306,7 @@ struct SkillsPickerView: View {
             // gets sidebar min-height and shows as a large empty gap.
             sidebarRow(id: SkillsPickerFormatter.sidebarClipboard, separatorAbove: true)
             sidebarRow(id: SkillsPickerFormatter.sidebarAdhoc)
+            sidebarRow(id: SkillsPickerFormatter.sidebarConvert)
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
@@ -388,6 +403,8 @@ struct SkillsPickerView: View {
             clipboardPane
         case SkillsPickerFormatter.sidebarAdhoc:
             adhocPane
+        case SkillsPickerFormatter.sidebarConvert:
+            convertPane
         default:
             searchableContentPane
         }
@@ -618,14 +635,12 @@ struct SkillsPickerView: View {
                     .controlSize(.small)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                TextEditor(text: $adhocText)
-                    .font(.system(.body, design: .monospaced))
-                    .focused($adhocFocused)
-                    .scrollContentBackground(.hidden)
-                    .padding(6)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .accessibilityIdentifier("insert-picker-adhoc-editor")
+                PlainCodeTextEditor(
+                    text: $adhocText,
+                    requestFocus: $adhocRequestFocus,
+                    accessibilityIdentifier: "insert-picker-adhoc-editor"
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 6))
                 HStack {
                     Button(SkillsPickerFormatter.formatCopyTextTitle()) {
                         copyAdhocText()
@@ -640,6 +655,70 @@ struct SkillsPickerView: View {
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityIdentifier("insert-picker-adhoc")
+    }
+
+    private var convertPane: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(SkillsPickerFormatter.formatConvertHeading())
+                .font(.headline)
+            PlainCodeTextEditor(
+                text: $convertText,
+                requestFocus: $convertRequestFocus,
+                accessibilityIdentifier: "insert-picker-convert-editor"
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            HStack {
+                Text(SkillsPickerFormatter.formatConvertResultHeading())
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                if !convertStatus.isEmpty {
+                    Text(convertStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("insert-picker-convert-status")
+                }
+            }
+            ScrollView {
+                Group {
+                    if convertResult.isEmpty {
+                        Text(SkillsPickerFormatter.formatConvertEmptyHint())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityIdentifier("insert-picker-convert-empty")
+                    } else {
+                        Text(convertResult)
+                            .font(.system(.body, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            .padding(6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .accessibilityIdentifier("insert-picker-convert-preview")
+            HStack {
+                Button(SkillsPickerFormatter.formatCopyConvertedTextTitle()) {
+                    copyConvertedText()
+                }
+                .buttonStyle(.borderless)
+                .disabled(convertResult.isEmpty)
+                .accessibilityIdentifier("insert-picker-convert-copy")
+                Spacer()
+            }
+            if !convertError.isEmpty {
+                Text(convertError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("insert-picker-convert-error")
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityIdentifier("insert-picker-convert")
     }
 
     private func listRow(_ item: InsertPickerItem) -> some View {
@@ -799,6 +878,11 @@ struct SkillsPickerView: View {
             Task { await loadAdhocText() }
             return
         }
+        if sidebar == SkillsPickerFormatter.sidebarConvert {
+            focusConvertEditor()
+            scheduleConvert()
+            return
+        }
         searchTask = Task {
             let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
@@ -911,7 +995,7 @@ struct SkillsPickerView: View {
             adhocSaveStatus = SkillsPickerFormatter.formatAdhocSavedStatus()
             DispatchQueue.main.async {
                 adhocSuppressChange = false
-                adhocFocused = true
+                adhocRequestFocus = true
             }
         } catch {
             errorText = error.localizedDescription
@@ -925,6 +1009,49 @@ struct SkillsPickerView: View {
             try? await Task.sleep(nanoseconds: SkillsPickerFormatter.adhocSaveDebounceNanoseconds)
             guard !Task.isCancelled else { return }
             await saveAdhocText()
+        }
+    }
+
+    private func focusConvertEditor() {
+        DispatchQueue.main.async {
+            convertRequestFocus = true
+        }
+    }
+
+    private func scheduleConvert() {
+        convertTask?.cancel()
+        let trimmed = convertText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            convertResult = ""
+            convertStatus = ""
+            convertError = ""
+            return
+        }
+        convertRequestID += 1
+        let requestID = convertRequestID
+        let snapshot = convertText
+        convertTask = Task {
+            try? await Task.sleep(nanoseconds: SkillsPickerFormatter.convertDebounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            await runConvert(snapshot: snapshot, requestID: requestID)
+        }
+    }
+
+    private func runConvert(snapshot: String, requestID: Int) async {
+        convertStatus = SkillsPickerFormatter.formatConvertingStatus()
+        do {
+            let resp = try await ServerClient.shared.convertText(text: snapshot)
+            guard !Task.isCancelled else { return }
+            guard requestID == convertRequestID else { return }
+            guard snapshot == convertText else { return }
+            convertResult = resp.text
+            convertError = ""
+            convertStatus = ""
+        } catch {
+            guard !Task.isCancelled else { return }
+            guard requestID == convertRequestID else { return }
+            convertError = error.localizedDescription
+            convertStatus = ""
         }
     }
 
@@ -958,6 +1085,13 @@ struct SkillsPickerView: View {
     private func copyAdhocText() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(adhocText, forType: .string)
+        CopiedToastController.shared.show()
+    }
+
+    private func copyConvertedText() {
+        guard !convertResult.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(convertResult, forType: .string)
         CopiedToastController.shared.show()
     }
 
@@ -1399,6 +1533,11 @@ struct SkillsPickerView: View {
         }
         if sidebar == SkillsPickerFormatter.sidebarAdhoc {
             await loadAdhocText()
+            return
+        }
+        if sidebar == SkillsPickerFormatter.sidebarConvert {
+            focusConvertEditor()
+            scheduleConvert()
             return
         }
         loading = items.isEmpty

@@ -498,6 +498,21 @@ final class ServerClient {
         return try JSONDecoder().decode(AdhocTextResponse.self, from: data)
     }
 
+    /// Convert adhoc text via POST /api/local/text/convert.
+    func convertText(
+        text: String,
+        converter: String = TextConvertConverter.shellSingleLine
+    ) async throws -> TextConvertResponse {
+        let (data, response) = try await postJSON(
+            path: "/api/local/text/convert",
+            body: ["text": text, "converter": converter]
+        )
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw ServerClientError.unreachable(jsonError(data, fallback: "text convert failed"))
+        }
+        return try JSONDecoder().decode(TextConvertResponse.self, from: data)
+    }
+
     /// Live Desktops + iTerm sessions + notes via GET /api/local/iterm2/inventory.
     /// Pass refresh=true to wait for a smart recapture (`?refresh=1`).
     /// Pass spaceID to recapture that Desktop only (`space_id=`).
