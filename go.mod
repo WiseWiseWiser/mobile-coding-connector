@@ -9,7 +9,7 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/ulikunitz/xz v0.5.12
 	github.com/xhd2015/agent-pro v0.0.168
-	github.com/xhd2015/bak-files v0.0.3
+	github.com/xhd2015/bak-files v0.0.5
 	github.com/xhd2015/doctest v0.0.117
 	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.156
 	github.com/xhd2015/gitops v0.0.31
