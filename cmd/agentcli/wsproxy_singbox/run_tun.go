@@ -9,119 +9,67 @@ import (
 	"time"
 
 	"github.com/xhd2015/ai-critic/client"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/singboxtun"
 )
 
-type tunRunBundle struct {
-	configPath    string
-	sidecar       *XraySidecar
-	cleanupConfig func()
-	stopSidecar   func()
-	stopHealth    func()
-}
+const (
+	tunCacheDirName  = "remote-agent"
+	tunSudoersName   = "remote-agent-sing-box"
+	tunDNSHijackHint = "Retry with: remote-agent ws-proxy vpn --http-only --dns-hijack"
+)
 
 // RunTun starts sing-box TUN for ws-proxy (full VPN or --http-only mode).
 func RunTun(getClient func() (*client.Client, error), opts RunTunOptions) error {
-	if opts.HttpOnly && !opts.DNSHijack {
-		SetSkipPlatformTunDNS(true)
-		defer SetSkipPlatformTunDNS(false)
-	}
-
-	if err := restoreStuckTunDNS(); err != nil {
-		return err
-	}
-
-	if opts.ConfigFile == "" && opts.HttpOnly {
-		MaybeWarnDNSPollution(opts.DNSHijack)
-	}
-
-	// Control plane first: tell the server which dests use freedom egress.
 	if len(opts.RemoteDirect) > 0 {
 		if err := pushRemoteDirect(getClient, opts.RemoteDirect); err != nil {
 			return err
 		}
 	}
 
-	bundle, err := prepareTunRun(getClient, opts)
+	restoreHooks := bridgeHooksToSingboxtun()
+	defer restoreHooks()
+
+	if opts.ConfigFile != "" {
+		return singboxtun.RunTun(toSingboxtunOptions(opts, 0, ""))
+	}
+
+	fmt.Println("Fetching VMess link from server...")
+	c, err := getClient()
+	if err != nil {
+		return err
+	}
+	vmess, err := currentHooks.FetchVMess(c)
 	if err != nil {
 		return err
 	}
 
-	singBoxPath, singBoxErr := currentHooks.LookPath("sing-box")
-	if singBoxErr != nil {
-		if opts.NoInstall {
-			return fmt.Errorf("sing-box not installed (--no-install set)")
-		}
-		if !currentHooks.IsTTY() {
-			return fmt.Errorf("sing-box not installed; install it with: %s", BrewInstallSingBoxCmd)
-		}
-		fmt.Println("sing-box is not installed.")
-		PrintCommand(BrewInstallSingBoxCmd)
-		shouldInstall := opts.Yes
-		if !shouldInstall {
-			confirmed := currentHooks.Confirm("Install via Homebrew? [y/N] ")
-			if !confirmed {
-				return fmt.Errorf("sing-box install declined")
-			}
-		}
-		if err := currentHooks.BrewInstall(); err != nil {
-			return fmt.Errorf("brew install sing-box failed: %w", err)
-		}
-		singBoxPath, singBoxErr = currentHooks.LookPath("sing-box")
+	fmt.Println("Starting local xray VMess client (ws-proxy doctor path)...")
+	sidecar, err := StartXraySidecar(context.Background(), vmess)
+	if err != nil {
+		return fmt.Errorf("xray sidecar: %w", err)
+	}
+	fmt.Printf("xray SOCKS ready on 127.0.0.1:%d (VMess via %s)\n", sidecar.Port, vmess.Host)
+
+	if !opts.Detach {
+		defer sidecar.Stop()
 	}
 
-	euid := currentHooks.Geteuid()
-	needSudo := euid != 0
-
-	if needSudo && !opts.NoSetupSudo && singBoxErr == nil {
-		if err := currentHooks.EnsureSudoSetup(singBoxPath, opts.NoSetupSudo); err != nil {
-			return err
-		}
-	}
-
-	if opts.Detach {
-		if bundle.cleanupConfig != nil {
-			defer bundle.cleanupConfig()
-		}
-		return runDetach(bundle.configPath, bundle.sidecar, needSudo, opts.HttpOnly)
-	}
-
-	if bundle.stopSidecar != nil {
-		defer bundle.stopSidecar()
-	}
-	if bundle.cleanupConfig != nil {
-		defer bundle.cleanupConfig()
-	}
-	if bundle.stopHealth != nil {
-		defer bundle.stopHealth()
-	}
-
-	if needSudo && !currentHooks.IsTTY() {
-		return fmt.Errorf("sing-box needs root privileges; run with sudo or from a TTY")
-	}
-
-	if hasProxyEnv() {
-		fmt.Println("Note: HTTP/SOCKS proxy env vars are cleared for sing-box (ws-proxy must be reached directly).")
-	}
-	if systemProxyEnabled() {
-		fmt.Println("Note: macOS system HTTP/HTTPS/SOCKS proxy will be disabled while the TUN is up.")
-	}
-
-	if bundle.sidecar != nil {
-		port := bundle.sidecar.Port
+	if !opts.Detach {
+		port := sidecar.Port
 		verifyLocalProxyAfterTun = func() error {
 			return verifyXrayHTTPProxy(context.Background(), port, 10*time.Second)
 		}
 		defer func() { verifyLocalProxyAfterTun = nil }()
-
-		if opts.HttpOnly {
-			stopHealth := StartWebOutboundHealthMonitor(port)
-			bundle.stopHealth = stopHealth
-			defer stopHealth()
-		}
 	}
 
-	ctx := context.Background()
-	return currentHooks.RunSingBox(ctx, needSudo, bundle.configPath)
+	err = singboxtun.RunTun(toSingboxtunOptions(opts, sidecar.Port, vmess.Host))
+	if opts.Detach && err == nil {
+		writeDetachedXrayPID(sidecar, opts.HttpOnly)
+	}
+	if opts.Detach && err != nil {
+		sidecar.Stop()
+	}
+	return err
 }
 
 // RunHttpOnly is deprecated; use RunTun with HttpOnly set.
@@ -130,133 +78,95 @@ func RunHttpOnly(getClient func() (*client.Client, error), opts RunHttpOnlyOptio
 	return RunTun(getClient, opts)
 }
 
-func prepareTunRun(getClient func() (*client.Client, error), opts RunTunOptions) (*tunRunBundle, error) {
-	if opts.ConfigFile != "" {
-		return &tunRunBundle{configPath: opts.ConfigFile}, nil
+func toSingboxtunOptions(opts RunTunOptions, localSocksPort int, proxyHost string) singboxtun.RunTunOptions {
+	return singboxtun.RunTunOptions{
+		LocalSocksPort: localSocksPort,
+		ProxyHost:      proxyHost,
+		ConfigFile:     opts.ConfigFile,
+		Yes:            opts.Yes,
+		NoInstall:      opts.NoInstall,
+		NoSetupSudo:    opts.NoSetupSudo,
+		Detach:         opts.Detach,
+		HttpOnly:       opts.HttpOnly,
+		DNSHijack:      opts.DNSHijack,
+		Policy:         toSingboxtunPolicy(opts.Policy),
+		AlsoProxy:      toSingboxtunAlsoProxy(opts.AlsoProxy),
+		CacheDirName:   tunCacheDirName,
+		SudoersName:    tunSudoersName,
+		DNSHijackHint:  tunDNSHijackHint,
 	}
-
-	fmt.Println("Fetching VMess link from server...")
-	c, err := getClient()
-	if err != nil {
-		return nil, err
-	}
-	vmess, err := currentHooks.FetchVMess(c)
-	if err != nil {
-		return nil, err
-	}
-	if proxyIPs := resolveHostIPv4CIDRs(vmess.Host); len(proxyIPs) == 0 {
-		fmt.Fprintf(os.Stderr, "warning: could not resolve %s for TUN route exclusions\n", vmess.Host)
-	}
-
-	fmt.Println("Starting local xray VMess client (ws-proxy doctor path)...")
-	sidecar, err := StartXraySidecar(context.Background(), vmess)
-	if err != nil {
-		return nil, fmt.Errorf("xray sidecar: %w", err)
-	}
-	fmt.Printf("xray SOCKS ready on 127.0.0.1:%d (VMess via %s)\n", sidecar.Port, vmess.Host)
-
-	buildOpts := buildTunConfigOptions(sidecar.Port)
-	buildOpts.HttpOnly = opts.HttpOnly
-	buildOpts.Policy = opts.Policy
-	buildOpts.AlsoProxy = opts.AlsoProxy
-	buildOpts.DNSHijack = opts.DNSHijack
-	if opts.HttpOnly {
-		buildOpts.InitialUseProxy = ProbeUpstreamProxy(sidecar.Port)
-		if !buildOpts.InitialUseProxy {
-			fmt.Println("Upstream xray SOCKS unreachable; starting in direct-fallback mode.")
-		}
-	}
-	if len(opts.AlsoProxy) > 0 && !opts.DNSHijack {
-		fmt.Fprintf(os.Stderr, "warning: --also-proxy without --dns-hijack may miss hosts that resolve to TUN-excluded private IPs (e.g. 10.0.0.0/8)\n")
-	}
-
-	if opts.HttpOnly {
-		fmt.Println("Building sing-box HTTP-only TUN config...")
-	} else {
-		fmt.Println("Building sing-box TUN config...")
-	}
-	data, err := BuildSingBoxTunConfig(vmess, buildOpts)
-	if err != nil {
-		sidecar.Stop()
-		return nil, err
-	}
-
-	prefix := "singbox-"
-	if opts.HttpOnly {
-		prefix = "singbox-http-only-"
-	}
-	tmpFile, err := os.CreateTemp("", prefix+"*.json")
-	if err != nil {
-		sidecar.Stop()
-		return nil, fmt.Errorf("create temp config: %w", err)
-	}
-	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpFile.Name())
-		sidecar.Stop()
-		return nil, fmt.Errorf("write temp config: %w", err)
-	}
-	tmpFile.Close()
-
-	configPath := tmpFile.Name()
-	return &tunRunBundle{
-		configPath: configPath,
-		sidecar:    sidecar,
-		cleanupConfig: func() {
-			_ = os.Remove(configPath)
-		},
-		stopSidecar: func() {
-			sidecar.Stop()
-		},
-	}, nil
 }
 
-func runDetach(configPath string, sidecar *XraySidecar, needSudo bool, httpOnly bool) error {
-	cacheDir, err := currentHooks.UserCacheDir()
-	if err != nil {
-		return fmt.Errorf("cache dir: %w", err)
+func toSingboxtunPolicy(p *DomainPolicy) *singboxtun.DomainPolicy {
+	if p == nil {
+		return nil
 	}
-	singBoxDir := filepath.Join(cacheDir, "singbox")
-	if err := os.MkdirAll(singBoxDir, 0700); err != nil {
-		return fmt.Errorf("create singbox dir: %w", err)
+	out := &singboxtun.DomainPolicy{Mode: singboxtun.PolicyMode(p.Mode)}
+	for _, d := range p.Include {
+		out.Include = append(out.Include, singboxtun.DomainPattern{
+			Raw: d.Raw, Wildcard: d.Wildcard, Value: d.Value,
+		})
 	}
+	for _, d := range p.Exclude {
+		out.Exclude = append(out.Exclude, singboxtun.DomainPattern{
+			Raw: d.Raw, Wildcard: d.Wildcard, Value: d.Value,
+		})
+	}
+	return out
+}
 
-	runConfigPath := filepath.Join(singBoxDir, "run.json")
-	logPath := filepath.Join(singBoxDir, "sing-box.log")
-	xrayPIDPath := filepath.Join(singBoxDir, "xray.pid")
-	if httpOnly {
-		runConfigPath = filepath.Join(singBoxDir, "http-only-run.json")
-		logPath = filepath.Join(singBoxDir, "sing-box-http-only.log")
-		xrayPIDPath = filepath.Join(singBoxDir, "xray-http-only.pid")
+func toSingboxtunAlsoProxy(in []AlsoProxyPattern) []singboxtun.AlsoProxyPattern {
+	if len(in) == 0 {
+		return nil
 	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	if err := os.WriteFile(runConfigPath, data, 0600); err != nil {
-		return fmt.Errorf("write run config: %w", err)
-	}
-
-	pid, err := currentHooks.StartDetached(runConfigPath, logPath, needSudo)
-	if err != nil {
-		return fmt.Errorf("start detached: %w", err)
-	}
-
-	modeLabel := "VPN"
-	if httpOnly {
-		modeLabel = "HTTP-only"
-	}
-	fmt.Printf("sing-box %s started in background (PID: %d)\n", modeLabel, pid)
-	fmt.Printf("Config: %s\n", runConfigPath)
-	fmt.Printf("Log:    %s\n", logPath)
-	if sidecar != nil && sidecar.cmd != nil && sidecar.cmd.Process != nil {
-		_ = os.WriteFile(xrayPIDPath, []byte(strconv.Itoa(sidecar.cmd.Process.Pid)), 0600)
-		fmt.Printf("xray sidecar (PID: %d, SOCKS 127.0.0.1:%d)\n", sidecar.cmd.Process.Pid, sidecar.Port)
-		fmt.Printf("xray PID file: %s\n", xrayPIDPath)
-		if httpOnly {
-			fmt.Println("Note: upstream health monitoring runs in foreground mode only; restart with --http-only if ws-proxy flaps while detached.")
+	out := make([]singboxtun.AlsoProxyPattern, len(in))
+	for i, p := range in {
+		out[i] = singboxtun.AlsoProxyPattern{
+			Raw: p.Raw, Wildcard: p.Wildcard, Host: p.Host, Port: p.Port,
 		}
 	}
-	return nil
+	return out
+}
+
+// bridgeHooksToSingboxtun forwards wsproxy test/runtime hooks into singboxtun
+// so InstallTestHooks and production RunSingBox (xray verify) keep working.
+func bridgeHooksToSingboxtun() func() {
+	return singboxtun.InstallTestHooks(singboxtun.TestHooks{
+		LookPath:    currentHooks.LookPath,
+		IsTTY:       currentHooks.IsTTY,
+		Confirm:     currentHooks.Confirm,
+		BrewInstall: currentHooks.BrewInstall,
+		Geteuid:     currentHooks.Geteuid,
+		RunSingBox:  currentHooks.RunSingBox,
+		StartDetached: currentHooks.StartDetached,
+		UserCacheDir:  currentHooks.UserCacheDir,
+		EnsureSudoSetup: func(singBoxPath string, noSetup bool, _, _ string) error {
+			if currentHooks.EnsureSudoSetup == nil {
+				return nil
+			}
+			return currentHooks.EnsureSudoSetup(singBoxPath, noSetup)
+		},
+	})
+}
+
+func writeDetachedXrayPID(sidecar *XraySidecar, httpOnly bool) {
+	if sidecar == nil || sidecar.cmd == nil || sidecar.cmd.Process == nil {
+		return
+	}
+	cacheDir, err := currentHooks.UserCacheDir()
+	if err != nil {
+		return
+	}
+	dir := filepath.Join(cacheDir, tunCacheDirName)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return
+	}
+	name := "xray.pid"
+	if httpOnly {
+		name = "xray-http-only.pid"
+	}
+	path := filepath.Join(dir, name)
+	_ = os.WriteFile(path, []byte(strconv.Itoa(sidecar.cmd.Process.Pid)), 0600)
+	fmt.Printf("xray sidecar (PID: %d, SOCKS 127.0.0.1:%d)\n", sidecar.cmd.Process.Pid, sidecar.Port)
+	fmt.Printf("xray PID file: %s\n", path)
 }

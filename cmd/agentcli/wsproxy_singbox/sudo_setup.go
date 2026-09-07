@@ -6,14 +6,17 @@ import (
 	"github.com/xhd2015/dot-pkgs/go-pkgs/sudosetup"
 )
 
+// defaultEnsureSudoSetup remains the TestHooks default so InstallTestHooks /
+// bridgeHooksToSingboxtun can audit sudo setup. singboxtun.RunTun invokes it
+// via the bridged hook (CacheDirName/SudoersName match tunCacheDirName).
 func defaultEnsureSudoSetup(singBoxPath string, noSetup bool) error {
 	if noSetup {
 		return nil
 	}
 	mgr := &sudosetup.Manager{
 		Config: sudosetup.Config{
-			CacheDirName: "remote-agent",
-			SudoersName:  "remote-agent-sing-box",
+			CacheDirName: tunCacheDirName,
+			SudoersName:  tunSudoersName,
 		},
 		Rule: sudosetup.Rule{
 			Command:     singBoxPath,
