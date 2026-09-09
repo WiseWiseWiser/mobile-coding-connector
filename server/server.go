@@ -48,6 +48,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/fileupload"
 	servergit "github.com/xhd2015/ai-critic/server/git"
 	servermachineanalyse "github.com/xhd2015/ai-critic/server/machineanalyse"
+	serverqemu "github.com/xhd2015/ai-critic/server/qemu"
 	servermachinebackup "github.com/xhd2015/ai-critic/server/machinebackup"
 	serverprojectpull "github.com/xhd2015/ai-critic/server/projectpull"
 	"github.com/xhd2015/ai-critic/server/github"
@@ -605,6 +606,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Machine analyse-files API (full HOME scan for remote-agent CLI)
 	servermachineanalyse.RegisterAPI(mux)
+
+	// QEMU guest + guest-cloudflared API (remote-agent qemu / qemu.json)
+	serverqemu.RegisterAPI(mux)
 
 	// Domains API
 	domains.RegisterAPI(mux)

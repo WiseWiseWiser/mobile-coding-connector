@@ -1,6 +1,7 @@
 package cloudflare
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/ai-critic/server/config"
+	serverqemu "github.com/xhd2015/ai-critic/server/qemu"
+	cfbackend "github.com/xhd2015/dot-pkgs/go-pkgs/cloudflare/backend"
 )
 
 // DomainTunnelStatus describes the runtime status of a domain tunnel.
@@ -33,6 +36,12 @@ func ParseBaseDomain(domain string) string {
 // This method is non-blocking: if the tunnel manager lock is contended (e.g. during
 // tunnel startup), it returns "connecting" instead of waiting indefinitely.
 func GetDomainTunnelStatus(domain string) DomainTunnelStatus {
+	if serverqemu.Enabled() && serverqemu.IsDomainActive(domain) {
+		return DomainTunnelStatus{
+			Status:    "active",
+			TunnelURL: fmt.Sprintf("https://%s", domain),
+		}
+	}
 	tg := unified_tunnel.GetTunnelGroupManager().GetCoreGroup()
 	if tg == nil {
 		return DomainTunnelStatus{Status: "stopped"}
@@ -253,46 +262,50 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 		return &status, nil
 	}
 
-	// Ensure core tunnel group has a tunnel configured (reuses existing or creates new)
-	tunnelRef, _, _, err := EnsureGroupTunnelConfigured(unified_tunnel.GroupCore, tunnelName, logFn)
+	// Unified host/qemu cloudflared backend (qemu.json enabled → guest only).
+	b := serverqemu.CloudflaredBackend()
+	logFn(fmt.Sprintf("cloudflared backend=%s for %s", b.Kind(), domain))
+	if tunnelName == "" && b.Kind() == cfbackend.KindQemu {
+		tunnelName = serverqemu.ProductQemuTunnel
+	}
+	origin := b.OriginForHostPort(port)
+	url, err := b.UpsertRoute(context.Background(), cfbackend.Route{
+		Tunnel:   tunnelName,
+		Hostname: domain,
+		Origin:   origin,
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	// Create DNS route
-	logFn("Creating DNS route for " + domain + "...")
-	if err := unified_tunnel.CreateDNSRoute(tunnelRef, domain); err != nil {
-		return nil, err
+	if b.Kind() == cfbackend.KindQemu {
+		serverqemu.MarkDomainActive(domain, tunnelName)
 	}
-	logFn("DNS route created")
-
-	// Add ingress rule to core tunnel group
-	tg := unified_tunnel.GetTunnelGroupManager().GetCoreGroup()
-	localURL := fmt.Sprintf("http://localhost:%d", port)
-	mappingID := fmt.Sprintf("domain-%s", domain)
-	mapping := &unified_tunnel.IngressMapping{
-		ID:       mappingID,
-		Hostname: domain,
-		Service:  localURL,
-		Source:   fmt.Sprintf("domain:%s", domain),
-	}
-
-	logFn(fmt.Sprintf("Adding ingress rule: %s -> %s", domain, localURL))
-	if err := tg.AddMapping(mapping); err != nil {
-		return nil, fmt.Errorf("failed to add mapping to core tunnel: %v", err)
-	}
-	logFn("Ingress rule added, tunnel started")
-
+	logFn("Tunnel route upserted: " + origin)
 	return &DomainTunnelStatus{
 		Status:    "active",
-		TunnelURL: fmt.Sprintf("https://%s", domain),
+		TunnelURL: url,
 	}, nil
 }
 
 // StopDomainTunnel stops the tunnel for the given domain.
 // tunnelName is the cloudflare tunnel name; if empty, a default is derived from the domain.
 func StopDomainTunnel(domain string, tunnelName string) error {
-	_ = tunnelName // not used with tunnel group, but kept for API compatibility
+	useQemu := serverqemu.Enabled() || serverqemu.IsDomainActive(domain)
+	b := serverqemu.CloudflaredBackend()
+	if useQemu {
+		b = cfbackend.New(cfbackend.Select{Qemu: true, DefaultTunnel: serverqemu.ProductQemuTunnel, QemuManager: serverqemu.DefaultManager()})
+	}
+	if b.Kind() == cfbackend.KindQemu || serverqemu.IsDomainActive(domain) {
+		if tunnelName == "" {
+			tunnelName = serverqemu.ProductQemuTunnel
+		}
+		if err := b.RemoveRoute(context.Background(), tunnelName, domain); err != nil {
+			// Fall back to legacy guest stop if registry-based remove fails.
+			_ = serverqemu.StopDomainTunnelInGuest(domain, 0, tunnelName, nil)
+		}
+		serverqemu.MarkDomainInactive(domain)
+		return nil
+	}
 
 	tg := unified_tunnel.GetTunnelGroupManager().GetCoreGroup()
 

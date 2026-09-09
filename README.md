@@ -172,7 +172,15 @@ nohup /tmp/ai-critic keep-alive &
 
 # Development
 
-Rebuilt and deploy to remote linux server
+Rebuild and deploy to the remote server (from source):
+
+```sh
+remote-agent server upgrade --from-source
+# or explicit checkout:
+# remote-agent server upgrade --from-source --source-dir /path/to/ai-critic
+```
+
+Manual equivalent:
 
 ```sh
 go run ./script/bundle/for-linux/

@@ -471,24 +471,42 @@ func (m *Manager) Add(port int, label string, providerName string) (*PortForward
 	t.stop = handle.Stop
 	t.logs = handle.Logs
 
-	// Wait for result in background
-	go func() {
-		result := <-handle.Result
-
+	applyResult := func(result TunnelResult) {
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		// Check tunnel still exists (not already removed)
 		if _, exists := m.tunnels[port]; !exists {
 			return
 		}
 		if result.Err != nil {
 			t.status = StatusError
 			t.errMsg = result.Err.Error()
+			t.publicURL = ""
 		} else {
 			t.status = StatusActive
 			t.publicURL = result.PublicURL
+			t.errMsg = ""
 		}
 		m.notifySubscribers()
+	}
+
+	// Providers may buffer a result before returning (sync upsert). Consume it
+	// immediately so status does not stick on "connecting".
+	select {
+	case result := <-handle.Result:
+		applyResult(result)
+		return &PortForward{
+			LocalPort: port,
+			Label:     label,
+			Provider:  providerName,
+			PublicURL: t.publicURL,
+			Status:    t.status,
+			Error:     t.errMsg,
+		}, nil
+	default:
+	}
+
+	go func() {
+		applyResult(<-handle.Result)
 	}()
 
 	return &PortForward{

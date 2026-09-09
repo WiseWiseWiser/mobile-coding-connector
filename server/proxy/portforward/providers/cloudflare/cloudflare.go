@@ -2,6 +2,7 @@ package cloudflare
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -12,6 +13,8 @@ import (
 	"github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/ai-critic/server/domains/pick"
 	"github.com/xhd2015/ai-critic/server/proxy/portforward"
+	serverqemu "github.com/xhd2015/ai-critic/server/qemu"
+	cfbackend "github.com/xhd2015/dot-pkgs/go-pkgs/cloudflare/backend"
 )
 
 // --- Quick Tunnel Provider ---
@@ -207,39 +210,35 @@ var _ portforward.Provider = (*OwnedProvider)(nil)
 func (p *OwnedProvider) Name() string        { return portforward.ProviderCloudflareOwned }
 func (p *OwnedProvider) DisplayName() string { return "Cloudflare (My Domain)" }
 func (p *OwnedProvider) Description() string {
-	return "Uses your configured domain to generate subdomains via the unified tunnel manager. Requires cloudflared authentication."
+	return "Uses your configured domain via host or qemu-backed cloudflared (see qemu.json)."
 }
 
 func (p *OwnedProvider) Available() bool {
-	if !portforward.IsCommandAvailable("cloudflared") {
-		return false
-	}
-	// Check if user has owned domains and is authenticated
 	userDomains := cfutils.GetOwnedDomains()
 	if len(userDomains) == 0 {
 		return false
 	}
-	return cfutils.CheckStatus().Authenticated
+	b := serverqemu.CloudflaredBackend()
+	st, err := b.Status(context.Background())
+	if err != nil {
+		return false
+	}
+	return st.Available
 }
 
 func (p *OwnedProvider) Start(port int, hostname string) (*portforward.TunnelHandle, error) {
 	logs := portforward.NewLogBuffer()
 
-	fmt.Fprintf(logs, "[OwnedProvider.Start] Received hostname: %q\n", hostname)
+	fmt.Fprintf(logs, "[OwnedProvider.Start] Received hostname: %q qemu=%v\n", hostname, serverqemu.Enabled())
 
-	// Get user domains
 	userDomains := cfutils.GetOwnedDomains()
 	if len(userDomains) == 0 {
 		return nil, fmt.Errorf("no owned domains configured")
 	}
 
-	// Use provided hostname if valid (contains a dot indicating it's a full domain), otherwise generate one
 	if hostname == "" {
-		// Use the first owned domain
 		baseDomain := userDomains[0]
 		fmt.Fprintf(logs, "[setup] No valid hostname provided, using owned domain: %s\n", baseDomain)
-
-		// Generate random subdomain
 		subdomain := pick.RandomSubdomain()
 		fmt.Fprintf(logs, "[setup] Generated random subdomain: %s\n", subdomain)
 		hostname = fmt.Sprintf("%s.%s", subdomain, baseDomain)
@@ -248,55 +247,30 @@ func (p *OwnedProvider) Start(port int, hostname string) (*portforward.TunnelHan
 		fmt.Fprintf(logs, "[setup] Using provided hostname as-is: %s\n", hostname)
 	}
 
-	// Ensure extension tunnel group has a tunnel configured (reuses existing if already set up)
-	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
-	logWrapper := func(msg string) {
-		fmt.Fprintf(logs, "[setup] %s\n", msg)
-	}
+	b := serverqemu.CloudflaredBackend()
+	fmt.Fprintf(logs, "[setup] cloudflared backend=%s\n", b.Kind())
+	origin := b.OriginForHostPort(port)
+	fmt.Fprintf(logs, "[setup] UpsertRoute %s -> %s\n", hostname, origin)
 
-	tunnelRef, _, _, err := cfutils.EnsureGroupTunnelConfigured(unified_tunnel.GroupExtension, "", logWrapper)
-	if err != nil {
-		return nil, fmt.Errorf("failed to ensure extension tunnel configured: %v", err)
-	}
-	fmt.Fprintf(logs, "[setup] Using extension tunnel: %s\n", tunnelRef)
-
-	// Create DNS route using the extension tunnel
-	fmt.Fprintf(logs, "[setup] Creating DNS route: %s -> tunnel %s\n", hostname, tunnelRef)
-	if err := unified_tunnel.CreateDNSRoute(tunnelRef, hostname); err != nil {
-		fmt.Fprintf(logs, "[setup] Warning: DNS route error: %v\n", err)
-	}
-
-	// Add mapping to extension tunnel group
-	localURL := fmt.Sprintf("http://localhost:%d", port)
-	mappingID := fmt.Sprintf("owned-port-%d", port)
-	mapping := &unified_tunnel.IngressMapping{
-		ID:       mappingID,
+	publicURL, err := b.UpsertRoute(context.Background(), cfbackend.Route{
 		Hostname: hostname,
-		Service:  localURL,
-		Source:   fmt.Sprintf("owned:%d", port),
+		Origin:   origin,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cloudflared backend upsert: %w", err)
 	}
 
-	fmt.Fprintf(logs, "[setup] Adding ingress rule: %s -> %s\n", hostname, localURL)
-	if err := tg.AddMapping(mapping); err != nil {
-		return nil, fmt.Errorf("failed to add mapping to extension tunnel: %v", err)
-	}
-
-	publicURL := fmt.Sprintf("https://%s", hostname)
-
+	// UpsertRoute already finished; mark active immediately (no artificial delay).
 	resultCh := make(chan portforward.TunnelResult, 1)
-	go func() {
-		// Give the tunnel a few seconds to establish
-		time.Sleep(5 * time.Second)
-		resultCh <- portforward.TunnelResult{PublicURL: publicURL}
-	}()
+	resultCh <- portforward.TunnelResult{PublicURL: publicURL}
 
 	return &portforward.TunnelHandle{
 		Result: resultCh,
 		Logs:   logs,
 		Stop: func() {
-			fmt.Fprintf(logs, "[cleanup] Removing ingress rule for port %d\n", port)
-			if err := tg.RemoveMapping(mappingID); err != nil {
-				fmt.Fprintf(logs, "[cleanup] Warning: failed to remove mapping: %v\n", err)
+			fmt.Fprintf(logs, "[cleanup] Removing route for %s\n", hostname)
+			if err := b.RemoveRoute(context.Background(), "", hostname); err != nil {
+				fmt.Fprintf(logs, "[cleanup] Warning: remove route: %v\n", err)
 			}
 		},
 	}, nil

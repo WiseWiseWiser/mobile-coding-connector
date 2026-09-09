@@ -57,6 +57,8 @@ var (
 	OpencodeServeChildrenRegistry  = DataDir + "/opencode-serve-children.json"
 	OpencodeServeChildrenLock      = DataDir + "/opencode-serve-children.lock"
 	FileTransferDir                = DataDir + "/file-transfer"
+	QemuFile                       = DataDir + "/qemu.json"
+	QemuDir                        = DataDir + "/qemu"
 )
 
 // Process management directory and paths

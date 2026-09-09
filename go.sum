@@ -83,8 +83,8 @@ github.com/xhd2015/bak-files v0.0.5 h1:ddyYiYW9srYs0arlFkh4YmL/9wgWPo3GuelWd/bAk
 github.com/xhd2015/bak-files v0.0.5/go.mod h1:mGnhnJhlUV/Y5OwcQw8UZAQhNyMawm+nvfpUE8aZFi0=
 github.com/xhd2015/doctest v0.0.117 h1:yZ+Wf7dIHfRXVpOkaUkVo/W8/DRX7TnUJuVevYB1i7g=
 github.com/xhd2015/doctest v0.0.117/go.mod h1:6CgOQAYnMLnMQ84BUbZ0Z7fj39LavsqgxXyiHDpuSHU=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.168 h1:OiHd4Uen6wjIncO6zoY6neuCM2pIoZZTore51aNG8BY=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.168/go.mod h1:rbA6ttLFEN1d78090+OnJo5Ghcsn8P91a0Eo2OUsxhQ=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.170 h1:QUVT+yGt3gVVJvjfqe8GBDplQaR51kMx/qoRmfSecF0=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.170/go.mod h1:rbA6ttLFEN1d78090+OnJo5Ghcsn8P91a0Eo2OUsxhQ=
 github.com/xhd2015/gitops v0.0.31 h1:dyiUIHzxeTCrG6dySEvfS5TpzooDxM8tXR+qlWDb+LQ=
 github.com/xhd2015/gitops v0.0.31/go.mod h1:KS8y6tZ3FG+myEaR+H6MvoR099YrP/ADIHZX9ROpZo8=
 github.com/xhd2015/go-coverage v1.0.41 h1:JjUcE93IMz0KHmdCYUKq9JN/EDC/5k0OEhsMAeVvL88=
@@ -101,8 +101,8 @@ github.com/xhd2015/less-gen v0.0.19 h1:JllrPhx3HzN+f2AB6cTvW9aRCpvuODJFx7affpa0z
 github.com/xhd2015/less-gen v0.0.19/go.mod h1:Ym5HW/yfVnf2mgSo48QsuHAKnMTPv/u7oqty+raTnTQ=
 github.com/xhd2015/my v0.0.8 h1:QgxuaXR8CFaNLlKsKq0DNqTLC5TvqGcLLQJ6KS1E+m0=
 github.com/xhd2015/my v0.0.8/go.mod h1:64p4pOjg9iVUvVVJRb2vc7xUXXMesRCsbbmgsS6hazU=
-github.com/xhd2015/skills v0.0.28 h1:Z5N46kSmDmN5mmcL/ii8GPaLwTVTzcGtIHb+FOmXmIM=
-github.com/xhd2015/skills v0.0.28/go.mod h1:rZ2U39lZHqFFgOnaA8iuZvF9zWnwbirvD12m+EuR/Iw=
+github.com/xhd2015/skills v0.0.33 h1:7pMm5T8RxGYEAmd/oXbeR3nSkGjfYOWO539hOJ4jwHM=
+github.com/xhd2015/skills v0.0.33/go.mod h1:iGqrc2iPGiUmUZL6dzBf+aA1Tec2N7sHYJbfPo3QZN4=
 github.com/xhd2015/tty-watch v0.0.7 h1:ShW4ikRKNenwYDQ8h802Avrq3mJAgl55Llx1bOK2FrY=
 github.com/xhd2015/tty-watch v0.0.7/go.mod h1:pfwohyt9JfOPoaTwicLiSfEFynXeHTCwfl5cCX4bGkI=
 github.com/xhd2015/wrk v0.0.91 h1:zHtllglSfQuN6epLqkbveZyCxMjrg5HZtHxfaRM3/aU=

@@ -3,7 +3,6 @@ package agentcli
 import (
 	"fmt"
 	"math"
-	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -25,6 +24,10 @@ Subcommands:
   upload-next <local-binary>
       Upload a local server binary to the next remote binary path, deriving
       the remote name from the existing ai-critic-server-vN sequence.
+
+  upgrade --from-source [--source-dir DIR]
+      Build from local ai-critic source for the remote OS/arch, upload-next,
+      and restart. Resolves source via origin scan when --source-dir is omitted.
 
   restart
       Trigger the same "Restart Server" action as the Manage Server page.
@@ -90,6 +93,8 @@ func runServer(resolve func() (*client.Client, error), args []string) error {
 		return runServerBuildNext(resolve, rest)
 	case "upload-next":
 		return runServerUploadNext(resolve, rest)
+	case "upgrade":
+		return runServerUpgrade(resolve, rest)
 	case "restart":
 		return runServerRestart(resolve, rest)
 	case "status":
@@ -149,49 +154,11 @@ func runServerUploadNext(resolve func() (*client.Client, error), args []string) 
 		return fmt.Errorf("server upload-next requires exactly 1 argument <local-binary>")
 	}
 
-	localBinary := args[0]
-	stat, err := os.Stat(localBinary)
-	if err != nil {
-		return fmt.Errorf("failed to stat local binary: %w", err)
-	}
-	if stat.IsDir() {
-		return fmt.Errorf("local binary is a directory, not a file: %s", localBinary)
-	}
-
 	cli, err := resolve()
 	if err != nil {
 		return err
 	}
-
-	target, usedCompatTarget, err := getNextBinaryTargetForUpload(cli)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(target.BinaryPath) == "" {
-		return fmt.Errorf("server returned empty next binary path")
-	}
-
-	if usedCompatTarget {
-		fmt.Println("Derived target from keep-alive status and remote directory listing.")
-	}
-	fmt.Printf("Next remote binary: %s\n", target.BinaryPath)
-	if target.CurrentPath != "" {
-		fmt.Printf("Current remote binary: %s\n", target.CurrentPath)
-	}
-	if target.PreviousHighestVersion > 0 || target.Version > 0 {
-		fmt.Printf("Version: v%d -> v%d\n", target.PreviousHighestVersion, target.Version)
-	}
-	fmt.Printf("Uploading %s (%s) -> %s\n", localBinary, formatSize(stat.Size()), target.BinaryPath)
-
-	result, err := cli.UploadFile(localBinary, target.BinaryPath, client.UploadOptions{
-		ChmodExec: true,
-	}, printUploadProgress)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Upload complete: %s (%s)\n", result.Path, formatSize(result.Size))
-	return nil
+	return uploadLocalBinaryNext(cli, args[0])
 }
 
 func getNextBinaryTargetForUpload(cli *client.Client) (*client.NextBinaryTarget, bool, error) {
@@ -304,23 +271,7 @@ func runServerRestart(resolve func() (*client.Client, error), args []string) err
 	if err != nil {
 		return err
 	}
-
-	if result != nil {
-		if result.KeepAlive != nil {
-			fmt.Printf("Server is back up: PID %d  Uptime %s  Restarts %d\n",
-				result.KeepAlive.ServerPID,
-				displayOrDash(result.KeepAlive.Uptime),
-				result.KeepAlive.RestartCount,
-			)
-			fmt.Printf("Binary: %s\n", displayOrDash(result.KeepAlive.BinaryPath))
-			return nil
-		}
-		if result.Binary != "" {
-			fmt.Printf("Server is back up. Requested binary: %s\n", result.Binary)
-			return nil
-		}
-	}
-	fmt.Println("Server is back up and reachable.")
+	printRestartResult(result)
 	return nil
 }
 

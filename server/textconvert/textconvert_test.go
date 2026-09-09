@@ -6,11 +6,11 @@ import (
 )
 
 func TestShellSingleLineExample(t *testing.T) {
-	in := "setup-shpdev-cloudflared-mapping-via-xdev mapping create admin-api \\\n" +
+	in := "setup-workdev-cloudflared-mapping-via-xdev mapping create admin-api \\\n" +
 		"  --url https://admin.example.com/api/ \\\n" +
 		"  --port 18080 \\\n" +
 		"  --yes"
-	want := "setup-shpdev-cloudflared-mapping-via-xdev mapping create admin-api --url https://admin.example.com/api/ --port 18080 --yes"
+	want := "setup-workdev-cloudflared-mapping-via-xdev mapping create admin-api --url https://admin.example.com/api/ --port 18080 --yes"
 	if got := ShellSingleLine(in); got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}

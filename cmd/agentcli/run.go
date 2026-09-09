@@ -126,6 +126,8 @@ func runCLI(profile Profile, args []string, stdout, stderr io.Writer) error {
 		return runProject(resolve, rest)
 	case "machine":
 		return runMachine(resolve, rest)
+	case "qemu":
+		return runQemu(resolve, rest)
 	case "settings":
 		return runSettings(resolve, rest)
 	case "bookmarks":

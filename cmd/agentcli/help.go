@@ -44,11 +44,12 @@ Commands:
 
   Machine
     machine              Backup/restore server HOME dot-files and dot-dirs
+    qemu                 Local QEMU guest + optional in-guest cloudflared
 
   Operations
     service              Managed services (start/stop/logs/upgrade)
     cron                 Scheduled cron tasks (interval or UTC cron)
-    server               Server lifecycle (build-next, restart, status)
+    server               Server lifecycle (build-next, upgrade, restart, status)
     proxy                Configured HTTP proxies
     port                 List remote ports and open ad-hoc public visits
     request              Call arbitrary API paths
@@ -107,11 +108,12 @@ Commands:
 
   Machine
     machine              Backup/restore server HOME dot-files and dot-dirs
+    qemu                 Server-host QEMU guest + optional in-guest cloudflared
 
   Operations
     service              Managed services (start/stop/logs/upgrade)
     cron                 Scheduled cron tasks (interval or UTC cron)
-    server               Server lifecycle (build-next, restart, status)
+    server               Server lifecycle (build-next, upgrade, restart, status)
     proxy                Configured HTTP proxies
     port                 List remote ports and open ad-hoc public visits
     request              Call arbitrary API paths

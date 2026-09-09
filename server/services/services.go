@@ -545,8 +545,12 @@ func (m *Manager) createOrUpdate(def ServiceDefinition, restartChanged bool) (*S
 	m.mu.Unlock()
 
 	if shouldRestart {
+		// Definition is already on disk. A restart failure (zombie PID, CF
+		// bounce mid-request, etc.) must not roll back the save or make the
+		// UI treat a successful domain/command edit as failed.
 		if err := m.Restart(def.ID); err != nil {
-			return nil, err
+			fmt.Printf("[services] saved %s (%s) but restart failed: %v\n", def.ID, def.Name, err)
+			m.setRuntimeError(def.ID, "saved; restart failed: "+err.Error())
 		}
 	}
 
@@ -1052,7 +1056,18 @@ func (m *Manager) stop(id string, removeForward bool, wait bool) error {
 		return nil
 	}
 
+	// Zombies and already-reaped PIDs still pass kill(pid,0); treat them as stopped.
+	if !processAlive(pid) {
+		m.clearProcessPID(id, pid)
+		return nil
+	}
+
 	if err := stopProcessGroup(pid); err != nil {
+		// If the process became a zombie during signaling, treat stop as success.
+		if !processAlive(pid) {
+			m.clearProcessPID(id, pid)
+			return nil
+		}
 		return err
 	}
 
@@ -1065,7 +1080,18 @@ func (m *Manager) stop(id string, removeForward bool, wait bool) error {
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
+	m.clearProcessPID(id, pid)
 	return nil
+}
+
+func (m *Manager) clearProcessPID(id string, pid int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if current := m.processes[id]; current != nil && current.pid == pid {
+		current.pid = 0
+		current.cmd = nil
+		current.runStartedAt = time.Time{}
+	}
 }
 
 func (m *Manager) ensurePortForward(id string, def ServiceDefinition) error {
@@ -1082,15 +1108,18 @@ func (m *Manager) ensurePortForward(id string, def ServiceDefinition) error {
 		if existing.LocalPort != pf.Port {
 			continue
 		}
-		if existing.Provider == desiredProvider && existing.Label == desiredLabel {
+		// Only reuse a live forward. Stuck "connecting"/"error" entries (e.g. after
+		// a failed qemu upsert) must be replaced or the UI keeps the old error forever.
+		if existing.Provider == desiredProvider && existing.Label == desiredLabel &&
+			existing.Status == portforward.StatusActive && existing.PublicURL != "" {
 			return nil
 		}
 		if existing.Type != portforward.PortForwardTypePortForward {
 			return fmt.Errorf("port %d is already forwarded by %s as %q; expected %s %q",
 				pf.Port, existing.Provider, existing.Label, desiredProvider, desiredLabel)
 		}
-		fmt.Printf("[services] replacing stale port forward for service %s: port=%d old=%s/%q new=%s/%q\n",
-			id, pf.Port, existing.Provider, existing.Label, desiredProvider, desiredLabel)
+		fmt.Printf("[services] replacing stale port forward for service %s: port=%d old=%s/%q status=%s new=%s/%q\n",
+			id, pf.Port, existing.Provider, existing.Label, existing.Status, desiredProvider, desiredLabel)
 		if err := manager.Remove(pf.Port); err != nil && !strings.Contains(err.Error(), "not being forwarded") {
 			return fmt.Errorf("failed to remove stale port forward on port %d: %w", pf.Port, err)
 		}
@@ -1423,7 +1452,40 @@ func processAlive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
+	// Zombie PIDs still succeed kill(pid, 0) on Linux until the parent reaps
+	// them. Treating them as alive makes stop/restart fail with
+	// "process N did not exit" (e.g. service domain save on /service).
+	if processZombie(pid) {
+		return false
+	}
 	return syscall.Kill(pid, 0) == nil
+}
+
+// processZombie reports whether pid exists as a zombie (Linux /proc).
+// Non-Linux or unreadable /proc yields false (caller falls back to kill(0)).
+func processZombie(pid int) bool {
+	state, ok := processState(pid)
+	return ok && state == 'Z'
+}
+
+// processState reads the state char from /proc/<pid>/stat ("R","S","Z",…).
+func processState(pid int) (state byte, ok bool) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return 0, false
+	}
+	return parseProcStatState(data)
+}
+
+// parseProcStatState extracts the state field from a /proc/<pid>/stat line.
+// Format: pid (comm) state ... — comm may contain spaces and parentheses.
+func parseProcStatState(stat []byte) (state byte, ok bool) {
+	s := string(stat)
+	i := strings.LastIndex(s, ") ")
+	if i < 0 || i+2 >= len(s) {
+		return 0, false
+	}
+	return s[i+2], true
 }
 
 func (m *Manager) serviceLogPath(id string) string {
