@@ -1,29 +1,9 @@
-## Expected Output
-
-```
-dry-run: upload plan
-Uploading __LOCAL__/ (2 items, __SIZE__) -> uploads/mirror
-...5 lines omitted...
-dry-run: upload complete: uploads/mirror (2 files, __SIZE__)
-```
-
 ## Expected
 
 1. Exit code 0.
-2. Stdout contains `dry-run: upload plan`, `would upload`, and `dry-run: upload complete`.
-3. Stdout ends with `\n` and does not perform real uploads (`Upload complete:` without `dry-run:` prefix must not appear).
-4. `serverHome` file tree unchanged (before/after snapshot match).
-5. `uploads/mirror/a.txt` and `uploads/mirror/sub/b.txt` remain absent.
-
-## Side Effects
-
-None — no server mkdir, upload init/chunk/complete.
-
-## Errors
-
-- Remote files created under `uploads/mirror/`.
-- Missing `dry-run:` banner or `would upload` chunk lines.
-- Real `Upload complete:` summary (non-dry-run wording).
+2. `[n/4]` spine with `would:` under pack/upload/apply.
+3. Stdout product `would: upload …`.
+4. Server tree unchanged.
 
 ## Exit Code
 
@@ -31,12 +11,9 @@ None — no server mkdir, upload init/chunk/complete.
 
 ```go
 import (
-	"strings"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
-
-	"github.com/xhd2015/doctest/assert"
 )
 
 func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err error) {
@@ -48,22 +25,17 @@ func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err 
 	}
 
 	assertStdoutEndsWithNewline(t, resp.Stdout)
-	combinedHasAll(t, resp.Combined, "dry-run: upload plan", "would upload", "dry-run: upload complete", "uploads/mirror")
-	combinedHasNone(t, resp.Combined, "\nUpload complete:")
+	combinedHasAll(t, resp.Combined,
+		"[1/4] resolve",
+		"[2/4] pack", "would: pack tar.xz",
+		"[3/4] upload", "would: upload archive",
+		"[4/4] apply", "would: apply extract/merge",
+		"would: upload",
+	)
+	combinedHasNone(t, resp.Combined, "\nuploaded ")
 
 	assertTreeSnapshotUnchanged(t, "serverHome", resp.ServerFilesBeforeCLI, resp.ServerFilesAfterCLI)
 	assertServerPathMissing(t, resp.ServerHome, "uploads/mirror/a.txt")
 	assertServerPathMissing(t, resp.ServerHome, "uploads/mirror/sub/b.txt")
-
-	assert.Output(t, resp.Stdout, `---
-version: 2
-__LOCAL__: type=string
-__SIZE__: type=string
----
-dry-run: upload plan
-Uploading __LOCAL__/ (2 items, __SIZE__) -> uploads/mirror
-...5 lines omitted...
-dry-run: upload complete: uploads/mirror (2 files, __SIZE__)
-`)
 }
 ```

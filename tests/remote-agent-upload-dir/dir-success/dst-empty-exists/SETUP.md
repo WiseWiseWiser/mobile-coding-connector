@@ -1,28 +1,26 @@
 # Scenario
 
-**Feature**: directory upload into an empty existing remote directory
+**Feature**: existing remote directory nests basename(localDir)
 
 ```
-# pre-create empty uploads/mirror -> same local tree -> mirrored contents
-empty remoteDir -> remote-agent upload -> populated mirror tree
+pre-create empty uploads/apps
+  -> upload ./srcdir uploads/apps
+  -> uploads/apps/srcdir/{a.txt,sub/b.txt}
 ```
 
 ## Preconditions
 
-`uploads/mirror` exists on server with zero entries.
+`uploads/apps` exists on server with zero entries.
 
 ## Steps
 
-1. Build standard local tree.
-2. Pre-seed empty `uploads/mirror` via `ServerPreseedDirs`.
-3. Args: `upload <localDir> uploads/mirror`.
-
-## Context
-
-REQUIREMENT leaf #3 — dir-success/dst-empty-exists.
+1. Build local tree under fixed name `srcdir`.
+2. Pre-seed empty `uploads/apps`.
+3. Args: `upload <srcdir> uploads/apps`.
 
 ```go
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
@@ -30,10 +28,11 @@ import (
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	localRoot := mkLocalWorkDir(t)
-	seedStandardLocalTree(t, localRoot)
-	req.ServerPreseedDirs = []string{"uploads/mirror"}
-	setUploadArgs(t, req, localRoot, "uploads/mirror")
-	req.RemoteDir = remoteDirRel(localRoot, "uploads/mirror")
+	src := filepath.Join(localRoot, "srcdir")
+	seedStandardLocalTree(t, src)
+	req.ServerPreseedDirs = []string{"uploads/apps"}
+	setUploadArgs(t, req, src, "uploads/apps")
+	req.RemoteDir = "uploads/apps/srcdir"
 	return nil
 }
 ```

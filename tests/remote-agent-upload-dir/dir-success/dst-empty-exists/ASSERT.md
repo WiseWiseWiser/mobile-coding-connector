@@ -1,17 +1,8 @@
 ## Expected
 
 1. Exit code 0.
-2. Stdout reports `2 files` for the directory upload.
-3. `uploads/mirror/a.txt` and `uploads/mirror/sub/b.txt` exist with correct content.
-
-## Side Effects
-
-- Empty `uploads/mirror` populated with mirrored files.
-
-## Errors
-
-- Guard rejects empty destination.
-- Partial or missing mirror tree.
+2. Files land under `uploads/apps/srcdir/`.
+3. Stdout product contains `uploaded` and `2 files`.
 
 ## Exit Code
 
@@ -33,8 +24,8 @@ func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err 
 	}
 
 	assertStdoutEndsWithNewline(t, resp.Stdout)
-	combinedHasAll(t, resp.Combined, "2 files", "Upload complete", "uploads/mirror")
-	assertServerFileContent(t, resp.ServerHome, "uploads/mirror/a.txt", "alpha\n")
-	assertServerFileContent(t, resp.ServerHome, "uploads/mirror/sub/b.txt", "bravo\n")
+	combinedHasAll(t, resp.Combined, "[1/4] resolve", "uploaded", "2 files", "srcdir")
+	assertServerFileContent(t, resp.ServerHome, "uploads/apps/srcdir/a.txt", "alpha\n")
+	assertServerFileContent(t, resp.ServerHome, "uploads/apps/srcdir/sub/b.txt", "bravo\n")
 }
 ```

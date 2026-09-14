@@ -5,7 +5,7 @@
 ```
 seed svc-rm-name-001 (rm-by-name-target)
   -> service rm rm-by-name-target
-  -> Removed; gone from ListAll / disk
+  -> Removed; gone from List / disk
 ```
 
 ## Steps
@@ -21,10 +21,8 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	// Empty ProjectDir → normalized to server default scope so by-name does not
-	// depend on ListAll (cross-scope is covered by rm/cross-scope).
 	req.Services = []ServiceSeed{
-		sleepService("svc-rm-name-001", "rm-by-name-target", ""),
+		sleepService("svc-rm-name-001", "rm-by-name-target"),
 	}
 	req.TargetID = "svc-rm-name-001"
 	req.TargetName = "rm-by-name-target"

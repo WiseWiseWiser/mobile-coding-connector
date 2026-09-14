@@ -1,24 +1,22 @@
 # Scenario
 
-**Feature**: trailing-slash remote path appends basename(localDir)
+**Feature**: trailing-slash remote container nests basename when parent exists
 
 ```
-# local proj/ with file.txt -> upload parent/ -> parent/proj/file.txt
-basename rule + trailing slash -> contents under parent/proj/
+pre-create empty parent/
+  -> upload ./proj parent/
+  -> parent/proj/file.txt
 ```
 
 ## Preconditions
 
-`parent/` absent on server before upload.
+`parent/` exists (empty) on server.
 
 ## Steps
 
 1. Create local directory named `proj` with `file.txt`.
-2. Args: `upload <localProjDir> parent/`.
-
-## Context
-
-REQUIREMENT leaf #5 — dir-success/trailing-slash-dst.
+2. Pre-seed empty `parent`.
+3. Args: `upload <localProjDir> parent/`.
 
 ```go
 import (
@@ -32,8 +30,9 @@ func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	localRoot := mkLocalWorkDir(t)
 	projDir := filepath.Join(localRoot, "proj")
 	writeLocalFile(t, projDir, "file.txt", "proj payload\n", 0644)
+	req.ServerPreseedDirs = []string{"parent"}
 	setUploadArgs(t, req, projDir, "parent/")
-	req.RemoteDir = remoteDirRel(projDir, "parent/")
+	req.RemoteDir = "parent/proj"
 	return nil
 }
 ```

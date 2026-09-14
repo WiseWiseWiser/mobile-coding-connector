@@ -45,7 +45,6 @@ type ServiceDefinition struct {
 	ID          string              `json:"id"`
 	Name        string              `json:"name"`
 	Command     string              `json:"command"`
-	ProjectDir  string              `json:"projectDir,omitempty"`
 	WorkingDir  string              `json:"workingDir,omitempty"`
 	ExtraEnv    map[string]string   `json:"extraEnv,omitempty"`
 	PortForward *ServicePortForward `json:"portForward,omitempty"`
@@ -75,7 +74,6 @@ type ServiceStatus struct {
 	ID             string                    `json:"id"`
 	Name           string                    `json:"name"`
 	Command        string                    `json:"command"`
-	ProjectDir     string                    `json:"projectDir,omitempty"`
 	WorkingDir     string                    `json:"workingDir,omitempty"`
 	ExtraEnv       map[string]string         `json:"extraEnv,omitempty"`
 	EffectivePath  string                    `json:"effectivePath,omitempty"`
@@ -175,7 +173,6 @@ func NewManager() *Manager {
 func NewManagerFromDefinitions(defs []ServiceDefinition) *Manager {
 	normalized := make([]ServiceDefinition, 0, len(defs))
 	for _, d := range defs {
-		d.ProjectDir = normalizeProjectDir(d.ProjectDir)
 		d.WorkingDir = normalizeWorkingDir(d.WorkingDir)
 		d.ExtraEnv = normalizeExtraEnv(d.ExtraEnv)
 		d.UpgradeTarget = strings.TrimSpace(d.UpgradeTarget)
@@ -284,7 +281,7 @@ func (m *Manager) loadDefinitionsLocked() {
 	}
 
 	for i := range defs {
-		defs[i].ProjectDir = normalizeProjectDir(defs[i].ProjectDir)
+		// Legacy projectDir in services.json is ignored (field removed).
 		defs[i].WorkingDir = normalizeWorkingDir(defs[i].WorkingDir)
 		defs[i].ExtraEnv = normalizeExtraEnv(defs[i].ExtraEnv)
 		defs[i].UpgradeTarget = strings.TrimSpace(defs[i].UpgradeTarget)
@@ -383,19 +380,17 @@ func (m *Manager) Shutdown() {
 	}
 }
 
-func (m *Manager) ListAll() []ServiceStatus {
+// List returns every managed service (global; no project scope).
+func (m *Manager) List() []ServiceStatus {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.buildStatusListLocked(append([]ServiceDefinition(nil), m.definitions...))
 }
 
-func (m *Manager) List(projectDir string) []ServiceStatus {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	projectDir = normalizeProjectDir(projectDir)
-	defs := m.filteredDefinitionsLocked(projectDir)
-	return m.buildStatusListLocked(defs)
+// ListAll is an alias of List kept for callers and tests that used the old
+// cross-scope API name.
+func (m *Manager) ListAll() []ServiceStatus {
+	return m.List()
 }
 
 func (m *Manager) buildStatusListLocked(defs []ServiceDefinition) []ServiceStatus {
@@ -462,7 +457,6 @@ func (m *Manager) buildStatusListLocked(defs []ServiceDefinition) []ServiceStatu
 			ID:             def.ID,
 			Name:           def.Name,
 			Command:        def.Command,
-			ProjectDir:     def.ProjectDir,
 			WorkingDir:     def.WorkingDir,
 			ExtraEnv:       cloneStringMap(def.ExtraEnv),
 			EffectivePath:  lookupEnvValue(serviceEnv, "PATH"),
@@ -490,7 +484,6 @@ func (m *Manager) CreateOrUpdateNoRestart(def ServiceDefinition) (*ServiceStatus
 }
 
 func (m *Manager) createOrUpdate(def ServiceDefinition, restartChanged bool) (*ServiceStatus, error) {
-	def.ProjectDir = normalizeProjectDir(def.ProjectDir)
 	def.WorkingDir = normalizeWorkingDir(def.WorkingDir)
 	def.ExtraEnv = normalizeExtraEnv(def.ExtraEnv)
 	def.UpgradeTarget = strings.TrimSpace(def.UpgradeTarget)
@@ -554,12 +547,8 @@ func (m *Manager) createOrUpdate(def ServiceDefinition, restartChanged bool) (*S
 		}
 	}
 
-	list := m.List(def.ProjectDir)
-	for _, item := range list {
-		if item.ID == def.ID {
-			copy := item
-			return &copy, nil
-		}
+	if status, ok := m.statusByID(def.ID); ok {
+		return status, nil
 	}
 	return nil, fmt.Errorf("service %s not found after save", def.ID)
 }
@@ -592,23 +581,8 @@ func (m *Manager) Start(id string) (*ServiceStatus, error) {
 	if err := m.start(id, true); err != nil {
 		return nil, err
 	}
-
-	m.mu.Lock()
-	projectDir := ""
-	for _, def := range m.definitions {
-		if def.ID == id {
-			projectDir = def.ProjectDir
-			break
-		}
-	}
-	m.mu.Unlock()
-
-	list := m.List(projectDir)
-	for _, item := range list {
-		if item.ID == id {
-			copy := item
-			return &copy, nil
-		}
+	if status, ok := m.statusByID(id); ok {
+		return status, nil
 	}
 	return nil, fmt.Errorf("service not found")
 }
@@ -710,28 +684,25 @@ func (m *Manager) setServiceEnabled(id string, enabled bool) (running bool, err 
 }
 
 func (m *Manager) buildServiceActionResponse(id string, message string) (*ServiceActionResponse, error) {
-	m.mu.Lock()
-	projectDir := ""
-	for _, def := range m.definitions {
-		if def.ID == id {
-			projectDir = def.ProjectDir
-			break
-		}
+	status, ok := m.statusByID(id)
+	if !ok {
+		return nil, fmt.Errorf("service %s not found after action", id)
 	}
-	m.mu.Unlock()
+	return &ServiceActionResponse{
+		Status:  "ok",
+		Message: message,
+		Service: status,
+	}, nil
+}
 
-	list := m.List(projectDir)
-	for _, item := range list {
+func (m *Manager) statusByID(id string) (*ServiceStatus, bool) {
+	for _, item := range m.List() {
 		if item.ID == id {
 			copy := item
-			return &ServiceActionResponse{
-				Status:  "ok",
-				Message: message,
-				Service: &copy,
-			}, nil
+			return &copy, true
 		}
 	}
-	return nil, fmt.Errorf("service %s not found after action", id)
+	return nil, false
 }
 
 func (m *Manager) Upgrade(req ServiceUpgradeRequest) (*ServiceUpgradeResult, error) {
@@ -1232,37 +1203,6 @@ func computeBackoffDelay(failures int) time.Duration {
 	return delay
 }
 
-func (m *Manager) getDefinitions(projectDir string) []ServiceDefinition {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return append([]ServiceDefinition(nil), m.filteredDefinitionsLocked(normalizeProjectDir(projectDir))...)
-}
-
-func (m *Manager) filteredDefinitionsLocked(projectDir string) []ServiceDefinition {
-	if projectDir == "" {
-		return append([]ServiceDefinition(nil), m.definitions...)
-	}
-	scopeDir := canonicalProjectDir(projectDir)
-	filtered := make([]ServiceDefinition, 0, len(m.definitions))
-	for _, def := range m.definitions {
-		if canonicalProjectDir(def.ProjectDir) == scopeDir {
-			filtered = append(filtered, def)
-		}
-	}
-	return filtered
-}
-
-func canonicalProjectDir(projectDir string) string {
-	projectDir = normalizeProjectDir(projectDir)
-	if projectDir == "" {
-		return ""
-	}
-	if canon, err := filepath.EvalSymlinks(projectDir); err == nil {
-		projectDir = canon
-	}
-	return filepath.Clean(projectDir)
-}
-
 func (m *Manager) findDefinitionLocked(id string) (ServiceDefinition, bool) {
 	for _, def := range m.definitions {
 		if def.ID == id {
@@ -1315,7 +1255,7 @@ func validateDefinition(def ServiceDefinition) error {
 }
 
 func definitionChanged(oldDef ServiceDefinition, newDef ServiceDefinition) bool {
-	if oldDef.Name != newDef.Name || oldDef.Command != newDef.Command || oldDef.ProjectDir != newDef.ProjectDir || oldDef.WorkingDir != newDef.WorkingDir {
+	if oldDef.Name != newDef.Name || oldDef.Command != newDef.Command || oldDef.WorkingDir != newDef.WorkingDir {
 		return true
 	}
 	if !stringMapEqual(oldDef.ExtraEnv, newDef.ExtraEnv) {
@@ -1512,26 +1452,6 @@ func ensureServiceWorkingDir(workingDir string) error {
 		return fmt.Errorf("create working directory %s: %w", workingDir, err)
 	}
 	return nil
-}
-
-func normalizeProjectDir(projectDir string) string {
-	projectDir = strings.TrimSpace(projectDir)
-	if projectDir == "" {
-		projectDir = config.GetServerProjectDir()
-		if projectDir == "" {
-			if cwd, err := os.Getwd(); err == nil {
-				projectDir = cwd
-			}
-		}
-	}
-	if projectDir == "" {
-		return ""
-	}
-	abs, err := filepath.Abs(projectDir)
-	if err != nil {
-		return projectDir
-	}
-	return abs
 }
 
 func normalizeWorkingDir(workingDir string) string {
@@ -1764,12 +1684,8 @@ func handleServicesWith(manager *Manager, w http.ResponseWriter, r *http.Request
 	switch r.Method {
 	case http.MethodGet:
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Query().Get("all") == "1" {
-			_ = json.NewEncoder(w).Encode(manager.ListAll())
-		} else {
-			projectDir := r.URL.Query().Get("project_dir")
-			_ = json.NewEncoder(w).Encode(manager.List(projectDir))
-		}
+		// project_dir and all=1 are accepted but ignored; services are global.
+		_ = json.NewEncoder(w).Encode(manager.List())
 
 	case http.MethodPost, http.MethodPut:
 		var req ServiceDefinition

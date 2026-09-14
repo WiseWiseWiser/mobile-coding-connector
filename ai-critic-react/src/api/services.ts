@@ -17,7 +17,6 @@ export interface ServiceStatus {
     id: string;
     name: string;
     command: string;
-    projectDir?: string;
     workingDir?: string;
     extraEnv?: Record<string, string>;
     effectivePath?: string;
@@ -42,18 +41,13 @@ export interface ServiceDefinition {
     id?: string;
     name: string;
     command: string;
-    projectDir?: string;
     workingDir?: string;
     extraEnv?: Record<string, string>;
     portForward?: ServicePortForward;
 }
 
-export async function fetchServices(projectDir?: string): Promise<ServiceStatus[]> {
-    const url = new URL('/api/services', window.location.origin);
-    if (projectDir) {
-        url.searchParams.set('project_dir', projectDir);
-    }
-    const resp = await fetch(url.pathname + url.search);
+export async function fetchServices(): Promise<ServiceStatus[]> {
+    const resp = await fetch('/api/services');
     if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
     }

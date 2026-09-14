@@ -9,13 +9,13 @@ service rm <name-or-id>
 ## Preconditions
 
 1. Leaves seed definitions via `Request.Services` when a target must exist.
-2. Resolution must use list-all (cross-projectDir) once implemented.
+2. Resolution uses the global service list.
 
 ## Steps
 
 1. Leaf seeds and sets CLIArgs for rm.
 2. Run executes agentcli against L2 mux.
-3. Assert Removed / errors and ListAll membership.
+3. Assert Removed / errors and List membership.
 
 ## Context
 

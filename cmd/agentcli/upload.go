@@ -3,32 +3,49 @@ package agentcli
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/xhd2015/ai-critic/client"
 )
 
-const uploadHelp = `Usage: remote-agent upload [--dry-run] [--no-compress] <LOCAL_PATH> [REMOTE_PATH]
+const uploadHelp = `Usage: remote-agent upload [--dry-run] [--no-compress] [--no-override] <LOCAL_PATH> [REMOTE_PATH]
 
 Upload a local file or directory to the server using chunked upload.
 
 Arguments:
   LOCAL_PATH    Path to a file or directory on this machine.
   REMOTE_PATH   Destination path on the server. Optional; defaults to the
-                basename. If REMOTE_PATH ends with '/', the basename is
-                appended. For directories, REMOTE_PATH is the mirror root.
+                basename. If REMOTE_PATH ends with '/', it is treated as a
+                directory container. For directories, destination follows cp -R
+                rules (see below).
+
+Directory destination rules (cp -R style):
+  - If REMOTE_PATH does not exist, it is created and local contents are copied
+    into it.
+  - If REMOTE_PATH exists and is a file, the upload fails.
+  - If REMOTE_PATH exists and is a directory, files are placed under
+    REMOTE_PATH/<basename(LOCAL_PATH)/> (created if needed). If that nested
+    path exists as a file, the upload fails.
+
+Directory transport packs a local tar.xz, uploads one archive, then extracts
+and merges on the remote. Existing same-name files are overridden by default
+(with warnings). Use --no-override to refuse when any remote file would be
+replaced (preflight before packing, plus a remote fail-fast guard).
 
 Options:
   --dry-run       Print the upload plan without making changes.
-  --no-compress   Skip whole-file gzip before chunking (default: compress when smaller).
+  --no-compress   Skip whole-file gzip before chunking (files only; directory
+                  archives are always xz-compressed).
+  --no-override   For directory uploads: refuse if any remote file would be
+                  overwritten (preflight + fail-fast during apply).
 
 Examples:
   remote-agent upload ./foo.txt /tmp/foo.txt
   remote-agent upload ./foo.txt /tmp/          # basename appended
   remote-agent upload ./foo.txt                # uses saved config + basename
-  remote-agent upload ./srcdir uploads/mirror  # mirror directory tree
-  remote-agent upload --dry-run ./srcdir uploads/mirror
+  remote-agent upload ./srcdir /tmp/apps       # if /tmp/apps exists: /tmp/apps/srcdir
+  remote-agent upload ./srcdir /tmp/newdir     # creates /tmp/newdir with contents
+  remote-agent upload --no-override ./srcdir /tmp/apps
+  remote-agent upload --dry-run ./srcdir /tmp/apps
   remote-agent upload --no-compress ./bin /tmp/bin
 `
 
@@ -38,7 +55,7 @@ func runUpload(cli *client.Client, args []string) error {
 		return nil
 	}
 
-	dryRun, noCompress, args := parseUploadFlags(args)
+	dryRun, noCompress, noOverride, args := parseUploadFlags(args)
 	if len(args) < 1 {
 		return fmt.Errorf("upload requires <LOCAL_PATH> [REMOTE_PATH]; see 'remote-agent upload --help'")
 	}
@@ -61,7 +78,10 @@ func runUpload(cli *client.Client, args []string) error {
 		return fmt.Errorf("failed to stat local path: %w", err)
 	}
 	if stat.IsDir() {
-		return runUploadDir(cli, localPath, remotePath, dryRun, noCompress)
+		return runUploadDir(cli, localPath, remotePath, dryRun, noCompress, noOverride)
+	}
+	if noOverride {
+		return fmt.Errorf("--no-override applies only to directory uploads")
 	}
 
 	chmodExec := isExecutableMode(stat.Mode())
@@ -94,50 +114,27 @@ func runUpload(cli *client.Client, args []string) error {
 	return nil
 }
 
-func runUploadDir(cli *client.Client, localDir, remotePath string, dryRun, noCompress bool) error {
-	itemCount, _, totalSize, err := client.CountUploadDirItems(localDir)
+func runUploadDir(cli *client.Client, localDir, remotePath string, dryRun, noCompress, noOverride bool) error {
+	_ = noCompress // directory archives are always xz-packed
+
+	if dryRun {
+		fmt.Fprintln(os.Stderr, "notice: dry-run (probes only; mutations gated)")
+	}
+
+	staged := newUploadDirStagePrinter(dryRun)
+	uploadOpts := client.UploadOptions{
+		DryRun:     dryRun,
+		NoOverride: noOverride,
+	}
+
+	result, err := cli.UploadDir(localDir, remotePath, uploadOpts, staged.OnProgress)
 	if err != nil {
 		return err
 	}
 
-	logicalRemote := describeUploadDirRemote(localDir, remotePath)
-	fmt.Printf("Uploading %s/ (%d items, %s) -> %s\n",
-		localDir, itemCount, formatSize(totalSize), logicalRemote)
-
-	uploadOpts := client.UploadOptions{DryRun: dryRun, NoCompress: noCompress}
-	progressFn := printUploadDirProgress
-	if dryRun {
-		progressFn = printUploadDirDryRunProgress
-	}
-
-	result, err := cli.UploadDir(localDir, remotePath, uploadOpts, progressFn)
-	if err != nil {
-		return err
-	}
-
-	// Blank line before summary when the plan has no empty subdirs (see streams-progress template).
-	if itemCount == result.FileCount {
-		fmt.Println()
-	}
-	if dryRun {
-		fmt.Printf("dry-run: upload complete: %s (%d files, %s)\n",
-			result.Path, result.FileCount, formatSize(result.TotalSize))
-	} else {
-		fmt.Printf("Upload complete: %s (%d files, %s)\n",
-			result.Path, result.FileCount, formatSize(result.TotalSize))
-	}
+	staged.FinishApply(result.Overridden)
+	staged.PrintProduct(result)
 	return nil
-}
-
-func describeUploadDirRemote(localDir, remotePath string) string {
-	baseName := filepath.Base(localDir)
-	if remotePath == "" {
-		return baseName
-	}
-	if strings.HasSuffix(remotePath, "/") {
-		return strings.TrimSuffix(remotePath, "/") + "/" + baseName
-	}
-	return remotePath
 }
 
 func isExecutableMode(mode os.FileMode) bool {

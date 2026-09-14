@@ -57,6 +57,7 @@ Commands:
   Integrations
     agent                Custom agents and sessions
     agent-run            Remote agent-run (sessions/attach/status/resume/send/run/…)
+    grok                 Start/resume remote Grok in this terminal tab
     openclaw             Mock OpenClaw gateway + Slack config
     ws-proxy             Mobile WebSocket proxy (Xray + tunnel)
     event-bus            Subscribe to server event notification bus
@@ -121,6 +122,7 @@ Commands:
   Integrations
     agent                Custom agents and sessions
     agent-run            Remote agent-run (sessions/attach/status/resume/send/run/…)
+    grok                 Start/resume remote Grok in this terminal tab
     openclaw             Mock OpenClaw gateway + Slack config
     ws-proxy             Mobile WebSocket proxy (Xray + tunnel)
     event-bus            Subscribe to server event notification bus

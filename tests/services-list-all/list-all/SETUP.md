@@ -1,14 +1,14 @@
 # Scenario
 
-**Feature**: all=1 returns services across project scopes
+**Feature**: ListAll returns every service
 
 ```
-GET /api/services?all=1 -> local-web + other-api
+Manager.ListAll() -> local-web + other-api
 ```
 
 ## Preconditions
 
-Two services seeded with different `projectDir` values.
+Two services seeded.
 
 ## Steps
 

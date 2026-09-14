@@ -1,5 +1,5 @@
 ---
-explanation: "L2 Manager.ListAll cross-project"
+explanation: "L2 Manager.ListAll returns all services"
 ---
 
 ## Expected
@@ -9,7 +9,7 @@ explanation: "L2 Manager.ListAll cross-project"
 
 ## Errors
 
-- ListAll still filters to server project scope only.
+- ListAll omits a seeded service.
 
 ```go
 import (

@@ -1,27 +1,18 @@
 # Scenario
 
-**Feature**: reject directory upload when destination directory contains a subdirectory
+**Feature**: parent dir with existing sibling subdir still nests basename (success)
 
 ```
-# uploads/mirror/child/ present (even empty) -> upload blocked
-any directory entry disqualifies destination
+pre-seed uploads/apps/child/
+  -> upload ./srcdir uploads/apps
+  -> uploads/apps/srcdir/... (child/ untouched)
 ```
 
-## Preconditions
-
-`uploads/mirror/child/` exists on server (empty subdirectory).
-
-## Steps
-
-1. Pre-seed empty `uploads/mirror/child/`.
-2. Build local tree and args targeting `uploads/mirror`.
-
-## Context
-
-REQUIREMENT leaf #7 — dir-rejected/dst-has-subdir.
+Note: leaf kept under dir-rejected/ for tree stability; behavior is now success.
 
 ```go
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
@@ -29,10 +20,12 @@ import (
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	localRoot := mkLocalWorkDir(t)
-	seedRejectLocalTree(t, localRoot)
-	req.ServerPreseedDirs = []string{"uploads/mirror/child"}
-	setUploadArgs(t, req, localRoot, "uploads/mirror")
-	req.RemoteDir = "uploads/mirror"
+	src := filepath.Join(localRoot, "srcdir")
+	writeLocalFile(t, src, "a.txt", "alpha\n", 0644)
+	writeLocalFile(t, src, "sub/b.txt", "bravo\n", 0644)
+	req.ServerPreseedDirs = []string{"uploads/apps/child"}
+	setUploadArgs(t, req, src, "uploads/apps")
+	req.RemoteDir = "uploads/apps/srcdir"
 	return nil
 }
 ```

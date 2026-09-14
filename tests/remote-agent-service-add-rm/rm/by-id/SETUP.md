@@ -19,9 +19,8 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	// Empty ProjectDir → default scope; id match does not need ListAll.
 	req.Services = []ServiceSeed{
-		sleepService("svc-rm-id-001", "rm-by-id-target", ""),
+		sleepService("svc-rm-id-001", "rm-by-id-target"),
 	}
 	req.TargetID = "svc-rm-id-001"
 	req.TargetName = "rm-by-id-target"

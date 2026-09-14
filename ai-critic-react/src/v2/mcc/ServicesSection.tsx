@@ -4,7 +4,6 @@ import { fetchHomeDir } from '../../api/files';
 import { consumeSSEStream } from '../../api/sse';
 import { deleteService, disableService, enableService, fetchServices, restartService, saveService, startService, stopService, type ServiceDefinition, type ServiceStatus } from '../../api/services';
 import { streamLogFile } from '../../api/logs';
-import { useProjectDir } from '../../hooks/project/useProjectDir';
 import type { TunnelProvider, ProviderInfo } from '../../hooks/usePortForwards';
 import { TunnelProviders } from '../../hooks/usePortForwards';
 import { PlusIcon } from '../../pure-view/icons/PlusIcon';
@@ -123,7 +122,6 @@ function toFormState(service: ServiceStatus): ServiceFormState {
 }
 
 export function ServicesSection({ availableProviders }: ServicesSectionProps) {
-    const { projectDir } = useProjectDir();
     const [homeDir, setHomeDir] = useState('');
     const [services, setServices] = useState<ServiceStatus[]>([]);
     const [loading, setLoading] = useState(true);
@@ -143,7 +141,7 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
 
     const refreshServices = async () => {
         try {
-            const data = await fetchServices(projectDir || undefined);
+            const data = await fetchServices();
             setServices(data);
             setError(null);
         } catch (err) {
@@ -158,7 +156,7 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
         refreshServices();
         const timer = setInterval(refreshServices, 3000);
         return () => clearInterval(timer);
-    }, [projectDir]);
+    }, []);
 
     useEffect(() => {
         fetchHomeDir()
@@ -209,7 +207,6 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                 id: form.id,
                 name,
                 command,
-                projectDir: projectDir || undefined,
                 workingDir: workingDir || undefined,
                 extraEnv: parsedEnv.env,
                 portForward,
@@ -263,7 +260,7 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                     />
                 ))}
                 {!loading && services.length === 0 && (
-                    <div className="mcc-ports-empty">No services configured for this scope.</div>
+                    <div className="mcc-ports-empty">No services configured.</div>
                 )}
             </div>
 
@@ -530,7 +527,6 @@ function ServiceCard({ service, onEdit, onStart, onStop, onRestart, onDisable, o
 
             <div className="mcc-service-meta">
                 <span>PID: {service.pid || 'n/a'}</span>
-                <span>Scope: {service.projectDir || 'all projects'}</span>
                 <span>Working Dir: {service.workingDir || 'home dir'}</span>
             </div>
 

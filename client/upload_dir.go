@@ -1,41 +1,28 @@
 package client
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
-	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // UploadDirResult summarizes a successful directory upload.
 type UploadDirResult struct {
-	Path      string
-	FileCount int
-	TotalSize int64
+	Path        string
+	FileCount   int
+	TotalSize   int64 // uncompressed local bytes
+	ArchiveSize int64
+	Overridden  []string
 }
 
-type localDirFile struct {
-	localPath  string
-	remotePath string
-	chmodExec  bool
-	size       int64
-}
-
-type uploadPlanItemType int
-
-const (
-	uploadPlanFile uploadPlanItemType = iota
-	uploadPlanEmptyDir
-)
-
-type uploadPlanItem struct {
-	itemType     uploadPlanItemType
-	relativePath string
-	file         *localDirFile
-}
-
-// UploadDir mirrors localDir onto remotePath on the server using per-file chunked
-// uploads. The remote destination must be missing or a completely empty directory.
+// UploadDir mirrors localDir onto the remote server using a local tar.xz pack,
+// one chunked archive upload, and a remote extract/merge apply step.
+//
+// Destination resolution follows cp -R rules (see ResolveEffectiveUploadDir).
 func (c *Client) UploadDir(localDir, remotePath string, opts UploadOptions, onProgress func(UploadDirProgress)) (*UploadDirResult, error) {
 	localDir, err := filepath.Abs(localDir)
 	if err != nil {
@@ -49,306 +36,246 @@ func (c *Client) UploadDir(localDir, remotePath string, opts UploadOptions, onPr
 		return nil, fmt.Errorf("local path is not a directory: %s", localDir)
 	}
 
-	logicalRemote, absoluteRemote, err := c.resolveRemoteDir(localDir, remotePath)
+	home, err := c.GetHome()
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve server home dir: %w", err)
+	}
+	remoteTarget := ResolveUploadDirTarget(localDir, remotePath, home.Home)
+
+	targetInfo, err := c.CheckPath(remoteTarget)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check upload destination: %w", err)
+	}
+	effective, err := ResolveEffectiveUploadDir(localDir, remoteTarget, targetInfo)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.guardUploadDirDestination(absoluteRemote); err != nil {
-		return nil, err
+	if targetInfo != nil && targetInfo.Exists && targetInfo.IsDir {
+		effInfo, err := c.CheckPath(effective)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check nested upload destination: %w", err)
+		}
+		if effInfo.Exists && !effInfo.IsDir {
+			return nil, fmt.Errorf("upload destination %q is a file; refusing directory upload", filepath.ToSlash(effective))
+		}
 	}
 
-	plan, subdirs, totalSize, err := buildUploadPlan(localDir, absoluteRemote)
+	tree, totalSize, err := walkLocalUploadContents(localDir)
 	if err != nil {
 		return nil, err
 	}
-
-	if len(subdirs) > 0 && !opts.DryRun {
-		if err := c.mkdirRemote(subdirs...); err != nil {
-			return nil, fmt.Errorf("failed to create remote directories: %w", err)
-		}
+	relFiles := make([]string, 0, len(tree.Files))
+	for _, f := range tree.Files {
+		relFiles = append(relFiles, f.RelativePath)
 	}
 
-	totalItems := len(plan)
-	completedBytes := int64(0)
-	fileCount := 0
+	preflight, err := c.UploadDirPreflight(effective, relFiles, opts.NoOverride)
+	if err != nil {
+		return nil, err
+	}
+	if len(preflight.TypeConflicts) > 0 {
+		return nil, fmt.Errorf("type conflict: remote path is a directory where a file is required: %s", strings.Join(preflight.TypeConflicts, ", "))
+	}
+	if opts.NoOverride && len(preflight.Conflicts) > 0 {
+		return nil, fmt.Errorf("--no-override: %d file(s) would be overwritten:\n  %s",
+			len(preflight.Conflicts), strings.Join(preflight.Conflicts, "\n  "))
+	}
 
-	for i, item := range plan {
-		fileIndex := i + 1
-		switch item.itemType {
-		case uploadPlanFile:
-			fileCount++
-			f := item.file
-			if onProgress != nil {
-				onProgress(UploadDirProgress{
-					FileIndex:      fileIndex,
-					TotalItems:     totalItems,
-					RelativePath:   item.relativePath,
-					Phase:          UploadDirPhaseFileStart,
-					FileSize:       f.size,
-					CompletedBytes: completedBytes,
-					TotalBytes:     totalSize,
-				})
-			}
+	if onProgress != nil {
+		onProgress(UploadDirProgress{
+			Phase:          UploadDirPhaseResolved,
+			RelativePath:   filepath.ToSlash(effective),
+			TotalItems:     len(tree.Files) + len(tree.Dirs),
+			TotalBytes:     totalSize,
+			CompletedBytes: 0,
+		})
+	}
 
-			priorCompleted := completedBytes
-			fileOpts := UploadOptions{
-				ChmodExec:  f.chmodExec,
-				NoCompress: opts.NoCompress,
-				ChunkRetry: opts.ChunkRetry,
-				DryRun:     opts.DryRun,
-			}
-			logicalFileRemote := filepath.ToSlash(filepath.Join(logicalRemote, item.relativePath))
-			if _, err := c.uploadFileResolved(f.localPath, f.remotePath, logicalFileRemote, fileOpts, func(chunk UploadProgress) {
-				if onProgress == nil {
-					return
-				}
-				onProgress(UploadDirProgress{
-					FileIndex:      fileIndex,
-					TotalItems:     totalItems,
-					RelativePath:   item.relativePath,
-					CompletedBytes: priorCompleted + chunk.CompletedBytes,
-					TotalBytes:     totalSize,
-					Chunk:          chunk,
-				})
-			}); err != nil {
-				return nil, err
-			}
-			completedBytes += f.size
-
-		case uploadPlanEmptyDir:
-			if onProgress != nil {
-				onProgress(UploadDirProgress{
-					FileIndex:      fileIndex,
-					TotalItems:     totalItems,
-					RelativePath:   item.relativePath,
-					Phase:          UploadDirPhaseDirCreated,
-					CompletedBytes: completedBytes,
-					TotalBytes:     totalSize,
-				})
-			}
+	if opts.DryRun {
+		// Emit remaining stages so CLI can print a stable [n/4] spine with would:.
+		if onProgress != nil {
+			onProgress(UploadDirProgress{Phase: UploadDirPhasePacking, TotalBytes: totalSize})
+			onProgress(UploadDirProgress{Phase: UploadDirPhaseUploading, TotalBytes: totalSize})
+			onProgress(UploadDirProgress{
+				Phase:        UploadDirPhaseApplying,
+				RelativePath: filepath.ToSlash(effective),
+			})
 		}
+		return &UploadDirResult{
+			Path:      filepath.ToSlash(effective),
+			FileCount: len(tree.Files),
+			TotalSize: totalSize,
+		}, nil
+	}
+
+	tmpArchive, err := os.CreateTemp("", "remote-agent-upload-dir-*.tar.xz")
+	if err != nil {
+		return nil, fmt.Errorf("create local archive: %w", err)
+	}
+	archiveLocal := tmpArchive.Name()
+	_ = tmpArchive.Close()
+	defer os.Remove(archiveLocal)
+
+	if onProgress != nil {
+		onProgress(UploadDirProgress{Phase: UploadDirPhasePacking, TotalBytes: totalSize})
+	}
+	if err := packDirTarXz(localDir, tree, archiveLocal); err != nil {
+		return nil, fmt.Errorf("pack directory archive: %w", err)
+	}
+	archiveInfo, err := os.Stat(archiveLocal)
+	if err != nil {
+		return nil, err
+	}
+	if onProgress != nil {
+		onProgress(UploadDirProgress{
+			Phase:    UploadDirPhasePacking,
+			FileSize: archiveInfo.Size(),
+		})
+	}
+
+	remoteArchive := filepath.ToSlash(filepath.Join(home.Home, ".ai-critic", "upload-dir-tmp", filepath.Base(archiveLocal)))
+
+	if onProgress != nil {
+		onProgress(UploadDirProgress{
+			Phase:      UploadDirPhaseUploading,
+			FileSize:   archiveInfo.Size(),
+			TotalBytes: archiveInfo.Size(),
+		})
+	}
+
+	uploadOpts := UploadOptions{
+		NoCompress: true, // already xz-compressed
+		ChunkRetry: opts.ChunkRetry,
+	}
+	if _, err := c.UploadFile(archiveLocal, remoteArchive, uploadOpts, func(chunk UploadProgress) {
+		if onProgress == nil {
+			return
+		}
+		onProgress(UploadDirProgress{
+			Phase:          UploadDirPhaseUploading,
+			CompletedBytes: chunk.CompletedBytes,
+			TotalBytes:     chunk.TotalBytes,
+			FileSize:       archiveInfo.Size(),
+			Chunk:          chunk,
+		})
+	}); err != nil {
+		return nil, fmt.Errorf("upload archive: %w", err)
+	}
+
+	if onProgress != nil {
+		onProgress(UploadDirProgress{Phase: UploadDirPhaseApplying, RelativePath: filepath.ToSlash(effective)})
+	}
+	apply, err := c.UploadDirApply(remoteArchive, effective, opts.NoOverride, true)
+	if err != nil {
+		return nil, err
 	}
 
 	return &UploadDirResult{
-		Path:      logicalRemote,
-		FileCount: fileCount,
-		TotalSize: totalSize,
+		Path:        apply.Dest,
+		FileCount:   apply.FileCount,
+		TotalSize:   totalSize,
+		ArchiveSize: archiveInfo.Size(),
+		Overridden:  apply.Overridden,
 	}, nil
 }
 
-func (c *Client) guardUploadDirDestination(remoteDir string) error {
-	info, err := c.CheckPath(remoteDir)
-	if err != nil {
-		return fmt.Errorf("failed to check upload destination: %w", err)
-	}
-	if !info.Exists {
-		return nil
-	}
-	if !info.IsDir {
-		return fmt.Errorf(
-			"upload destination %q already exists and is not a directory; it must be missing or a completely empty directory",
-			filepath.ToSlash(remoteDir),
-		)
-	}
-	browse, err := c.BrowseDir(remoteDir)
-	if err != nil {
-		return fmt.Errorf("failed to inspect upload destination: %w", err)
-	}
-	if len(browse.Entries) > 0 {
-		return fmt.Errorf(
-			"upload destination %q is not empty; it must be missing or a completely empty directory",
-			filepath.ToSlash(remoteDir),
-		)
-	}
-	return nil
+// UploadDirPreflightResult is returned by UploadDirPreflight.
+type UploadDirPreflightResult struct {
+	OK            bool
+	Conflicts     []string
+	TypeConflicts []string
+	Dest          string
 }
 
-func buildUploadPlan(localDir, absoluteRemote string) (plan []uploadPlanItem, subdirs []string, totalSize int64, err error) {
-	files, allDirRels, err := walkLocalUploadTree(localDir, absoluteRemote)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-
-	dirsWithFiles := dirsContainingFiles(localDir, files)
-	emptyDirs := make(map[string]bool)
-	for _, dirRel := range allDirRels {
-		if !dirsWithFiles[dirRel] {
-			emptyDirs[dirRel] = true
-		}
-	}
-
-	err = filepath.WalkDir(localDir, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if path == localDir {
-			return nil
-		}
-		rel, err := filepath.Rel(localDir, path)
-		if err != nil {
-			return err
-		}
-		relSlash := filepath.ToSlash(rel)
-
-		if d.IsDir() {
-			if emptyDirs[relSlash] {
-				plan = append(plan, uploadPlanItem{
-					itemType:     uploadPlanEmptyDir,
-					relativePath: relSlash + "/",
-				})
-			}
-			return nil
-		}
-		if d.Type()&fs.ModeSymlink != 0 || !d.Type().IsRegular() {
-			return nil
-		}
-		stat, err := d.Info()
-		if err != nil {
-			return err
-		}
-		if !stat.Mode().IsRegular() {
-			return nil
-		}
-
-		var matched *localDirFile
-		for i := range files {
-			if files[i].localPath == path {
-				matched = &files[i]
-				break
-			}
-		}
-		if matched == nil {
-			return fmt.Errorf("internal error: missing upload plan file for %s", relSlash)
-		}
-		totalSize += matched.size
-		plan = append(plan, uploadPlanItem{
-			itemType:     uploadPlanFile,
-			relativePath: relSlash,
-			file:         matched,
-		})
-		return nil
+func (c *Client) UploadDirPreflight(dest string, files []string, noOverride bool) (*UploadDirPreflightResult, error) {
+	body, err := json.Marshal(map[string]any{
+		"dest":        dest,
+		"files":       files,
+		"no_override": noOverride,
 	})
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to walk local directory: %w", err)
+		return nil, err
 	}
-	return plan, subdirsFromFilesAndDirs(localDir, absoluteRemote, files, allDirRels), totalSize, nil
+	req, err := c.NewRequest(http.MethodPost, "/api/files/upload-dir/preflight", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, readAPIError(resp)
+	}
+	var out struct {
+		OK            bool     `json:"ok"`
+		Conflicts     []string `json:"conflicts"`
+		TypeConflicts []string `json:"type_conflicts"`
+		Dest          string   `json:"dest"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &UploadDirPreflightResult{
+		OK:            out.OK,
+		Conflicts:     out.Conflicts,
+		TypeConflicts: out.TypeConflicts,
+		Dest:          out.Dest,
+	}, nil
 }
 
-func walkLocalUploadTree(localDir, absoluteRemote string) (files []localDirFile, allDirRels []string, err error) {
-	err = filepath.WalkDir(localDir, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if path == localDir {
-			return nil
-		}
-		rel, err := filepath.Rel(localDir, path)
-		if err != nil {
-			return err
-		}
-		relSlash := filepath.ToSlash(rel)
-		if d.IsDir() {
-			allDirRels = append(allDirRels, relSlash)
-			return nil
-		}
-		if d.Type()&fs.ModeSymlink != 0 || !d.Type().IsRegular() {
-			return nil
-		}
-		stat, err := d.Info()
-		if err != nil {
-			return err
-		}
-		if !stat.Mode().IsRegular() {
-			return nil
-		}
-		files = append(files, localDirFile{
-			localPath:  path,
-			remotePath: filepath.Join(absoluteRemote, relSlash),
-			chmodExec:  stat.Mode()&0o111 != 0,
-			size:       stat.Size(),
-		})
-		return nil
+// UploadDirApplyResult is returned by UploadDirApply.
+type UploadDirApplyResult struct {
+	Dest       string
+	FileCount  int
+	Overridden []string
+}
+
+func (c *Client) UploadDirApply(archivePath, dest string, noOverride, deleteArchive bool) (*UploadDirApplyResult, error) {
+	body, err := json.Marshal(map[string]any{
+		"archive_path":   archivePath,
+		"dest":           dest,
+		"no_override":    noOverride,
+		"delete_archive": deleteArchive,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to walk local directory: %w", err)
+		return nil, err
 	}
-	return files, allDirRels, nil
-}
-
-func dirsContainingFiles(localDir string, files []localDirFile) map[string]bool {
-	dirsWithFiles := make(map[string]bool)
-	for _, f := range files {
-		rel, err := filepath.Rel(localDir, f.localPath)
-		if err != nil {
-			continue
-		}
-		relSlash := filepath.ToSlash(rel)
-		dir := filepath.ToSlash(filepath.Dir(relSlash))
-		for dir != "." && dir != "" {
-			dirsWithFiles[dir] = true
-			dir = filepath.ToSlash(filepath.Dir(dir))
-		}
+	req, err := c.NewRequest(http.MethodPost, "/api/files/upload-dir/apply", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
 	}
-	return dirsWithFiles
-}
-
-func subdirsFromFilesAndDirs(localDir, absoluteRemote string, files []localDirFile, allDirRels []string) []string {
-	seen := make(map[string]bool)
-	var subdirs []string
-	add := func(rel string) {
-		if rel == "" || seen[rel] {
-			return
-		}
-		seen[rel] = true
-		subdirs = append(subdirs, filepath.Join(absoluteRemote, rel))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
 	}
-	for _, dirRel := range allDirRels {
-		add(dirRel)
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, readAPIError(resp)
 	}
-	for _, f := range files {
-		rel, err := filepath.Rel(localDir, f.localPath)
-		if err != nil {
-			continue
-		}
-		dir := filepath.ToSlash(filepath.Dir(rel))
-		for dir != "." && dir != "" {
-			add(dir)
-			dir = filepath.ToSlash(filepath.Dir(dir))
-		}
+	var out struct {
+		Dest       string   `json:"dest"`
+		FileCount  int      `json:"file_count"`
+		Overridden []string `json:"overridden"`
 	}
-	return subdirs
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &UploadDirApplyResult{
+		Dest:       out.Dest,
+		FileCount:  out.FileCount,
+		Overridden: out.Overridden,
+	}, nil
 }
 
 // CountUploadDirItems returns item count (files + empty subdirs), file count, and total bytes.
 func CountUploadDirItems(localDir string) (itemCount int, fileCount int, totalSize int64, err error) {
-	files, allDirRels, err := walkLocalUploadTree(localDir, "")
+	tree, totalSize, err := walkLocalUploadContents(localDir)
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	dirsWithFiles := dirsContainingFiles(localDir, files)
-	emptyDirCount := 0
-	for _, dirRel := range allDirRels {
-		if !dirsWithFiles[dirRel] {
-			emptyDirCount++
-		}
-	}
-	for _, f := range files {
-		totalSize += f.size
-	}
-	return len(files) + emptyDirCount, len(files), totalSize, nil
-}
-
-func (c *Client) mkdirRemote(paths ...string) error {
-	if len(paths) == 0 {
-		return nil
-	}
-	argv := append([]string{"mkdir", "-p"}, paths...)
-	code, err := c.Exec(ExecRequest{Argv: argv}, nil)
-	if err != nil {
-		return err
-	}
-	if code != 0 {
-		return fmt.Errorf("mkdir exited with status %d", code)
-	}
-	return nil
+	return len(tree.Files) + len(tree.Dirs), len(tree.Files), totalSize, nil
 }

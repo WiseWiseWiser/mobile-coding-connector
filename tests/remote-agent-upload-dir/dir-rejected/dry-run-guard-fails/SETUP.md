@@ -1,28 +1,16 @@
 # Scenario
 
-**Feature**: dry-run still enforces upload destination guard on non-empty remoteDir
+**Feature**: dry-run + `--no-override` fails preflight before packing
 
 ```
-# uploads/mirror/existing.txt present -> --dry-run upload -> guard error, serverHome unchanged
-pre-seeded file blocks dry-run plan before any would-upload lines
+pre-seed uploads/apps/srcdir/a.txt
+  -> upload --dry-run --no-override ./srcdir uploads/apps
+  -> error; server unchanged
 ```
-
-## Preconditions
-
-`uploads/mirror/existing.txt` exists on server before upload.
-
-## Steps
-
-1. Pre-seed `uploads/mirror/existing.txt`.
-2. Build local tree that would mirror into `uploads/mirror`.
-3. Args: `upload --dry-run <localDir> uploads/mirror`.
-
-## Context
-
-REQUIREMENT-DESIGN-upload-download-dry-run.md — dir-rejected/dry-run-guard-fails.
 
 ```go
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
@@ -30,12 +18,21 @@ import (
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	localRoot := mkLocalWorkDir(t)
-	seedRejectLocalTree(t, localRoot)
+	src := filepath.Join(localRoot, "srcdir")
+	writeLocalFile(t, src, "a.txt", "alpha\n", 0644)
+	writeLocalFile(t, src, "sub/b.txt", "bravo\n", 0644)
 	req.ServerPreseedFiles = map[string]string{
-		"uploads/mirror/existing.txt": seedExistingFileContent,
+		"uploads/apps/srcdir/a.txt": "seed-existing\n",
 	}
-	setUploadDryRunArgs(t, req, localRoot, "uploads/mirror")
-	req.RemoteDir = "uploads/mirror"
+	req.ServerPreseedDirs = []string{"uploads/apps", "uploads/apps/srcdir"}
+	abs, err := filepath.Abs(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.LocalPath = abs
+	req.RemotePath = "uploads/apps"
+	req.Args = []string{"upload", "--dry-run", "--no-override", abs, "uploads/apps"}
+	req.RemoteDir = "uploads/apps/srcdir"
 	return nil
 }
 ```

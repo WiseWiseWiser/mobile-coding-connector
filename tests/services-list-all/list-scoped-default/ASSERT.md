@@ -1,16 +1,15 @@
 ---
-explanation: "L2 Manager.List project-scoped"
+explanation: "L2 Manager.List returns all services"
 ---
 
 ## Expected
 
 1. `HTTPStatus` is `200`.
-2. `ListedIDs` contains `local-web`.
-3. `ListedIDs` does not contain `other-api`.
+2. `ListedIDs` contains both `local-web` and `other-api`.
 
 ## Errors
 
-- Cross-project service leaked into default list.
+- List omits a seeded service.
 
 ```go
 import (
@@ -35,11 +34,8 @@ func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err 
 			hasOther = true
 		}
 	}
-	if !hasLocal {
-		t.Fatalf("missing local-web in %v", resp.ListedIDs)
-	}
-	if hasOther {
-		t.Fatalf("other-api should not appear in scoped list: %v", resp.ListedIDs)
+	if !hasLocal || !hasOther {
+		t.Fatalf("want both local-web and other-api in List response, got %v", resp.ListedIDs)
 	}
 }
 ```

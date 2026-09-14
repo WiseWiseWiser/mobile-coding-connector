@@ -1,11 +1,11 @@
 # Scenario
 
-**Feature**: service add happy path with name, command, project-dir, working-dir
+**Feature**: service add happy path with name, command, working-dir
 
 ```
 remote-agent service add --name demo-add --command "sleep 300" \
-  --project-dir <tmp> --working-dir <tmp>
-  -> exit 0, Created + name; services.json row; ListAll sees it
+  --working-dir <tmp>
+  -> exit 0, Created + name; services.json row; List sees it
 ```
 
 ## Preconditions
@@ -15,9 +15,9 @@ remote-agent service add --name demo-add --command "sleep 300" \
 
 ## Steps
 
-1. Create temp project and working dirs.
+1. Create temp working dir.
 2. Run `service add` with required flags.
-3. Assert Created, disk, ListAll.
+3. Assert Created, disk, List.
 
 ## Context
 
@@ -31,15 +31,13 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	proj := t.TempDir()
 	work := t.TempDir()
-	req.LocalProjectDir = proj
+	req.LocalWorkingDir = work
 	req.TargetName = "demo-add"
 	setCLI(req,
 		"service", "add",
 		"--name", "demo-add",
 		"--command", "sleep 300",
-		"--project-dir", proj,
 		"--working-dir", work,
 	)
 	return nil

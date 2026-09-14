@@ -1,25 +1,22 @@
 # Scenario
 
-**Feature**: directory upload succeeds when destination is missing or empty
+**Feature**: directory upload succeeds (tar.xz pack → upload → remote apply)
 
 ```
-# walk local tree -> pre-flight guard OK -> fan-out chunked uploads -> mirrored remote tree
-localDir + (absent|empty remoteDir) -> remote-agent upload -> files + empty dirs on server
+localDir + resolved remote dest -> remote-agent upload -> files on server
 ```
 
 ## Preconditions
 
-Destination guard accepts missing paths or directories with zero entries (including dot entries).
+Destination resolution follows cp -R rules.
 
 ## Steps
 
-1. Leaf builds `localDir` tree and sets `RemoteDir` to the expected mirror root (serverHome-relative).
-2. Optionally pre-create an empty `remoteDir` via `ServerPreseedDirs`.
-3. Assertions expect exit 0, directory start/success stdout, and mirrored paths.
+1. Leaf builds `localDir` tree and sets expected remote paths.
+2. Optionally pre-create parent directories via `ServerPreseedDirs`.
+3. Assertions expect exit 0 and mirrored/nested paths.
 
 ## Context
-
-Each child narrows destination state or local tree shape per REQUIREMENT-DESIGN-remote-agent-upload-dir.md.
 
 ```go
 import (
@@ -44,9 +41,7 @@ func remoteDirRel(localPath, remotePath string) string {
 	if rel == "" {
 		return base
 	}
-	if strings.HasSuffix(rel, "/") {
-		return filepath.ToSlash(filepath.Join(strings.TrimSuffix(rel, "/"), base))
-	}
+	rel = strings.TrimSuffix(rel, "/")
 	return filepath.ToSlash(rel)
 }
 

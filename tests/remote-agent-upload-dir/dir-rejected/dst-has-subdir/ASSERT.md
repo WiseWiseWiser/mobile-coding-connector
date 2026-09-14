@@ -1,26 +1,15 @@
 ## Expected
 
-1. Non-zero exit.
-2. Combined output mentions destination must be missing or empty.
-3. `uploads/mirror/child/` still exists and remains empty.
-4. No new files written under `uploads/mirror/`.
-
-## Side Effects
-
-None.
-
-## Errors
-
-- Exit 0 because child subdirectory is empty.
-- `incoming.txt` or nested uploads appear under `uploads/mirror/`.
+1. Exit 0 (nesting into basename; sibling `child/` does not block).
+2. Files under `uploads/apps/srcdir/`.
+3. `uploads/apps/child` still exists.
 
 ## Exit Code
 
-Non-zero.
+0.
 
 ```go
 import (
-	"strings"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
@@ -30,18 +19,11 @@ func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err 
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
-	if resp.ExitCode == 0 {
-		t.Fatalf("expected failure; combined:\n%s", resp.Combined)
+	if resp.ExitCode != 0 {
+		t.Fatalf("exit %d; combined:\n%s", resp.ExitCode, resp.Combined)
 	}
-
-	lower := strings.ToLower(resp.Combined)
-	if !strings.Contains(lower, "empty") && !strings.Contains(lower, "missing") && !strings.Contains(lower, "not exist") {
-		t.Fatalf("expected actionable empty/missing destination error; combined:\n%s", resp.Combined)
-	}
-
-	assertServerIsDir(t, resp.ServerHome, "uploads/mirror/child")
-	assertServerDirEmpty(t, resp.ServerHome, "uploads/mirror/child")
-	assertServerPathMissing(t, resp.ServerHome, "uploads/mirror/incoming.txt")
-	assertServerPathMissing(t, resp.ServerHome, "uploads/mirror/nested/incoming.txt")
+	assertServerFileContent(t, resp.ServerHome, "uploads/apps/srcdir/a.txt", "alpha\n")
+	assertServerFileContent(t, resp.ServerHome, "uploads/apps/srcdir/sub/b.txt", "bravo\n")
+	assertServerIsDir(t, resp.ServerHome, "uploads/apps/child")
 }
 ```

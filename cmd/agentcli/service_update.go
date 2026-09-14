@@ -47,7 +47,6 @@ func runServiceUpdate(resolve func() (*client.Client, error), args []string) err
 	var (
 		name             string
 		command          string
-		projectDir       string
 		workingDir       string
 		upgradeTarget    string
 		envSet           []string
@@ -64,7 +63,6 @@ func runServiceUpdate(resolve func() (*client.Client, error), args []string) err
 	args, err := flags.
 		String("--name", &name).
 		String("--command", &command).
-		String("--project-dir", &projectDir).
 		String("--working-dir", &workingDir).
 		String("--upgrade-target", &upgradeTarget).
 		StringSlice("--env", &envSet).
@@ -107,10 +105,6 @@ func runServiceUpdate(resolve func() (*client.Client, error), args []string) err
 	}
 	if specified["--command"] {
 		def.Command = strings.TrimSpace(command)
-		updateCount++
-	}
-	if specified["--project-dir"] {
-		def.ProjectDir = strings.TrimSpace(projectDir)
 		updateCount++
 	}
 	if specified["--working-dir"] {
@@ -215,7 +209,6 @@ func serviceDefinitionFromStatus(service *client.ServiceStatus) client.ServiceDe
 		ID:            service.ID,
 		Name:          service.Name,
 		Command:       service.Command,
-		ProjectDir:    service.ProjectDir,
 		WorkingDir:    service.WorkingDir,
 		ExtraEnv:      cloneServiceEnv(service.ExtraEnv),
 		PortForward:   servicePortForwardFromStatus(service.PortForward),
@@ -263,7 +256,6 @@ func serviceUpdateSpecifiedFlags(args []string) map[string]bool {
 	valueFlags := map[string]bool{
 		"--name":             true,
 		"--command":          true,
-		"--project-dir":      true,
 		"--working-dir":      true,
 		"--upgrade-target":   true,
 		"--env":              true,

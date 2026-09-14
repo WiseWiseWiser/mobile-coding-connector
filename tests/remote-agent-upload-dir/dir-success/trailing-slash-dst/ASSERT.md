@@ -1,17 +1,8 @@
 ## Expected
 
 1. Exit code 0.
-2. Stdout references resolved directory `parent/proj`.
-3. `parent/proj/file.txt` exists with `proj payload\n`.
-
-## Side Effects
-
-- Files land under `parent/proj/`, not directly under `parent/`.
-
-## Errors
-
-- `parent/file.txt` created instead of `parent/proj/file.txt`.
-- Basename not appended for trailing-slash destination.
+2. `parent/proj/file.txt` exists.
+3. Staged progress + `uploaded` product.
 
 ## Exit Code
 
@@ -33,7 +24,7 @@ func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err 
 	}
 
 	assertStdoutEndsWithNewline(t, resp.Stdout)
-	combinedHasAll(t, resp.Combined, "parent/proj", "1 files", "Upload complete")
+	combinedHasAll(t, resp.Combined, "[1/4] resolve", "uploaded", "1 files", "parent/proj")
 	assertServerPathMissing(t, resp.ServerHome, "parent/file.txt")
 	assertServerFileContent(t, resp.ServerHome, "parent/proj/file.txt", "proj payload\n")
 }

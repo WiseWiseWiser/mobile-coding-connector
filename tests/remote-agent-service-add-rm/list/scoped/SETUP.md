@@ -1,22 +1,21 @@
 # Scenario
 
-**Feature**: service list --project-dir scopes to one project
+**Feature**: plain service list (no --all) shows all services
 
 ```
-seed web @ LOCAL + api @ OTHER
-  -> service list --project-dir LOCAL
-  -> stdout shows web; not api
+seed web + api
+  -> service list
+  -> stdout shows both
 ```
 
 ## Steps
 
-1. Seed two projectDirs.
-2. CLI: `service list --project-dir <LOCAL>` (no `--all`).
+1. Seed two services.
+2. CLI: `service list` (no `--all`).
 
 ## Context
 
-Contrasts with `list/all`. Uses explicit `--project-dir` for deterministic L2
-scope (avoids process cwd as default normalizeProjectDir target).
+Contrasts with older scoped behavior; list is always global now.
 
 ```go
 import (
@@ -26,15 +25,11 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	local := t.TempDir()
-	other := t.TempDir()
-	req.LocalProjectDir = local
-	req.OtherProjectDir = other
 	req.Services = []ServiceSeed{
-		sleepService("local-web", "web", local),
-		sleepService("other-api", "api", other),
+		sleepService("local-web", "web"),
+		sleepService("other-api", "api"),
 	}
-	setCLI(req, "service", "list", "--project-dir", local)
+	setCLI(req, "service", "list")
 	return nil
 }
 ```

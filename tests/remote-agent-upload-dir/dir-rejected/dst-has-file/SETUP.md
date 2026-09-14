@@ -1,43 +1,44 @@
 # Scenario
 
-**Feature**: reject directory upload when destination directory contains a file
+**Feature**: `--no-override` rejects when nested dest already has conflicting files
 
 ```
-# uploads/mirror/existing.txt present -> upload localDir uploads/mirror -> fail, seed unchanged
-pre-seeded file blocks mirror
+pre-seed uploads/apps/srcdir/a.txt
+  -> upload --no-override ./srcdir uploads/apps
+  -> fail; seed unchanged
 ```
 
 ## Preconditions
 
-`uploads/mirror/existing.txt` exists on server before upload.
+`uploads/apps/srcdir/a.txt` exists (so effective dest nests and conflicts).
 
 ## Steps
 
-1. Pre-seed `uploads/mirror/existing.txt`.
-2. Build local tree that would mirror into `uploads/mirror`.
-3. Args: `upload <localDir> uploads/mirror`.
-
-## Context
-
-REQUIREMENT leaf #6 — dir-rejected/dst-has-file.
+1. Pre-seed conflicting file under nested basename path.
+2. Build local `srcdir` tree including `a.txt`.
+3. Args: `upload --no-override <srcdir> uploads/apps`.
 
 ```go
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	// L3 smoke: destination guard reject via product binaries.
-	req.UseCLI = true
 	localRoot := mkLocalWorkDir(t)
-	seedRejectLocalTree(t, localRoot)
+	src := filepath.Join(localRoot, "srcdir")
+	writeLocalFile(t, src, "a.txt", "alpha\n", 0644)
+	writeLocalFile(t, src, "sub/b.txt", "bravo\n", 0644)
 	req.ServerPreseedFiles = map[string]string{
-		"uploads/mirror/existing.txt": seedExistingFileContent,
+		"uploads/apps/srcdir/a.txt": "seed-existing\n",
 	}
-	setUploadArgs(t, req, localRoot, "uploads/mirror")
-	req.RemoteDir = "uploads/mirror"
+	req.ServerPreseedDirs = []string{"uploads/apps", "uploads/apps/srcdir"}
+	setUploadArgsWithDryRun(t, req, src, "uploads/apps", false)
+	// inject --no-override after "upload"
+	req.Args = append([]string{"upload", "--no-override"}, req.Args[1:]...)
+	req.RemoteDir = "uploads/apps/srcdir"
 	return nil
 }
 ```

@@ -13,8 +13,8 @@ const serviceHelp = `Usage: remote-agent service <subcommand> [args...]
 Manage remote services configured on the remote-agent server.
 
 Subcommands:
-  list [--project-dir <dir>] [--all]
-      List managed services. Default is project-scoped; --all lists every service.
+  list [--all]
+      List all managed services. --all is accepted as a no-op alias.
 
   add --name NAME --command COMMAND [options...]
       Create a new service definition (optionally start or disable it).
@@ -50,13 +50,12 @@ Subcommands:
       Stream one service's log file.
 `
 
-const serviceListHelp = `Usage: remote-agent service list [--project-dir <dir>] [--all]
+const serviceListHelp = `Usage: remote-agent service list [--all]
 
-List services from the remote server.
+List all managed services from the remote server.
 
 Options:
-  --project-dir DIR   Filter to one project scope.
-  --all               List services across all project scopes.
+  --all               Accepted for compatibility; list is always global.
   -h, --help          Show this help message.
 `
 
@@ -69,7 +68,6 @@ Required:
   --command COMMAND           Shell command to run.
 
 Options:
-  --project-dir DIR           Project scope directory.
   --working-dir DIR           Working directory for the process.
   --upgrade-target PATH       Remembered service upgrade target.
   --env KEY=VALUE             Environment variable. Can be repeated.
@@ -85,8 +83,7 @@ Options:
 
 const serviceRmHelp = `Usage: remote-agent service rm <service-name-or-id>
 
-Remove one managed service by name or id. Name resolution searches all
-project scopes.
+Remove one managed service by name or id.
 `
 
 const serviceLogsHelp = `Usage: remote-agent service logs [--lines N] <service-name-or-id>
@@ -114,7 +111,6 @@ process until the service is restarted.
 Options:
   --name NAME                 Set service name.
   --command COMMAND           Set shell command.
-  --project-dir DIR           Set project scope.
   --working-dir DIR           Set working directory.
   --upgrade-target PATH       Set remembered service upgrade target.
   --env KEY=VALUE             Set or replace an environment variable.
@@ -171,11 +167,9 @@ func runService(resolve func() (*client.Client, error), args []string) error {
 }
 
 func runServiceList(resolve func() (*client.Client, error), args []string) error {
-	var projectDir string
 	var listAll bool
 	args, err := flags.
-		String("--project-dir", &projectDir).
-		Bool("--all", &listAll).
+		Bool("--all", &listAll). // no-op alias for compatibility
 		Help("-h,--help", serviceListHelp).
 		Parse(args)
 	if err != nil {
@@ -184,30 +178,19 @@ func runServiceList(resolve func() (*client.Client, error), args []string) error
 	if len(args) > 0 {
 		return fmt.Errorf("service list takes no positional arguments, got %v", args)
 	}
-	if listAll && strings.TrimSpace(projectDir) != "" {
-		return fmt.Errorf("service list --all cannot be combined with --project-dir")
-	}
+	_ = listAll
 
 	cli, err := resolve()
 	if err != nil {
 		return err
 	}
 
-	var services []client.ServiceStatus
-	if listAll {
-		services, err = cli.ListAllServices()
-	} else {
-		services, err = cli.ListServices(projectDir)
-	}
+	services, err := cli.ListServices()
 	if err != nil {
 		return err
 	}
 	if len(services) == 0 {
-		if listAll || strings.TrimSpace(projectDir) == "" {
-			fmt.Println("No services found.")
-		} else {
-			fmt.Printf("No services found for project scope %q.\n", projectDir)
-		}
+		fmt.Println("No services found.")
 		return nil
 	}
 
@@ -351,8 +334,7 @@ func runServiceLogs(resolve func() (*client.Client, error), args []string) error
 }
 
 func resolveServiceTarget(cli *client.Client, idOrName string) (*client.ServiceStatus, error) {
-	// Resolve against all project scopes so name/id works cross-projectDir.
-	services, err := cli.ListAllServices()
+	services, err := cli.ListServices()
 	if err != nil {
 		return nil, err
 	}
@@ -403,7 +385,6 @@ func printService(service client.ServiceStatus) {
 	fmt.Printf("%s %s\n", label("ID"), service.ID)
 	fmt.Printf("%s %s\n", label("Status"), displayOrDash(service.Status))
 	fmt.Printf("%s %s\n", label("PID"), formatOptionalInt(service.PID))
-	fmt.Printf("%s %s\n", label("Scope"), serviceScope(service))
 	fmt.Printf("%s %s\n", label("Work Dir"), displayOrDash(service.WorkingDir))
 	fmt.Printf("%s %s\n", label("Command"), displayOrDash(service.Command))
 	fmt.Printf("%s %s\n", label("Desired"), boolWord(service.DesiredRunning))
@@ -424,13 +405,6 @@ func printService(service client.ServiceStatus) {
 	if service.LastExitError != "" {
 		fmt.Printf("%s %s\n", label("Last Error"), service.LastExitError)
 	}
-}
-
-func serviceScope(service client.ServiceStatus) string {
-	if strings.TrimSpace(service.ProjectDir) == "" {
-		return "all projects"
-	}
-	return service.ProjectDir
 }
 
 func formatPortForward(pf *client.ServicePortForwardStatus) string {

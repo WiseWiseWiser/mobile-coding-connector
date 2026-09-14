@@ -36,8 +36,8 @@ func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err 
 	}
 
 	lower := strings.ToLower(resp.Combined)
-	if !strings.Contains(lower, "empty") && !strings.Contains(lower, "missing") && !strings.Contains(lower, "not exist") && !strings.Contains(lower, "not a directory") && !strings.Contains(lower, "directory") {
-		t.Fatalf("expected actionable destination guard error; combined:\n%s", resp.Combined)
+	if !strings.Contains(lower, "is a file") && !strings.Contains(lower, "refusing") && !strings.Contains(lower, "not a directory") {
+		t.Fatalf("expected file-destination error; combined:\n%s", resp.Combined)
 	}
 
 	full := serverFilePath(resp.ServerHome, "uploads/mirror")

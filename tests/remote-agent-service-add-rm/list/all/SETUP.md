@@ -1,16 +1,16 @@
 # Scenario
 
-**Feature**: service list --all shows services across projectDirs
+**Feature**: service list --all shows all services
 
 ```
-seed local-web @ LOCAL + other-api @ OTHER
+seed local-web + other-api
   -> service list --all
   -> stdout includes both names
 ```
 
 ## Steps
 
-1. Seed two services with different absolute projectDirs.
+1. Seed two services.
 2. CLI: `service list --all`.
 
 ```go
@@ -21,13 +21,9 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	local := t.TempDir()
-	other := t.TempDir()
-	req.LocalProjectDir = local
-	req.OtherProjectDir = other
 	req.Services = []ServiceSeed{
-		sleepService("local-web", "web", local),
-		sleepService("other-api", "api", other),
+		sleepService("local-web", "web"),
+		sleepService("other-api", "api"),
 	}
 	setCLI(req, "service", "list", "--all")
 	return nil

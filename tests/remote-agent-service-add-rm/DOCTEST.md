@@ -1,7 +1,7 @@
 # Remote-Agent Service Add + Rm Doctests
 
-Classic TDD doctests for `remote-agent service add` and `service rm`, plus
-`service list --all` and name resolution across `projectDir` scopes (ListAll).
+Classic TDD doctests for `remote-agent service add`, `service rm`, and
+`service list` (services are global; no project scope).
 
 # DSN (Domain Specific Notion)
 
@@ -16,28 +16,26 @@ via `lib.CreateTestConfigHome` and temp dirs.
 **Participants**
 
 - **L2: services.Manager** — isolated `configHome/services.json` via
-  `NewManagerAt`; `ListAll` / disk snapshot after CLI.
+  `NewManagerAt`; `List` / disk snapshot after CLI.
 - **L2: agentcli.Run** — in-process `service add|rm|list` against local mux
   (`--server` + `--token`).
-- **HTTP API (existing server)** — `POST /api/services`, `DELETE /api/services?id=`,
-  `GET /api/services?all=1` (already implemented; CLI/client wiring is greenfield).
-- **Service definitions** — name, command, optional `projectDir` / `workingDir` /
-  `enabled`; long-running `sleep` for `--start` PID checks.
+- **HTTP API** — `POST /api/services`, `DELETE /api/services?id=`,
+  `GET /api/services` (always full list; `all=1` ignored).
+- **Service definitions** — name, command, optional `workingDir` / `enabled`;
+  long-running `sleep` for `--start` PID checks.
 
 **Behaviors**
 
 - **`service add`** — POST create; default definition-only (no start) unless
   `--start`; prints Created + service summary; optional `--disabled`.
-- **`service rm <name-or-id>`** — resolve via list-all, DELETE by id; prints Removed.
-- **`service list --all`** — cross-project listing via `?all=1`.
-- **`resolveServiceTarget`** — name/id resolution uses list-all so services under
-  any `projectDir` are visible to `rm` (and start/stop/update later).
+- **`service rm <name-or-id>`** — resolve via list, DELETE by id; prints Removed.
+- **`service list` / `list --all`** — always lists every managed service.
 - **Errors** — missing `--name`/`--command`; unknown target; ambiguous name.
 - **No aliases** — only `add` and `rm` (no create/delete/remove).
 
 ## Version
 
-0.0.2
+0.0.3
 
 ## Decision Tree
 
@@ -45,7 +43,7 @@ via `lib.CreateTestConfigHome` and temp dirs.
 [remote-agent service add + rm]
  |
  +-- add/                               (GROUP)  service add
- |    +-- happy-path/                   (LEAF)  name+command+dirs → Created; on disk; list-all sees it
+ |    +-- happy-path/                   (LEAF)  name+command+working-dir → Created; on disk
  |    +-- missing-name/                 (LEAF)  no --name → non-zero
  |    +-- missing-command/              (LEAF)  no --command → non-zero
  |    +-- with-start/                   (LEAF)  --start → PID>0 / running
@@ -55,28 +53,28 @@ via `lib.CreateTestConfigHome` and temp dirs.
  |    +-- by-name/                      (LEAF)  seed then rm by name → gone; Removed
  |    +-- by-id/                        (LEAF)  rm by id → gone; Removed
  |    +-- not-found/                    (LEAF)  unknown target → non-zero
- |    +-- cross-scope/                  (LEAF)  non-default projectDir; rm by name via ListAll
+ |    +-- cross-scope/                  (LEAF)  rm by name (legacy leaf name; global list)
  |
  +-- list/                              (GROUP)  service list
-      +-- all/                          (LEAF)  two projectDirs; list --all shows both
-      +-- scoped/                       (LEAF)  list --project-dir LOCAL hides other
+      +-- all/                          (LEAF)  two services; list --all shows both
+      +-- scoped/                       (LEAF)  plain list (no --all) also shows both
 ```
 
 ## Test Index
 
 | # | Leaf | Description |
 |---|------|-------------|
-| 1 | `add/happy-path` | `--name` + `--command` + dirs → exit 0, Created, services.json row, list-all |
+| 1 | `add/happy-path` | `--name` + `--command` + working-dir → exit 0, Created, services.json row |
 | 2 | `add/missing-name` | omit `--name` → non-zero error |
 | 3 | `add/missing-command` | omit `--command` → non-zero error |
 | 4 | `add/with-start` | `--start` with `sleep 30` → running / PID > 0 |
 | 5 | `add/with-disabled` | `--disabled` → `enabled: false` on disk |
-| 6 | `rm/by-name` | seed + `rm <name>` → Removed; gone from ListAll |
-| 7 | `rm/by-id` | seed + `rm <id>` → Removed; gone from ListAll |
+| 6 | `rm/by-name` | seed + `rm <name>` → Removed; gone from List |
+| 7 | `rm/by-id` | seed + `rm <id>` → Removed; gone from List |
 | 8 | `rm/not-found` | `rm missing` → non-zero |
-| 9 | `rm/cross-scope` | seed under other projectDir; `rm <name>` resolves via all |
-| 10 | `list/all` | two projectDirs; `list --all` shows both names |
-| 11 | `list/scoped` | `list --project-dir LOCAL` shows only local name |
+| 9 | `rm/cross-scope` | seed + `rm <name>` resolves via global list |
+| 10 | `list/all` | two services; `list --all` shows both names |
+| 11 | `list/scoped` | plain `list` shows both names (global default) |
 
 ## Parameter Coverage
 
@@ -91,25 +89,19 @@ via `lib.CreateTestConfigHome` and temp dirs.
 | Resolve by name | rm/by-name, rm/cross-scope |
 | Resolve by id | rm/by-id |
 | Resolve miss | rm/not-found |
-| Cross-project visibility (ListAll) | rm/cross-scope, list/all |
-| Scoped list (project-dir) | list/scoped |
+| Global list | list/all, list/scoped |
 
-## Locked product API (implementer)
-
-Classic TDD: CLI surface and client helpers below are **not** required to exist
-yet. Harness compiles against current `agentcli` + `services` packages; leaves
-are **RED** until implementer lands wiring.
+## Locked product API
 
 | Surface | Role |
 |---------|------|
-| `client.ListAllServices()` | `GET /api/services?all=1` |
+| `client.ListServices()` | `GET /api/services` (full list) |
+| `client.ListAllServices()` | alias of ListServices |
 | `client.DeleteService(id)` | `DELETE /api/services?id=` |
-| `agentcli` `service add` | flags mirror update; POST SaveService; optional `--start` / `--disabled` |
+| `agentcli` `service add` | POST SaveService; optional `--start` / `--disabled` |
 | `agentcli` `service rm` | resolve + DeleteService; print Removed |
-| `agentcli` `service list --all` | ListAllServices |
-| `resolveServiceTarget` | use ListAll (not scoped ListServices("")) |
-
-Server Manager POST/DELETE/`?all=1` already exist — do not re-implement server.
+| `agentcli` `service list [--all]` | ListServices (`--all` no-op) |
+| `resolveServiceTarget` | ListServices |
 
 ## How to Run
 
@@ -152,7 +144,6 @@ type ServiceSeed struct {
 	ID         string
 	Name       string
 	Command    string
-	ProjectDir string
 	WorkingDir string
 	Enabled    *bool
 }
@@ -169,9 +160,9 @@ type Request struct {
 	TargetID   string
 	TargetName string
 
-	// LocalProjectDir / OtherProjectDir are absolute paths for multi-scope leaves.
-	LocalProjectDir string
-	OtherProjectDir string
+	// LocalWorkingDir / OtherWorkingDir are absolute paths used by list leaves.
+	LocalWorkingDir string
+	OtherWorkingDir string
 
 	Token         string
 	WaitAfterSecs int // settle after --start
@@ -181,7 +172,6 @@ type serviceStatus struct {
 	ID             string `json:"id"`
 	Name           string `json:"name"`
 	Command        string `json:"command"`
-	ProjectDir     string `json:"projectDir,omitempty"`
 	WorkingDir     string `json:"workingDir,omitempty"`
 	Status         string `json:"status"`
 	PID            int    `json:"pid"`
@@ -193,7 +183,6 @@ type servicesFileRow struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	Command    string `json:"command"`
-	ProjectDir string `json:"projectDir,omitempty"`
 	WorkingDir string `json:"workingDir,omitempty"`
 	Enabled    *bool  `json:"enabled,omitempty"`
 	CreatedAt  string `json:"createdAt"`
@@ -394,7 +383,7 @@ func toServiceStatus(st *services.ServiceStatus) serviceStatus {
 	}
 	return serviceStatus{
 		ID: st.ID, Name: st.Name, Command: st.Command,
-		ProjectDir: st.ProjectDir, WorkingDir: st.WorkingDir,
+		WorkingDir: st.WorkingDir,
 		Status: st.Status, PID: st.PID,
 		DesiredRunning: st.DesiredRunning, Enabled: st.Enabled,
 	}
@@ -451,7 +440,6 @@ func writeServicesJSON(configHome string, servicesList []ServiceSeed) error {
 			ID:         svc.ID,
 			Name:       svc.Name,
 			Command:    svc.Command,
-			ProjectDir: svc.ProjectDir,
 			WorkingDir: svc.WorkingDir,
 			Enabled:    svc.Enabled,
 			CreatedAt:  now,
@@ -506,12 +494,11 @@ func serviceIsRunning(svc serviceStatus) bool {
 
 func boolPtr(v bool) *bool { return &v }
 
-func sleepService(id, name, projectDir string) ServiceSeed {
+func sleepService(id, name string) ServiceSeed {
 	return ServiceSeed{
-		ID:         id,
-		Name:       name,
-		Command:    "sleep 300",
-		ProjectDir: projectDir,
+		ID:      id,
+		Name:    name,
+		Command: "sleep 300",
 	}
 }
 

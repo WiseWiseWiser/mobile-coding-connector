@@ -1,26 +1,24 @@
 # Scenario
 
-**Feature**: List vs ListAll project scoping on services.Manager
+**Feature**: List / ListAll return every managed service
 
 ```
-seed multi-project definitions -> Manager.List / ListAll -> scoped or all IDs
+seed two definitions -> Manager.List / ListAll -> both IDs
 ```
 
 ## Preconditions
 
-1. Two service definitions with different `projectDir` values.
+1. Two service definitions in memory.
 2. L2 harness uses `services.NewManagerFromDefinitions` (no product binary).
 
 ## Steps
 
-1. Root `Run` builds in-memory Manager with local + other project services.
-2. Leaf `Setup` sets `Op` to `list-scoped` or `list-all`.
-3. Root `Run` calls `List(projectDir)` or `ListAll()`.
+1. Root `Run` builds in-memory Manager with two services.
+2. Leaf `Setup` sets `Op` to `list` or `list-all`.
+3. Root `Run` calls `List()` or `ListAll()`.
 4. Leaf `Assert` checks returned service IDs.
 
 ## Context
-
-Menu bar uses `?all=1` (ListAll) to show every managed service.
 
 ```go
 import (

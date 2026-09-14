@@ -1,23 +1,13 @@
 ---
-label: heavy, e2e
-explanation: "L3 smoke: product binary upload-dir path"
+explanation: "L2 --no-override conflict preflight"
 ---
 
 ## Expected
 
 1. Non-zero exit.
-2. Combined output mentions destination must be missing or empty (actionable guard message).
-3. `uploads/mirror/existing.txt` content unchanged.
-4. No uploaded files from local tree appear under `uploads/mirror/`.
-
-## Side Effects
-
-None — no partial directory upload.
-
-## Errors
-
-- Exit 0 with mirrored files.
-- `existing.txt` overwritten or removed.
+2. Combined output mentions `--no-override` / overwritten.
+3. Preseeded `uploads/apps/srcdir/a.txt` unchanged.
+4. Local tree files not applied (`sub/b.txt` absent).
 
 ## Exit Code
 
@@ -40,12 +30,11 @@ func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err 
 	}
 
 	lower := strings.ToLower(resp.Combined)
-	if !strings.Contains(lower, "empty") && !strings.Contains(lower, "missing") && !strings.Contains(lower, "not exist") {
-		t.Fatalf("expected actionable empty/missing destination error; combined:\n%s", resp.Combined)
+	if !strings.Contains(lower, "no-override") && !strings.Contains(lower, "overwritten") {
+		t.Fatalf("expected --no-override conflict error; combined:\n%s", resp.Combined)
 	}
 
-	assertServerFileContent(t, resp.ServerHome, "uploads/mirror/existing.txt", seedExistingFileContent)
-	assertServerPathMissing(t, resp.ServerHome, "uploads/mirror/incoming.txt")
-	assertServerPathMissing(t, resp.ServerHome, "uploads/mirror/nested/incoming.txt")
+	assertServerFileContent(t, resp.ServerHome, "uploads/apps/srcdir/a.txt", "seed-existing\n")
+	assertServerPathMissing(t, resp.ServerHome, "uploads/apps/srcdir/sub/b.txt")
 }
 ```

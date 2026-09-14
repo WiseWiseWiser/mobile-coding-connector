@@ -1,52 +1,52 @@
-# Services List All API Doctests
+# Services List API Doctests
 
-L2 library tests for `services.Manager.List` / `ListAll` project scoping
-(`?all=1` bypass). No product binary.
+L2 library tests for `services.Manager.List` / `ListAll` (global list; no
+project scope). No product binary.
 
 # DSN (Domain Specific Notion)
 
 Most leaves are **L2 in-process**: `services.NewManagerFromDefinitions` +
-`List(projectDir)` / `ListAll()` (no `ai-critic-server` binary). Zero e2e smokes
-— pure Manager filtering is Parallel-safe.
+`List()` / `ListAll()` (no `ai-critic-server` binary). Zero e2e smokes —
+pure Manager listing is Parallel-safe.
 
 **Participants**
 
 - **L2: services.Manager** — in-memory definitions via `NewManagerFromDefinitions`.
-- **Service definitions** — rows with optional `projectDir` scoping.
-- **List vs ListAll** — `List(projectDir)` filters by project; `ListAll` returns all.
+- **Service definitions** — global rows (no projectDir).
+- **List / ListAll** — both return every service; ListAll is an alias of List.
 
 **Behaviors**
 
-- Default list returns only services matching the given project scope.
-- ListAll returns services across all `projectDir` values.
+- Default list returns every managed service.
+- ListAll returns the same full set.
 - Status objects expose `id` fields used by API responses.
 
 ## Version
 
-0.0.3
+0.0.4
 
 ## Decision Tree
 
 ```
 [services list API]
  |
- +-- list-scoped-default/             (LEAF)   List(project) project-scoped only
- +-- list-all/                        (LEAF)   ListAll returns cross-scope services
+ +-- list-scoped-default/             (LEAF)   List() returns all services
+ +-- list-all/                        (LEAF)   ListAll returns all services
 ```
 
 ## Test Index
 
 | # | Leaf | Description |
 |---|------|-------------|
-| 1 | `list-scoped-default` | Default list excludes other-project services |
-| 2 | `list-all` | ListAll includes services from all project dirs |
+| 1 | `list-scoped-default` | List includes every seeded service |
+| 2 | `list-all` | ListAll includes every seeded service |
 
 ## Parameter Coverage
 
-| Leaf | Query | Seeded projects | Expect |
-|------|-------|-----------------|--------|
-| list-scoped-default | none | local + other | only local ID |
-| list-all | `all=1` | local + other | both IDs |
+| Leaf | Op | Seeded services | Expect |
+|------|----|-----------------|--------|
+| list-scoped-default | list | web + api | both IDs |
+| list-all | list-all | web + api | both IDs |
 
 ## How to Run
 
@@ -60,7 +60,6 @@ doctest test --label e2e ./tests/services-list-all/...  # 0 smokes
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/xhd2015/ai-critic/server/services"
@@ -68,17 +67,14 @@ import (
 )
 
 type ServiceSeed struct {
-	ID         string
-	Name       string
-	Command    string
-	ProjectDir string
+	ID      string
+	Name    string
+	Command string
 }
 
 type Request struct {
-	Op string // list-scoped | list-all
+	Op string // list | list-all
 
-	LocalProjectDir string
-	OtherProjectDir string
 	LocalServiceID  string
 	OtherServiceID  string
 
@@ -110,28 +106,16 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	t.Cleanup(func() { os.RemoveAll(configHome) })
 	resp.ConfigHome = configHome
 
-	localDir := req.LocalProjectDir
-	if localDir == "" {
-		localDir = configHome
-	}
-	otherDir := req.OtherProjectDir
-	if otherDir == "" {
-		otherDir = filepath.Join(configHome, "other-project")
-	}
-	if err := os.MkdirAll(otherDir, 0755); err != nil {
-		return nil, err
-	}
-
 	defs := []services.ServiceDefinition{
-		{ID: req.LocalServiceID, Name: "web", Command: "sleep 300", ProjectDir: localDir, CreatedAt: "2026-07-07T00:00:00Z", UpdatedAt: "2026-07-07T00:00:00Z"},
-		{ID: req.OtherServiceID, Name: "api", Command: "sleep 300", ProjectDir: otherDir, CreatedAt: "2026-07-07T00:00:00Z", UpdatedAt: "2026-07-07T00:00:00Z"},
+		{ID: req.LocalServiceID, Name: "web", Command: "sleep 300", CreatedAt: "2026-07-07T00:00:00Z", UpdatedAt: "2026-07-07T00:00:00Z"},
+		{ID: req.OtherServiceID, Name: "api", Command: "sleep 300", CreatedAt: "2026-07-07T00:00:00Z", UpdatedAt: "2026-07-07T00:00:00Z"},
 	}
 	m := services.NewManagerFromDefinitions(defs)
 
 	var listed []services.ServiceStatus
 	switch req.Op {
-	case "list-scoped":
-		listed = m.List(localDir)
+	case "list", "list-scoped":
+		listed = m.List()
 	case "list-all":
 		listed = m.ListAll()
 	default:

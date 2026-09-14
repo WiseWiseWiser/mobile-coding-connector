@@ -165,7 +165,6 @@ func TestCreateOrUpdateRestartOfMissingPIDStillSaves(t *testing.T) {
 	def := ServiceDefinition{
 		Name:       "restart-flake",
 		Command:    "sleep 300",
-		ProjectDir: dir,
 		WorkingDir: dir,
 		Enabled:    &enabled,
 	}

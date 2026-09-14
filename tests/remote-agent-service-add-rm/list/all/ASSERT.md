@@ -1,12 +1,12 @@
 ---
-explanation: "L2 service list --all cross-project"
+explanation: "L2 service list --all shows every service"
 ---
 
 ## Expected
 
 1. Exit 0.
 2. Stdout contains both service names `web` and `api` (or ids `local-web` / `other-api`).
-3. Manager ListAll snapshot includes both ids.
+3. Manager List snapshot includes both ids.
 
 ## Exit Code
 
@@ -31,10 +31,10 @@ func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err 
 	hasWeb := strings.Contains(out, "web") || strings.Contains(out, "local-web")
 	hasAPI := strings.Contains(out, "api") || strings.Contains(out, "other-api")
 	if !hasWeb || !hasAPI {
-		t.Fatalf("list --all stdout should show both scopes; stdout:\n%s", out)
+		t.Fatalf("list --all stdout should show both services; stdout:\n%s", out)
 	}
 	if !listContainsID(resp.ListedIDs, "local-web") || !listContainsID(resp.ListedIDs, "other-api") {
-		t.Fatalf("ListAll snapshot missing seeds: %v", resp.ListedIDs)
+		t.Fatalf("List snapshot missing seeds: %v", resp.ListedIDs)
 	}
 }
 ```

@@ -1,28 +1,22 @@
 # Scenario
 
-**Feature**: service rm resolves name across projectDir via ListAll
+**Feature**: service rm resolves name from global list
 
 ```
-seed cross-scope-svc under non-default projectDir
+seed cross-scope-svc
   -> service rm cross-scope-svc
-  -> resolves via all=1; Removed; gone
+  -> Removed; gone
 ```
-
-## Preconditions
-
-1. Service lives under a projectDir that is **not** the server default scope.
-2. Today `resolveServiceTarget` uses scoped `ListServices("")` → would miss;
-   implementer must switch to list-all (proves this leaf).
 
 ## Steps
 
-1. Seed service with `ProjectDir = t.TempDir()` (other scope).
-2. CLI: `service rm cross-scope-svc` (no --project-dir).
-3. Assert Removed and gone from ListAll.
+1. Seed service.
+2. CLI: `service rm cross-scope-svc`.
+3. Assert Removed and gone from List.
 
 ## Context
 
-REQUIREMENT leaf: `rm/cross-scope`. Primary proof that name resolution uses ListAll.
+REQUIREMENT leaf: `rm/cross-scope` (legacy name; services are global).
 
 ```go
 import (
@@ -32,10 +26,8 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	other := t.TempDir()
-	req.OtherProjectDir = other
 	req.Services = []ServiceSeed{
-		sleepService("svc-cross-001", "cross-scope-svc", other),
+		sleepService("svc-cross-001", "cross-scope-svc"),
 	}
 	req.TargetID = "svc-cross-001"
 	req.TargetName = "cross-scope-svc"

@@ -1,9 +1,9 @@
 # Remote-Agent Upload Directory Doctests
 
 Doctests for `remote-agent upload <LOCAL_PATH> [REMOTE_PATH]` when the local
-source is a file or directory. Directory uploads mirror a local tree onto the
-server via client-orchestrated per-file chunked uploads, with a pre-flight
-guard that accepts only missing or completely empty remote destinations.
+source is a file or directory. Directory uploads pack a local tar.xz, upload
+one archive, and apply/extract on the remote with cp -R destination rules and
+optional `--no-override` conflict preflight.
 
 Most leaves are **L2 in-process** (`fileupload.RegisterAPIForHome` +
 `agentcli.Run`). Two sparse **L3 e2e** smokes keep the product binary path.

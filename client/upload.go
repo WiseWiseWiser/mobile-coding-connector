@@ -34,9 +34,17 @@ const (
 type UploadDirPhase string
 
 const (
-	// UploadDirPhaseFileStart is emitted before a regular file upload begins.
-	UploadDirPhaseFileStart UploadDirPhase = "file_start"
-	// UploadDirPhaseDirCreated is emitted when an empty subdirectory is created remotely.
+	// UploadDirPhaseResolved is emitted after destination resolution + preflight.
+	UploadDirPhaseResolved UploadDirPhase = "resolved"
+	// UploadDirPhasePacking is emitted while building the local tar.xz archive.
+	UploadDirPhasePacking UploadDirPhase = "packing"
+	// UploadDirPhaseUploading is emitted while uploading the archive (may include Chunk).
+	UploadDirPhaseUploading UploadDirPhase = "uploading"
+	// UploadDirPhaseApplying is emitted while the remote extracts/merges the archive.
+	UploadDirPhaseApplying UploadDirPhase = "applying"
+
+	// Deprecated aliases kept so older progress printers compile during transition.
+	UploadDirPhaseFileStart  UploadDirPhase = "file_start"
 	UploadDirPhaseDirCreated UploadDirPhase = "dir_created"
 )
 
@@ -82,6 +90,8 @@ type UploadOptions struct {
 	NoCompress bool
 	ChunkRetry *ChunkRetryConfig
 	DryRun     bool
+	// NoOverride refuses directory uploads that would overwrite existing remote files.
+	NoOverride bool
 }
 
 // UploadFile reads localFile and uploads it to remotePath on the server

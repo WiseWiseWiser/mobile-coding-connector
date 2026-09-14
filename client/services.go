@@ -35,7 +35,6 @@ type ServiceDefinition struct {
 	ID            string              `json:"id,omitempty"`
 	Name          string              `json:"name"`
 	Command       string              `json:"command"`
-	ProjectDir    string              `json:"projectDir,omitempty"`
 	WorkingDir    string              `json:"workingDir,omitempty"`
 	ExtraEnv      map[string]string   `json:"extraEnv,omitempty"`
 	PortForward   *ServicePortForward `json:"portForward,omitempty"`
@@ -47,7 +46,6 @@ type ServiceStatus struct {
 	ID             string                    `json:"id"`
 	Name           string                    `json:"name"`
 	Command        string                    `json:"command"`
-	ProjectDir     string                    `json:"projectDir,omitempty"`
 	WorkingDir     string                    `json:"workingDir,omitempty"`
 	ExtraEnv       map[string]string         `json:"extraEnv,omitempty"`
 	EffectivePath  string                    `json:"effectivePath,omitempty"`
@@ -90,14 +88,10 @@ type ServiceUpgradeResult struct {
 	Service          *ServiceStatus `json:"service,omitempty"`
 }
 
-func (c *Client) ListServices(projectDir string) ([]ServiceStatus, error) {
-	path := "/api/services"
-	if strings.TrimSpace(projectDir) != "" {
-		path += "?project_dir=" + url.QueryEscape(projectDir)
-	}
-
+// ListServices returns every managed service.
+func (c *Client) ListServices() ([]ServiceStatus, error) {
 	var out []ServiceStatus
-	if err := c.getJSON(path, &out); err != nil {
+	if err := c.getJSON("/api/services", &out); err != nil {
 		return nil, err
 	}
 	if out == nil {
@@ -106,17 +100,9 @@ func (c *Client) ListServices(projectDir string) ([]ServiceStatus, error) {
 	return out, nil
 }
 
-// ListAllServices returns every managed service across all project scopes.
-// GET /api/services?all=1
+// ListAllServices is an alias of ListServices (services are global).
 func (c *Client) ListAllServices() ([]ServiceStatus, error) {
-	var out []ServiceStatus
-	if err := c.getJSON("/api/services?all=1", &out); err != nil {
-		return nil, err
-	}
-	if out == nil {
-		out = []ServiceStatus{}
-	}
-	return out, nil
+	return c.ListServices()
 }
 
 func (c *Client) StartService(id string) (*ServiceStatus, error) {

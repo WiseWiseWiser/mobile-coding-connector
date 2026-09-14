@@ -53,6 +53,8 @@ func RegisterAPIForHome(mux *http.ServeMux, home string) {
 	mux.HandleFunc("/api/files/upload/complete", func(w http.ResponseWriter, r *http.Request) {
 		handleUploadComplete(w, r, home)
 	})
+
+	registerUploadDirAPI(mux)
 }
 
 // handleHome returns the server's user home directory and current working

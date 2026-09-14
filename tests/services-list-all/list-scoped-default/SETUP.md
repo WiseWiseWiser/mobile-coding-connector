@@ -1,22 +1,22 @@
 # Scenario
 
-**Feature**: default services list is project-scoped
+**Feature**: default services list returns every service
 
 ```
-GET /api/services -> only services matching server project dir
+Manager.List() -> local-web + other-api
 ```
 
 ## Preconditions
 
-Two services seeded: one local project, one other project.
+Two services seeded.
 
 ## Steps
 
-1. Set `Op=list-scoped`.
+1. Set `Op=list`.
 
 ## Context
 
-REQUIREMENT leaf: `list-scoped-default`.
+REQUIREMENT leaf: `list-scoped-default` (legacy name; list is global).
 
 ```go
 import (
@@ -25,7 +25,7 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	req.Op = "list-scoped"
+	req.Op = "list"
 	return nil
 }
 ```

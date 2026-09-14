@@ -12,7 +12,6 @@ func runServiceAdd(resolve func() (*client.Client, error), args []string) error 
 	var (
 		name           string
 		command        string
-		projectDir     string
 		workingDir     string
 		upgradeTarget  string
 		envSet         []string
@@ -28,7 +27,6 @@ func runServiceAdd(resolve func() (*client.Client, error), args []string) error 
 	args, err := flags.
 		String("--name", &name).
 		String("--command", &command).
-		String("--project-dir", &projectDir).
 		String("--working-dir", &workingDir).
 		String("--upgrade-target", &upgradeTarget).
 		StringSlice("--env", &envSet).
@@ -60,7 +58,6 @@ func runServiceAdd(resolve func() (*client.Client, error), args []string) error 
 	def := client.ServiceDefinition{
 		Name:          name,
 		Command:       command,
-		ProjectDir:    strings.TrimSpace(projectDir),
 		WorkingDir:    strings.TrimSpace(workingDir),
 		UpgradeTarget: strings.TrimSpace(upgradeTarget),
 	}

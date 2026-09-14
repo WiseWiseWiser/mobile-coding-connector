@@ -1,14 +1,12 @@
 ---
-explanation: "L2 service list --project-dir hides other project"
+explanation: "L2 plain service list is global"
 ---
 
 ## Expected
 
 1. Exit 0.
-2. Stdout contains local name/id (`web` / `local-web`).
-3. Stdout does **not** contain other name/id as a listed service
-   (`api` / `other-api` — careful with substring; prefer id `other-api`).
-4. Manager ListAll still has both (seed intact); CLI output is scoped.
+2. Stdout contains both local and other name/id (`web` / `local-web` and `api` / `other-api`).
+3. Manager List has both seeds.
 
 ## Exit Code
 
@@ -30,16 +28,13 @@ func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err 
 		t.Fatalf("exit %d; combined:\n%s", resp.ExitCode, resp.Combined)
 	}
 	out := resp.Stdout
-	if !strings.Contains(out, "web") && !strings.Contains(out, "local-web") {
-		t.Fatalf("scoped list missing local service; stdout:\n%s", out)
+	hasWeb := strings.Contains(out, "web") || strings.Contains(out, "local-web")
+	hasAPI := strings.Contains(out, "api") || strings.Contains(out, "other-api")
+	if !hasWeb || !hasAPI {
+		t.Fatalf("plain list should show both services; stdout:\n%s", out)
 	}
-	// Prefer id check to avoid matching "api" inside unrelated words.
-	if strings.Contains(out, "other-api") {
-		t.Fatalf("scoped list should hide other-api; stdout:\n%s", out)
-	}
-	// ListAll snapshot still has both seeds (manager unscoped).
 	if !listContainsID(resp.ListedIDs, "local-web") || !listContainsID(resp.ListedIDs, "other-api") {
-		t.Fatalf("manager ListAll should still hold both seeds: %v", resp.ListedIDs)
+		t.Fatalf("manager List should hold both seeds: %v", resp.ListedIDs)
 	}
 }
 ```

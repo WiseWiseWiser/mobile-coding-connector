@@ -28,8 +28,6 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	// L3 smoke: directory upload progress via product binaries.
-	req.UseCLI = true
 	localRoot := mkLocalWorkDir(t)
 	seedStandardLocalTree(t, localRoot)
 	setUploadArgs(t, req, localRoot, "uploads/stream-mirror")

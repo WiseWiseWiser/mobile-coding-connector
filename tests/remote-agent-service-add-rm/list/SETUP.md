@@ -1,26 +1,22 @@
 # Scenario
 
-**Feature**: `remote-agent service list` group (`--all` + scoped)
+**Feature**: `remote-agent service list` group (plain list + `--all` alias)
 
 ```
-service list [--project-dir DIR] [--all]
+service list [--all]
 ```
 
 ## Preconditions
 
-1. Leaves seed two services with distinct absolute `projectDir` values.
-2. `list --all` must call `GET /api/services?all=1` once implemented.
+1. Leaves seed two services.
+2. Both plain `list` and `list --all` must show every service.
 
 ## Steps
 
-1. Leaf seeds multi-scope services and sets CLIArgs.
-2. Run executes agentcli against L2 mux.
-3. Assert which names appear in stdout / ListAll snapshot.
+1. Leaves seed rows and choose flags.
+2. Root Run executes `agentcli.Run` and snapshots List + on-disk JSON.
 
 ## Context
-
-Scoped list without `--all` still uses `--project-dir` for deterministic L2
-filtering (avoids depending on process cwd as default scope).
 
 ```go
 import (
@@ -30,12 +26,8 @@ import (
 )
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
-	// Group default: service list family (--all or --project-dir).
-	// Leaves seed multi-projectDir rows and choose flags.
-	if len(req.CLIArgs) == 0 {
-		req.CLIArgs = []string{"service", "list"}
-	}
+	// Group default: service list family (plain or --all).
+	// Leaves seed rows and choose flags.
 	return nil
 }
 ```
-
