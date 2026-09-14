@@ -83,8 +83,6 @@ github.com/xhd2015/bak-files v0.0.5 h1:ddyYiYW9srYs0arlFkh4YmL/9wgWPo3GuelWd/bAk
 github.com/xhd2015/bak-files v0.0.5/go.mod h1:mGnhnJhlUV/Y5OwcQw8UZAQhNyMawm+nvfpUE8aZFi0=
 github.com/xhd2015/doctest v0.0.117 h1:yZ+Wf7dIHfRXVpOkaUkVo/W8/DRX7TnUJuVevYB1i7g=
 github.com/xhd2015/doctest v0.0.117/go.mod h1:6CgOQAYnMLnMQ84BUbZ0Z7fj39LavsqgxXyiHDpuSHU=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.174 h1:p0XHy7C3yLfVqKmX8po8IjJXbSwbY9VTbHeXbjWpgqY=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.174/go.mod h1:rbA6ttLFEN1d78090+OnJo5Ghcsn8P91a0Eo2OUsxhQ=
 github.com/xhd2015/gitops v0.0.31 h1:dyiUIHzxeTCrG6dySEvfS5TpzooDxM8tXR+qlWDb+LQ=
 github.com/xhd2015/gitops v0.0.31/go.mod h1:KS8y6tZ3FG+myEaR+H6MvoR099YrP/ADIHZX9ROpZo8=
 github.com/xhd2015/go-coverage v1.0.41 h1:JjUcE93IMz0KHmdCYUKq9JN/EDC/5k0OEhsMAeVvL88=
@@ -181,3 +179,5 @@ gopkg.in/errgo.v2 v2.1.0/go.mod h1:hNsd1EY+bozCKY1Ytp96fpM3vjJbqLJn88ws8XvfDNI=
 gopkg.in/yaml.v2 v2.4.0/go.mod h1:RDklbk79AGWmwhnvt/jBztapEOGDOx6ZbXqjP6csGnQ=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.174 h1:p0XHy7C3yLfVqKmX8po8IjJXbSwbY9VTbHeXbjWpgqY=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.174/go.mod h1:rbA6ttLFEN1d78090+OnJo5Ghcsn8P91a0Eo2OUsxhQ=
