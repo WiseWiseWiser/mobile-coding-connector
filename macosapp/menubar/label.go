@@ -92,27 +92,32 @@ func FormatCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, re
 	}
 }
 
-// ComposeGrokDropdownLine builds the dropdown line from structured API fields only.
-// Does not parse next_reset; time_left is appended only when non-empty.
+// ComposeGrokBody builds the grok dropdown text without the provider prefix,
+// so a usage item can render it under its own label.
 // periodLabel empty defaults to "Weekly" (historical menu wording).
-func ComposeGrokDropdownLine(status, weeklyLimit, periodLabel, resetDisplay, timeLeft, errorMsg string) string {
+func ComposeGrokBody(status, weeklyLimit, periodLabel, resetDisplay, timeLeft, errorMsg string) string {
 	if strings.TrimSpace(periodLabel) == "" {
 		periodLabel = "Weekly"
 	}
 	switch status {
 	case "ready":
-		line := fmt.Sprintf("Grok: %s(%s), Reset %s", weeklyLimit, periodLabel, resetDisplay)
+		body := fmt.Sprintf("%s(%s), Reset %s", weeklyLimit, periodLabel, resetDisplay)
 		if timeLeft != "" {
-			line += ", " + timeLeft
+			body += ", " + timeLeft
 		}
-		return line
-	case "loading":
-		return "Grok: Loading..."
+		return body
 	case "error":
-		return fmt.Sprintf("Grok: Error: %s", errorMsg)
+		return fmt.Sprintf("Error: %s", errorMsg)
 	default:
-		return "Grok: Loading..."
+		return "Loading..."
 	}
+}
+
+// ComposeGrokDropdownLine builds the dropdown line from structured API fields only.
+// Does not parse next_reset; time_left is appended only when non-empty.
+// periodLabel empty defaults to "Weekly" (historical menu wording).
+func ComposeGrokDropdownLine(status, weeklyLimit, periodLabel, resetDisplay, timeLeft, errorMsg string) string {
+	return "Grok: " + ComposeGrokBody(status, weeklyLimit, periodLabel, resetDisplay, timeLeft, errorMsg)
 }
 
 // PeriodLabelForAPI maps API period tokens to menu display labels.
@@ -127,28 +132,37 @@ func PeriodLabelForAPI(period string) string {
 	}
 }
 
+// ComposeCodexBody builds the codex dropdown text without the provider prefix,
+// so a usage item can render it under its own label.
+func ComposeCodexBody(status, monthlyUsage, creditsUsed, creditsTotal, resetDisplay, timeLeft, errorMsg string) string {
+	switch status {
+	case "ready":
+		body := fmt.Sprintf("%s(Monthly) %s/%s, Reset %s", monthlyUsage, creditsUsed, creditsTotal, resetDisplay)
+		if timeLeft != "" {
+			body += ", " + timeLeft
+		}
+		return body
+	case "error":
+		return fmt.Sprintf("Error: %s", errorMsg)
+	default:
+		return "Loading..."
+	}
+}
+
 // ComposeCodexDropdownLine builds the dropdown line from structured API fields only.
 // Does not parse next_reset; time_left is appended only when non-empty.
 func ComposeCodexDropdownLine(status, monthlyUsage, creditsUsed, creditsTotal, resetDisplay, timeLeft, errorMsg string) string {
-	switch status {
-	case "ready":
-		line := fmt.Sprintf("Codex: %s(Monthly) %s/%s, Reset %s", monthlyUsage, creditsUsed, creditsTotal, resetDisplay)
-		if timeLeft != "" {
-			line += ", " + timeLeft
-		}
-		return line
-	case "loading":
-		return "Codex: Loading..."
-	case "error":
-		return fmt.Sprintf("Codex: Error: %s", errorMsg)
-	default:
-		return "Codex: Loading..."
-	}
+	return "Codex: " + ComposeCodexBody(status, monthlyUsage, creditsUsed, creditsTotal, resetDisplay, timeLeft, errorMsg)
 }
 
 // TestExported_MaxLabelLen returns the maximum menu-bar label length in runes.
 func TestExported_MaxLabelLen() int {
 	return maxLabelLen
+}
+
+// TruncateRunes shortens s to max runes, appending an ellipsis when cut.
+func TruncateRunes(s string, max int) string {
+	return truncateRunes(s, max)
 }
 
 func truncateRunes(s string, max int) string {

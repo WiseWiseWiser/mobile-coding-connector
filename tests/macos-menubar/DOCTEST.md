@@ -42,6 +42,9 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
 - `FormatCodexDropdownLine`: ready → `Codex: {pct}(Monthly) {used}/{total}, Reset {local}, {timeLeft}`;
   `error` → `Codex: Error: {msg}` (no reset suffix on error).
 - Compact menu-bar pill labels (`label/*`) remain unchanged — no reset or relative time.
+- **Client contract** (`client/*`) — the Swift menu bar is a thin display layer:
+  `AppState.refresh` fetches `GET /api/usage/items` from the server port and
+  never calls the retired per-provider helpers (`grokUsage` / `codexUsage`).
 - **Compose-only dropdown** (Swift UI contract) lives in nested root
   `compose/` (`ComposeGrokDropdownLine` / `ComposeCodexDropdownLine`) — structured
   `reset_display` + `time_left` only; no re-parse of raw `next_reset`. Existing
@@ -98,8 +101,8 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
  |    +-- codex-error/                (LEAF)   FormatCodexDropdownLine error msg
  |    +-- codex-timeout-error/        (LEAF)   FormatCodexDropdownLine timeout error
  |
- +-- client/                          (GROUP)  Swift grok/codex server-port contract
-      +-- swift-grok-codex-server-port/ (LEAF)  usage via ServerClient :23712
+ +-- client/                          (GROUP)  Swift menu-bar usage client contract
+      +-- swift-usage-items-server/   (LEAF)   usage via ServerClient /api/usage/items
 ```
 
 ## Test Index
@@ -137,7 +140,7 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
 | 29 | `dropdown/codex-line` | `Codex: 58%(Monthly) 6,519/11,250, Reset Aug 1, 08:00, left 26d` |
 | 30 | `dropdown/codex-error` | `Codex: Error: fork/exec ...` full message |
 | 31 | `dropdown/codex-timeout-error` | `Codex: Error: timeout waiting for status output` |
-| 32 | `client/swift-grok-codex-server-port` | AppState refresh uses ServerClient for grok/codex |
+| 32 | `client/swift-usage-items-server` | AppState refresh uses ServerClient `/api/usage/items` |
 | 33+ | `compose/**` | Nested root: compose-only dropdown from structured fields (see nested DOCTEST.md) |
 
 ## Parameter Coverage
@@ -175,7 +178,7 @@ Swift `ai-critic-macos` menu-bar client when rendering grok/codex usage state.
 | codex-line | codex-dropdown | — | 2026-07-06T08:00:00-07:00 | monthly=58%, credits 6,519/11,250 |
 | codex-error | codex-dropdown | — | — | status=error, fork/exec message |
 | codex-timeout-error | codex-dropdown | — | — | status=error, timeout waiting for status output |
-| swift-grok-codex-server-port | client | — | — | Swift sources use ServerClient :23712 |
+| swift-usage-items-server | client | — | — | ServerClient `/api/usage/items` :23712; no legacy helpers |
 
 ## How to Run
 
@@ -244,11 +247,11 @@ type Response struct {
 	MaxLabelLen  int
 
 	// client contract
-	GrokViaServerClient  bool
-	CodexViaServerClient bool
-	GrokViaDaemonClient  bool
-	CodexViaDaemonClient bool
-	SwiftSourcesChecked  []string
+	UsageViaServerClient    bool
+	UsageViaDaemonClient    bool
+	AppUsesServerUsageItems bool
+	LegacyUsageCallers      []string
+	SwiftSourcesChecked     []string
 }
 
 func parseNow(req *Request) (time.Time, error) {
@@ -323,10 +326,10 @@ func runClientContract(t *testing.T, d *session.Doctest, resp *Response) (*Respo
 	// DOCTEST_ROOT is the tree root under tests/; module root is two levels up.
 	// Do not walk from cwd: doctest runs under mapping-gen which has its own go.mod.
 	moduleRoot := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", ".."))
-	appPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "AICriticApp.swift")
-	serverPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "ServerClient.swift")
-	daemonPath := filepath.Join(moduleRoot, "macos-ai-critic", "ai-critic-macos", "DaemonClient.swift")
-	resp.SwiftSourcesChecked = []string{appPath, serverPath, daemonPath}
+	swiftRoot := filepath.Join(moduleRoot, "macos-ai-critic")
+	appPath := filepath.Join(swiftRoot, "ai-critic-macos", "AICriticApp.swift")
+	serverPath := filepath.Join(swiftRoot, "ai-critic-macos", "ServerClient.swift")
+	resp.SwiftSourcesChecked = []string{appPath, serverPath, swiftRoot}
 
 	appSrc, err := os.ReadFile(appPath)
 	if err != nil {
@@ -336,21 +339,40 @@ func runClientContract(t *testing.T, d *session.Doctest, resp *Response) (*Respo
 	if err != nil {
 		return nil, fmt.Errorf("read ServerClient.swift: %w", err)
 	}
-	daemonSrc, err := os.ReadFile(daemonPath)
-	if err != nil {
-		return nil, fmt.Errorf("read DaemonClient.swift: %w", err)
-	}
 	app := string(appSrc)
 	server := string(serverSrc)
-	daemon := string(daemonSrc)
 
 	port := strconv.Itoa(config.DefaultServerPort)
-	resp.GrokViaServerClient = strings.Contains(server, "/api/grok/usage") && strings.Contains(server, port)
-	resp.CodexViaServerClient = strings.Contains(server, "/api/codex/usage") && strings.Contains(server, port)
-	resp.GrokViaDaemonClient = strings.Contains(app, "DaemonClient.shared.grokUsage") ||
-		(strings.Contains(daemon, "/api/grok/usage") && strings.Contains(app, "grokUsage"))
-	resp.CodexViaDaemonClient = strings.Contains(app, "DaemonClient.shared.codexUsage") ||
-		(strings.Contains(daemon, "/api/codex/usage") && strings.Contains(app, "codexUsage"))
+	resp.UsageViaServerClient = strings.Contains(server, "/api/usage/items") && strings.Contains(server, port)
+	resp.AppUsesServerUsageItems = strings.Contains(app, "ServerClient.shared.usageItems()")
+
+	// Retired per-provider helpers must not survive anywhere in the Swift tree.
+	err = filepath.WalkDir(swiftRoot, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".build" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".swift" {
+			return nil
+		}
+		src, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if strings.Contains(string(src), "grokUsage") || strings.Contains(string(src), "codexUsage") {
+			resp.LegacyUsageCallers = append(resp.LegacyUsageCallers, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walk swift sources: %w", err)
+	}
+	resp.UsageViaDaemonClient = len(resp.LegacyUsageCallers) > 0
 	return resp, nil
 }
 

@@ -45,6 +45,7 @@ var (
 	CloudflareFile                 = DataDir + "/cloudflare.json"
 	TerminalConfFile               = DataDir + "/terminal-config.json"
 	GitUserConfigsFile             = DataDir + "/git-user-configs.json"
+	UsageItemsFile                 = DataDir + "/usage-items.json"
 	ProjectsFile                   = DataDir + "/projects.json"
 	AgentsFile                     = DataDir + "/agents.json"
 	OpencodeFile                   = DataDir + "/opencode.json"

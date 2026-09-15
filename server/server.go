@@ -197,6 +197,7 @@ func Serve(port int, dev bool) error {
 		"/api/tools/path-info",
 		"/api/grok/usage",
 		"/api/codex/usage",
+		"/api/usage/items",
 		"/api/debug/log",
 	})
 

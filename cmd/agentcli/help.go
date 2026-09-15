@@ -41,6 +41,7 @@ Commands:
     project              Project metadata and git identity
     settings             Server settings (git users, etc.)
     bookmarks            Bookmarks tree (list/add/open)
+    usage                Menu-bar usage items (list/add/update/remove/default/show)
 
   Machine
     machine              Backup/restore server HOME dot-files and dot-dirs
@@ -107,6 +108,7 @@ Commands:
     project              Project metadata and git identity
     settings             Server settings (git users, etc.)
     bookmarks            Bookmarks tree (list/add/open)
+    usage                Menu-bar usage items (list/add/update/remove/default/show)
 
   Machine
     machine              Backup/restore server HOME dot-files and dot-dirs

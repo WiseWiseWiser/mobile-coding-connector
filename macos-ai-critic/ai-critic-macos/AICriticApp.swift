@@ -5,9 +5,9 @@ import AICriticMacShared
 
 @MainActor
 final class AppState: ObservableObject {
-    @Published var menuLabel = "Grok ..."
-    @Published var grokUsage: GrokUsageResponse?
-    @Published var codexUsage: CodexUsageResponse?
+    @Published var menuLabel = UsageMenuBar.fallbackTitle
+    /// Registered usage items with server-rendered title and dropdown text.
+    @Published var usageItems: UsageItemsResponse?
     @Published var services: [ServiceStatus] = []
     @Published var cronTasks: [CronTaskStatus] = []
     @Published var terminals: [TerminalSession] = []
@@ -21,21 +21,13 @@ final class AppState: ObservableObject {
     @Published var daemonStatus: KeepAliveStatus?
     @Published var statusLine = "Connecting..."
     @Published var rotatingIndex = 0
-    @AppStorage("menuBarDisplayMode") var menuBarDisplayMode = "rotating"
 
     private let isRemoteApp = false
 
     func refresh() async {
-        async let grokTask: GrokUsageResponse? = {
+        async let usageTask: UsageItemsResponse? = {
             do {
-                return try await ServerClient.shared.grokUsage()
-            } catch {
-                return nil
-            }
-        }()
-        async let codexTask: CodexUsageResponse? = {
-            do {
-                return try await ServerClient.shared.codexUsage()
+                return try await ServerClient.shared.usageItems()
             } catch {
                 return nil
             }
@@ -84,8 +76,10 @@ final class AppState: ObservableObject {
             }
         }()
 
-        grokUsage = await grokTask
-        codexUsage = await codexTask
+        usageItems = await usageTask
+        // Menu-bar label follows the usage payload; do not wait on the slower
+        // service/project refreshes below.
+        updateMenuLabel()
         if let listed = await servicesTask {
             services = listed
         }
@@ -108,7 +102,6 @@ final class AppState: ObservableObject {
             projectsLoadError = error.localizedDescription
             projectsLoading = false
         }
-        updateMenuLabel()
 
         do {
             let status = try await DaemonClient.shared.keepAliveStatus()
@@ -125,20 +118,12 @@ final class AppState: ObservableObject {
     }
 
     func updateMenuLabel() {
-        menuLabel = UsageLabelFormatter.formatMenuBarLabel(
-            mode: menuBarDisplayMode,
-            rotatingIndex: rotatingIndex,
-            grokStatus: grokUsage?.status ?? "loading",
-            grokWeekly: grokUsage?.weeklyLimit ?? "",
-            grokError: grokUsage?.error ?? "",
-            codexStatus: codexUsage?.status ?? "loading",
-            codexMonthly: codexUsage?.monthlyUsage ?? "",
-            codexError: codexUsage?.error ?? ""
-        )
+        menuLabel = UsageMenuBar.title(usageItems, rotatingIndex: rotatingIndex)
     }
 
     func advanceRotation() {
-        rotatingIndex = (rotatingIndex + 1) % 2
+        guard usageItems?.rotate == true else { return }
+        rotatingIndex = UsageMenuBar.nextRotatingIndex(usageItems, current: rotatingIndex)
         updateMenuLabel()
     }
 
@@ -280,10 +265,7 @@ struct AICriticApp: App {
 
     var body: some Scene {
         Window("AI Critic", id: MainWindowController.windowID) {
-            LocalMainWindow(
-                state: state,
-                menuBarDisplayMode: $state.menuBarDisplayMode
-            )
+            LocalMainWindow(state: state)
         }
         .defaultSize(width: 820, height: 600)
         .defaultLaunchBehavior(.suppressed)
@@ -307,23 +289,9 @@ private struct MenuBarDropdownContent: View {
     @AppStorage("defaultBrowser") private var defaultBrowser = BrowserPreference.default.rawValue
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(UsageLabelFormatter.composeGrokDropdownLine(
-                status: state.grokUsage?.status ?? "loading",
-                weekly: state.grokUsage?.weeklyLimit ?? "",
-                resetDisplay: state.grokUsage?.resetDisplay ?? "",
-                timeLeft: state.grokUsage?.timeLeft ?? "",
-                errorMsg: state.grokUsage?.error ?? "",
-                period: state.grokUsage?.period ?? ""
-            ))
-            Text(UsageLabelFormatter.composeCodexDropdownLine(
-                status: state.codexUsage?.status ?? "loading",
-                monthly: state.codexUsage?.monthlyUsage ?? "",
-                creditsUsed: state.codexUsage?.creditsUsed ?? "",
-                creditsTotal: state.codexUsage?.creditsTotal ?? "",
-                resetDisplay: state.codexUsage?.resetDisplay ?? "",
-                timeLeft: state.codexUsage?.timeLeft ?? "",
-                errorMsg: state.codexUsage?.error ?? ""
-            ))
+            ForEach(Array(UsageMenuBar.dropdownLines(state.usageItems).enumerated()), id: \.offset) { _, line in
+                Text(line)
+            }
 
             Text(state.statusLine)
                 .font(.caption)

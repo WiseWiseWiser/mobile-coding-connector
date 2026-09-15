@@ -1,62 +1,13 @@
 import Foundation
 import AICriticMacShared
 
-struct GrokUsageResponse: Decodable {
-    let status: String
-    let weeklyLimit: String?
-    let period: String?
-    let nextReset: String?
-    let resetAt: String?
-    let resetDisplay: String?
-    let timeLeft: String?
-    let error: String?
-    let updatedAt: String?
-
-    enum CodingKeys: String, CodingKey {
-        case status
-        case weeklyLimit = "weekly_limit"
-        case period
-        case nextReset = "next_reset"
-        case resetAt = "reset_at"
-        case resetDisplay = "reset_display"
-        case timeLeft = "time_left"
-        case error
-        case updatedAt = "updated_at"
-    }
-}
-
-struct CodexUsageResponse: Decodable {
-    let status: String
-    let monthlyUsage: String?
-    let creditsUsed: String?
-    let creditsTotal: String?
-    let nextReset: String?
-    let resetAt: String?
-    let resetDisplay: String?
-    let timeLeft: String?
-    let error: String?
-    let updatedAt: String?
-
-    enum CodingKeys: String, CodingKey {
-        case status
-        case monthlyUsage = "monthly_usage"
-        case creditsUsed = "credits_used"
-        case creditsTotal = "credits_total"
-        case nextReset = "next_reset"
-        case resetAt = "reset_at"
-        case resetDisplay = "reset_display"
-        case timeLeft = "time_left"
-        case error
-        case updatedAt = "updated_at"
-    }
-}
-
 struct DebugLogSettings: Codable {
     let enabled: Bool
     let path: String
 }
 
 // ServiceStatus / ServiceActionResponse / CronTaskStatus / LogStreamEvent live in AICriticMacShared.
+// UsageItemView / UsageItemsResponse live in AICriticMacShared.
 
 // MARK: - Bookmarks (GET /api/bookmarks)
 
@@ -124,20 +75,12 @@ final class ServerClient {
         }
     }
 
-    func grokUsage() async throws -> GrokUsageResponse {
-        let (data, response) = try await get(path: "/api/grok/usage")
+    func usageItems() async throws -> UsageItemsResponse {
+        let (data, response) = try await get(path: "/api/usage/items")
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw ServerClientError.unreachable("grok usage request failed")
+            throw ServerClientError.unreachable("usage items request failed")
         }
-        return try JSONDecoder().decode(GrokUsageResponse.self, from: data)
-    }
-
-    func codexUsage() async throws -> CodexUsageResponse {
-        let (data, response) = try await get(path: "/api/codex/usage")
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw ServerClientError.unreachable("codex usage request failed")
-        }
-        return try JSONDecoder().decode(CodexUsageResponse.self, from: data)
+        return try JSONDecoder().decode(UsageItemsResponse.self, from: data)
     }
 
     func listServices() async throws -> [ServiceStatus] {

@@ -4,23 +4,21 @@ import SwiftUI
 @available(macOS 15.0, *)
 public struct MainHomePage: View {
     public let statusLine: String
-    public let grokLine: String?
-    public let codexLine: String?
+    /// One line per enabled usage item, printed verbatim from the server.
+    public let usageLines: [String]
     public let browserLabel: String
     public let canOpenBrowser: Bool
     public let onOpenBrowser: () -> Void
 
     public init(
         statusLine: String,
-        grokLine: String? = nil,
-        codexLine: String? = nil,
+        usageLines: [String] = [],
         browserLabel: String,
         canOpenBrowser: Bool,
         onOpenBrowser: @escaping () -> Void
     ) {
         self.statusLine = statusLine
-        self.grokLine = grokLine
-        self.codexLine = codexLine
+        self.usageLines = usageLines
         self.browserLabel = browserLabel
         self.canOpenBrowser = canOpenBrowser
         self.onOpenBrowser = onOpenBrowser
@@ -29,11 +27,8 @@ public struct MainHomePage: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                if let grokLine {
-                    Text(grokLine)
-                }
-                if let codexLine {
-                    Text(codexLine)
+                ForEach(Array(usageLines.enumerated()), id: \.offset) { _, line in
+                    Text(line)
                 }
                 Text(statusLine)
                     .font(.caption)

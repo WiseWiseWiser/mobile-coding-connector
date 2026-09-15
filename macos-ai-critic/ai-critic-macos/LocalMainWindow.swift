@@ -5,7 +5,6 @@ import AICriticMacShared
 @available(macOS 15.0, *)
 struct LocalMainWindow: View {
     @ObservedObject var state: AppState
-    @Binding var menuBarDisplayMode: String
     @AppStorage("defaultBrowser") private var defaultBrowser = BrowserPreference.default.rawValue
 
     var body: some View {
@@ -14,23 +13,7 @@ struct LocalMainWindow: View {
             case .home:
                 MainHomePage(
                     statusLine: state.statusLine,
-                    grokLine: UsageLabelFormatter.composeGrokDropdownLine(
-                        status: state.grokUsage?.status ?? "loading",
-                        weekly: state.grokUsage?.weeklyLimit ?? "",
-                        resetDisplay: state.grokUsage?.resetDisplay ?? "",
-                        timeLeft: state.grokUsage?.timeLeft ?? "",
-                        errorMsg: state.grokUsage?.error ?? "",
-                        period: state.grokUsage?.period ?? ""
-                    ),
-                    codexLine: UsageLabelFormatter.composeCodexDropdownLine(
-                        status: state.codexUsage?.status ?? "loading",
-                        monthly: state.codexUsage?.monthlyUsage ?? "",
-                        creditsUsed: state.codexUsage?.creditsUsed ?? "",
-                        creditsTotal: state.codexUsage?.creditsTotal ?? "",
-                        resetDisplay: state.codexUsage?.resetDisplay ?? "",
-                        timeLeft: state.codexUsage?.timeLeft ?? "",
-                        errorMsg: state.codexUsage?.error ?? ""
-                    ),
+                    usageLines: UsageMenuBar.dropdownLines(state.usageItems),
                     browserLabel: OpenInBrowserLabelFormatter.format(browser: defaultBrowser),
                     canOpenBrowser: state.daemonStatus?.serverPort != nil,
                     onOpenBrowser: openBrowser
@@ -61,15 +44,12 @@ struct LocalMainWindow: View {
                 )
             case .settings:
                 ScrollView {
-                    LocalSettingsRoot(menuBarDisplayMode: $menuBarDisplayMode)
+                    LocalSettingsRoot()
                 }
                 .navigationTitle("Settings")
             }
         }
         .modifier(RegisterMainWindowOpener())
-        .onChange(of: menuBarDisplayMode) { _ in
-            state.updateMenuLabel()
-        }
     }
 
     private func openBrowser() {

@@ -146,6 +146,11 @@ func (s *Service) EnsureFetch() {
 	}
 }
 
+// FetchNow performs a synchronous fetch, skipping when one is already in flight.
+func (s *Service) FetchNow() {
+	s.tryFetch()
+}
+
 func (s *Service) refreshLoop() {
 	ticker := time.NewTicker(refreshInterval)
 	defer ticker.Stop()

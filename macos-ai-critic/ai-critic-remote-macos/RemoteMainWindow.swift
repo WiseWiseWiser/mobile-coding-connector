@@ -5,7 +5,6 @@ import AICriticMacShared
 @available(macOS 15.0, *)
 struct RemoteMainWindow: View {
     @ObservedObject var state: RemoteAppState
-    @Binding var menuBarDisplayMode: String
     @AppStorage("defaultBrowser") private var defaultBrowser = BrowserPreference.default.rawValue
 
     var body: some View {
@@ -38,7 +37,6 @@ struct RemoteMainWindow: View {
             case .settings:
                 ScrollView {
                     SettingsView(
-                        menuBarDisplayMode: $menuBarDisplayMode,
                         showRemoteConnection: true,
                         onConnectionSaved: {
                             Task { @MainActor in

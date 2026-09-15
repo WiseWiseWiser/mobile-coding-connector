@@ -20,7 +20,6 @@ final class RemoteAppState: ObservableObject {
     @Published var projectsLoadError: String? = nil
     @Published var domains: [RemoteDomain] = []
     @Published var defaultServer: String = ""
-    @AppStorage("menuBarDisplayMode") var menuBarDisplayMode = "rotating"
 
     // MARK: - Periodic machine backup (default OFF; per active Server)
 
@@ -509,10 +508,7 @@ struct AICriticRemoteApp: App {
 
     var body: some Scene {
         Window("AI Critic(Remote)", id: MainWindowController.windowID) {
-            RemoteMainWindow(
-                state: state,
-                menuBarDisplayMode: $state.menuBarDisplayMode
-            )
+            RemoteMainWindow(state: state)
         }
         .defaultSize(width: 820, height: 600)
         .defaultLaunchBehavior(.suppressed)

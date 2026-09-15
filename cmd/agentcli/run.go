@@ -148,6 +148,8 @@ func runCLI(profile Profile, args []string, stdout, stderr io.Writer) error {
 		return runAgentRunRoot(resolve, rest)
 	case "grok":
 		return runGrok(resolve, rest)
+	case "usage":
+		return runUsage(resolve, rest)
 	case "skill":
 		return agentskill.Handle(rest)
 	case "openclaw":

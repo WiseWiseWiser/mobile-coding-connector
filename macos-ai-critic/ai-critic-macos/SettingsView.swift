@@ -1,17 +1,12 @@
 import SwiftUI
 import AICriticMacShared
 
-/// Local Settings: shared browser + Grok/Codex display, plus debug log.
+/// Local Settings: shared browser section, plus debug log.
 /// Thin wrapper around Shared.SettingsView so local keeps ServerClient debug wiring.
 @available(macOS 15.0, *)
 struct LocalSettingsRoot: View {
-    @Binding var menuBarDisplayMode: String
-
     var body: some View {
-        SettingsView(
-            menuBarDisplayMode: $menuBarDisplayMode,
-            showRemoteConnection: false
-        ) {
+        SettingsView(showRemoteConnection: false) {
             Divider()
             ITermSwitcherHotKeySection()
             Divider()
