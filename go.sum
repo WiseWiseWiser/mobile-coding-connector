@@ -77,6 +77,8 @@ github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e h1:MRM5ITcdelLK2j1
 github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e/go.mod h1:XV66xRDqSt+GTGFMVlhk3ULuV0y9ZmzeVGR4mloJI3M=
 github.com/ulikunitz/xz v0.5.12 h1:37Nm15o69RwBkXM0J6A5OlE67RZTfzUxTj8fB3dfcsc=
 github.com/ulikunitz/xz v0.5.12/go.mod h1:nbz6k7qbPmH4IRqmfOplQw/tblSgqTqBwxkY0oWt/14=
+github.com/xhd2015/agent-pro v0.0.198 h1:NhVoGP51S0iF0Rh1n4yxLCFlKkoQeLVMLZ6WBQCxDcU=
+github.com/xhd2015/agent-pro v0.0.198/go.mod h1:WHELbq8uEoaHll4VV78uUosZe3B+OXTMDncpVGij1+w=
 github.com/xhd2015/bak-files v0.0.5 h1:ddyYiYW9srYs0arlFkh4YmL/9wgWPo3GuelWd/bAkZM=
 github.com/xhd2015/bak-files v0.0.5/go.mod h1:mGnhnJhlUV/Y5OwcQw8UZAQhNyMawm+nvfpUE8aZFi0=
 github.com/xhd2015/doctest v0.0.117 h1:yZ+Wf7dIHfRXVpOkaUkVo/W8/DRX7TnUJuVevYB1i7g=
