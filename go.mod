@@ -18,7 +18,7 @@ require (
 	github.com/xhd2015/my v0.0.8
 	github.com/xhd2015/skills v0.0.33
 	github.com/xhd2015/tty-watch v0.0.12
-	github.com/xhd2015/wrk v0.0.91
+	github.com/xhd2015/wrk v0.0.108
 	github.com/xhd2015/xgo v1.2.8
 	golang.org/x/crypto v0.47.0
 	golang.org/x/term v0.45.0

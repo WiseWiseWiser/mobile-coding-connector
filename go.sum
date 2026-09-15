@@ -105,6 +105,8 @@ github.com/xhd2015/skills v0.0.33 h1:7pMm5T8RxGYEAmd/oXbeR3nSkGjfYOWO539hOJ4jwHM
 github.com/xhd2015/skills v0.0.33/go.mod h1:iGqrc2iPGiUmUZL6dzBf+aA1Tec2N7sHYJbfPo3QZN4=
 github.com/xhd2015/tty-watch v0.0.12 h1:NoFuGDovwBEiC/OT0F50qj6OGFZj0olxBTHBMb/Xv2c=
 github.com/xhd2015/tty-watch v0.0.12/go.mod h1:raeFX1512Z9wbz85kZHiU7acBTa2bWOGBgEM83CZ7Ns=
+github.com/xhd2015/wrk v0.0.108 h1:WwHjHDz1ItNxcj2XCehEB/iwfBdIh3zKJ/C/IrHo94k=
+github.com/xhd2015/wrk v0.0.108/go.mod h1:zMu/SQfpzIyvsQjZ64ioXOgqqKJtwZ+WmbrFymKN1ps=
 github.com/xhd2015/xgo v1.0.40/go.mod h1:LJxlcYSaXo/9YpsnB3yHh9NHe7BRettYCytaNGWY2BE=
 github.com/xhd2015/xgo v1.2.8 h1:ZCaVxd9ESnebg99zYfMawqEySkKBxvkdcMJvb5T38YM=
 github.com/xhd2015/xgo v1.2.8/go.mod h1:LJxlcYSaXo/9YpsnB3yHh9NHe7BRettYCytaNGWY2BE=
