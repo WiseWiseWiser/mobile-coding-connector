@@ -21,6 +21,7 @@ var skillRoot string
 //go:embed server
 //go:embed request
 //go:embed proxy
+//go:embed install
 var skillTree embed.FS
 
 const skillName = "remote-agent"

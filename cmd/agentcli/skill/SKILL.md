@@ -50,6 +50,7 @@ remote-agent skill --list
 | `config` | Default domain / `config --web` |
 | `exec` | Verbatim remote shell |
 | `upload` | Gzip default, `--no-compress`, resume |
+| `install` | Cross-build a local Go CLI onto the remote PATH |
 | `service` | Lifecycle + **`service upgrade`** |
 | `cron` | Remote schedules |
 | `seal` | `remote-devbox refresh` + `/root/.smc` sync |
@@ -65,6 +66,7 @@ remote-agent skill --list
 | Default server | → topic **`config`** |
 | One-shot shell | → **`exec`** |
 | Mac→remote files | → **`upload`** |
+| Cross-build a CLI onto remote PATH | → **`install`** |
 | Long-lived / replace binary | → **`service`** |
 | Scheduled remote shell | → **`cron`** |
 | Token refresh | → **`seal`** |

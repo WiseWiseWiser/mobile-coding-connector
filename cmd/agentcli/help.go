@@ -50,6 +50,7 @@ Commands:
     service              Managed services (start/stop/logs/upgrade)
     cron                 Scheduled cron tasks (interval or UTC cron)
     server               Server lifecycle (build-next, upgrade, restart, status)
+    install              Cross-build a local Go CLI and install it on the remote
     proxy                Configured HTTP proxies
     port                 List remote ports and open ad-hoc public visits
     request              Call arbitrary API paths
@@ -115,6 +116,7 @@ Commands:
     service              Managed services (start/stop/logs/upgrade)
     cron                 Scheduled cron tasks (interval or UTC cron)
     server               Server lifecycle (build-next, upgrade, restart, status)
+    install              Cross-build a local Go CLI and install it on the remote
     proxy                Configured HTTP proxies
     port                 List remote ports and open ad-hoc public visits
     request              Call arbitrary API paths

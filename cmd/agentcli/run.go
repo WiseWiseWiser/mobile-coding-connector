@@ -81,6 +81,8 @@ func runCLI(profile Profile, args []string, stdout, stderr io.Writer) error {
 		return runConfig(rest)
 	case "ping":
 		return runPing(resolve, rest)
+	case "install":
+		return runInstall(resolve, rest, stdout, stderr)
 	case "upload":
 		if wantsHelp(rest) {
 			return runUpload(nil, rest)
