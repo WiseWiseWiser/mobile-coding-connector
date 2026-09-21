@@ -3,6 +3,7 @@ package agentcli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -534,5 +535,78 @@ func TestRunUsageAddDuplicateReportsCleanError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "409") {
 		t.Fatalf("the CLI must strip the HTTP status prefix: %q", err.Error())
+	}
+}
+
+// countingFetch returns a fresh ready snapshot per call so tests can tell a
+// fresh fetch from a cached render.
+func countingFetch(count *int) func(usageitems.Item) (usageitems.Snapshot, error) {
+	return func(usageitems.Item) (usageitems.Snapshot, error) {
+		*count++
+		return usageitems.Snapshot{
+			Status:    usageitems.StatusReady,
+			Percent:   "5%",
+			Body:      fmt.Sprintf("5%% used, fetch #%d", *count),
+			UpdatedAt: "2026-09-15T12:00:00Z",
+		}, nil
+	}
+}
+
+func TestRunUsageShowFreshByDefaultCachedOnFlag(t *testing.T) {
+	env := newUsageTestEnv(t)
+	var count int
+	usageitems.TestExported_SetSnapshotFetcher(env.svc, countingFetch(&count))
+
+	// Default: each show fetches fresh from the provider.
+	if _, _, err := env.runCLI(t, "show"); err != nil {
+		t.Fatalf("usage show: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("fresh show fetched %d times, want 2 (grok + codex)", count)
+	}
+
+	// --cached: no additional fetches, prints the same cached snapshots.
+	out, _, err := env.runCLI(t, "show", "--cached")
+	if err != nil {
+		t.Fatalf("usage show --cached: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("cached show fetched %d times, want still 2", count)
+	}
+	for _, want := range []string{"Grok: 5% used, fetch #1", "Codex: 5% used, fetch #2"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("cached show missing %q:\n%s", want, out)
+		}
+	}
+
+	// Fresh again: fetches once more per enabled item.
+	out, _, err = env.runCLI(t, "show")
+	if err != nil {
+		t.Fatalf("usage show: %v", err)
+	}
+	if count != 4 {
+		t.Fatalf("second fresh show fetched %d times, want 4", count)
+	}
+	if !strings.Contains(out, "fetch #3") || !strings.Contains(out, "fetch #4") {
+		t.Fatalf("fresh show must reflect new fetches:\n%s", out)
+	}
+}
+
+func TestRunUsageListFreshByDefaultCachedOnFlag(t *testing.T) {
+	env := newUsageTestEnv(t)
+	var count int
+	usageitems.TestExported_SetSnapshotFetcher(env.svc, countingFetch(&count))
+
+	if _, _, err := env.runCLI(t, "list"); err != nil {
+		t.Fatalf("usage list: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("fresh list fetched %d times, want 2", count)
+	}
+	if _, _, err := env.runCLI(t, "list", "--cached"); err != nil {
+		t.Fatalf("usage list --cached: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("cached list fetched %d times, want still 2", count)
 	}
 }

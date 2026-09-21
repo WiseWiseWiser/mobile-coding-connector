@@ -5,13 +5,14 @@ go 1.25.10
 require (
 	github.com/creack/pty v1.1.24
 	github.com/gorilla/websocket v1.5.3
+	github.com/pkg/sftp v1.13.9
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/ulikunitz/xz v0.5.12
 	github.com/xhd2015/agent-pro v0.0.199
 	github.com/xhd2015/bak-files v0.0.5
 	github.com/xhd2015/doctest v0.0.117
-	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.175
+	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.182
 	github.com/xhd2015/gitops v0.0.31
 	github.com/xhd2015/kool v0.0.151
 	github.com/xhd2015/less-gen v0.0.19
@@ -42,6 +43,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect

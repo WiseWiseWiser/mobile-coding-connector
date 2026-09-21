@@ -29,6 +29,9 @@ func runSSH(args []string, resolve func() (*client.Client, error)) error {
 	root := filepath.Join(home, ".ai-critic")
 	store := &sshcmd.FileSessionStore{Root: root}
 	configDir := filepath.Join(root, "ssh")
+	if len(args) > 0 && args[0] == "config-local" {
+		return sshcmd.RunConfigLocal(args[1:], home, configDir, os.Stdout, os.Stderr)
+	}
 
 	kp, err := sshcmd.EnsureClientKeyPair(configDir)
 	if err != nil {
@@ -105,6 +108,11 @@ func (s *sshServeStarter) Start(opts sshcmd.ServeOpts) error {
 		profileID = "default"
 	}
 
+	profile, err := sshcmd.LoadConfigLocalProfile(s.configDir)
+	if err != nil {
+		return fmt.Errorf("load SSH local profile: %w", err)
+	}
+	user := profile.User
 	var dial sshcmd.DialFunc
 	if s.client != nil {
 		pub := s.PublicKeyOpenSSH
@@ -115,9 +123,12 @@ func (s *sshServeStarter) Start(opts sshcmd.ServeOpts) error {
 			}
 			pub = strings.TrimSpace(string(ssh.MarshalAuthorizedKey(kp.Public)))
 		}
-		d, _, err := BuildSSHTunnelDial(s.client, pub)
+		d, info, err := BuildSSHTunnelDial(s.client, pub)
 		if err != nil {
 			return fmt.Errorf("build ssh tunnel dial: %w", err)
+		}
+		if info.User != "" {
+			user = info.User
 		}
 		dial = d
 	}
@@ -126,7 +137,8 @@ func (s *sshServeStarter) Start(opts sshcmd.ServeOpts) error {
 		Store:     s.store,
 		ProfileID: profileID,
 		Dial:      dial,
-		User:      "agent",
+		User:      user,
+		Host:      profile.Host,
 		ConfigDir: s.configDir,
 		ServePID:  os.Getpid(),
 		Stdout:    opts.Stdout,

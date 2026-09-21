@@ -31,7 +31,7 @@ type CryptoSSHRunner struct {
 	SSHPath string
 }
 
-// Run dials the session local port and either starts an interactive shell
+// Run dials the session local endpoint and either starts an interactive shell
 // (empty argv) or runs the joined remote command.
 func (r *CryptoSSHRunner) Run(sess *Session, remoteArgv []string, opts RunnerOpts) error {
 	_ = opts
@@ -44,8 +44,8 @@ func (r *CryptoSSHRunner) Run(sess *Session, remoteArgv []string, opts RunnerOpt
 	if r.Signer == nil {
 		return errors.New("ssh signer not configured")
 	}
-	if sess.LocalPort <= 0 {
-		return fmt.Errorf("invalid session LocalPort %d", sess.LocalPort)
+	if sess.LocalSocket == "" && sess.LocalPort <= 0 {
+		return errors.New("session has no local relay endpoint")
 	}
 
 	// Interactive login: use system OpenSSH against generated ssh_config.
@@ -101,7 +101,11 @@ func (r *CryptoSSHRunner) runOpenSSH(sess *Session, remoteArgv []string) error {
 	if len(remoteArgv) == 0 {
 		args = append(args, "-tt")
 	}
-	args = append(args, "remote-agent")
+	host := sess.Host
+	if host == "" {
+		host = "remote-agent"
+	}
+	args = append(args, host)
 	if len(remoteArgv) > 0 {
 		// OpenSSH remote command: ssh host -- cmd args
 		args = append(args, remoteArgv...)
@@ -122,7 +126,7 @@ func (r *CryptoSSHRunner) runOpenSSH(sess *Session, remoteArgv []string) error {
 	}
 
 	if len(remoteArgv) == 0 && r.Stderr != nil {
-		_, _ = fmt.Fprintf(r.Stderr, "connected 127.0.0.1:%d (openssh)\n", sess.LocalPort)
+		_, _ = fmt.Fprintf(r.Stderr, "connected %s (openssh)\n", sess.LocalSocket)
 	}
 	return cmd.Run()
 }
@@ -148,8 +152,12 @@ func (r *CryptoSSHRunner) runCrypto(sess *Session, remoteArgv []string) error {
 		HostKeyCallback: hostKeyCb,
 		Timeout:         10 * time.Second,
 	}
-	addr := fmt.Sprintf("127.0.0.1:%d", sess.LocalPort)
-	client, err := ssh.Dial("tcp", addr, cfg)
+	network, addr := "unix", sess.LocalSocket
+	if addr == "" {
+		network = "tcp"
+		addr = fmt.Sprintf("127.0.0.1:%d", sess.LocalPort)
+	}
+	client, err := ssh.Dial(network, addr, cfg)
 	if err != nil {
 		return err
 	}

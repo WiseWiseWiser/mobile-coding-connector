@@ -22,10 +22,16 @@ import (
 // If the private file exists and parses, the same pair is returned (stable identity).
 // If it exists but is corrupt/unreadable, an error is returned (fail-closed; no silent regen).
 // If missing, a new key is generated, written with mode 0600, and returned.
-// Creates configDir (0755) when needed.
+// Creates configDir (0700) when needed.
 func EnsureClientKeyPair(configDir string) (*ClientKeyPair, error) {
 	if configDir == "" {
 		return nil, errors.New("configDir is required")
+	}
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		return nil, fmt.Errorf("mkdir configDir: %w", err)
+	}
+	if err := os.Chmod(configDir, 0o700); err != nil {
+		return nil, fmt.Errorf("chmod configDir: %w", err)
 	}
 
 	privPath := filepath.Join(configDir, "id_ed25519")
@@ -46,10 +52,6 @@ func EnsureClientKeyPair(configDir string) (*ClientKeyPair, error) {
 	}
 
 	// Missing: generate and persist.
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		return nil, fmt.Errorf("mkdir configDir: %w", err)
-	}
-
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("generate ed25519: %w", err)

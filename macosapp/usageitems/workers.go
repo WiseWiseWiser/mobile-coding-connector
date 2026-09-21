@@ -122,7 +122,16 @@ func newFuncWorker(fetch func() (Snapshot, error)) *funcWorker {
 	return &funcWorker{fetch: fetch, cached: Snapshot{Status: StatusLoading}}
 }
 
-func (w *funcWorker) EnsureFetch() { w.FetchNow() }
+// EnsureFetch fetches only when no successful fetch has completed yet, matching
+// the real provider services' semantics so cached renders stay cached.
+func (w *funcWorker) EnsureFetch() {
+	w.mu.Lock()
+	needs := !w.fetched
+	w.mu.Unlock()
+	if needs {
+		w.FetchNow()
+	}
+}
 
 func (w *funcWorker) FetchNow() {
 	w.mu.Lock()

@@ -15,12 +15,14 @@ type FileSessionStore struct {
 
 // sessionWire is the on-disk snake_case JSON shape for Session.
 type sessionWire struct {
-	LocalPort int    `json:"local_port"`
-	User      string `json:"user"`
-	ConfigDir string `json:"config_dir"`
-	ServePID  int    `json:"serve_pid"`
-	ProfileID string `json:"profile_id"`
-	Alive     bool   `json:"alive"`
+	LocalPort   int    `json:"local_port"`
+	LocalSocket string `json:"local_socket,omitempty"`
+	User        string `json:"user"`
+	Host        string `json:"host,omitempty"`
+	ConfigDir   string `json:"config_dir"`
+	ServePID    int    `json:"serve_pid"`
+	ProfileID   string `json:"profile_id"`
+	Alive       bool   `json:"alive"`
 }
 
 func (s *FileSessionStore) sessionPath(profileID string) string {
@@ -46,12 +48,14 @@ func (s *FileSessionStore) Load(profileID string) (*Session, error) {
 		return nil, err
 	}
 	sess := &Session{
-		LocalPort: wire.LocalPort,
-		User:      wire.User,
-		ConfigDir: wire.ConfigDir,
-		ServePID:  wire.ServePID,
-		ProfileID: wire.ProfileID,
-		Alive:     wire.Alive,
+		LocalPort:   wire.LocalPort,
+		LocalSocket: wire.LocalSocket,
+		User:        wire.User,
+		Host:        wire.Host,
+		ConfigDir:   wire.ConfigDir,
+		ServePID:    wire.ServePID,
+		ProfileID:   wire.ProfileID,
+		Alive:       wire.Alive,
 	}
 	// ServePID == 0: skip process liveness check.
 	if sess.Alive && sess.ServePID != 0 && !processAlive(sess.ServePID) {
@@ -73,12 +77,14 @@ func (s *FileSessionStore) Save(sess *Session) error {
 		return err
 	}
 	wire := sessionWire{
-		LocalPort: sess.LocalPort,
-		User:      sess.User,
-		ConfigDir: sess.ConfigDir,
-		ServePID:  sess.ServePID,
-		ProfileID: sess.ProfileID,
-		Alive:     sess.Alive,
+		LocalPort:   sess.LocalPort,
+		LocalSocket: sess.LocalSocket,
+		User:        sess.User,
+		Host:        sess.Host,
+		ConfigDir:   sess.ConfigDir,
+		ServePID:    sess.ServePID,
+		ProfileID:   sess.ProfileID,
+		Alive:       sess.Alive,
 	}
 	data, err := json.MarshalIndent(wire, "", "  ")
 	if err != nil {

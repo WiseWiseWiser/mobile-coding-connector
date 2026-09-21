@@ -2,27 +2,35 @@ package sshcmd
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"sync"
 )
 
 // DialFunc opens the remote side of a tunnel for each accepted local connection.
 type DialFunc func() (net.Conn, error)
 
-// LocalRelay listens on 127.0.0.1:0 and splices each accept to Dial().
+// LocalRelay listens on a local endpoint and splices each accepted connection to Dial.
+// Network defaults to tcp and Address defaults to 127.0.0.1:0 for compatibility.
+// Unix listeners are removed when Close completes.
 type LocalRelay struct {
-	Dial DialFunc
+	Dial    DialFunc
+	Network string
+	Address string
 
 	mu       sync.Mutex
 	ln       net.Listener
 	port     int
+	address  string
 	conns    map[net.Conn]struct{}
 	closed   bool
 	acceptWG sync.WaitGroup
 }
 
-// Start binds 127.0.0.1:0 and runs the accept loop in the background.
+// Start binds the configured local endpoint and runs the accept loop in the background.
 func (r *LocalRelay) Start() error {
 	if r == nil {
 		return errors.New("LocalRelay is nil")
@@ -35,17 +43,44 @@ func (r *LocalRelay) Start() error {
 	if r.Dial == nil {
 		return errors.New("LocalRelay dial not configured")
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	network := r.Network
+	if network == "" {
+		network = "tcp"
+	}
+	address := r.Address
+	if address == "" {
+		address = "127.0.0.1:0"
+	}
+	if network == "unix" {
+		// macOS supports at most 103 bytes plus the NUL terminator in sun_path.
+		if len([]byte(address)) >= 104 {
+			return fmt.Errorf("unix relay socket path is too long (%d bytes): %s", len([]byte(address)), address)
+		}
+		if err := os.MkdirAll(filepath.Dir(address), 0o700); err != nil {
+			return err
+		}
+		if _, err := os.Lstat(address); err == nil {
+			return fmt.Errorf("unix relay socket already exists: %s", address)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	ln, err := net.Listen(network, address)
 	if err != nil {
 		return err
 	}
-	addr, ok := ln.Addr().(*net.TCPAddr)
-	if !ok {
-		_ = ln.Close()
-		return errors.New("LocalRelay: unexpected listen address type")
+	if network == "unix" {
+		if err := os.Chmod(address, 0o600); err != nil {
+			_ = ln.Close()
+			_ = os.Remove(address)
+			return err
+		}
 	}
 	r.ln = ln
-	r.port = addr.Port
+	r.address = address
+	if addr, ok := ln.Addr().(*net.TCPAddr); ok {
+		r.port = addr.Port
+	}
 	r.conns = make(map[net.Conn]struct{})
 	r.closed = false
 	r.acceptWG.Add(1)
@@ -53,7 +88,7 @@ func (r *LocalRelay) Start() error {
 	return nil
 }
 
-// LocalPort returns the bound ephemeral port after Start.
+// LocalPort returns the bound TCP port after Start, or zero for a Unix relay.
 func (r *LocalRelay) LocalPort() int {
 	if r == nil {
 		return 0
@@ -63,7 +98,20 @@ func (r *LocalRelay) LocalPort() int {
 	return r.port
 }
 
-// Close stops the listener and closes active connections.
+// LocalAddress returns the configured Unix socket path or the actual TCP address.
+func (r *LocalRelay) LocalAddress() string {
+	if r == nil {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ln != nil {
+		return r.ln.Addr().String()
+	}
+	return r.address
+}
+
+// Close stops the listener, closes active connections, and removes a Unix socket.
 func (r *LocalRelay) Close() error {
 	if r == nil {
 		return errors.New("LocalRelay is nil")
@@ -78,6 +126,8 @@ func (r *LocalRelay) Close() error {
 	r.ln = nil
 	conns := r.conns
 	r.conns = nil
+	network := r.Network
+	address := r.address
 	r.mu.Unlock()
 
 	var firstErr error
@@ -90,6 +140,11 @@ func (r *LocalRelay) Close() error {
 		_ = c.Close()
 	}
 	r.acceptWG.Wait()
+	if network == "unix" && address != "" {
+		if err := os.Remove(address); err != nil && !os.IsNotExist(err) && firstErr == nil {
+			firstErr = err
+		}
+	}
 	return firstErr
 }
 
@@ -119,7 +174,6 @@ func (r *LocalRelay) handleConn(local net.Conn, dial DialFunc) {
 		_ = local.Close()
 		r.untrackConn(local)
 	}()
-
 	if dial == nil {
 		return
 	}
@@ -136,7 +190,6 @@ func (r *LocalRelay) handleConn(local net.Conn, dial DialFunc) {
 		r.untrackConn(remote)
 	}()
 
-	// Bidirectional copy until either side closes.
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -152,7 +205,6 @@ func (r *LocalRelay) handleConn(local net.Conn, dial DialFunc) {
 	wg.Wait()
 }
 
-// trackConn registers c; returns false if relay is closed (caller should close c).
 func (r *LocalRelay) trackConn(c net.Conn) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -171,11 +223,8 @@ func (r *LocalRelay) untrackConn(c net.Conn) {
 	}
 }
 
-// closeWrite half-closes a TCP conn for write when possible.
 func closeWrite(c net.Conn) error {
-	type closeWriter interface {
-		CloseWrite() error
-	}
+	type closeWriter interface{ CloseWrite() error }
 	if cw, ok := c.(closeWriter); ok {
 		return cw.CloseWrite()
 	}

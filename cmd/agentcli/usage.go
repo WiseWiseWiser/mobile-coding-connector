@@ -27,6 +27,7 @@ Subcommands:
 
 Options:
   --json               Machine-readable output (list, show)
+  --cached             Use cached values instead of fetching fresh (list, show)
   -h, --help           Show this help
 
 Kinds: grok, codex, commandcode (commandcode requires --home).
@@ -34,12 +35,16 @@ Kinds: grok, codex, commandcode (commandcode requires --home).
 Run '%[1]s usage <subcommand> -h' for subcommand options.
 `
 
-const usageListHelpTemplate = `Usage: %[1]s usage list [--json]
+const usageListHelpTemplate = `Usage: %[1]s usage list [--json] [--cached]
 
 List usage items in registry order with the menu-bar default marker, fetch
 status, and the summary shown in the dropdown.
 
+By default each enabled item fetches fresh usage from its provider before
+printing; --cached prints the server's last cached values instead.
+
 Options:
+  --cached        Use cached values instead of fetching fresh.
   --json          Print the raw items JSON.
   -h, --help      Show this help.
 `
@@ -97,13 +102,17 @@ Choose what the menu bar shows:
   --start <id>      With --rotate, the item shown first and after each cycle.
 `
 
-const usageShowHelpTemplate = `Usage: %[1]s usage show [<id>] [--json]
+const usageShowHelpTemplate = `Usage: %[1]s usage show [<id>] [--json] [--cached]
 
 Print the usage text the menu bar renders: the full provider panel for one
 item, or the dropdown line of every registered item when <id> is omitted.
 Disabled items are printed too, so they can still be inspected.
 
+By default each enabled item fetches fresh usage from its provider before
+printing; --cached prints the server's last cached values instead.
+
 Options:
+  --cached        Use cached values instead of fetching fresh.
   --json          Print the raw items JSON.
   -h, --help      Show this help.
 `
@@ -149,9 +158,10 @@ func runUsage(resolve func() (*client.Client, error), args []string) error {
 }
 
 func runUsageList(resolve func() (*client.Client, error), args []string) error {
-	var jsonOut bool
+	var jsonOut, cached bool
 	args, err := flags.New().
 		Bool("--json", &jsonOut).
+		Bool("--cached", &cached).
 		Help("-h,--help", fmt.Sprintf(usageListHelpTemplate, usageCmdName())).
 		Parse(args)
 	if err != nil {
@@ -165,7 +175,7 @@ func runUsageList(resolve func() (*client.Client, error), args []string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := cli.ListUsageItems()
+	resp, err := usageListItems(cli, cached)
 	if err != nil {
 		return cleanAPIError(err)
 	}
@@ -174,6 +184,15 @@ func runUsageList(resolve func() (*client.Client, error), args []string) error {
 	}
 	printUsageTable(resp)
 	return nil
+}
+
+// usageListItems fetches the items view, refreshing from each provider unless
+// the cached view was requested.
+func usageListItems(cli *client.Client, cached bool) (*client.UsageItemsResponse, error) {
+	if cached {
+		return cli.ListUsageItems()
+	}
+	return cli.ListUsageItemsFresh()
 }
 
 func runUsageAdd(resolve func() (*client.Client, error), args []string) error {
@@ -389,9 +408,10 @@ func runUsageDefault(resolve func() (*client.Client, error), args []string) erro
 }
 
 func runUsageShow(resolve func() (*client.Client, error), args []string) error {
-	var jsonOut bool
+	var jsonOut, cached bool
 	args, err := flags.New().
 		Bool("--json", &jsonOut).
+		Bool("--cached", &cached).
 		Help("-h,--help", fmt.Sprintf(usageShowHelpTemplate, usageCmdName())).
 		Parse(args)
 	if err != nil {
@@ -405,7 +425,7 @@ func runUsageShow(resolve func() (*client.Client, error), args []string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := cli.ListUsageItems()
+	resp, err := usageListItems(cli, cached)
 	if err != nil {
 		return cleanAPIError(err)
 	}

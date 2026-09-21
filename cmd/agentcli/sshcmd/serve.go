@@ -7,36 +7,36 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // ServeService owns the local serve lifecycle: relay + session file + ssh_config.
 type ServeService struct {
-	Store     *FileSessionStore
-	ProfileID string
-	Dial      DialFunc
-	User      string
-	ConfigDir string
-	ServePID  int
-	// Stdout receives the ready/stop banner when Quiet is false (nil → no print).
-	Stdout io.Writer
-	// Quiet suppresses the ready/stop banner.
-	Quiet bool
+	Store      *FileSessionStore
+	ProfileID  string
+	Dial       DialFunc
+	User       string
+	Host       string
+	ConfigDir  string
+	SocketPath string
+	ServePID   int
+	Stdout     io.Writer
+	Quiet      bool
 }
 
 // ServeReadyInfo is printed after the local relay is up and the session is saved.
 type ServeReadyInfo struct {
-	LocalPort  int
-	User       string
-	ConfigDir  string
-	ProfileID  string
-	Identity   string
-	SSHConfig  string
+	LocalSocket string
+	User        string
+	Host        string
+	ConfigDir   string
+	ProfileID   string
+	Identity    string
+	SSHConfig   string
 }
 
 // Start listens, saves an Alive session, blocks until ctx is canceled, then
 // clears the session and closes the relay. Nil Dial fails before listen.
-// Context cancel (Ctrl-C) prints a stop line (unless Quiet) and returns nil
-// so interactive serve exits 0.
 func (s *ServeService) Start(ctx context.Context) error {
 	if s == nil {
 		return errors.New("ServeService is nil")
@@ -55,67 +55,71 @@ func (s *ServeService) Start(ctx context.Context) error {
 	if user == "" {
 		user = "agent"
 	}
+	host := s.Host
+	if host == "" {
+		host = "remote-agent"
+	}
+	if s.ConfigDir == "" {
+		return errors.New("configDir is required")
+	}
+	if err := os.MkdirAll(s.ConfigDir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(s.ConfigDir, 0o700); err != nil {
+		return err
+	}
+	socketPath := s.SocketPath
+	if socketPath == "" {
+		socketPath = filepath.Join(s.ConfigDir, "relay.sock")
+	}
 
-	relay := &LocalRelay{Dial: s.Dial}
+	relay := &LocalRelay{Dial: s.Dial, Network: "unix", Address: socketPath}
 	if err := relay.Start(); err != nil {
 		return err
 	}
-	// Always close relay on exit (cancel path and error path after Start).
 	defer func() { _ = relay.Close() }()
-
-	port := relay.LocalPort()
-	if port <= 0 {
-		return errors.New("relay did not bind a local port")
+	if relay.LocalAddress() == "" {
+		return errors.New("relay did not bind a local socket")
 	}
-
-	if s.ConfigDir != "" {
-		if err := os.MkdirAll(s.ConfigDir, 0o755); err != nil {
-			return err
-		}
-		if err := writeSSHConfig(s.ConfigDir, user, port); err != nil {
-			return err
-		}
+	if err := writeSSHConfig(s.ConfigDir, host, user, socketPath); err != nil {
+		return err
 	}
 
 	sess := &Session{
-		LocalPort: port,
-		User:      user,
-		ConfigDir: s.ConfigDir,
-		ServePID:  s.ServePID,
-		ProfileID: profileID,
-		Alive:     true,
+		LocalSocket: socketPath,
+		User:        user,
+		Host:        host,
+		ConfigDir:   s.ConfigDir,
+		ServePID:    s.ServePID,
+		ProfileID:   profileID,
+		Alive:       true,
 	}
 	if err := s.Store.Save(sess); err != nil {
 		return err
 	}
-
 	if !s.Quiet {
 		printServeReady(s.Stdout, ServeReadyInfo{
-			LocalPort: port,
-			User:      user,
-			ConfigDir: s.ConfigDir,
-			ProfileID: profileID,
-			Identity:  filepath.Join(s.ConfigDir, "id_ed25519"),
-			SSHConfig: filepath.Join(s.ConfigDir, "ssh_config"),
+			LocalSocket: socketPath,
+			User:        user,
+			Host:        host,
+			ConfigDir:   s.ConfigDir,
+			ProfileID:   profileID,
+			Identity:    filepath.Join(s.ConfigDir, "id_ed25519"),
+			SSHConfig:   filepath.Join(s.ConfigDir, "ssh_config"),
 		})
 	}
 
-	// Block until cancel / deadline.
 	<-ctx.Done()
-
-	// Teardown: clear session then close relay (defer also closes).
 	_ = s.Store.Clear(profileID)
 	_ = relay.Close()
-
-	err := ctx.Err()
-	if err == context.Canceled || err == context.DeadlineExceeded {
+	if err := ctx.Err(); err == context.Canceled || err == context.DeadlineExceeded {
 		if !s.Quiet {
 			printServeStopped(s.Stdout)
 		}
-		// Interactive serve: clean Ctrl-C is success for the CLI.
 		return nil
+	} else {
+		return err
 	}
-	return err
 }
 
 // FormatServeReady returns the ready banner (always ends with \n).
@@ -128,52 +132,62 @@ func FormatServeReady(info ServeReadyInfo) string {
 	if cfg == "" && info.ConfigDir != "" {
 		cfg = filepath.Join(info.ConfigDir, "ssh_config")
 	}
-	profile := info.ProfileID
-	if profile == "" {
-		profile = "default"
+	host := info.Host
+	if host == "" {
+		host = "remote-agent"
+	}
+	user := info.User
+	if user == "" {
+		user = "agent"
 	}
 	return fmt.Sprintf(`SSH serve ready
-  Local:     127.0.0.1:%d
+  Socket:    %s
+  Host:      %s
   User:      %s
   Identity:  %s
   Config:    %s
-  Session:   %s
 
 In another terminal:
   remote-agent ssh
-  remote-agent ssh echo hi
+  ssh %s@%s
 
 Tunnel up; Ctrl-C to stop.
-`, info.LocalPort, info.User, id, cfg, profile)
+`, info.LocalSocket, host, user, id, cfg, user, host)
 }
 
 func printServeReady(w io.Writer, info ServeReadyInfo) {
-	if w == nil {
-		return
+	if w != nil {
+		_, _ = io.WriteString(w, FormatServeReady(info))
 	}
-	_, _ = io.WriteString(w, FormatServeReady(info))
 }
 
 func printServeStopped(w io.Writer) {
-	if w == nil {
-		return
+	if w != nil {
+		_, _ = io.WriteString(w, "SSH serve stopped.\n")
 	}
-	_, _ = io.WriteString(w, "SSH serve stopped.\n")
 }
 
-// writeSSHConfig creates ConfigDir/ssh_config mentioning the bound LocalPort.
-func writeSSHConfig(configDir, user string, port int) error {
+// writeSSHConfig creates ConfigDir/ssh_config for the stable local Unix socket.
+func writeSSHConfig(configDir, host, user, socketPath string) error {
 	path := filepath.Join(configDir, "ssh_config")
 	identity := filepath.Join(configDir, "id_ed25519")
 	body := fmt.Sprintf(`# generated by remote-agent ssh --serve
-Host remote-agent
+Host %s
   HostName 127.0.0.1
-  Port %d
   User %s
   IdentityFile %s
   IdentitiesOnly yes
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
-`, port, user, identity)
-	return os.WriteFile(path, []byte(body), 0o644)
+  LogLevel ERROR
+  ProxyCommand /usr/bin/nc -U %s
+`, host, user, shellQuote(identity), shellQuote(socketPath))
+	return os.WriteFile(path, []byte(body), 0o600)
+}
+
+func shellQuote(s string) string {
+	if !strings.ContainsAny(s, " \t\n'\\\"") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }

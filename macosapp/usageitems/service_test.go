@@ -81,7 +81,7 @@ func TestListRendersSeededItems(t *testing.T) {
 	svc, _ := newTestService(t)
 	readyFetcher(svc)
 
-	list, err := svc.List()
+	list, err := svc.List(false)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}

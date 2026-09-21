@@ -22,6 +22,7 @@ const (
 
 // Usage is printed for -h / --help (trailing newline required).
 const Usage = `Usage: remote-agent ssh --serve [--quiet]
+       remote-agent ssh config-local --install|--uninstall [options]
        remote-agent ssh [user@host] [command [args...]]
 
   --serve     Start local relay + remote ad-hoc SSH; blocks until Ctrl-C.
@@ -47,12 +48,15 @@ type ParseResult struct {
 
 // Session is tunnel session metadata loaded from a SessionStore.
 type Session struct {
-	LocalPort int
-	User      string
-	ConfigDir string
-	ServePID  int
-	ProfileID string
-	Alive     bool
+	// LocalPort is retained to read sessions written by older remote-agent versions.
+	LocalPort   int
+	LocalSocket string
+	User        string
+	Host        string
+	ConfigDir   string
+	ServePID    int
+	ProfileID   string
+	Alive       bool
 }
 
 // SessionStore loads active tunnel session metadata by profile id.

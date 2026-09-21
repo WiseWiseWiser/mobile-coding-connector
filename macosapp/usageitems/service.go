@@ -86,14 +86,33 @@ func (s *Service) Registry() (*Registry, error) {
 	return s.store.Load()
 }
 
-// List returns every item with rendered menu text.
-func (s *Service) List() (*ListResponse, error) {
+// List returns every item with rendered menu text. When refresh is true, each
+// enabled worker fetches fresh usage from its provider before rendering;
+// otherwise the last cached snapshot is rendered.
+func (s *Service) List(refresh bool) (*ListResponse, error) {
 	reg, err := s.store.Load()
 	if err != nil {
 		return nil, err
 	}
 	s.sync(reg)
-	return s.render(reg), nil
+	if refresh {
+		s.refresh(reg)
+	}
+	return s.render(reg, refresh), nil
+}
+
+// refresh runs a synchronous provider fetch for every enabled worker, so the
+// rendered view reflects current usage rather than the cached snapshot.
+func (s *Service) refresh(reg *Registry) {
+	for _, it := range reg.Items {
+		if !it.Enabled {
+			continue
+		}
+		ws := s.worker(it.ID)
+		if ws != nil {
+			ws.w.FetchNow()
+		}
+	}
 }
 
 // Show returns one item with rendered menu text, fetching when stale.
@@ -262,10 +281,10 @@ func (s *Service) SetDefault(id string, rotate bool) (*ListResponse, error) {
 		return nil, err
 	}
 	s.sync(reg)
-	return s.render(reg), nil
+	return s.render(reg, false), nil
 }
 
-func (s *Service) render(reg *Registry) *ListResponse {
+func (s *Service) render(reg *Registry, fresh bool) *ListResponse {
 	out := &ListResponse{
 		Version: reg.Version,
 		Default: reg.Default,
@@ -274,7 +293,7 @@ func (s *Service) render(reg *Registry) *ListResponse {
 	}
 	for _, it := range reg.Items {
 		ws := s.worker(it.ID)
-		if ws != nil && it.Enabled {
+		if ws != nil && it.Enabled && !fresh {
 			ws.w.EnsureFetch()
 		}
 		out.Items = append(out.Items, itemView(it, ws))

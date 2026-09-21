@@ -75,13 +75,16 @@ func handleCodexUsage(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUsageItems serves GET /api/usage/items: every registry item with the
-// menu-bar title and dropdown text the app renders verbatim.
+// menu-bar title and dropdown text the app renders verbatim. ?refresh=1 makes
+// each enabled item fetch fresh usage from its provider before rendering;
+// otherwise the cached snapshots are rendered.
 func handleUsageItems(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	list, err := itemsService.List()
+	refresh := r.URL.Query().Get("refresh") == "1" || r.URL.Query().Get("refresh") == "true"
+	list, err := itemsService.List(refresh)
 	if err != nil {
 		writeUsageError(w, http.StatusInternalServerError, err)
 		return

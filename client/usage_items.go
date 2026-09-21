@@ -69,10 +69,25 @@ type UsageItemResult struct {
 	Default  string         `json:"default,omitempty"`
 }
 
-// ListUsageItems returns every usage item with rendered menu text.
+// ListUsageItems returns every usage item with rendered menu text, using the
+// server's cached snapshots.
 func (c *Client) ListUsageItems() (*UsageItemsResponse, error) {
+	return c.listUsageItems(false)
+}
+
+// ListUsageItemsFresh returns every usage item with rendered menu text, after
+// each enabled item fetches fresh usage from its provider.
+func (c *Client) ListUsageItemsFresh() (*UsageItemsResponse, error) {
+	return c.listUsageItems(true)
+}
+
+func (c *Client) listUsageItems(refresh bool) (*UsageItemsResponse, error) {
 	var out UsageItemsResponse
-	if err := c.getJSON("/api/usage/items", &out); err != nil {
+	path := "/api/usage/items"
+	if refresh {
+		path += "?refresh=1"
+	}
+	if err := c.getJSON(path, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

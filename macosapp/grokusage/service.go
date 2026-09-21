@@ -113,6 +113,11 @@ func mapBillingSnapshot(snap dotgrokusage.Snapshot) *FetchResult {
 	switch {
 	case snap.UsedPercent >= 0:
 		out.WeeklyLimit = fmt.Sprintf("%d%%", snap.UsedPercent)
+	case snap.PeriodType == dotgrokusage.PeriodWeekly:
+		// Weekly credits period parsed but no percent reported (uncapped
+		// SuperGrok): mirror grok.com, which defaults the weekly usage bar
+		// to 0% when the backend reports no usage numbers.
+		out.WeeklyLimit = "0%"
 	default:
 		// No numeric cap — surface absolute used without inventing %.
 		out.WeeklyLimit = fmt.Sprintf("%d", snap.Used)

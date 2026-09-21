@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -55,15 +56,15 @@ type AdhocServer struct {
 	// PTY and ForcePipeShell is false, a human interactive shell is used.
 	ForcePipeShell bool
 
-	mu          sync.Mutex
-	ln          net.Listener
-	port        int
-	hostSigner  ssh.Signer
-	hostPub     ssh.PublicKey
-	authorized  []ssh.PublicKey
-	closed      bool
-	acceptWG    sync.WaitGroup
-	sessionWG   sync.WaitGroup
+	mu         sync.Mutex
+	ln         net.Listener
+	port       int
+	hostSigner ssh.Signer
+	hostPub    ssh.PublicKey
+	authorized []ssh.PublicKey
+	closed     bool
+	acceptWG   sync.WaitGroup
+	sessionWG  sync.WaitGroup
 }
 
 // SetAuthorizedKeys replaces the authorized public keys used for auth.
@@ -271,6 +272,10 @@ type execRequestMsg struct {
 	Command string
 }
 
+type subsystemRequestMsg struct {
+	Subsystem string
+}
+
 type exitStatusMsg struct {
 	Status uint32
 }
@@ -330,6 +335,21 @@ func (s *AdhocServer) handleSession(newChannel ssh.NewChannel) {
 			go discardSSHRequests(reqs)
 			s.runCommand(ch, msg.Command)
 			return
+		case "subsystem":
+			var msg subsystemRequestMsg
+			_ = ssh.Unmarshal(req.Payload, &msg)
+			if msg.Subsystem != "sftp" {
+				if req.WantReply {
+					_ = req.Reply(false, nil)
+				}
+				continue
+			}
+			if req.WantReply {
+				_ = req.Reply(true, nil)
+			}
+			go discardSSHRequests(reqs)
+			s.runSFTP(ch)
+			return
 		default:
 			if req.WantReply {
 				_ = req.Reply(false, nil)
@@ -369,6 +389,15 @@ func (s *AdhocServer) runCommand(ch ssh.Channel, command string) {
 	sendExitStatus(ch, exitCodeFromErr(waitErr))
 	// Half-close so client session.Run observes EOF after exit-status.
 	_ = ch.CloseWrite()
+}
+
+func (s *AdhocServer) runSFTP(ch ssh.Channel) {
+	server, err := sftp.NewServer(ch)
+	if err != nil {
+		return
+	}
+	defer server.Close()
+	_ = server.Serve()
 }
 
 // runShell starts a login-capable shell.

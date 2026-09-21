@@ -80,3 +80,13 @@ func TestMapBillingSnapshot_UncappedNoInventPercent(t *testing.T) {
 		t.Fatalf("out = %+v", out)
 	}
 }
+
+func TestMapBillingSnapshot_WeeklyNoPercentDefaultsZero(t *testing.T) {
+	// Uncapped SuperGrok: the weekly credits period parsed but the backend
+	// reports no percent — mirror grok.com and default the usage bar to 0%.
+	snap := dotgrokusage.Snapshot{Used: 0, UsedPercent: -1, PeriodType: dotgrokusage.PeriodWeekly}
+	out := mapBillingSnapshot(snap)
+	if out.WeeklyLimit != "0%" || out.Period != "weekly" {
+		t.Fatalf("out = %+v", out)
+	}
+}
