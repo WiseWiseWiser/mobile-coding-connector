@@ -46,6 +46,7 @@ Commands:
   Machine
     machine              Backup/restore server HOME dot-files and dot-dirs
     qemu                 Local QEMU guest + optional in-guest cloudflared
+    go                   GOPROXY on the remote; local-agent hosts the fast-fail relay
 
   Operations
     service              Managed services (start/stop/logs/upgrade)
@@ -113,6 +114,7 @@ Commands:
   Machine
     machine              Backup/restore server HOME dot-files and dot-dirs
     qemu                 Server-host QEMU guest + optional in-guest cloudflared
+    go                   GOPROXY on the remote; local-agent hosts the fast-fail relay
 
   Operations
     service              Managed services (start/stop/logs/upgrade)

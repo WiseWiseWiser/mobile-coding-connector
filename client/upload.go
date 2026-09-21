@@ -28,6 +28,13 @@ const (
 	UploadChunkUploaded UploadChunkPhase = "uploaded"
 	// UploadChunkSkipped means the chunk was already present in the server cache.
 	UploadChunkSkipped UploadChunkPhase = "skipped"
+	// UploadStreamStart is emitted once with orig/wire sizes before streaming.
+	UploadStreamStart UploadChunkPhase = "start"
+	// UploadStreamProgress is a byte-oriented progress tick (websocket path).
+	UploadStreamProgress UploadChunkPhase = "progress"
+	// UploadStreamResuming means the websocket was lost and the client is
+	// continuing from the last durable offset.
+	UploadStreamResuming UploadChunkPhase = "resuming"
 )
 
 // UploadDirPhase reports directory-level upload events.
@@ -73,6 +80,10 @@ type UploadProgress struct {
 	Phase       UploadChunkPhase
 	// Err is set when Phase=retrying (the error that triggered the retry).
 	Err error
+	// OrigBytes is the uncompressed local size (set on start).
+	OrigBytes int64
+	// BytesPerSec is a smoothed send rate (progress phase).
+	BytesPerSec int64
 }
 
 // UploadResult is returned on a successful upload, reflecting the server's
@@ -95,7 +106,8 @@ type UploadOptions struct {
 }
 
 // UploadFile reads localFile and uploads it to remotePath on the server
-// using the server's chunked-upload protocol.
+// over a pipelined websocket stream (HTTP chunked upload is used as fallback
+// when the server has no /api/files/upload/ws).
 //
 // Path resolution rules:
 //   - If remotePath is empty, the local file's basename is used.
@@ -141,13 +153,23 @@ func (c *Client) uploadFileResolved(localFile string, remotePath string, logical
 	}
 
 	origSize := stat.Size()
+	if !opts.DryRun {
+		result, err := c.uploadFileWS(localFile, remotePath, origSize, opts, onProgress)
+		if err == nil {
+			return result, nil
+		}
+		if !isUploadWSUnsupported(err) {
+			return nil, err
+		}
+		// Old servers have no /api/files/upload/ws — fall back to HTTP chunks.
+	}
 	if opts.DryRun {
 		payload, compressed, prepErr := prepareUploadPayload(localFile, opts.NoCompress)
 		if prepErr != nil {
 			return nil, fmt.Errorf("failed to read local file: %w", prepErr)
 		}
 		wireSize := int64(len(payload))
-		SimulateUploadChunks(wireSize, ChunkSize, onProgress)
+		SimulateUploadStream(origSize, wireSize, onProgress)
 		_ = compressed
 		return &UploadResult{
 			Path: logicalRemote,

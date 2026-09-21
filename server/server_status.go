@@ -57,6 +57,23 @@ type ProcessStatus struct {
 
 func RegisterServerStatusAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/server/status", handleServerStatus)
+	mux.HandleFunc("/api/server/os-info", handleOSInfo)
+}
+
+// handleOSInfo returns uname/os-release only (no df/ps). Used by
+// remote-agent install so GOOS/GOARCH probing cannot stall on disk.
+func handleOSInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	info, err := getOSInfo()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(info)
 }
 
 func handleServerStatus(w http.ResponseWriter, r *http.Request) {

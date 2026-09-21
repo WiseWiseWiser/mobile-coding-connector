@@ -53,6 +53,9 @@ func RegisterAPIForHome(mux *http.ServeMux, home string) {
 	mux.HandleFunc("/api/files/upload/complete", func(w http.ResponseWriter, r *http.Request) {
 		handleUploadComplete(w, r, home)
 	})
+	mux.HandleFunc("/api/files/upload/ws", func(w http.ResponseWriter, r *http.Request) {
+		handleUploadWS(w, r, home)
+	})
 
 	registerUploadDirAPI(mux)
 }

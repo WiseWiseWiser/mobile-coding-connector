@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/ai-critic/client"
 )
 
 func TestRunInstall_Help(t *testing.T) {
@@ -45,6 +47,29 @@ func TestRunInstall_NoCandidate(t *testing.T) {
 	err := RunWithWriters(RemoteProfile(), []string{"install", "missing", "--dir", dir}, &stdout, &stderr)
 	if err == nil || !strings.Contains(err.Error(), `no install candidate for "missing"`) {
 		t.Fatalf("err=%v", err)
+	}
+	// First stderr line must be the discover marker (no silent scan).
+	first := strings.Split(strings.TrimSpace(stderr.String()), "\n")[0]
+	if !strings.HasPrefix(first, "[1/4] discover") {
+		t.Fatalf("first stderr line=%q want [1/4] discover…\n%s", first, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "notice: scanning cmd/ and script/") {
+		t.Fatalf("missing scan notice:\n%s", stderr.String())
+	}
+}
+
+func TestFormatInstallBuildNotice(t *testing.T) {
+	got := formatInstallBuildNotice("linux", "amd64", []string{"go", "build", "-o", "/tmp/x", "./cmd/local-agent"}, true)
+	want := "GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/x ./cmd/local-agent"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestResolveInstallTarget_Flags(t *testing.T) {
+	goos, goarch, src, warn := resolveInstallTarget(client.New("http://127.0.0.1:1", ""), "linux", "arm64")
+	if goos != "linux" || goarch != "arm64" || src != "flags" || warn != "" {
+		t.Fatalf("goos=%s goarch=%s src=%s warn=%q", goos, goarch, src, warn)
 	}
 }
 

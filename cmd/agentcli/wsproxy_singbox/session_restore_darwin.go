@@ -12,11 +12,11 @@ import (
 )
 
 type tunSessionSnapshot struct {
-	NetworkService string             `json:"network_service"`
-	DNSServers     []string           `json:"dns_servers,omitempty"`
-	DNSTouched     bool               `json:"dns_touched"`
-	Proxy          serviceProxyState  `json:"proxy"`
-	ProxyTouched   bool               `json:"proxy_touched"`
+	NetworkService string            `json:"network_service"`
+	DNSServers     []string          `json:"dns_servers,omitempty"`
+	DNSTouched     bool              `json:"dns_touched"`
+	Proxy          serviceProxyState `json:"proxy"`
+	ProxyTouched   bool              `json:"proxy_touched"`
 }
 
 func tunSessionStatePath() (string, error) {

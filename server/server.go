@@ -36,9 +36,10 @@ import (
 	cloudflareSettings "github.com/xhd2015/ai-critic/server/cloudflare"
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
 	serverconfig "github.com/xhd2015/ai-critic/server/config"
-	"github.com/xhd2015/ai-critic/server/env"
+	"github.com/xhd2015/ai-critic/server/crontasks"
 	"github.com/xhd2015/ai-critic/server/domains"
 	"github.com/xhd2015/ai-critic/server/encrypt"
+	"github.com/xhd2015/ai-critic/server/env"
 	"github.com/xhd2015/ai-critic/server/eventbus"
 	serverexec "github.com/xhd2015/ai-critic/server/exec"
 	"github.com/xhd2015/ai-critic/server/exposedurls"
@@ -47,41 +48,41 @@ import (
 	"github.com/xhd2015/ai-critic/server/filetransfer"
 	"github.com/xhd2015/ai-critic/server/fileupload"
 	servergit "github.com/xhd2015/ai-critic/server/git"
-	servermachineanalyse "github.com/xhd2015/ai-critic/server/machineanalyse"
-	serverqemu "github.com/xhd2015/ai-critic/server/qemu"
-	servermachinebackup "github.com/xhd2015/ai-critic/server/machinebackup"
-	serverprojectpull "github.com/xhd2015/ai-critic/server/projectpull"
 	"github.com/xhd2015/ai-critic/server/github"
+	servergomod "github.com/xhd2015/ai-critic/server/gomod"
 	"github.com/xhd2015/ai-critic/server/keepalive"
-	"github.com/xhd2015/ai-critic/server/localiterm2"
 	"github.com/xhd2015/ai-critic/server/localadhoc"
 	"github.com/xhd2015/ai-critic/server/localclipboard"
 	"github.com/xhd2015/ai-critic/server/localcommands"
 	"github.com/xhd2015/ai-critic/server/localfiles"
+	"github.com/xhd2015/ai-critic/server/localiterm2"
 	"github.com/xhd2015/ai-critic/server/localskills"
 	"github.com/xhd2015/ai-critic/server/localtemplates"
-	"github.com/xhd2015/ai-critic/server/textconvert"
 	"github.com/xhd2015/ai-critic/server/logs"
+	servermachineanalyse "github.com/xhd2015/ai-critic/server/machineanalyse"
+	servermachinebackup "github.com/xhd2015/ai-critic/server/machinebackup"
 	openclawapi "github.com/xhd2015/ai-critic/server/openclaw"
+	serverprojectpull "github.com/xhd2015/ai-critic/server/projectpull"
 	"github.com/xhd2015/ai-critic/server/projects"
 	"github.com/xhd2015/ai-critic/server/proxy/portforward"
 	pfcloudflare "github.com/xhd2015/ai-critic/server/proxy/portforward/providers/cloudflare"
 	pflocaltunnel "github.com/xhd2015/ai-critic/server/proxy/portforward/providers/localtunnel"
 	"github.com/xhd2015/ai-critic/server/proxy/proxyconfig"
 	"github.com/xhd2015/ai-critic/server/proxy/wsproxy"
+	serverqemu "github.com/xhd2015/ai-critic/server/qemu"
 	"github.com/xhd2015/ai-critic/server/quicktest"
-	"github.com/xhd2015/ai-critic/server/crontasks"
 	"github.com/xhd2015/ai-critic/server/services"
 	"github.com/xhd2015/ai-critic/server/settings"
-	"github.com/xhd2015/ai-critic/server/startup"
 	"github.com/xhd2015/ai-critic/server/sshservers"
 	"github.com/xhd2015/ai-critic/server/sshtunnel"
+	"github.com/xhd2015/ai-critic/server/startup"
 	"github.com/xhd2015/ai-critic/server/subprocess"
 	"github.com/xhd2015/ai-critic/server/terminal"
+	"github.com/xhd2015/ai-critic/server/textconvert"
 	"github.com/xhd2015/ai-critic/server/tools"
 	"github.com/xhd2015/ai-critic/server/usage"
-	"github.com/xhd2015/wrk/wrkcli/wrkserver"
 	"github.com/xhd2015/kool/pkgs/web"
+	"github.com/xhd2015/wrk/wrkcli/wrkserver"
 )
 
 var distFS embed.FS
@@ -610,6 +611,10 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// QEMU guest + guest-cloudflared API (remote-agent qemu / qemu.json)
 	serverqemu.RegisterAPI(mux)
+
+	// Go mod proxy (remote-agent go mod-proxy; serves cache/download)
+	servergomod.RegisterAPI(mux)
+	go servergomod.BootAutoStart()
 
 	// Domains API
 	domains.RegisterAPI(mux)

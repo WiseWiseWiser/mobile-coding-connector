@@ -13,3 +13,7 @@ func systemProxyEnabled() bool {
 func disableSystemProxiesForTun() (restore func(), err error) {
 	return func() {}, nil
 }
+
+func getServiceProxyState(service string) (serviceProxyState, error) {
+	return serviceProxyState{}, nil
+}

@@ -10,18 +10,6 @@ import (
 	"strings"
 )
 
-type proxyEndpoint struct {
-	enabled bool
-	server  string
-	port    int
-}
-
-type serviceProxyState struct {
-	web    proxyEndpoint
-	secure proxyEndpoint
-	socks  proxyEndpoint
-}
-
 func defaultOutboundBindInterface() string {
 	iface, err := defaultRouteInterface()
 	if err != nil {

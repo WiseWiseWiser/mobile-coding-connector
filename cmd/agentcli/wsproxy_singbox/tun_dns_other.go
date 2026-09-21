@@ -9,3 +9,11 @@ func restoreStuckTunDNS() error {
 func configurePlatformTunDNS() (restore func(), err error) {
 	return func() {}, nil
 }
+
+func activeNetworkService() (string, error) {
+	return "", nil
+}
+
+func getDNSServers(service string) ([]string, error) {
+	return nil, nil
+}

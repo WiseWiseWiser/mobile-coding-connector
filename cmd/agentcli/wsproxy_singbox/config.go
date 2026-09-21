@@ -344,7 +344,7 @@ func buildSingBoxFullTunConfig(vmess *VMessParams, opts *BuildConfigOptions) ([]
 	}
 	routeRules = append(routeRules, map[string]any{
 		"type": "logical", "mode": "or",
-		"rules": []map[string]any{{"protocol": "dns"}, {"port": 53}},
+		"rules":  []map[string]any{{"protocol": "dns"}, {"port": 53}},
 		"action": "hijack-dns",
 	})
 	routeRules = appendBuiltinBypassRules(routeRules, vmess, localSocksPort)

@@ -103,6 +103,18 @@ func (p *uploadDirStagePrinter) printChunk(chunk client.UploadProgress) {
 		return
 	}
 	switch chunk.Phase {
+	case client.UploadStreamStart:
+		if chunk.OrigBytes > 0 && chunk.TotalBytes > 0 && chunk.TotalBytes < chunk.OrigBytes {
+			p.detail("gzip %s → %s wire", formatSize(chunk.OrigBytes), formatSize(chunk.TotalBytes))
+		}
+	case client.UploadStreamProgress:
+		rate := ""
+		if chunk.BytesPerSec > 0 {
+			rate = "  " + formatSize(chunk.BytesPerSec) + "/s"
+		}
+		p.detail("%s / %s%s", formatSize(chunk.CompletedBytes), formatSize(chunk.TotalBytes), rate)
+	case client.UploadStreamResuming:
+		p.detail("resuming from %s", formatSize(chunk.CompletedBytes))
 	case client.UploadChunkRetrying:
 		p.detail("chunk %d/%d retrying (attempt %d/%d: %s)...",
 			chunk.ChunkIndex+1, chunk.TotalChunks,

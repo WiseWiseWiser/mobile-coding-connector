@@ -21,6 +21,24 @@ func ChunkLenAt(index int, totalSize int64, chunkSize int) int64 {
 	return int64(chunkSize)
 }
 
+// SimulateUploadStream emits byte-oriented progress for a dry-run websocket upload.
+func SimulateUploadStream(origSize, wireSize int64, onProgress func(UploadProgress)) {
+	if onProgress == nil {
+		return
+	}
+	onProgress(UploadProgress{
+		Phase:      UploadStreamStart,
+		OrigBytes:  origSize,
+		TotalBytes: wireSize,
+	})
+	onProgress(UploadProgress{
+		Phase:          UploadStreamProgress,
+		CompletedBytes: wireSize,
+		TotalBytes:     wireSize,
+		OrigBytes:      origSize,
+	})
+}
+
 // SimulateUploadChunks emits UploadProgress events for a dry-run upload plan.
 func SimulateUploadChunks(totalSize int64, chunkSize int, onProgress func(UploadProgress)) {
 	if onProgress == nil {

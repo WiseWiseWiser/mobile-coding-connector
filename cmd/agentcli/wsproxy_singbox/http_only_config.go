@@ -1,9 +1,9 @@
 package wsproxy_singbox
 
 const (
-	clashAPIListen   = "127.0.0.1:9090"
-	webSelectorTag   = "web"
-	proxyOutboundTag = "proxy"
+	clashAPIListen    = "127.0.0.1:9090"
+	webSelectorTag    = "web"
+	proxyOutboundTag  = "proxy"
 	directOutboundTag = "direct"
 )
 

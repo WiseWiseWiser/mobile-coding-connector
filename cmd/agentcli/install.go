@@ -1,6 +1,7 @@
 package agentcli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/xhd2015/ai-critic/client"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/file/tmpdir"
@@ -89,6 +91,9 @@ func runInstall(resolve func() (*client.Client, error), args []string, stdout, s
 		return err
 	}
 
+	const stages = 4
+	stagePrint(stderr, 1, stages, "discover", cmdName)
+
 	workDir := strings.TrimSpace(sourceDir)
 	if workDir == "" {
 		cwd, cwdErr := os.Getwd()
@@ -104,6 +109,7 @@ func runInstall(resolve func() (*client.Client, error), args []string, stdout, s
 		workDir = abs
 	}
 
+	stageDetail(stderr, 1, stages, "notice: scanning cmd/ and script/ under %s", workDir)
 	plan, err := installplan.DiscoverFromWorkDir(workDir, false)
 	if err != nil {
 		return err
@@ -114,6 +120,8 @@ func runInstall(resolve func() (*client.Client, error), args []string, stdout, s
 	}
 	mod := plan.Modules[0]
 	item := mod.Items[0]
+	stageDetail(stderr, 1, stages, "notice: %s (%s)", item.RelPath, item.Method)
+	printInstallDiags(stderr, mod.Diagnostics)
 
 	cli, err := resolve()
 	if err != nil {
@@ -121,13 +129,11 @@ func runInstall(resolve func() (*client.Client, error), args []string, stdout, s
 	}
 	remote := liveInstallRemote{cli: cli}
 
-	goos, goarch, _, err := resolveUpgradeTarget(cli, goosFlag, goarchFlag)
-	if err != nil {
-		return err
+	goos, goarch, src, warn := resolveInstallTarget(cli, goosFlag, goarchFlag)
+	if warn != "" {
+		stageDetail(stderr, 1, stages, "warning: %s", warn)
 	}
-
-	stagePrint(stderr, 1, 4, "discover", fmt.Sprintf("%s (%s)", item.RelPath, item.Method))
-	printInstallDiags(stderr, mod.Diagnostics)
+	stageDetail(stderr, 1, stages, "notice: target %s/%s (%s)", goos, goarch, src)
 
 	home, err := remote.Home()
 	if err != nil {
@@ -160,8 +166,8 @@ func runInstall(resolve func() (*client.Client, error), args []string, stdout, s
 	}
 	defer os.RemoveAll(stageDir)
 
-	stagePrint(stderr, 2, 4, "build", fmt.Sprintf("%s/%s → %s", goos, goarch, filepath.Join(stageDir, wantName)))
-	if err := runInstallBuild(mod.ModuleRoot, item, goos, goarch, stageDir, stdout, stderr); err != nil {
+	stagePrint(stderr, 2, stages, "build", fmt.Sprintf("%s/%s → %s", goos, goarch, filepath.Join(stageDir, wantName)))
+	if err := runInstallBuild(mod.ModuleRoot, item, goos, goarch, stageDir, stdout, stderr, 2, stages); err != nil {
 		return err
 	}
 	built, extras, err := collectStagingBinary(stageDir, wantName)
@@ -172,7 +178,7 @@ func runInstall(resolve func() (*client.Client, error), args []string, stdout, s
 		stageDetail(stderr, 2, 4, "warning: ignoring extra staging file %s", extra)
 	}
 
-	stagePrint(stderr, 3, 4, "upload", fmt.Sprintf("%s → %s", built, dest.Primary))
+	stagePrint(stderr, 3, stages, "upload", fmt.Sprintf("%s → %s", built, dest.Primary))
 	if err := remote.UploadExec(built, dest.Primary); err != nil {
 		return err
 	}
@@ -185,17 +191,92 @@ func runInstall(resolve func() (*client.Client, error), args []string, stdout, s
 
 	wroteLocal := destWritesLocalBin(dest, home)
 	if wroteLocal {
-		stagePrint(stderr, 4, 4, "path", "ensure ~/.local/bin on PATH")
+		stagePrint(stderr, 4, stages, "path", "ensure ~/.local/bin on PATH")
 		if err := ensureRemoteLocalBinPATH(remote, home, false, stdout, stderr); err != nil {
 			return err
 		}
 	} else {
-		stagePrint(stderr, 4, 4, "path", "skipped (not writing ~/.local/bin)")
+		stagePrint(stderr, 4, stages, "path", "skipped (not writing ~/.local/bin)")
 	}
 
 	fmt.Fprintln(stderr)
 	fmt.Fprintf(stdout, "installed %s → %s (%s/%s)\n", cmdName, dest.Primary, goos, goarch)
 	return nil
+}
+
+const installTargetTimeout = 2 * time.Second
+
+// resolveInstallTarget picks GOOS/GOARCH without waiting on full /api/server/status
+// (df/ps). Soft-fails to linux/amd64 after installTargetTimeout.
+func resolveInstallTarget(cli *client.Client, goosFlag, goarchFlag string) (goos, goarch, source, warn string) {
+	goosFlag = strings.TrimSpace(goosFlag)
+	goarchFlag = strings.TrimSpace(goarchFlag)
+	if goosFlag != "" && goarchFlag != "" {
+		return strings.ToLower(goosFlag), strings.ToLower(goarchFlag), "flags", ""
+	}
+	goos = strings.ToLower(goosFlag)
+	goarch = strings.ToLower(goarchFlag)
+	var parts []string
+
+	ctx, cancel := context.WithTimeout(context.Background(), installTargetTimeout)
+	defer cancel()
+	if status, err := cli.GetKeepAliveStatusContext(ctx); err == nil && status != nil {
+		bg, ba, _ := parseGOOSArchFromBinaryName(filepath.Base(status.BinaryPath))
+		if goos == "" && bg != "" {
+			goos = bg
+			parts = append(parts, "binary name")
+		}
+		if goarch == "" && ba != "" {
+			goarch = ba
+			if !containsString(parts, "binary name") {
+				parts = append(parts, "binary name")
+			}
+		}
+	}
+
+	if goos == "" || goarch == "" {
+		osCtx, osCancel := context.WithTimeout(context.Background(), installTargetTimeout)
+		defer osCancel()
+		if info, err := cli.GetOSInfo(osCtx); err == nil && info != nil {
+			if goos == "" {
+				if mapped := mapUnameToGOOS(info.OS); mapped != "" {
+					goos = mapped
+					parts = append(parts, "remote os-info")
+				}
+			}
+			if goarch == "" {
+				if mapped := mapUnameToGOARCH(info.Arch); mapped != "" {
+					goarch = mapped
+					if !containsString(parts, "remote os-info") {
+						parts = append(parts, "remote os-info")
+					}
+				}
+			}
+		} else if err != nil && warn == "" {
+			msg := err.Error()
+			if strings.Contains(msg, "invalid character '<'") || strings.Contains(msg, "404") {
+				warn = "remote has no /api/server/os-info yet; using linux/amd64 if unset"
+			} else {
+				warn = fmt.Sprintf("remote os_info failed (%v); using linux/amd64 if unset", err)
+			}
+		}
+	}
+
+	if goos == "" {
+		goos = "linux"
+		parts = append(parts, "default")
+	}
+	if goarch == "" {
+		goarch = "amd64"
+		if !containsString(parts, "default") {
+			parts = append(parts, "default")
+		}
+	}
+	source = strings.Join(parts, "+")
+	if source == "" {
+		source = "default"
+	}
+	return goos, goarch, source, warn
 }
 
 func validateInstallCmdName(name string) error {

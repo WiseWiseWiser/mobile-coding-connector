@@ -132,12 +132,12 @@ func toSingboxtunAlsoProxy(in []AlsoProxyPattern) []singboxtun.AlsoProxyPattern 
 // so InstallTestHooks and production RunSingBox (xray verify) keep working.
 func bridgeHooksToSingboxtun() func() {
 	return singboxtun.InstallTestHooks(singboxtun.TestHooks{
-		LookPath:    currentHooks.LookPath,
-		IsTTY:       currentHooks.IsTTY,
-		Confirm:     currentHooks.Confirm,
-		BrewInstall: currentHooks.BrewInstall,
-		Geteuid:     currentHooks.Geteuid,
-		RunSingBox:  currentHooks.RunSingBox,
+		LookPath:      currentHooks.LookPath,
+		IsTTY:         currentHooks.IsTTY,
+		Confirm:       currentHooks.Confirm,
+		BrewInstall:   currentHooks.BrewInstall,
+		Geteuid:       currentHooks.Geteuid,
+		RunSingBox:    currentHooks.RunSingBox,
 		StartDetached: currentHooks.StartDetached,
 		UserCacheDir:  currentHooks.UserCacheDir,
 		EnsureSudoSetup: func(singBoxPath string, noSetup bool, _, _ string) error {

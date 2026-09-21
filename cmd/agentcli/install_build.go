@@ -13,7 +13,7 @@ import (
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/mod/installplan"
 )
 
-func runInstallBuild(moduleRoot string, item installplan.Item, goos, goarch, stageDir string, stdout, stderr io.Writer) error {
+func runInstallBuild(moduleRoot string, item installplan.Item, goos, goarch, stageDir string, stdout, stderr io.Writer, stageN, stageTotal int) error {
 	ownRoot, ownRel, err := resolveGoPackageRoot(moduleRoot, item.RelPath)
 	if err != nil {
 		return err
@@ -59,15 +59,54 @@ func runInstallBuild(moduleRoot string, item installplan.Item, goos, goarch, sta
 		return fmt.Errorf("unknown install method %q for %s", item.Method, item.BinName)
 	}
 
+	if stageN > 0 && stageTotal > 0 {
+		stageDetail(stderr, stageN, stageTotal, "notice: %s", formatInstallBuildNotice(goos, goarch, argv, cross))
+	}
+
+	indent := ""
+	if stageN > 0 && stageTotal > 0 {
+		indent = strings.Repeat(" ", len(fmt.Sprintf("[%d/%d] ", stageN, stageTotal)))
+	}
+	outW := newIndentingWriter(stdout, indent)
+	errW := newIndentingWriter(stderr, indent)
+	defer func() {
+		_ = outW.Flush()
+		_ = errW.Flush()
+	}()
+
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = ownRoot
 	cmd.Env = env
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	cmd.Stdout = outW
+	cmd.Stderr = errW
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s: %w", strings.Join(argv, " "), err)
 	}
 	return nil
+}
+
+func formatInstallBuildNotice(goos, goarch string, argv []string, cross bool) string {
+	envPrefix := ""
+	if goos != "" {
+		envPrefix += "GOOS=" + goos
+	}
+	if goarch != "" {
+		if envPrefix != "" {
+			envPrefix += " "
+		}
+		envPrefix += "GOARCH=" + goarch
+	}
+	if cross {
+		if envPrefix != "" {
+			envPrefix += " "
+		}
+		envPrefix += "CGO_ENABLED=0"
+	}
+	cmd := strings.Join(argv, " ")
+	if envPrefix == "" {
+		return cmd
+	}
+	return envPrefix + " " + cmd
 }
 
 func filterInstallEnv(env []string, cross bool) []string {

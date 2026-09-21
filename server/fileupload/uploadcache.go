@@ -22,6 +22,7 @@ type uploadMeta struct {
 	TotalSize   int64  `json:"total_size"`
 	ChmodExec   bool   `json:"chmod_exec"`
 	Compressed  bool   `json:"compressed,omitempty"` // whole-file gzip payload; gunzip on assemble
+	Stream      bool   `json:"stream,omitempty"`     // websocket prefix-resume payload file
 }
 
 func isFileHash(id string) bool {

@@ -131,8 +131,12 @@ func (c *Client) PingKeepAlive() (*KeepAlivePing, error) {
 }
 
 func (c *Client) GetKeepAliveStatus() (*KeepAliveStatus, error) {
+	return c.GetKeepAliveStatusContext(context.Background())
+}
+
+func (c *Client) GetKeepAliveStatusContext(ctx context.Context) (*KeepAliveStatus, error) {
 	var out KeepAliveStatus
-	if err := c.getJSON("/api/keep-alive/status", &out); err != nil {
+	if err := c.getJSONContext(ctx, "/api/keep-alive/status", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -141,6 +145,15 @@ func (c *Client) GetKeepAliveStatus() (*KeepAliveStatus, error) {
 func (c *Client) GetServerStatus() (*ServerStatus, error) {
 	var out ServerStatus
 	if err := c.getJSON("/api/server/status", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetOSInfo is the cheap uname/os-release probe (no df/ps).
+func (c *Client) GetOSInfo(ctx context.Context) (*OSInfo, error) {
+	var out OSInfo
+	if err := c.getJSONContext(ctx, "/api/server/os-info", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -438,9 +451,16 @@ func defaultStreamError(message string, fallback string) string {
 }
 
 func (c *Client) getJSON(path string, out any) error {
+	return c.getJSONContext(context.Background(), path, out)
+}
+
+func (c *Client) getJSONContext(ctx context.Context, path string, out any) error {
 	req, err := c.NewRequest(http.MethodGet, path, nil)
 	if err != nil {
 		return err
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
 	}
 	resp, err := c.Do(req)
 	if err != nil {

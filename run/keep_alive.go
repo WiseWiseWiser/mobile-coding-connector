@@ -1,6 +1,7 @@
 package run
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,10 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap"
+	"github.com/xhd2015/ai-critic/cmd/agentcli/gomodrelay"
 	"github.com/xhd2015/ai-critic/run/daemon"
 	"github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/ai-critic/server/eventbus"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap"
 	"github.com/xhd2015/less-gen/flags"
 )
 
@@ -121,6 +123,14 @@ func runKeepAlive(args []string) error {
 	startupTimeout, err := daemon.ResolveStartupTimeout(startupTimeoutFlag)
 	if err != nil {
 		return err
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if relayHost, relayErr := gomodrelay.Host(ctx, gomodrelay.HostOptions{}); relayErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: go mod-proxy-relay host: %v\n", relayErr)
+	} else if relayHost != nil {
+		defer relayHost.Close()
 	}
 
 	return daemon.RunKeepAlive(port, foreverFlag, logPath, args, killExistingFlag, startupTimeout, detachFlag)

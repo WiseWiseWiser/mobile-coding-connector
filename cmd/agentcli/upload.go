@@ -9,7 +9,9 @@ import (
 
 const uploadHelp = `Usage: remote-agent upload [--dry-run] [--no-compress] [--no-override] <LOCAL_PATH> [REMOTE_PATH]
 
-Upload a local file or directory to the server using chunked upload.
+Upload a local file or directory over a single websocket stream.
+Interrupted uploads resume from the last server-acked byte offset
+(same content → same hash). Directories still pack tar.xz first.
 
 Arguments:
   LOCAL_PATH    Path to a file or directory on this machine.
@@ -33,8 +35,7 @@ replaced (preflight before packing, plus a remote fail-fast guard).
 
 Options:
   --dry-run       Print the upload plan without making changes.
-  --no-compress   Skip whole-file gzip before chunking (files only; directory
-                  archives are always xz-compressed).
+  --no-compress   Skip gzip of file payloads (directory archives are always xz).
   --no-override   For directory uploads: refuse if any remote file would be
                   overwritten (preflight + fail-fast during apply).
 

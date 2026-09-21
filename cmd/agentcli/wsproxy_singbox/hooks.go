@@ -77,15 +77,15 @@ type BuildConfigOptions struct {
 }
 
 type TestHooks struct {
-	LookPath      func(name string) (string, error)
-	IsTTY         func() bool
-	Confirm       func(prompt string) bool
-	BrewInstall   func() error
-	Geteuid       func() int
-	RunSingBox    func(ctx context.Context, sudo bool, configPath string) error
-	StartDetached   func(configPath, logPath string, useSudo bool) (pid int, err error)
-	EnsureSudoSetup func(singBoxPath string, noSetup bool) error
-	FetchVMess      func(c *client.Client) (*VMessParams, error)
+	LookPath         func(name string) (string, error)
+	IsTTY            func() bool
+	Confirm          func(prompt string) bool
+	BrewInstall      func() error
+	Geteuid          func() int
+	RunSingBox       func(ctx context.Context, sudo bool, configPath string) error
+	StartDetached    func(configPath, logPath string, useSudo bool) (pid int, err error)
+	EnsureSudoSetup  func(singBoxPath string, noSetup bool) error
+	FetchVMess       func(c *client.Client) (*VMessParams, error)
 	UserCacheDir     func() (string, error)
 	StartXraySidecar func(ctx context.Context, vmess *VMessParams) (*XraySidecar, error)
 }
@@ -105,7 +105,7 @@ var currentHooks = TestHooks{
 		cmd.Stderr = os.Stderr
 		return cmd.Run()
 	},
-	Geteuid: os.Geteuid,
+	Geteuid:    os.Geteuid,
 	RunSingBox: runSingBoxForeground,
 	StartDetached: func(configPath, logPath string, useSudo bool) (int, error) {
 		PrintCommand(SingBoxRunCommand(useSudo, configPath))

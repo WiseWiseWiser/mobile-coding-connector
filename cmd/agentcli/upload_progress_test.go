@@ -47,6 +47,31 @@ func TestPrintUploadProgress_uploadedWithRetries(t *testing.T) {
 	}
 }
 
+func TestPrintUploadProgress_stream(t *testing.T) {
+	out := captureStdout(t, func() {
+		printUploadProgress(client.UploadProgress{
+			Phase:      client.UploadStreamStart,
+			OrigBytes:  80 * 1000 * 1000,
+			TotalBytes: 40 * 1000 * 1000,
+		})
+		printUploadProgress(client.UploadProgress{
+			Phase:          client.UploadStreamProgress,
+			CompletedBytes: 18 * 1000 * 1000,
+			TotalBytes:     40 * 1000 * 1000,
+			BytesPerSec:    1800 * 1000,
+		})
+	})
+	if !bytes.Contains([]byte(out), []byte("gzip 80.00 MB → 40.00 MB wire")) {
+		t.Fatalf("missing gzip line: %q", out)
+	}
+	if !bytes.Contains([]byte(out), []byte("18.00 MB / 40.00 MB")) {
+		t.Fatalf("missing progress: %q", out)
+	}
+	if !bytes.Contains([]byte(out), []byte("1.80 MB/s")) {
+		t.Fatalf("missing rate: %q", out)
+	}
+}
+
 func TestUploadFailureHint_sessionLost(t *testing.T) {
 	hint := uploadFailureHint(fmt.Errorf("upload chunk 28 failed: 404 Not Found: upload session not found"))
 	if hint == "" || !bytes.Contains([]byte(hint), []byte("re-run upload")) {

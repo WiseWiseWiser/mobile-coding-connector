@@ -56,3 +56,15 @@ func (iw *indentingWriter) writeFragment(p []byte) error {
 	iw.atBOL = p[len(p)-1] == '\n'
 	return nil
 }
+
+// Flush writes any partial line without adding a newline.
+func (iw *indentingWriter) Flush() error {
+	if len(iw.buf) == 0 {
+		return nil
+	}
+	if err := iw.writeFragment(iw.buf); err != nil {
+		return err
+	}
+	iw.buf = iw.buf[:0]
+	return nil
+}
