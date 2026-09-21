@@ -81,8 +81,8 @@ func frontmatterName(t *testing.T, path, content string) string {
 	return ""
 }
 
-// TestSkillIndexMatchesTree guards the embedded skill against drifting from
-// its source of truth ($AI/skills/remote-agent): the SKILL.md index and the
+// TestSkillIndexMatchesTree guards the skill tree (SSOT: this directory)
+// against internal drift: the SKILL.md index and the
 // embedded <topic>/TOPIC.md tree must list exactly the same topics, and
 // frontmatter names must follow {skill}/{topic-path}.
 func TestSkillIndexMatchesTree(t *testing.T) {

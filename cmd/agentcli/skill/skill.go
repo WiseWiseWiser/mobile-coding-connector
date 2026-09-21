@@ -8,13 +8,15 @@ import (
 
 // skillRoot is the root SKILL.md served by `remote-agent skill --show`.
 //
-// SSOT: $AI/skills/remote-agent — sync edits there into this directory
-// byte-for-byte; TestSkillIndexMatchesTree guards index↔tree consistency.
+// SSOT: this directory. After edits, mirror SKILL.md and topics to
+// $AI/skills/remote-agent (downstream copy). TestSkillIndexMatchesTree
+// guards index↔tree consistency.
 //go:embed SKILL.md
 var skillRoot string
 
 // Nested topics: path "upload" → upload/TOPIC.md (Shape 3).
-// Mirrors $AI/skills/remote-agent/<topic>/TOPIC.md.
+// SSOT: this directory; mirror <topic>/TOPIC.md to $AI/skills/remote-agent
+// after edits.
 //
 //go:embed config
 //go:embed exec
@@ -28,6 +30,7 @@ var skillRoot string
 //go:embed proxy
 //go:embed grok
 //go:embed install
+//go:embed deploy-service
 var skillTree embed.FS
 
 const skillName = "remote-agent"

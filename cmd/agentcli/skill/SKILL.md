@@ -50,7 +50,7 @@ remote-agent skill --list
 |-------|--------|
 | `config` | Default domain / `config --web` |
 | `exec` | Verbatim remote shell |
-| `upload` | Gzip default, `--no-compress`, resume |
+| `upload` | Files: gzip + resume · dirs: tar.xz pack→merge, `--no-override` |
 | `service` | Lifecycle + **`service upgrade`** |
 | `install` | Cross-build a local Go CLI onto the remote PATH |
 | `cron` | Remote schedules |
@@ -60,6 +60,7 @@ remote-agent skill --list
 | `request` | Arbitrary API paths |
 | `proxy` | List configured HTTP proxies |
 | `grok` | Start/resume remote Grok in this terminal tab |
+| `deploy-service` | Recipe: install → upload → service add w/ domain → verify |
 
 ## Command map
 
@@ -76,6 +77,7 @@ remote-agent skill --list
 | Build-next / restart | → **`server`** |
 | Raw HTTP API | → **`request`** |
 | Remote Grok TUI (this tab) | → **`grok`** |
+| Stand up a web service + public domain | → **`deploy-service`** |
 
 ## Related
 

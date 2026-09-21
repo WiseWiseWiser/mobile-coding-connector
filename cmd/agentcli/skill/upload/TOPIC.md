@@ -1,7 +1,8 @@
 ---
 name: remote-agent/upload
 description: >-
-  Mac→remote file upload: default whole-file gzip, --no-compress, hash resume, +x.
+  Mac→remote file/dir upload: files gzip + hash resume, +x; dirs tar.xz
+  pack→merge with --no-override preflight.
 ---
 
 # Upload
@@ -21,6 +22,7 @@ remote-agent upload --no-override ./srcdir /tmp/apps
 | Directory | Local **tar.xz** pack → one chunked upload → remote extract/merge (`cp -R` dest rules) |
 | Dir progress | stderr `[n/4]` stages (`resolve`/`pack`/`upload`/`apply`); stdout product `uploaded …` |
 | `--no-override` | Dir only: preflight before tar; refuse if any remote file would be overwritten |
+| `--dry-run` | Print the plan, write nothing (files + dirs) |
 | Resume | Same content → same `file_hash` → skipped cached chunks after interrupt |
 | Service binaries | Prefer **`service upgrade`** (see topic **service**), not upload + `mv` + restart |
 
