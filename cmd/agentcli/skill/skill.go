@@ -6,10 +6,15 @@ import (
 	"github.com/xhd2015/skills/skillcmd"
 )
 
+// skillRoot is the root SKILL.md served by `remote-agent skill --show`.
+//
+// SSOT: $AI/skills/remote-agent — sync edits there into this directory
+// byte-for-byte; TestSkillIndexMatchesTree guards index↔tree consistency.
 //go:embed SKILL.md
 var skillRoot string
 
 // Nested topics: path "upload" → upload/TOPIC.md (Shape 3).
+// Mirrors $AI/skills/remote-agent/<topic>/TOPIC.md.
 //
 //go:embed config
 //go:embed exec
@@ -21,6 +26,7 @@ var skillRoot string
 //go:embed server
 //go:embed request
 //go:embed proxy
+//go:embed grok
 //go:embed install
 var skillTree embed.FS
 

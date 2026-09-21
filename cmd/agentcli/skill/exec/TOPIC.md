@@ -17,6 +17,6 @@ remote-agent exec bash -c 'curl -sS -o /dev/null -w "%{http_code}\n" http://127.
 | Use | Command |
 |-----|---------|
 | Bare host shell | `remote-agent exec …` |
-| Packed SMC / git SSH | **remote-devbox** `run-remote` (not bare `exec smc` expecting sealed HOME) |
+| Packed SMC / git SSH | **remote-agent-manager devbox** `run` (not bare `exec smc` expecting sealed HOME) |
 
 Interactive TTY attaches when stdin/stdout are a terminal (PTY mode).

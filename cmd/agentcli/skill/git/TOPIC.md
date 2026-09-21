@@ -16,6 +16,6 @@ remote-agent git -C ~/project pull
 remote-agent git -C ~/project push
 ```
 
-For sealed GitHub SSH keys packed into the sandbox, prefer **remote-devbox**
-`run-remote` with the SSH primary rather than ad-hoc host keys.
+For sealed GitHub SSH keys packed into the sandbox, prefer **remote-agent-manager devbox**
+`run` with the SSH primary rather than ad-hoc host keys.
 Do not paste tokens into skill docs or logs.

@@ -91,7 +91,7 @@ func TestSkillListIncludesTopics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handle(--list): %v", err)
 	}
-	for _, want := range []string{"remote-agent", "upload", "install", "service", "seal", "config"} {
+	for _, want := range []string{"remote-agent", "upload", "grok", "install", "service", "seal", "config"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("--list missing %q; got:\n%s", want, stdout)
 		}
@@ -182,7 +182,9 @@ func TestSkillInstallCustomDir(t *testing.T) {
 		t.Fatalf("Handle(--install <dir>): %v", err)
 	}
 
-	skillFile := filepath.Join(targetDir, "SKILL.md")
+	// skillcmd smart layout: a positional dir that is neither a "skills" dir
+	// nor a skill root nests the skill as <dir>/remote-agent.
+	skillFile := filepath.Join(targetDir, "remote-agent", "SKILL.md")
 	content, err := os.ReadFile(skillFile)
 	if err != nil {
 		t.Fatalf("read skill file: %v", err)

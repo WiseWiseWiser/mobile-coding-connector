@@ -1,7 +1,7 @@
 ---
 name: remote-agent/seal
 description: >-
-  Refresh sealed SMC tokens via remote-devbox; sync passwd-home /root/.smc when needed.
+  Refresh sealed SMC tokens via remote-agent-manager devbox; sync passwd-home /root/.smc when needed.
 ---
 
 # Seal refresh (SMC tokens)
@@ -9,7 +9,7 @@ description: >-
 Happy path (**no service restart** if outer runner has event socks):
 
 ```bash
-remote-devbox refresh              # Mac: SMC pack + upload + notify-event
+remote-agent-manager devbox refresh              # Mac: SMC pack + upload + notify-event
 # launchd: xyz.xhd2015.remote-seal-refresh (every 24h)
 ```
 
@@ -27,4 +27,4 @@ remote-agent exec /tmp/sandbox-ssh.bin -- bash -lc \
   'cp -f "$HOME/.smc/smc_token.json" /root/.smc/smc_token.json'
 ```
 
-Pack/refresh detail → skill **remote-devbox**.
+Pack/refresh detail → skill **remote-agent-manager**.

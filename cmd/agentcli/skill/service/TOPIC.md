@@ -35,4 +35,4 @@ Help: `remote-agent service upgrade --help`.
 | Expect command wrap to change via upgrade | **`service update --command …`** separate |
 | `sandbox.bin -- cmd` (cwd = session root) | `sandbox.bin -- sh -c 'cd WORK && exec cmd'` |
 | Swap outer `sandbox-ssh.bin` while held | **Stop → upload → start** (text file busy) |
-| `prune` while service holds bins | Stop first, or **remote-devbox** prune rules |
+| `prune` while service holds bins | Stop first, or **remote-agent-manager devbox** prune rules |
