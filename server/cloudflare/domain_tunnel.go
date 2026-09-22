@@ -36,6 +36,12 @@ func ParseBaseDomain(domain string) string {
 // This method is non-blocking: if the tunnel manager lock is contended (e.g. during
 // tunnel startup), it returns "connecting" instead of waiting indefinitely.
 func GetDomainTunnelStatus(domain string) DomainTunnelStatus {
+	if proxySessionActive(domain) {
+		return DomainTunnelStatus{
+			Status:    "active",
+			TunnelURL: fmt.Sprintf("https://%s", domain),
+		}
+	}
 	if serverqemu.Enabled() && serverqemu.IsDomainActive(domain) {
 		return DomainTunnelStatus{
 			Status:    "active",
@@ -262,6 +268,10 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 		return &status, nil
 	}
 
+	if cfg, err := LoadConfig(); err == nil && proxyModeEnabled(cfg) {
+		return startViaProxy(domain, port, cfg, logFn)
+	}
+
 	// Unified host/qemu cloudflared backend (qemu.json enabled → guest only).
 	b := serverqemu.CloudflaredBackend()
 	logFn(fmt.Sprintf("cloudflared backend=%s for %s", b.Kind(), domain))
@@ -290,6 +300,9 @@ func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc
 // StopDomainTunnel stops the tunnel for the given domain.
 // tunnelName is the cloudflare tunnel name; if empty, a default is derived from the domain.
 func StopDomainTunnel(domain string, tunnelName string) error {
+	if stopProxySession(domain) {
+		return nil
+	}
 	useQemu := serverqemu.Enabled() || serverqemu.IsDomainActive(domain)
 	b := serverqemu.CloudflaredBackend()
 	if useQemu {

@@ -31,6 +31,9 @@ func getConfigFile() string {
 // stored in .ai-critic/cloudflare.json.
 type CloudflareConfig struct {
 	OwnedDomains []string `json:"owned_domains"`
+	Mode         string   `json:"mode,omitempty"`      // native (default) or proxy
+	ProxyURL     string   `json:"proxy_url,omitempty"` // proxy mode: ext.dev base URL
+	Token        string   `json:"token,omitempty"`     // proxy mode: CRUD bearer
 }
 
 // LoadConfig reads the cloudflare config from disk.

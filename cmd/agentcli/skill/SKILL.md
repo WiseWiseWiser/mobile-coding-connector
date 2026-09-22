@@ -60,6 +60,7 @@ remote-agent skill --list
 | `server` | `build-next` / `restart` streams |
 | `request` | Arbitrary API paths |
 | `proxy` | List configured HTTP proxies |
+| `cloudflare-proxy` | Origin via edge `local-agent cloudflare-proxy` (no origin cloudflared) |
 | `grok` | Start/resume remote Grok in this terminal tab |
 | `deploy-service` | Recipe: install → upload → service add w/ domain → verify |
 | `go` | GOPROXY on remote + local fast-fail relay |
@@ -81,6 +82,7 @@ remote-agent skill --list
 | Remote Grok TUI (this tab) | → **`grok`** |
 | Stand up a web service + public domain | → **`deploy-service`** |
 | GOPROXY / module cache offload | → **`go`** |
+| Origin behind CF proxy (no origin cloudflared) | → **`cloudflare-proxy`** |
 
 ## Related
 
@@ -90,3 +92,4 @@ remote-agent skill --list
 | `$AI/knowledges/codelens/server/watchdog/TOPIC.md` | CodeLens watchdog (consumer of `service upgrade`) |
 | `$AI/knowledges/ai-critic/event-bus-open-tty/TOPIC.md` | Remote detach → Mac `event-bus listen --open-tty` |
 | `$AI/knowledges/ai-critic/remote-go-cache-fs/TOPIC.md` | Why GOPROXY instead of SSHFS/NFS/SMB for module cache |
+| `$AI/knowledges/ai-critic/cloudflare-proxy/TOPIC.md` | Private fleet hosts for this proxy |

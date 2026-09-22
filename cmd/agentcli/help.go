@@ -46,6 +46,7 @@ Commands:
   Machine
     machine              Backup/restore server HOME dot-files and dot-dirs
     qemu                 Local QEMU guest + optional in-guest cloudflared
+    cloudflare-proxy     Reverse-proxy so work.dev can publish hostnames without cloudflared
     go                   GOPROXY on the remote; local-agent hosts the fast-fail relay
 
   Operations
@@ -114,6 +115,7 @@ Commands:
   Machine
     machine              Backup/restore server HOME dot-files and dot-dirs
     qemu                 Server-host QEMU guest + optional in-guest cloudflared
+    cloudflare-proxy     Client for an ext.dev cloudflare-proxy (add/list/delete)
     go                   GOPROXY on the remote; local-agent hosts the fast-fail relay
 
   Operations

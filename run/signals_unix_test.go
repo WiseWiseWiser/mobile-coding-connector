@@ -25,4 +25,9 @@ func TestIsManagedServerChild(t *testing.T) {
 	if isManagedServerChild() {
 		t.Fatal("bare server without --port is not a managed child")
 	}
+
+	os.Args = []string{"ai-critic-server", "integration", "systemctl", "status"}
+	if isManagedServerChild() {
+		t.Fatal("integration subcommand is not a managed server child")
+	}
 }

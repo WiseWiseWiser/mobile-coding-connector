@@ -16,8 +16,8 @@ import (
 	"github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/ai-critic/server/domains"
 	"github.com/xhd2015/ai-critic/server/encrypt"
-	"github.com/xhd2015/ai-critic/server/eventbus"
 	serverenv "github.com/xhd2015/ai-critic/server/env"
+	"github.com/xhd2015/ai-critic/server/eventbus"
 	"github.com/xhd2015/ai-critic/server/quicktest"
 
 	"github.com/xhd2015/less-gen/flags"
@@ -38,6 +38,7 @@ Usage: ai-critic [options]
        ai-critic keep-alive request <action>     Request action from keep-alive daemon (info, restart)
        ai-critic rebuild --repo-dir DIR [opts]   Rebuild from source and restart
        ai-critic check-port --port PORT          Check if a port is accessible
+       ai-critic integration systemctl ...       systemd unit for this binary (Linux)
 
 Options:
   --dev                   Run in development mode (auto-start vite dev server)
@@ -104,6 +105,8 @@ func Run(args []string) error {
 			return runRebuild(append([]string{"--script"}, args[1:]...))
 		case "check-port":
 			return runCheckPort(args[1:])
+		case "integration":
+			return runIntegration(args[1:])
 		}
 	}
 

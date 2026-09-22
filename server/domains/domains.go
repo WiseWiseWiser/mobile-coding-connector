@@ -182,7 +182,6 @@ func AutoStartTunnels() {
 		return
 	}
 
-	tunnelName := cfg.TunnelName
 	for _, d := range cfg.Domains {
 		if d.Provider != ProviderCloudflare {
 			continue
@@ -193,13 +192,14 @@ func AutoStartTunnels() {
 			logFn := func(msg string) {
 				fmt.Printf("[domains] %s: %s\n", domain, msg)
 			}
-			_, err := cloudflareSettings.StartDomainTunnel(domain, port, tunnelName, logFn)
+			_, err := StartHostDomainTunnel(domain, port, logFn)
 			if err != nil {
 				fmt.Printf("[domains] auto-start failed for %s: %v\n", domain, err)
 			} else {
 				fmt.Printf("[domains] tunnel started for %s\n", domain)
 				// Start health check goroutine for this domain
-				startDomainHealthCheck(domain, port, tunnelName)
+				name, _ := EnsurePersistedTunnelName()
+				startDomainHealthCheck(domain, port, name)
 			}
 		}()
 	}
@@ -348,20 +348,19 @@ func handleTunnelStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tunnelName := cfg.TunnelName
-
 	logFn := func(message string) {
 		sw.SendLog(message)
 	}
 
-	status, err := cloudflareSettings.StartDomainTunnel(req.Domain, port, tunnelName, logFn)
+	status, err := StartHostDomainTunnel(req.Domain, port, logFn)
 	if err != nil {
 		sw.SendError(fmt.Sprintf("Failed to start tunnel: %v", err))
 		return
 	}
 
 	// Start health check for manually started tunnels too
-	startDomainHealthCheck(req.Domain, port, tunnelName)
+	name, _ := EnsurePersistedTunnelName()
+	startDomainHealthCheck(req.Domain, port, name)
 
 	sw.SendDone(map[string]string{
 		"message":    "Tunnel started successfully",

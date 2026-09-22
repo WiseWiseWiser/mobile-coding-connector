@@ -11,6 +11,7 @@ import (
 	cfutils "github.com/xhd2015/ai-critic/server/cloudflare"
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/domains"
 	"github.com/xhd2015/ai-critic/server/domains/pick"
 	"github.com/xhd2015/ai-critic/server/proxy/portforward"
 	serverqemu "github.com/xhd2015/ai-critic/server/qemu"
@@ -250,14 +251,28 @@ func (p *OwnedProvider) Start(port int, hostname string) (*portforward.TunnelHan
 	b := serverqemu.CloudflaredBackend()
 	fmt.Fprintf(logs, "[setup] cloudflared backend=%s\n", b.Kind())
 	origin := b.OriginForHostPort(port)
-	fmt.Fprintf(logs, "[setup] UpsertRoute %s -> %s\n", hostname, origin)
+	fmt.Fprintf(logs, "[setup] origin %s -> %s\n", hostname, origin)
 
-	publicURL, err := b.UpsertRoute(context.Background(), cfbackend.Route{
-		Hostname: hostname,
-		Origin:   origin,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("cloudflared backend upsert: %w", err)
+	var publicURL string
+	if serverqemu.Enabled() {
+		u, err := b.UpsertRoute(context.Background(), cfbackend.Route{
+			Hostname: hostname,
+			Origin:   origin,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("cloudflared backend upsert: %w", err)
+		}
+		publicURL = u
+	} else {
+		st, err := domains.StartHostDomainTunnel(hostname, port, func(msg string) {
+			fmt.Fprintln(logs, msg)
+		})
+		if err != nil {
+			return nil, err
+		}
+		if st != nil {
+			publicURL = st.TunnelURL
+		}
 	}
 
 	// UpsertRoute already finished; mark active immediately (no artificial delay).

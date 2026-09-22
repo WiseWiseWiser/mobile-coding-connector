@@ -130,6 +130,8 @@ func runCLI(profile Profile, args []string, stdout, stderr io.Writer) error {
 		return runMachine(resolve, rest)
 	case "qemu":
 		return runQemu(resolve, rest)
+	case "cloudflare-proxy":
+		return runCloudflareProxy(rest)
 	case "go":
 		return runGo(resolve, rest)
 	case "settings":

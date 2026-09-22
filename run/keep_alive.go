@@ -14,7 +14,9 @@ import (
 
 	"github.com/xhd2015/ai-critic/cmd/agentcli/gomodrelay"
 	"github.com/xhd2015/ai-critic/run/daemon"
+	"github.com/xhd2015/ai-critic/server/cloudflareproxy"
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/domains"
 	"github.com/xhd2015/ai-critic/server/eventbus"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap"
 	"github.com/xhd2015/less-gen/flags"
@@ -131,6 +133,16 @@ func runKeepAlive(args []string) error {
 		fmt.Fprintf(os.Stderr, "warning: go mod-proxy-relay host: %v\n", relayErr)
 	} else if relayHost != nil {
 		defer relayHost.Close()
+	}
+	if proxyHost, proxyErr := cloudflareproxy.Host(ctx, cloudflareproxy.HostOptions{
+		BindDomain: func(domain string, port int) error {
+			_, err := domains.StartHostDomainTunnel(domain, port, nil)
+			return err
+		},
+	}); proxyErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: cloudflare-proxy host: %v\n", proxyErr)
+	} else if proxyHost != nil {
+		defer proxyHost.Close()
 	}
 
 	return daemon.RunKeepAlive(port, foreverFlag, logPath, args, killExistingFlag, startupTimeout, detachFlag)

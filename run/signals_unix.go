@@ -25,7 +25,7 @@ func isManagedServerChild() bool {
 	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "keep-alive", "rebuild", "check-port":
+		case "keep-alive", "rebuild", "check-port", "integration":
 			return false
 		case "--port":
 			return i+1 < len(args)
