@@ -84,6 +84,20 @@ func TestSkillShowTopic(t *testing.T) {
 	}
 }
 
+func TestSkillShowGo(t *testing.T) {
+	stdout, err := captureStdout(t, func() error {
+		return Handle([]string{"--show", "go"})
+	})
+	if err != nil {
+		t.Fatalf("Handle(--show go): %v", err)
+	}
+	for _, want := range []string{"mod-proxy-relay", "GOPROXY", "127.0.0.1:21001"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("--show go missing %q; got:\n%s", want, stdout)
+		}
+	}
+}
+
 func TestSkillListIncludesTopics(t *testing.T) {
 	stdout, err := captureStdout(t, func() error {
 		return Handle([]string{"--list"})
@@ -91,7 +105,7 @@ func TestSkillListIncludesTopics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handle(--list): %v", err)
 	}
-	for _, want := range []string{"remote-agent", "upload", "grok", "install", "service", "seal", "config"} {
+	for _, want := range []string{"remote-agent", "upload", "grok", "install", "service", "seal", "config", "go"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("--list missing %q; got:\n%s", want, stdout)
 		}

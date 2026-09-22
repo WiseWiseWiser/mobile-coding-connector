@@ -27,6 +27,7 @@ remote-agent skill --list
 
 - `remote-agent` exec / upload / service / cron / git / server / request
 - Long-lived remote processes; scheduled **remote** shell; Mac→remote files
+- Go module cache via GOPROXY (`go` topic), not a mounted network FS
 
 ## When not to use
 
@@ -61,6 +62,7 @@ remote-agent skill --list
 | `proxy` | List configured HTTP proxies |
 | `grok` | Start/resume remote Grok in this terminal tab |
 | `deploy-service` | Recipe: install → upload → service add w/ domain → verify |
+| `go` | GOPROXY on remote + local fast-fail relay |
 
 ## Command map
 
@@ -78,6 +80,7 @@ remote-agent skill --list
 | Raw HTTP API | → **`request`** |
 | Remote Grok TUI (this tab) | → **`grok`** |
 | Stand up a web service + public domain | → **`deploy-service`** |
+| GOPROXY / module cache offload | → **`go`** |
 
 ## Related
 
@@ -86,3 +89,4 @@ remote-agent skill --list
 | **remote-agent-manager devbox** | Pack / refresh / run sealed SMC+SSH |
 | `$AI/knowledges/codelens/server/watchdog/TOPIC.md` | CodeLens watchdog (consumer of `service upgrade`) |
 | `$AI/knowledges/ai-critic/event-bus-open-tty/TOPIC.md` | Remote detach → Mac `event-bus listen --open-tty` |
+| `$AI/knowledges/ai-critic/remote-go-cache-fs/TOPIC.md` | Why GOPROXY instead of SSHFS/NFS/SMB for module cache |

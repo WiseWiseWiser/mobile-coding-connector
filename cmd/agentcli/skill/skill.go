@@ -31,6 +31,7 @@ var skillRoot string
 //go:embed grok
 //go:embed install
 //go:embed deploy-service
+//go:embed go
 var skillTree embed.FS
 
 const skillName = "remote-agent"
