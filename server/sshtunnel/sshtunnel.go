@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/xhd2015/ai-critic/cmd/agentcli/sshcmd"
+	"github.com/xhd2015/ai-critic/server/wskeepalive"
 )
 
 // Manager holds process-local SSH tunnel sessions.
@@ -136,6 +137,9 @@ func (m *Manager) handleTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer ws.Close()
+	// An idle tunnel carries no bytes, so ping to survive the public hop.
+	stopKeepalive := wskeepalive.Start(ws, wskeepalive.DefaultInterval)
+	defer stopKeepalive()
 
 	backend, err := m.dialBackend(sess)
 	if err != nil {

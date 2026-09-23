@@ -40,11 +40,17 @@ type ServiceDefinition struct {
 	PortForward   *ServicePortForward `json:"portForward,omitempty"`
 	UpgradeTarget string              `json:"upgradeTarget,omitempty"`
 	Enabled       *bool               `json:"enabled,omitempty"`
+	RequireAuth   bool                `json:"requireAuth,omitempty"`
+	AuthUser      string              `json:"authUser,omitempty"`
+	AuthTokenMode string              `json:"authTokenMode,omitempty"`
+	AuthToken     string              `json:"authToken,omitempty"`
 }
 
 type ServiceStatus struct {
 	ID             string                    `json:"id"`
 	Name           string                    `json:"name"`
+	Kind           string                    `json:"kind,omitempty"`
+	Description    string                    `json:"description,omitempty"`
 	Command        string                    `json:"command"`
 	WorkingDir     string                    `json:"workingDir,omitempty"`
 	ExtraEnv       map[string]string         `json:"extraEnv,omitempty"`
@@ -59,6 +65,43 @@ type ServiceStatus struct {
 	Enabled        bool                      `json:"enabled"`
 	PortForward    *ServicePortForwardStatus `json:"portForward,omitempty"`
 	UpgradeTarget  string                    `json:"upgradeTarget,omitempty"`
+	RequireAuth    bool                      `json:"requireAuth,omitempty"`
+	AuthUser       string                    `json:"authUser,omitempty"`
+	AuthTokenMode  string                    `json:"authTokenMode,omitempty"`
+	AuthToken      string                    `json:"authToken,omitempty"`
+	AuthTokens     []string                  `json:"authTokens,omitempty"`
+
+	// System-service detail. Empty for user services.
+	Detail    string `json:"detail,omitempty"`
+	PublicURL string `json:"publicUrl,omitempty"`
+	Port      int    `json:"port,omitempty"`
+	Mocked    bool   `json:"mocked,omitempty"`
+	// AutoStartSwitch reports that the subsystem exposes its own auto-start
+	// flag, so the CLI and GUI offer enable/disable.
+	AutoStartSwitch bool `json:"autoStartSwitch,omitempty"`
+	// Edge is the upstream a proxying system service publishes through.
+	Edge string `json:"edge,omitempty"`
+	// Hosts lists the public hostnames a system service publishes.
+	Hosts []SystemHostStatus `json:"hosts,omitempty"`
+	// Actions lists the actions a system service supports. Empty for user
+	// services, which always offer the full set.
+	Actions []string `json:"actions,omitempty"`
+}
+
+// SystemHostStatus is one public hostname a system service publishes.
+type SystemHostStatus struct {
+	Host  string `json:"host"`
+	Dials int    `json:"dials"`
+	State string `json:"state"`
+}
+
+// ServicePreset is a predefined template for a user service.
+type ServicePreset struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Command     string `json:"command"`
+	Port        int    `json:"port,omitempty"`
 }
 
 type ServiceActionResponse struct {

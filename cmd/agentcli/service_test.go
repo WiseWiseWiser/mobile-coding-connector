@@ -272,3 +272,153 @@ func TestRunServiceUpdatePatchesFieldsWithoutRestart(t *testing.T) {
 		t.Fatalf("saved port forward = %#v, want port 9090 label api provider preserved", saved.PortForward)
 	}
 }
+
+func TestFormatServiceAuthLines(t *testing.T) {
+	if lines := formatServiceAuthLines(client.ServiceStatus{}); len(lines) != 0 {
+		t.Fatalf("auth off lines = %#v, want empty", lines)
+	}
+
+	lines := formatServiceAuthLines(client.ServiceStatus{
+		RequireAuth:   true,
+		AuthUser:      "alice",
+		AuthTokenMode: "custom",
+		AuthTokens:    []string{"s3cret"},
+	})
+	got := strings.Join(lines, "\n")
+	if !strings.Contains(got, "Auth:        required") ||
+		!strings.Contains(got, "Auth User:   alice") ||
+		!strings.Contains(got, "custom  s3cret") {
+		t.Fatalf("lines = %q", got)
+	}
+
+	shared := formatServiceAuthLines(client.ServiceStatus{
+		RequireAuth:   true,
+		AuthTokenMode: "shared",
+		AuthTokens:    []string{"alpha", "beta"},
+	})
+	joined := strings.Join(shared, "\n")
+	if !strings.Contains(joined, "Auth User:   any") ||
+		!strings.Contains(joined, "shared  alpha") ||
+		!strings.Contains(joined, "shared  beta") {
+		t.Fatalf("shared lines = %q", joined)
+	}
+}
+
+func TestRunServiceAddRequireAuth(t *testing.T) {
+	var saved client.ServiceDefinition
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/services" || r.Method != http.MethodPost {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if err := json.NewDecoder(r.Body).Decode(&saved); err != nil {
+			t.Fatalf("decode save: %v", err)
+		}
+		writeJSON(w, client.ServiceStatus{
+			ID:            "svc-1",
+			Name:          saved.Name,
+			Command:       saved.Command,
+			RequireAuth:   saved.RequireAuth,
+			AuthUser:      saved.AuthUser,
+			AuthTokenMode: saved.AuthTokenMode,
+			AuthToken:     saved.AuthToken,
+			AuthTokens:    []string{saved.AuthToken},
+			PortForward:   &client.ServicePortForwardStatus{Port: saved.PortForward.Port, Active: true},
+		})
+	}))
+	defer server.Close()
+
+	resolve := func() (*client.Client, error) {
+		return client.New(server.URL, ""), nil
+	}
+	err := runServiceAdd(resolve, []string{
+		"--name", "web",
+		"--command", "run",
+		"--port", "3000",
+		"--require-auth",
+		"--auth-user", "alice",
+		"--auth-token", "s3cret",
+	})
+	if err != nil {
+		t.Fatalf("runServiceAdd() error = %v", err)
+	}
+	if !saved.RequireAuth || saved.AuthUser != "alice" || saved.AuthTokenMode != "custom" || saved.AuthToken != "s3cret" {
+		t.Fatalf("saved auth = %#v", saved)
+	}
+}
+
+func TestRunServiceAddRequireAuthNeedsPort(t *testing.T) {
+	err := runServiceAdd(func() (*client.Client, error) {
+		t.Fatal("client should not be created")
+		return nil, nil
+	}, []string{"--name", "web", "--command", "run", "--require-auth"})
+	if err == nil || !strings.Contains(err.Error(), "--require-auth requires --port") {
+		t.Fatalf("error = %v, want --require-auth requires --port", err)
+	}
+}
+
+func TestRunServiceUpdateAuth(t *testing.T) {
+	var saved client.ServiceDefinition
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/services":
+			if r.Method == http.MethodGet {
+				writeJSON(w, []client.ServiceStatus{{
+					ID:          "svc-1",
+					Name:        "web",
+					Command:     "run",
+					PortForward: &client.ServicePortForwardStatus{Port: 3000, Provider: "localtunnel"},
+				}})
+				return
+			}
+			if err := json.NewDecoder(r.Body).Decode(&saved); err != nil {
+				t.Fatalf("decode save: %v", err)
+			}
+			writeJSON(w, client.ServiceStatus{ID: "svc-1", Name: saved.Name, Command: saved.Command})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	resolve := func() (*client.Client, error) {
+		return client.New(server.URL, ""), nil
+	}
+	if err := runServiceUpdate(resolve, []string{"web", "--require-auth", "--auth-token", "s3cret"}); err != nil {
+		t.Fatalf("runServiceUpdate() error = %v", err)
+	}
+	if !saved.RequireAuth || saved.AuthTokenMode != "custom" || saved.AuthToken != "s3cret" {
+		t.Fatalf("saved auth = %#v", saved)
+	}
+}
+
+func TestSplitServicesByKindKeepsServerOrderWithinGroups(t *testing.T) {
+	services := []client.ServiceStatus{
+		{ID: "svc-1", Name: "web", Kind: "user"},
+		{ID: "sys-ws-proxy", Name: "WS Proxy", Kind: "system"},
+		{ID: "svc-2", Name: "api", Kind: "user"},
+		{ID: "sys-go-mod-proxy", Name: "Go Mod Proxy", Kind: "system"},
+	}
+
+	userServices, systemServices := splitServicesByKind(services)
+
+	if len(userServices) != 2 || userServices[0].ID != "svc-1" || userServices[1].ID != "svc-2" {
+		t.Fatalf("user services = %#v", userServices)
+	}
+	if len(systemServices) != 2 || systemServices[0].ID != "sys-ws-proxy" || systemServices[1].ID != "sys-go-mod-proxy" {
+		t.Fatalf("system services = %#v", systemServices)
+	}
+}
+
+func TestSplitServicesByKindTreatsMissingKindAsUser(t *testing.T) {
+	// Payloads written before kinds existed carry no kind field.
+	services := []client.ServiceStatus{{ID: "svc-legacy", Name: "legacy"}}
+
+	userServices, systemServices := splitServicesByKind(services)
+
+	if len(userServices) != 1 || len(systemServices) != 0 {
+		t.Fatalf("split = %d user, %d system; want 1 and 0", len(userServices), len(systemServices))
+	}
+	if serviceKindWord("") != "user" || serviceKindWord("system") != "system" {
+		t.Fatalf("serviceKindWord mismatch: %q %q", serviceKindWord(""), serviceKindWord("system"))
+	}
+}

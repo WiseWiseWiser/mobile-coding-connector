@@ -13,8 +13,13 @@ const (
 	LogFileName    = "cloudflare-proxy.log"
 	SocketFileName = "control.sock"
 
-	DefaultPort     = 23790
-	DefaultPoolSize = 8
+	DefaultPort = 23790
+	// DefaultPoolSize is how many ready dial sockets the origin keeps pooled on
+	// the edge. Each dial serves exactly one request, so the pool is also the
+	// burst capacity a page load sees: a request that finds the pool empty is
+	// answered 503. Idle dials are cheap because a pooled dial holds no origin
+	// connection until its first request bytes arrive.
+	DefaultPoolSize = 32
 	maxBodyBytes    = 8 << 20
 )
 

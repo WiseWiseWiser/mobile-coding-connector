@@ -43,6 +43,7 @@ import (
 
 	"github.com/xhd2015/agent-pro/agent/exec/tool_exec"
 	"github.com/xhd2015/ai-critic/server/ndjsonstream"
+	"github.com/xhd2015/ai-critic/server/wskeepalive"
 )
 
 // ExecRequest is the JSON body accepted by POST /api/exec.
@@ -191,6 +192,9 @@ func handleExecWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
+	// A quiet command produces no output, so ping to survive the public hop.
+	stopKeepalive := wskeepalive.Start(conn, wskeepalive.DefaultInterval)
+	defer stopKeepalive()
 
 	req, err := readExecStartMessage(conn)
 	if err != nil {

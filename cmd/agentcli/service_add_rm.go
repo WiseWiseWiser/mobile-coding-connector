@@ -20,6 +20,9 @@ func runServiceAdd(resolve func() (*client.Client, error), args []string) error 
 		portProvider   string
 		portBaseDomain string
 		portSubdomain  string
+		requireAuth    bool
+		authUser       string
+		authToken      string
 		disabled       bool
 		start          bool
 	)
@@ -35,6 +38,9 @@ func runServiceAdd(resolve func() (*client.Client, error), args []string) error 
 		String("--port-provider", &portProvider).
 		String("--port-base-domain", &portBaseDomain).
 		String("--port-subdomain", &portSubdomain).
+		Bool("--require-auth", &requireAuth).
+		String("--auth-user", &authUser).
+		String("--auth-token", &authToken).
 		Bool("--disabled", &disabled).
 		Bool("--start", &start).
 		Help("-h,--help", serviceAddHelp).
@@ -91,6 +97,25 @@ func runServiceAdd(resolve func() (*client.Client, error), args []string) error 
 			Provider:   strings.TrimSpace(portProvider),
 			BaseDomain: strings.TrimSpace(portBaseDomain),
 			Subdomain:  strings.TrimSpace(portSubdomain),
+		}
+	}
+
+	authUser = strings.TrimSpace(authUser)
+	authToken = strings.TrimSpace(authToken)
+	if !requireAuth && (authUser != "" || authToken != "") {
+		return fmt.Errorf("--auth-user and --auth-token require --require-auth")
+	}
+	if requireAuth {
+		if def.PortForward == nil || def.PortForward.Port <= 0 {
+			return fmt.Errorf("--require-auth requires --port")
+		}
+		def.RequireAuth = true
+		def.AuthUser = authUser
+		if authToken != "" {
+			def.AuthTokenMode = "custom"
+			def.AuthToken = authToken
+		} else {
+			def.AuthTokenMode = "shared"
 		}
 	}
 

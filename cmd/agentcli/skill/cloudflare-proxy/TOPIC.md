@@ -37,8 +37,18 @@ auth:       token
 Pin `token` in edge `~/.ai-critic/cloudflare-proxy/config.json` so restarts
 do not rotate. Copy that value into origin `cloudflare.json` (do not commit it).
 
-Default pool is **8**. One visitor request (or one WS session) consumes a slot
-until the origin TCP closes; workers refill.
+Default pool is **32**. One visitor request (or one WS session) consumes a slot
+until the origin TCP closes; workers refill. The pool is also the burst
+capacity a page load sees, so an undersized pool answers parallel requests with
+503s.
+
+Two invariants keep that pool honest — break either and visitors get instant
+502s from sockets that were already dead:
+
+| Invariant | Why |
+|-----------|-----|
+| An **idle** pooled dial holds no origin connection: the origin opens `:23712` lazily, on the first request bytes. | The origin HTTP server's `ReadHeaderTimeout` reaps connections that have not sent headers, so an eagerly opened idle connection dies and leaves a corpse in the edge pool. |
+| The edge **pings** idle dials and retires one that stops answering. | The dial crosses Cloudflare, which reaps idle proxied WebSockets; without keepalive the edge cannot tell a live dial from a corpse. |
 
 ## Wrong → correct
 
@@ -46,6 +56,7 @@ until the origin TCP closes; workers refill.
 |---------|---------|
 | `bash`: 400 Failed to upgrade | Both binaries TCP-over-WS; edge log `GET /api/terminal ws 101` |
 | 503 `no connected origin` | Origin `Publish` workers not connected; restart origin after edge restart |
+| 502 in ~1 ms across many paths | Edge handed a visitor a dial socket that was already dead. Upgrade **edge and origin** together (lazy origin dial + edge keepalive/liveness). |
 | 409 hostname already mapped | `cloudflare-proxy delete` then republish |
 | `/ping` 200, WS 400 | Old JSON-HTTP proxy; upgrade **edge and origin** together |
 | Empty `tunnel_name` steals a shared CF tunnel | Persist `ai-critic-<hostname>` on the edge |

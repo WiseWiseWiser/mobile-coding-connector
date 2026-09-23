@@ -18,6 +18,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
+	"github.com/xhd2015/ai-critic/server/wskeepalive"
 )
 
 var codexWSUpgrader = websocket.Upgrader{
@@ -115,6 +116,9 @@ func handleCodexWebSocket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
 		return
 	}
+	// A session between prompts is silent, so ping to survive the public hop.
+	stopKeepalive := wskeepalive.Start(conn, wskeepalive.DefaultInterval)
+	defer stopKeepalive()
 
 	client := &codexWSConnection{conn: conn}
 	defer func() {

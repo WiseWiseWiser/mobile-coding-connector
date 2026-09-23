@@ -2,22 +2,26 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/xhd2015/ai-critic/server/auth"
 	"github.com/xhd2015/ai-critic/server/cloudflare"
 	"github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/ai-critic/server/procenv"
 	"github.com/xhd2015/ai-critic/server/proxy/portforward"
+	"github.com/xhd2015/ai-critic/server/services/authproxy"
 )
 
 const (
@@ -25,6 +29,12 @@ const (
 	StatusRunning  = "running"
 	StatusStopped  = "stopped"
 	StatusError    = "error"
+	StatusUnknown  = "unknown"
+)
+
+const (
+	AuthTokenModeShared = "shared"
+	AuthTokenModeCustom = "custom"
 )
 
 const (
@@ -53,9 +63,14 @@ type ServiceDefinition struct {
 	UpgradeTarget string `json:"upgradeTarget,omitempty"`
 	// Enabled controls boot auto-start and daemon reconcile. Defaults to true
 	// when absent. Disable/enable do not immediately stop or start processes.
-	Enabled   *bool  `json:"enabled,omitempty"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	Enabled *bool `json:"enabled,omitempty"`
+	// RequireAuth gates the public URL with an in-process cookie login hop.
+	RequireAuth   bool   `json:"requireAuth,omitempty"`
+	AuthUser      string `json:"authUser,omitempty"`
+	AuthTokenMode string `json:"authTokenMode,omitempty"`
+	AuthToken     string `json:"authToken,omitempty"`
+	CreatedAt     string `json:"createdAt"`
+	UpdatedAt     string `json:"updatedAt"`
 }
 
 type ServicePortForwardStatus struct {
@@ -73,6 +88,8 @@ type ServicePortForwardStatus struct {
 type ServiceStatus struct {
 	ID             string                    `json:"id"`
 	Name           string                    `json:"name"`
+	Kind           ServiceKind               `json:"kind"`
+	Description    string                    `json:"description,omitempty"`
 	Command        string                    `json:"command"`
 	WorkingDir     string                    `json:"workingDir,omitempty"`
 	ExtraEnv       map[string]string         `json:"extraEnv,omitempty"`
@@ -87,6 +104,28 @@ type ServiceStatus struct {
 	Enabled        bool                      `json:"enabled"`
 	PortForward    *ServicePortForwardStatus `json:"portForward,omitempty"`
 	UpgradeTarget  string                    `json:"upgradeTarget,omitempty"`
+	RequireAuth    bool                      `json:"requireAuth,omitempty"`
+	AuthUser       string                    `json:"authUser,omitempty"`
+	AuthTokenMode  string                    `json:"authTokenMode,omitempty"`
+	AuthToken      string                    `json:"authToken,omitempty"`
+	AuthTokens     []string                  `json:"authTokens,omitempty"`
+
+	// System-service detail. Empty for user services.
+	Detail    string `json:"detail,omitempty"`
+	PublicURL string `json:"publicUrl,omitempty"`
+	Port      int    `json:"port,omitempty"`
+	Mocked    bool   `json:"mocked,omitempty"`
+	// AutoStartSwitch reports that the subsystem exposes its own auto-start
+	// flag, so the GUI offers enable/disable. Always false for user services.
+	AutoStartSwitch bool `json:"autoStartSwitch,omitempty"`
+	// Edge is the upstream a proxying system service publishes through.
+	Edge string `json:"edge,omitempty"`
+	// Hosts lists the public hostnames a system service publishes, each with
+	// its live dial count.
+	Hosts []SystemHostStatus `json:"hosts,omitempty"`
+	// Actions lists the actions a system service supports ("start", "stop",
+	// "restart"). Empty for user services, which always offer the full set.
+	Actions []string `json:"actions,omitempty"`
 }
 
 type ServiceActionResponse struct {
@@ -135,6 +174,8 @@ type serviceProcess struct {
 	desired             bool
 	stopRequested       bool
 	ownedForward        bool
+	authProxy           *authproxy.Server
+	tunneledPort        int
 	runStartedAt        time.Time
 	consecutiveFailures int
 	nextRestartAt       time.Time
@@ -143,6 +184,7 @@ type serviceProcess struct {
 type Manager struct {
 	mu                 sync.Mutex
 	definitions        []ServiceDefinition
+	systemServices     []SystemService
 	bootAutostartIDs   []string
 	bootAutostartSet   bool
 	processes          map[string]*serviceProcess
@@ -176,6 +218,7 @@ func NewManagerFromDefinitions(defs []ServiceDefinition) *Manager {
 		d.WorkingDir = normalizeWorkingDir(d.WorkingDir)
 		d.ExtraEnv = normalizeExtraEnv(d.ExtraEnv)
 		d.UpgradeTarget = strings.TrimSpace(d.UpgradeTarget)
+		normalizeAuthFields(&d)
 		normalized = append(normalized, d)
 	}
 	return &Manager{
@@ -218,6 +261,9 @@ func RegisterAPIWithManager(mux *http.ServeMux, m *Manager) {
 	}
 	mux.HandleFunc("/api/services", func(w http.ResponseWriter, r *http.Request) {
 		handleServicesWith(m, w, r)
+	})
+	mux.HandleFunc("/api/services/presets", func(w http.ResponseWriter, r *http.Request) {
+		handleServicePresets(w, r)
 	})
 	mux.HandleFunc("/api/services/start", func(w http.ResponseWriter, r *http.Request) {
 		handleStartServiceWith(m, w, r)
@@ -285,6 +331,7 @@ func (m *Manager) loadDefinitionsLocked() {
 		defs[i].WorkingDir = normalizeWorkingDir(defs[i].WorkingDir)
 		defs[i].ExtraEnv = normalizeExtraEnv(defs[i].ExtraEnv)
 		defs[i].UpgradeTarget = strings.TrimSpace(defs[i].UpgradeTarget)
+		normalizeAuthFields(&defs[i])
 	}
 	m.definitions = defs
 	if !m.bootAutostartSet {
@@ -306,7 +353,7 @@ func (m *Manager) saveDefinitionsLocked() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(m.servicesFile(), data, 0644)
+	return os.WriteFile(m.servicesFile(), data, 0600)
 }
 
 func (m *Manager) StartHealthCheck() {
@@ -381,10 +428,13 @@ func (m *Manager) Shutdown() {
 }
 
 // List returns every managed service (global; no project scope).
+// List returns user services first, then the server's system services, matching
+// the order the GUI renders ("User Services" then "System Services").
 func (m *Manager) List() []ServiceStatus {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.buildStatusListLocked(append([]ServiceDefinition(nil), m.definitions...))
+	result := m.buildStatusListLocked(append([]ServiceDefinition(nil), m.definitions...))
+	return append(result, m.buildSystemStatusListLocked()...)
 }
 
 // ListAll is an alias of List kept for callers and tests that used the old
@@ -439,7 +489,11 @@ func (m *Manager) buildStatusListLocked(defs []ServiceDefinition) []ServiceStatu
 				BaseDomain: def.PortForward.BaseDomain,
 				Subdomain:  def.PortForward.Subdomain,
 			}
-			if active, ok := portMap[def.PortForward.Port]; ok {
+			lookupPort := def.PortForward.Port
+			if proc != nil && proc.tunneledPort > 0 {
+				lookupPort = proc.tunneledPort
+			}
+			if active, ok := portMap[lookupPort]; ok {
 				pfStatus.PublicURL = active.PublicURL
 				pfStatus.Status = active.Status
 				pfStatus.Error = active.Error
@@ -456,6 +510,7 @@ func (m *Manager) buildStatusListLocked(defs []ServiceDefinition) []ServiceStatu
 		result = append(result, ServiceStatus{
 			ID:             def.ID,
 			Name:           def.Name,
+			Kind:           ServiceKindUser,
 			Command:        def.Command,
 			WorkingDir:     def.WorkingDir,
 			ExtraEnv:       cloneStringMap(def.ExtraEnv),
@@ -470,6 +525,11 @@ func (m *Manager) buildStatusListLocked(defs []ServiceDefinition) []ServiceStatu
 			Enabled:        serviceEnabled(def),
 			PortForward:    pfStatus,
 			UpgradeTarget:  def.UpgradeTarget,
+			RequireAuth:    def.RequireAuth,
+			AuthUser:       def.AuthUser,
+			AuthTokenMode:  def.AuthTokenMode,
+			AuthToken:      def.AuthToken,
+			AuthTokens:     inspectAuthTokens(def),
 		})
 	}
 	return result
@@ -487,6 +547,13 @@ func (m *Manager) createOrUpdate(def ServiceDefinition, restartChanged bool) (*S
 	def.WorkingDir = normalizeWorkingDir(def.WorkingDir)
 	def.ExtraEnv = normalizeExtraEnv(def.ExtraEnv)
 	def.UpgradeTarget = strings.TrimSpace(def.UpgradeTarget)
+	normalizeAuthFields(&def)
+	// A write addressed at a system service must not create a user service with
+	// the same id, which would shadow the registered one. Checked before
+	// validation so the error names the real problem.
+	if err := m.rejectSystemServiceEdit(strings.TrimSpace(def.ID), "edited"); err != nil {
+		return nil, err
+	}
 	if err := validateDefinition(def); err != nil {
 		return nil, err
 	}
@@ -554,6 +621,9 @@ func (m *Manager) createOrUpdate(def ServiceDefinition, restartChanged bool) (*S
 }
 
 func (m *Manager) Delete(id string) error {
+	if err := m.rejectSystemServiceEdit(id, "removed"); err != nil {
+		return err
+	}
 	if err := m.stop(id, true, true); err != nil {
 		return err
 	}
@@ -578,6 +648,19 @@ func (m *Manager) Delete(id string) error {
 }
 
 func (m *Manager) Start(id string) (*ServiceStatus, error) {
+	if svc, ok := m.systemService(id); ok {
+		lifecycle, ok := svc.Controller.(SystemLifecycle)
+		if !ok {
+			return nil, errSystemActionUnsupported(svc, SystemActionStart)
+		}
+		if err := lifecycle.StartSystem(); err != nil {
+			return nil, err
+		}
+		if status, ok := m.statusByID(id); ok {
+			return status, nil
+		}
+		return nil, fmt.Errorf("system service %s not found after start", id)
+	}
 	if err := m.start(id, true); err != nil {
 		return nil, err
 	}
@@ -587,7 +670,32 @@ func (m *Manager) Start(id string) (*ServiceStatus, error) {
 	return nil, fmt.Errorf("service not found")
 }
 
+// Stop stops one service. System services delegate to their controller.
+func (m *Manager) Stop(id string) error {
+	if svc, ok := m.systemService(id); ok {
+		lifecycle, ok := svc.Controller.(SystemLifecycle)
+		if !ok {
+			return errSystemActionUnsupported(svc, SystemActionStop)
+		}
+		return lifecycle.StopSystem()
+	}
+	return m.stop(id, true, true)
+}
+
 func (m *Manager) Restart(id string) error {
+	if svc, ok := m.systemService(id); ok {
+		if restarter, ok := svc.Controller.(SystemRestarter); ok {
+			return restarter.RestartSystem()
+		}
+		lifecycle, ok := svc.Controller.(SystemLifecycle)
+		if !ok {
+			return errSystemActionUnsupported(svc, SystemActionRestart)
+		}
+		if err := lifecycle.StopSystem(); err != nil {
+			return err
+		}
+		return lifecycle.StartSystem()
+	}
 	if err := m.stop(id, false, true); err != nil {
 		return err
 	}
@@ -595,6 +703,9 @@ func (m *Manager) Restart(id string) error {
 }
 
 func (m *Manager) Disable(id string) (*ServiceActionResponse, error) {
+	if svc, ok := m.systemService(id); ok {
+		return m.setSystemAutoStart(svc, false)
+	}
 	running, err := m.setServiceEnabled(id, false)
 	if err != nil {
 		return nil, err
@@ -608,6 +719,9 @@ func (m *Manager) Disable(id string) (*ServiceActionResponse, error) {
 }
 
 func (m *Manager) Enable(id string) (*ServiceActionResponse, error) {
+	if svc, ok := m.systemService(id); ok {
+		return m.setSystemAutoStart(svc, true)
+	}
 	m.mu.Lock()
 	def, ok := m.findDefinitionLocked(id)
 	if !ok {
@@ -711,6 +825,9 @@ func (m *Manager) Upgrade(req ServiceUpgradeRequest) (*ServiceUpgradeResult, err
 	localBase := normalizeUpgradeLocalBase(req.LocalBase)
 	if id == "" {
 		return nil, fmt.Errorf("service id is required")
+	}
+	if err := m.rejectSystemServiceEdit(id, "upgraded"); err != nil {
+		return nil, err
 	}
 	if tmpPath == "" {
 		return nil, fmt.Errorf("temporary upload path is required")
@@ -1001,26 +1118,38 @@ func (m *Manager) stop(id string, removeForward bool, wait bool) error {
 	proc.status = StatusStopped
 	pid := proc.pid
 	ownedForward := proc.ownedForward
-	port := 0
-	if proc.def.PortForward != nil {
+	port := proc.tunneledPort
+	if port == 0 && proc.def.PortForward != nil {
 		port = proc.def.PortForward.Port
+	}
+	authProxy := proc.authProxy
+	if removeForward {
+		proc.authProxy = nil
+		proc.tunneledPort = 0
 	}
 	if pid == 0 {
 		proc.cmd = nil
-		proc.ownedForward = false
+		if removeForward {
+			proc.ownedForward = false
+		}
 		proc.consecutiveFailures = 0
 		proc.nextRestartAt = time.Time{}
 		proc.runStartedAt = time.Time{}
 	}
 	m.mu.Unlock()
 
-	if removeForward && ownedForward && port > 0 {
-		_ = m.getPortForwardManager().Remove(port)
-		m.mu.Lock()
-		if current := m.processes[id]; current != nil {
-			current.ownedForward = false
+	if removeForward {
+		if authProxy != nil {
+			_ = authProxy.Close()
 		}
-		m.mu.Unlock()
+		if ownedForward && port > 0 {
+			_ = m.getPortForwardManager().Remove(port)
+			m.mu.Lock()
+			if current := m.processes[id]; current != nil {
+				current.ownedForward = false
+			}
+			m.mu.Unlock()
+		}
 	}
 
 	if pid == 0 {
@@ -1065,8 +1194,68 @@ func (m *Manager) clearProcessPID(id string, pid int) {
 	}
 }
 
+// RepublishForward tears down one service's port forward and re-establishes it.
+//
+// It exists for the Cloudflare Proxy system service: a forward can keep
+// claiming "active" while its dial pool is gone, and ensurePortForward reuses
+// an active entry, so the entry must be dropped first. The service's own
+// process is left alone.
+// CloudflareOwnedForwardHosts returns the hostnames user services intend to
+// publish via cloudflare_owned, from their saved definitions. It takes the
+// manager lock, so it must not be called while that lock is held.
+func (m *Manager) CloudflareOwnedForwardHosts() []SystemHost {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cloudflareOwnedHostsLocked()
+}
+
+func (m *Manager) cloudflareOwnedHostsLocked() []SystemHost {
+	out := make([]SystemHost, 0)
+	for _, def := range m.definitions {
+		if def.PortForward == nil {
+			continue
+		}
+		if normalizeProvider(def.PortForward.Provider) != portforward.ProviderCloudflareOwned {
+			continue
+		}
+		host := resolveForwardLabel(def.PortForward)
+		if host == "" || strings.HasPrefix(host, "Port ") {
+			continue
+		}
+		out = append(out, SystemHost{Host: host, ServiceID: def.ID})
+	}
+	return out
+}
+
+func (m *Manager) RepublishForward(id string) error {
+	m.mu.Lock()
+	def, ok := m.findDefinitionLocked(id)
+	if !ok {
+		m.mu.Unlock()
+		return fmt.Errorf("service not found")
+	}
+	if def.PortForward == nil || def.PortForward.Port <= 0 {
+		m.mu.Unlock()
+		return fmt.Errorf("service %q has no port forwarding", id)
+	}
+	tunnelPort := def.PortForward.Port
+	if proc := m.processes[id]; proc != nil && proc.tunneledPort > 0 {
+		tunnelPort = proc.tunneledPort
+	}
+	desiredDef := def
+	m.mu.Unlock()
+
+	// Drop the stale entry so ensurePortForward rebuilds it instead of reusing it.
+	if err := m.getPortForwardManager().Remove(tunnelPort); err != nil &&
+		!strings.Contains(err.Error(), "not being forwarded") {
+		return err
+	}
+	return m.ensurePortForward(id, desiredDef)
+}
+
 func (m *Manager) ensurePortForward(id string, def ServiceDefinition) error {
 	if def.PortForward == nil || def.PortForward.Port <= 0 {
+		m.teardownAuthHop(id)
 		return nil
 	}
 
@@ -1075,38 +1264,151 @@ func (m *Manager) ensurePortForward(id string, def ServiceDefinition) error {
 	desiredProvider := normalizeProvider(pf.Provider)
 	desiredLabel := resolveForwardLabel(pf)
 
+	tunnelPort := pf.Port
+	var proxy *authproxy.Server
+	if def.RequireAuth {
+		reused, err := m.reuseAuthHop(id, def)
+		if err != nil {
+			return err
+		}
+		if reused != nil {
+			proxy = reused
+			tunnelPort = reused.Port()
+		} else {
+			m.teardownAuthHop(id)
+			started, err := m.startAuthProxy(def)
+			if err != nil {
+				return err
+			}
+			proxy = started
+			tunnelPort = started.Port()
+			if pf.Port != tunnelPort {
+				_ = manager.Remove(pf.Port)
+			}
+		}
+	} else {
+		m.teardownAuthHop(id)
+		tunnelPort = pf.Port
+	}
+
 	for _, existing := range manager.List() {
-		if existing.LocalPort != pf.Port {
+		if existing.LocalPort != tunnelPort {
 			continue
 		}
 		// Only reuse a live forward. Stuck "connecting"/"error" entries (e.g. after
 		// a failed qemu upsert) must be replaced or the UI keeps the old error forever.
 		if existing.Provider == desiredProvider && existing.Label == desiredLabel &&
 			existing.Status == portforward.StatusActive && existing.PublicURL != "" {
+			m.rememberAuthHop(id, proxy, tunnelPort, true)
 			return nil
 		}
 		if existing.Type != portforward.PortForwardTypePortForward {
+			if proxy != nil && proxy != m.currentAuthProxy(id) {
+				_ = proxy.Close()
+			}
 			return fmt.Errorf("port %d is already forwarded by %s as %q; expected %s %q",
-				pf.Port, existing.Provider, existing.Label, desiredProvider, desiredLabel)
+				tunnelPort, existing.Provider, existing.Label, desiredProvider, desiredLabel)
 		}
 		fmt.Printf("[services] replacing stale port forward for service %s: port=%d old=%s/%q status=%s new=%s/%q\n",
-			id, pf.Port, existing.Provider, existing.Label, existing.Status, desiredProvider, desiredLabel)
-		if err := manager.Remove(pf.Port); err != nil && !strings.Contains(err.Error(), "not being forwarded") {
-			return fmt.Errorf("failed to remove stale port forward on port %d: %w", pf.Port, err)
+			id, tunnelPort, existing.Provider, existing.Label, existing.Status, desiredProvider, desiredLabel)
+		if err := manager.Remove(tunnelPort); err != nil && !strings.Contains(err.Error(), "not being forwarded") {
+			if proxy != nil && proxy != m.currentAuthProxy(id) {
+				_ = proxy.Close()
+			}
+			return fmt.Errorf("failed to remove stale port forward on port %d: %w", tunnelPort, err)
 		}
 		break
 	}
 
-	if _, err := manager.Add(pf.Port, desiredLabel, desiredProvider); err != nil {
+	if _, err := manager.Add(tunnelPort, desiredLabel, desiredProvider); err != nil {
+		if proxy != nil && proxy != m.currentAuthProxy(id) {
+			_ = proxy.Close()
+		}
 		return err
 	}
 
+	m.rememberAuthHop(id, proxy, tunnelPort, true)
+	return nil
+}
+
+func (m *Manager) startAuthProxy(def ServiceDefinition) (*authproxy.Server, error) {
+	if def.PortForward == nil {
+		return nil, fmt.Errorf("require auth requires port forwarding")
+	}
+	return authproxy.Start(authproxy.Config{
+		BackendPort: def.PortForward.Port,
+		AuthUser:    def.AuthUser,
+		TokenMode:   def.AuthTokenMode,
+		CustomToken: def.AuthToken,
+		SecretPath:  filepath.Join(m.servicesDataDir(), "service-auth-secret"),
+	})
+}
+
+func (m *Manager) reuseAuthHop(id string, def ServiceDefinition) (*authproxy.Server, error) {
+	if def.PortForward == nil {
+		return nil, nil
+	}
 	m.mu.Lock()
+	defer m.mu.Unlock()
+	proc := m.processes[id]
+	if proc == nil || proc.authProxy == nil || !proc.authProxy.Alive() {
+		return nil, nil
+	}
+	if !proc.authProxy.Matches(def.PortForward.Port, def.AuthUser, def.AuthTokenMode, def.AuthToken) {
+		return nil, nil
+	}
+	return proc.authProxy, nil
+}
+
+func (m *Manager) currentAuthProxy(id string) *authproxy.Server {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if proc := m.processes[id]; proc != nil {
-		proc.ownedForward = true
+		return proc.authProxy
+	}
+	return nil
+}
+
+func (m *Manager) rememberAuthHop(id string, proxy *authproxy.Server, tunnelPort int, owned bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	proc := m.processes[id]
+	if proc == nil {
+		if proxy != nil {
+			_ = proxy.Close()
+		}
+		return
+	}
+	proc.authProxy = proxy
+	if proxy != nil {
+		proc.tunneledPort = tunnelPort
+	} else {
+		proc.tunneledPort = 0
+	}
+	proc.ownedForward = owned
+}
+
+func (m *Manager) teardownAuthHop(id string) {
+	m.mu.Lock()
+	proc := m.processes[id]
+	if proc == nil || proc.authProxy == nil {
+		m.mu.Unlock()
+		return
+	}
+	proxy := proc.authProxy
+	port := proc.tunneledPort
+	owned := proc.ownedForward
+	proc.authProxy = nil
+	proc.tunneledPort = 0
+	if owned {
+		proc.ownedForward = false
 	}
 	m.mu.Unlock()
-	return nil
+
+	_ = proxy.Close()
+	if owned && port > 0 {
+		_ = m.getPortForwardManager().Remove(port)
+	}
 }
 
 func (m *Manager) getPortForwardManager() *portforward.Manager {
@@ -1251,7 +1553,57 @@ func validateDefinition(def ServiceDefinition) error {
 			return fmt.Errorf("service port must be between 1 and 65535")
 		}
 	}
+	if def.RequireAuth {
+		if def.PortForward == nil || def.PortForward.Port <= 0 {
+			return fmt.Errorf("require auth requires port forwarding")
+		}
+		if def.AuthTokenMode == AuthTokenModeCustom && def.AuthToken == "" {
+			return fmt.Errorf("custom auth token must be non-empty")
+		}
+	}
 	return nil
+}
+
+func normalizeAuthFields(def *ServiceDefinition) {
+	if def == nil {
+		return
+	}
+	def.AuthUser = strings.TrimSpace(def.AuthUser)
+	def.AuthToken = strings.TrimSpace(def.AuthToken)
+	mode := strings.ToLower(strings.TrimSpace(def.AuthTokenMode))
+	switch mode {
+	case AuthTokenModeCustom, AuthTokenModeShared:
+		def.AuthTokenMode = mode
+	default:
+		def.AuthTokenMode = ""
+	}
+	if !def.RequireAuth {
+		return
+	}
+	if def.AuthTokenMode == AuthTokenModeCustom || (def.AuthTokenMode == "" && def.AuthToken != "") {
+		def.AuthTokenMode = AuthTokenModeCustom
+		return
+	}
+	def.AuthTokenMode = AuthTokenModeShared
+	def.AuthToken = ""
+}
+
+func inspectAuthTokens(def ServiceDefinition) []string {
+	if !def.RequireAuth {
+		return nil
+	}
+	if def.AuthTokenMode == AuthTokenModeCustom {
+		if def.AuthToken == "" {
+			return nil
+		}
+		return []string{def.AuthToken}
+	}
+	tokens, err := auth.ExportCredentials()
+	if err != nil || len(tokens) == 0 {
+		return nil
+	}
+	sort.Strings(tokens)
+	return tokens
 }
 
 func definitionChanged(oldDef ServiceDefinition, newDef ServiceDefinition) bool {
@@ -1259,6 +1611,12 @@ func definitionChanged(oldDef ServiceDefinition, newDef ServiceDefinition) bool 
 		return true
 	}
 	if !stringMapEqual(oldDef.ExtraEnv, newDef.ExtraEnv) {
+		return true
+	}
+	if oldDef.RequireAuth != newDef.RequireAuth ||
+		oldDef.AuthUser != newDef.AuthUser ||
+		oldDef.AuthTokenMode != newDef.AuthTokenMode ||
+		oldDef.AuthToken != newDef.AuthToken {
 		return true
 	}
 
@@ -1712,7 +2070,11 @@ func handleServicesWith(manager *Manager, w http.ResponseWriter, r *http.Request
 			return
 		}
 		if err := manager.Delete(id); err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			status := http.StatusNotFound
+			if errors.Is(err, ErrSystemServiceImmutable) {
+				status = http.StatusBadRequest
+			}
+			http.Error(w, err.Error(), status)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -1733,6 +2095,15 @@ func serviceSaveShouldRestart(r *http.Request) bool {
 	default:
 		return true
 	}
+}
+
+func handleServicePresets(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(Presets())
 }
 
 func handleStartService(w http.ResponseWriter, r *http.Request) {
@@ -1772,7 +2143,7 @@ func handleStopServiceWith(manager *Manager, w http.ResponseWriter, r *http.Requ
 		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
-	if err := manager.stop(id, true, true); err != nil {
+	if err := manager.Stop(id); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

@@ -248,7 +248,7 @@ func (s *Server) handleDial(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	lm.put(conn)
+	lm.put(newPooledConn(conn))
 }
 
 func (s *Server) handleVisitor(w http.ResponseWriter, r *http.Request) {
@@ -261,14 +261,16 @@ func (s *Server) handleVisitor(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "not found\n")
 		return
 	}
-	ws := lm.take()
-	if ws == nil {
+	dial := lm.take()
+	if dial == nil {
 		w.Header().Set("Retry-After", "2")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = io.WriteString(w, "no connected origin\n")
 		return
 	}
-	backend := newWSNetConn(ws)
+	// One dial serves exactly one request: the origin answers with
+	// Connection: close, so the socket is finished once the request ends.
+	backend := net.Conn(dial)
 	defer backend.Close()
 
 	start := time.Now()

@@ -48,6 +48,8 @@ Subcommands:
 
   logs [--lines N] <service-name-or-id>
       Stream one service's log file.
+
+Note: some system services are status-only and expose no start/stop.
 `
 
 const serviceListHelp = `Usage: remote-agent service list [--all]
@@ -76,6 +78,9 @@ Options:
   --port-provider PROVIDER    Port-forward provider.
   --port-base-domain DOMAIN   Port-forward base domain.
   --port-subdomain NAME       Port-forward subdomain.
+  --require-auth              Gate the public URL with a login page.
+  --auth-user NAME            Require this username (omit = any user).
+  --auth-token TOKEN          Custom token (omit = shared server token).
   --disabled                  Create with enabled=false (no auto-start).
   --start                     Start the service after creating it.
   -h, --help                  Show this help message.
@@ -124,6 +129,10 @@ Options:
   --port-base-domain DOMAIN   Set port-forward base domain.
   --port-subdomain NAME       Set port-forward subdomain.
   --clear-port-forward        Remove port-forward configuration.
+  --require-auth              Gate the public URL with a login page.
+  --auth-user NAME            Require this username (empty = any user).
+  --auth-token TOKEN          Custom token (empty = shared server token).
+  --clear-auth                Disable auth on the public URL.
   -h, --help                  Show this help message.
 `
 
@@ -194,13 +203,57 @@ func runServiceList(resolve func() (*client.Client, error), args []string) error
 		return nil
 	}
 
-	for i, service := range services {
-		if i > 0 {
-			fmt.Println()
+	userServices, systemServices := splitServicesByKind(services)
+
+	printGroup := func(title string, items []client.ServiceStatus) {
+		if len(items) == 0 {
+			return
 		}
-		printService(service)
+		fmt.Println("  " + title)
+		for i, service := range items {
+			if i > 0 {
+				fmt.Println()
+			}
+			printService(service)
+		}
 	}
+
+	printGroup("USER SERVICES", userServices)
+	if len(userServices) > 0 && len(systemServices) > 0 {
+		fmt.Println()
+	}
+	printGroup("SYSTEM SERVICES", systemServices)
 	return nil
+}
+
+// splitServicesByKind separates user-defined services from server-owned ones,
+// preserving the order the server returned.
+func splitServicesByKind(services []client.ServiceStatus) (userServices, systemServices []client.ServiceStatus) {
+	userServices = make([]client.ServiceStatus, 0, len(services))
+	systemServices = make([]client.ServiceStatus, 0, len(services))
+	for _, service := range services {
+		if isSystemService(service) {
+			systemServices = append(systemServices, service)
+			continue
+		}
+		userServices = append(userServices, service)
+	}
+	return userServices, systemServices
+}
+
+// isSystemService reports whether the status describes a server-owned
+// in-process service rather than a user-defined command.
+func isSystemService(service client.ServiceStatus) bool {
+	return service.Kind == "system"
+}
+
+// serviceKindWord normalizes the kind for display; an absent kind is a user
+// service.
+func serviceKindWord(kind string) string {
+	if kind == "system" {
+		return "system"
+	}
+	return "user"
 }
 
 func runServiceEnableDisable(resolve func() (*client.Client, error), action string, args []string) error {
@@ -383,7 +436,39 @@ func printService(service client.ServiceStatus) {
 
 	fmt.Printf("%s %s\n", label("Name"), displayOrDash(service.Name))
 	fmt.Printf("%s %s\n", label("ID"), service.ID)
+	fmt.Printf("%s %s\n", label("Kind"), serviceKindWord(service.Kind))
+	if service.Description != "" {
+		fmt.Printf("%s %s\n", label("About"), service.Description)
+	}
 	fmt.Printf("%s %s\n", label("Status"), displayOrDash(service.Status))
+
+	// System services are in-process subsystems: they have no command, no PID
+	// and no work dir, but they may expose a public URL and a log.
+	if isSystemService(service) {
+		if service.Detail != "" {
+			fmt.Printf("%s %s\n", label("Detail"), service.Detail)
+		}
+		if service.Edge != "" {
+			fmt.Printf("%s %s\n", label("Edge"), service.Edge)
+		}
+		if service.PublicURL != "" {
+			fmt.Printf("%s %s\n", label("Public"), service.PublicURL)
+		}
+		for _, host := range service.Hosts {
+			fmt.Printf("%s %s  %d dials  %s\n", label("Host"), host.Host, host.Dials, host.State)
+		}
+		if service.Mocked {
+			fmt.Printf("%s %s\n", label("Note"), "simulated; not a live integration")
+		}
+		if service.AutoStartSwitch {
+			fmt.Printf("%s %s\n", label("Auto-start"), boolWord(service.Enabled))
+		}
+		if service.LogPath != "" {
+			fmt.Printf("%s %s\n", label("Log Path"), displayOrDash(service.LogPath))
+		}
+		return
+	}
+
 	fmt.Printf("%s %s\n", label("PID"), formatOptionalInt(service.PID))
 	fmt.Printf("%s %s\n", label("Work Dir"), displayOrDash(service.WorkingDir))
 	fmt.Printf("%s %s\n", label("Command"), displayOrDash(service.Command))
@@ -396,6 +481,9 @@ func printService(service client.ServiceStatus) {
 	if service.PortForward != nil {
 		fmt.Printf("%s %s\n", label("Port"), formatPortForward(service.PortForward))
 	}
+	for _, line := range formatServiceAuthLines(service) {
+		fmt.Println(line)
+	}
 	if service.LastStartedAt != "" {
 		fmt.Printf("%s %s\n", label("Started"), formatAgentTime(service.LastStartedAt))
 	}
@@ -405,6 +493,40 @@ func printService(service client.ServiceStatus) {
 	if service.LastExitError != "" {
 		fmt.Printf("%s %s\n", label("Last Error"), service.LastExitError)
 	}
+}
+
+func formatServiceAuthLines(service client.ServiceStatus) []string {
+	if !service.RequireAuth {
+		return nil
+	}
+	const labelWidth = 12
+	label := func(name string) string {
+		return fmt.Sprintf("  %-*s", labelWidth, name+":")
+	}
+	user := strings.TrimSpace(service.AuthUser)
+	if user == "" {
+		user = "any"
+	}
+	mode := strings.TrimSpace(service.AuthTokenMode)
+	if mode == "" {
+		mode = "shared"
+	}
+	tokens := append([]string(nil), service.AuthTokens...)
+	if len(tokens) == 0 && strings.TrimSpace(service.AuthToken) != "" {
+		tokens = []string{service.AuthToken}
+	}
+	lines := []string{
+		fmt.Sprintf("%s %s", label("Auth"), "required"),
+		fmt.Sprintf("%s %s", label("Auth User"), user),
+	}
+	if len(tokens) == 0 {
+		lines = append(lines, fmt.Sprintf("%s %s  (none)", label("Auth Token"), mode))
+		return lines
+	}
+	for _, token := range tokens {
+		lines = append(lines, fmt.Sprintf("%s %s  %s", label("Auth Token"), mode, token))
+	}
+	return lines
 }
 
 func formatPortForward(pf *client.ServicePortForwardStatus) string {

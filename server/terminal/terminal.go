@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 	"github.com/xhd2015/ai-critic/server/encrypt"
+	"github.com/xhd2015/ai-critic/server/wskeepalive"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap"
 )
 
@@ -88,6 +89,9 @@ func handleSSHWebSocket(w http.ResponseWriter, r *http.Request, mgr *ptywrap.Man
 		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
 		return
 	}
+	// An idle SSH terminal sends nothing, so ping it to survive the public hop.
+	stopKeepalive := wskeepalive.Start(conn, wskeepalive.DefaultInterval)
+	defer stopKeepalive()
 
 	sshHost := r.URL.Query().Get("host")
 	sshPortStr := r.URL.Query().Get("port")

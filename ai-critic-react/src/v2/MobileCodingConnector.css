@@ -1362,6 +1362,96 @@ a.mcc-tunnel-mapping-hostname:hover {
     gap: 12px;
 }
 
+/* User Services / System Services groups inside the Services section. */
+.mcc-service-group {
+    margin-bottom: 20px;
+}
+
+.mcc-service-group-title {
+    margin: 0;
+    padding: 0 16px 4px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+.mcc-service-card--system {
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.94));
+}
+
+.mcc-service-kind-badge {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: rgba(148, 163, 184, 0.14);
+    color: #cbd5e1;
+}
+
+.mcc-service-mocked-badge {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: rgba(245, 158, 11, 0.14);
+    color: var(--mcc-warning-color);
+}
+
+.mcc-service-description {
+    color: #94a3b8;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.mcc-service-mocked-hint {
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--mcc-warning-color);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.mcc-service-presets {
+    margin-bottom: 16px;
+}
+
+.mcc-service-presets label {
+    display: block;
+    margin-bottom: 8px;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.mcc-service-preset-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.mcc-service-preset-btn {
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(96, 165, 250, 0.35);
+    background: rgba(96, 165, 250, 0.1);
+    color: #93c5fd;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.mcc-service-preset-btn:hover {
+    background: rgba(96, 165, 250, 0.2);
+}
+
 .mcc-service-card {
     background: linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.96));
 }
@@ -1432,6 +1522,59 @@ a.mcc-tunnel-mapping-hostname:hover {
 .mcc-service-status-badge--error {
     background: rgba(239, 68, 68, 0.14);
     color: #fca5a5;
+}
+
+.mcc-service-status-badge--unknown {
+    background: rgba(245, 158, 11, 0.14);
+    color: var(--mcc-warning-color);
+}
+
+.mcc-service-hosts {
+    list-style: none;
+    margin: 0 0 12px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mcc-service-host {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: #cbd5e1;
+}
+
+.mcc-service-host-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #64748b;
+}
+
+.mcc-service-host--live .mcc-service-host-dot {
+    background: #4ade80;
+}
+
+.mcc-service-host--dead .mcc-service-host-dot,
+.mcc-service-host--missing .mcc-service-host-dot {
+    background: #f87171;
+}
+
+.mcc-service-host--unknown .mcc-service-host-dot {
+    background: #f59e0b;
+}
+
+.mcc-service-host--starting .mcc-service-host-dot {
+    background: #60a5fa;
+}
+
+.mcc-service-host-dials,
+.mcc-service-host-state {
+    color: #94a3b8;
+    white-space: nowrap;
 }
 
 .mcc-service-command {
@@ -1545,6 +1688,19 @@ a.mcc-tunnel-mapping-hostname:hover {
     background: rgba(96, 165, 250, 0.1);
     border-color: rgba(96, 165, 250, 0.4);
     color: #f1f5f9;
+}
+
+.mcc-service-auth-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.mcc-service-auth-hint {
+    margin-top: 8px;
+    color: #93c5fd;
+    font-size: 12px;
 }
 
 .mcc-port-header {

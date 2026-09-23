@@ -37,6 +37,19 @@ func ParseBaseDomain(domain string) string {
 // tunnel startup), it returns "connecting" instead of waiting indefinitely.
 func GetDomainTunnelStatus(domain string) DomainTunnelStatus {
 	if proxySessionActive(domain) {
+		// A registered session only proves a publish was once ready: when its
+		// dial pool dies the session stays registered, so trusting it reported
+		// "active" for domains that were serving 503. Ask the edge instead, and
+		// fall back to the old optimistic answer only when it cannot be reached.
+		if counts, err := ProxyDialCounts(); err == nil {
+			if dials, ok := counts[domain]; !ok || dials == 0 {
+				return DomainTunnelStatus{
+					Status:    "error",
+					TunnelURL: fmt.Sprintf("https://%s", domain),
+					Error:     "no live dial pool on the edge",
+				}
+			}
+		}
 		return DomainTunnelStatus{
 			Status:    "active",
 			TunnelURL: fmt.Sprintf("https://%s", domain),

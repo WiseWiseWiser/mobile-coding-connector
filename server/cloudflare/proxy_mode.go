@@ -2,6 +2,7 @@ package cloudflare
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -13,11 +14,21 @@ import (
 
 var (
 	proxySessMu sync.Mutex
-	proxySess   = map[string]context.CancelFunc{}
+	proxySess   = map[string]*proxySession{}
 )
 
 func proxyModeEnabled(cfg *CloudflareConfig) bool {
 	return cfg != nil && strings.EqualFold(strings.TrimSpace(cfg.Mode), "proxy")
+}
+
+// proxySession is one domain's live publish. The pointer is the identity: the
+// publisher clears its own entry only when it is still the current one, so a
+// restart cannot delete its successor's registration.
+type proxySession struct {
+	cancel context.CancelFunc
+	// lastErr records why the publish ended, for the caller that already
+	// returned successfully and would otherwise never learn about it.
+	lastErr error
 }
 
 func proxySessionActive(domain string) bool {
@@ -29,13 +40,13 @@ func proxySessionActive(domain string) bool {
 
 func stopProxySession(domain string) bool {
 	proxySessMu.Lock()
-	cancel, ok := proxySess[domain]
+	sess, ok := proxySess[domain]
 	if ok {
 		delete(proxySess, domain)
 	}
 	proxySessMu.Unlock()
-	if ok && cancel != nil {
-		cancel()
+	if ok && sess != nil && sess.cancel != nil {
+		sess.cancel()
 		return true
 	}
 	return false
@@ -54,9 +65,15 @@ func startViaProxy(domain string, port int, cfg *CloudflareConfig, logFn LogFunc
 	ready := make(chan struct{})
 	var readyOnce sync.Once
 	errCh := make(chan error, 1)
+	sess := &proxySession{cancel: cancel}
 	cli := &cloudflareproxy.APIClient{BaseURL: strings.TrimSpace(cfg.ProxyURL), Token: strings.TrimSpace(cfg.Token)}
 	logFn(fmt.Sprintf("proxy mode: %s -> %s origin :%d", domain, cfg.ProxyURL, port))
 	go func() {
+		// Register from inside the publisher, so registration and cleanup
+		// happen in one goroutine and cannot interleave. Previously the caller
+		// registered the session and nothing ever removed it: when a publish
+		// died after becoming ready, the registry kept claiming a session that
+		// no longer existed, so status lied and no start path would republish.
 		err := cli.Publish(ctx, cloudflareproxy.PublishOpts{
 			Hostname: domain,
 			Forward:  fmt.Sprintf("http://127.0.0.1:%d", port),
@@ -64,9 +81,21 @@ func startViaProxy(domain string, port int, cfg *CloudflareConfig, logFn LogFunc
 			Stdout:   logWriter(logFn),
 			Stderr:   logWriter(logFn),
 			OnReady: func() {
+				proxySessMu.Lock()
+				proxySess[domain] = sess
+				proxySessMu.Unlock()
 				readyOnce.Do(func() { close(ready) })
 			},
 		})
+		proxySessMu.Lock()
+		sess.lastErr = err
+		if proxySess[domain] == sess {
+			delete(proxySess, domain)
+		}
+		proxySessMu.Unlock()
+		if err != nil && !errors.Is(err, context.Canceled) {
+			logFn(fmt.Sprintf("proxy publish ended for %s: %v", domain, err))
+		}
 		select {
 		case errCh <- err:
 		default:
@@ -74,9 +103,19 @@ func startViaProxy(domain string, port int, cfg *CloudflareConfig, logFn LogFunc
 	}()
 	select {
 	case <-ready:
+		// The publisher registers the session as it becomes ready, so a publish
+		// that died in the meantime has already removed it.
 		proxySessMu.Lock()
-		proxySess[domain] = cancel
+		current := proxySess[domain]
+		ended := sess.lastErr
 		proxySessMu.Unlock()
+		if current != sess {
+			cancel()
+			if ended == nil {
+				ended = fmt.Errorf("proxy publish ended before it could serve")
+			}
+			return nil, ended
+		}
 		logFn("proxy websocket connected")
 		return &DomainTunnelStatus{Status: "active", TunnelURL: fmt.Sprintf("https://%s", domain)}, nil
 	case err := <-errCh:

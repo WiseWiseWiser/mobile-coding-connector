@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -33,6 +34,11 @@ func (c *APIClient) http() *http.Client {
 }
 
 func (c *APIClient) doJSON(method, path string, body any, out any) (int, error) {
+	return c.doJSONContext(context.Background(), method, path, body, out)
+}
+
+// doJSONContext is doJSON with a caller-supplied deadline.
+func (c *APIClient) doJSONContext(ctx context.Context, method, path string, body any, out any) (int, error) {
 	var rdr io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -41,7 +47,7 @@ func (c *APIClient) doJSON(method, path string, body any, out any) (int, error) 
 		}
 		rdr = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, strings.TrimRight(c.BaseURL, "/")+path, rdr)
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, rdr)
 	if err != nil {
 		return 0, err
 	}
@@ -80,18 +86,75 @@ func (c *APIClient) doJSON(method, path string, body any, out any) (int, error) 
 
 // ListMappings returns mappings for this token.
 func (c *APIClient) ListMappings() ([]MappingView, error) {
+	return c.ListMappingsContext(context.Background())
+}
+
+// ListMappingsContext is ListMappings with a caller-supplied deadline, so a
+// status reader cannot block on an unreachable edge.
+func (c *APIClient) ListMappingsContext(ctx context.Context) ([]MappingView, error) {
 	var out struct {
 		Mappings []MappingView `json:"mappings"`
 	}
-	_, err := c.doJSON(http.MethodGet, "/api/mappings", nil, &out)
+	_, err := c.doJSONContext(ctx, http.MethodGet, "/api/mappings", nil, &out)
 	return out.Mappings, err
 }
 
 // AddMapping registers a hostname and returns dial_url.
+//
+// A previous process can leave its mapping behind: an exec-restart replaces the
+// process image, so shutdown handlers never delete it. Registering the hostname
+// again then fails with 409 "hostname already mapped", which used to abort
+// proxy-mode auto-start and leave every domain at 503 until an operator deleted
+// the mapping by hand.
+//
+// The hostname belongs to this origin, so an existing mapping with no live dial
+// sockets is an orphan and is reclaimed. A mapping that still has sockets is
+// owned by a running origin, and the conflict is reported instead.
 func (c *APIClient) AddMapping(hostname string) (MappingView, error) {
 	var out MappingView
-	_, err := c.doJSON(http.MethodPost, "/api/mappings", map[string]string{"hostname": hostname}, &out)
-	return out, err
+	status, err := c.doJSON(http.MethodPost, "/api/mappings", map[string]string{"hostname": hostname}, &out)
+	if err == nil {
+		return out, nil
+	}
+	if status != http.StatusConflict {
+		return out, err
+	}
+
+	reclaimed, reclaimErr := c.reclaimDeadMapping(hostname)
+	if reclaimErr != nil {
+		return out, fmt.Errorf("%w (could not reclaim the stale mapping: %v)", err, reclaimErr)
+	}
+	if !reclaimed {
+		return out, fmt.Errorf("%w (a live origin is still publishing this hostname)", err)
+	}
+
+	var retry MappingView
+	if _, err := c.doJSON(http.MethodPost, "/api/mappings", map[string]string{"hostname": hostname}, &retry); err != nil {
+		return retry, err
+	}
+	return retry, nil
+}
+
+// reclaimDeadMapping deletes an orphaned mapping for hostname, reporting
+// whether it reclaimed one. A mapping with live dial sockets is left alone.
+func (c *APIClient) reclaimDeadMapping(hostname string) (bool, error) {
+	mappings, err := c.ListMappings()
+	if err != nil {
+		return false, err
+	}
+	for _, mapping := range mappings {
+		if mapping.Hostname != hostname {
+			continue
+		}
+		if mapping.WS > 0 {
+			return false, nil
+		}
+		if _, err := c.DeleteMapping(mapping.ID, hostname); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 // DeleteMapping removes by id and/or hostname.
@@ -120,6 +183,14 @@ type PublishOpts struct {
 	Stderr   io.Writer
 	OnReady  func()
 }
+
+// Dial pool refill timing. Each dial socket serves exactly one request before
+// the origin closes it, so a worker that just served a request must be able to
+// refill almost immediately; the growing backoff is only for repeated failures.
+const (
+	minDialBackoff = 200 * time.Millisecond
+	maxDialBackoff = 5 * time.Second
+)
 
 // Publish creates a mapping, dials a WS pool, and serves until ctx is done.
 // On return it deletes the mapping.
@@ -189,12 +260,12 @@ func (c *APIClient) Publish(ctx context.Context, opts PublishOpts) error {
 
 	for i := 0; i < pool; i++ {
 		go func() {
-			backoff := 200 * time.Millisecond
+			backoff := minDialBackoff
 			for {
 				if workerCtx.Err() != nil {
 					return
 				}
-				err := c.serveDial(workerCtx, view.DialURL, opts, &connected, func() {
+				served, err := c.serveDial(workerCtx, view.DialURL, opts, &connected, func() {
 					readyOnce.Do(func() { close(ready) })
 				})
 				if workerCtx.Err() != nil {
@@ -208,6 +279,12 @@ func (c *APIClient) Publish(ctx context.Context, opts PublishOpts) error {
 					cancel()
 					return
 				}
+				// A dial that reached the origin is refilled without backoff. The
+				// pool is a ready-queue of single-use sockets, so delay here is
+				// what starves visitors into 503s.
+				if served {
+					backoff = minDialBackoff
+				}
 				t := time.NewTimer(backoff)
 				select {
 				case <-workerCtx.Done():
@@ -215,7 +292,7 @@ func (c *APIClient) Publish(ctx context.Context, opts PublishOpts) error {
 					return
 				case <-t.C:
 				}
-				if backoff < 5*time.Second {
+				if backoff < maxDialBackoff {
 					backoff *= 2
 				}
 			}
@@ -247,22 +324,49 @@ func (c *APIClient) Publish(ctx context.Context, opts PublishOpts) error {
 	}
 }
 
+// errMappingClosed marks a dial whose mapping can never serve again: the edge
+// no longer knows the id, or rejects its dial token. Unlike a transport
+// failure, retrying the same dial URL is pointless, so the session ends.
+var errMappingClosed = errors.New("mapping closed")
+
+// isMappingClosed reports whether the pool should stop rather than retry.
+//
+// The edge answers 401 on /dial both for an unknown mapping id and for a bad
+// dial token, and that dial URL can never serve again — so 401 is terminal.
+// Every other failure (a gateway 5xx, a timeout, a reset) is a transport blip
+// on a still-valid URL and must be retried. Classifying these was previously
+// done by matching error text, which treated the generic "websocket: bad
+// handshake" that gorilla returns for *any* non-101 response — including a
+// routine Cloudflare 502 — as a closed mapping. One such response cancelled the
+// hostname's whole pool and silently killed its publish session, leaving the
+// edge with no dial sockets ("no connected origin") until an operator
+// republished by hand.
 func isMappingClosed(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	return strings.Contains(s, "unauthorized") || strings.Contains(s, "mapping not found") || strings.Contains(s, "bad handshake")
+	return errors.Is(err, errMappingClosed)
 }
 
-func (c *APIClient) serveDial(ctx context.Context, dial string, opts PublishOpts, connected *atomic.Int64, onReady func()) error {
+// dialFailure converts a failed /dial handshake into the error the pool loop
+// classifies. A 401 response is terminal; anything else stays retryable.
+func dialFailure(resp *http.Response, err error) error {
+	if resp != nil && resp.StatusCode == http.StatusUnauthorized {
+		return errMappingClosed
+	}
+	return err
+}
+
+// serveDial connects one edge dial socket and pipes it to the origin.
+//
+// The origin connection is opened lazily, after the first request bytes arrive.
+// An idle pooled dial must not hold an origin connection, because the origin
+// HTTP server's ReadHeaderTimeout reaps connections that have not sent headers
+// yet, which silently turns the edge's pooled socket into a corpse. The bool
+// reports whether the pipe was established, so the caller can refill the pool
+// without backoff once a socket has served its request.
+func (c *APIClient) serveDial(ctx context.Context, dial string, opts PublishOpts, connected *atomic.Int64, onReady func()) (bool, error) {
 	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
 	conn, resp, err := dialer.DialContext(ctx, dial, nil)
 	if err != nil {
-		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("unauthorized")
-		}
-		return err
+		return false, dialFailure(resp, err)
 	}
 	defer conn.Close()
 	connected.Add(1)
@@ -271,16 +375,27 @@ func (c *APIClient) serveDial(ctx context.Context, dial string, opts PublishOpts
 
 	addr, err := forwardTCPAddr(opts.Forward)
 	if err != nil {
-		return err
+		return false, err
 	}
+	pipe := newWSNetConn(conn)
+
+	// Wait for the edge's first request bytes; the socket reader answers the
+	// edge's keepalive pings while this waits.
+	head, err := readFirstChunk(ctx, pipe)
+	if err != nil {
+		return false, err
+	}
+
 	d := net.Dialer{Timeout: 10 * time.Second}
 	tcp, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tcp.Close()
+	if _, err := tcp.Write(head); err != nil {
+		return false, err
+	}
 
-	pipe := newWSNetConn(conn)
 	errc := make(chan error, 2)
 	go func() {
 		_, copyErr := io.Copy(tcp, pipe)
@@ -294,11 +409,44 @@ func (c *APIClient) serveDial(ctx context.Context, dial string, opts PublishOpts
 	case <-ctx.Done():
 		_ = tcp.Close()
 		_ = pipe.Close()
-		return ctx.Err()
+		return true, ctx.Err()
 	case err := <-errc:
 		_ = tcp.Close()
 		_ = pipe.Close()
-		return err
+		return true, err
+	}
+}
+
+// readFirstChunk blocks until the edge sends the first request bytes, the dial
+// dies, or ctx ends.
+func readFirstChunk(ctx context.Context, pipe *wsNetConn) ([]byte, error) {
+	type readResult struct {
+		data []byte
+		err  error
+	}
+	results := make(chan readResult, 1)
+	go func() {
+		head := make([]byte, 0, 4096)
+		chunk := make([]byte, 32*1024)
+		for {
+			n, readErr := pipe.Read(chunk)
+			if n > 0 {
+				head = append(head, chunk[:n]...)
+				results <- readResult{data: head}
+				return
+			}
+			if readErr != nil {
+				results <- readResult{err: readErr}
+				return
+			}
+		}
+	}()
+	select {
+	case <-ctx.Done():
+		_ = pipe.Close()
+		return nil, ctx.Err()
+	case r := <-results:
+		return r.data, r.err
 	}
 }
 

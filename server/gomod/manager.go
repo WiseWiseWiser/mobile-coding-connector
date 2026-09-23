@@ -79,6 +79,11 @@ func (m *Manager) configPath() string {
 	return filepath.Join(home, ".ai-critic", "go", ConfigFileName)
 }
 
+// LogPath is the file TailLog reads, so callers can stream it themselves.
+func (m *Manager) LogPath() string {
+	return m.logPath
+}
+
 func (m *Manager) loadConfig() (Config, error) {
 	cfg := Config{Port: DefaultPort, Root: DefaultRoot}
 	data, err := os.ReadFile(m.configPath())

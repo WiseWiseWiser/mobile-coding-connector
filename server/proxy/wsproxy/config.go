@@ -44,6 +44,14 @@ func configPath() string {
 	return filepath.Join(config.DataDir, configFileName)
 }
 
+// ConfigExists reports whether a ws-proxy config has been saved. LoadConfig
+// falls back to defaults without an error, so a caller that must not act on an
+// unconfigured proxy needs this to tell the two cases apart.
+func ConfigExists() bool {
+	_, err := os.Stat(configPath())
+	return err == nil
+}
+
 func xrayDir() string {
 	if _testConfigDir != "" {
 		return filepath.Join(_testConfigDir, xrayDirName)

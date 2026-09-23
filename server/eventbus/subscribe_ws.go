@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/xhd2015/ai-critic/server/wskeepalive"
 )
 
 // SubscribeWSPath is the main-mux path for WebSocket event subscription.
@@ -38,6 +39,12 @@ func handleSubscribeWS(w http.ResponseWriter, r *http.Request, hub *Hub) {
 		return
 	}
 	defer conn.Close()
+
+	// The event bus is silent while nothing is published, so it has to ping on
+	// its own; otherwise the public hop reaps the subscription after roughly two
+	// idle minutes and the client silently stops receiving events.
+	stopKeepalive := wskeepalive.Start(conn, wskeepalive.DefaultInterval)
+	defer stopKeepalive()
 
 	// Subscribe first so live events published during replay flush are not lost.
 	ch, cancel := hub.Subscribe()

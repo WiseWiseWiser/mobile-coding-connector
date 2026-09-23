@@ -58,6 +58,10 @@ func runServiceUpdate(resolve func() (*client.Client, error), args []string) err
 		portBaseDomain   string
 		portSubdomain    string
 		clearPortForward bool
+		requireAuth      bool
+		authUser         string
+		authToken        string
+		clearAuth        bool
 	)
 
 	args, err := flags.
@@ -74,6 +78,10 @@ func runServiceUpdate(resolve func() (*client.Client, error), args []string) err
 		String("--port-base-domain", &portBaseDomain).
 		String("--port-subdomain", &portSubdomain).
 		Bool("--clear-port-forward", &clearPortForward).
+		Bool("--require-auth", &requireAuth).
+		String("--auth-user", &authUser).
+		String("--auth-token", &authToken).
+		Bool("--clear-auth", &clearAuth).
 		Help("-h,--help", serviceUpdateHelp).
 		Parse(args)
 	if err != nil {
@@ -188,6 +196,41 @@ func runServiceUpdate(resolve func() (*client.Client, error), args []string) err
 		updateCount++
 	}
 
+	if clearAuth && (specified["--require-auth"] || specified["--auth-user"] || specified["--auth-token"]) {
+		return fmt.Errorf("--clear-auth cannot be combined with --require-auth, --auth-user, or --auth-token")
+	}
+	if clearAuth {
+		def.RequireAuth = false
+		def.AuthUser = ""
+		def.AuthTokenMode = ""
+		def.AuthToken = ""
+		updateCount++
+	} else {
+		if specified["--require-auth"] {
+			def.RequireAuth = true
+			updateCount++
+		}
+		if specified["--auth-user"] {
+			def.AuthUser = strings.TrimSpace(authUser)
+			updateCount++
+		}
+		if specified["--auth-token"] {
+			def.AuthToken = strings.TrimSpace(authToken)
+			if def.AuthToken == "" {
+				def.AuthTokenMode = "shared"
+			} else {
+				def.AuthTokenMode = "custom"
+			}
+			updateCount++
+		}
+		if specified["--auth-user"] || specified["--auth-token"] {
+			def.RequireAuth = true
+		}
+		if def.RequireAuth && (def.PortForward == nil || def.PortForward.Port <= 0) {
+			return fmt.Errorf("--require-auth requires an existing port or --port")
+		}
+	}
+
 	if updateCount == 0 {
 		return fmt.Errorf("service update requires at least one update flag")
 	}
@@ -213,6 +256,10 @@ func serviceDefinitionFromStatus(service *client.ServiceStatus) client.ServiceDe
 		ExtraEnv:      cloneServiceEnv(service.ExtraEnv),
 		PortForward:   servicePortForwardFromStatus(service.PortForward),
 		UpgradeTarget: service.UpgradeTarget,
+		RequireAuth:   service.RequireAuth,
+		AuthUser:      service.AuthUser,
+		AuthTokenMode: service.AuthTokenMode,
+		AuthToken:     service.AuthToken,
 	}
 }
 
@@ -265,10 +312,14 @@ func serviceUpdateSpecifiedFlags(args []string) map[string]bool {
 		"--port-provider":    true,
 		"--port-base-domain": true,
 		"--port-subdomain":   true,
+		"--auth-user":        true,
+		"--auth-token":       true,
 	}
 	boolFlags := map[string]bool{
 		"--clear-env":          true,
 		"--clear-port-forward": true,
+		"--require-auth":       true,
+		"--clear-auth":         true,
 	}
 	specified := map[string]bool{}
 	for i := 0; i < len(args); i++ {

@@ -77,6 +77,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/sshtunnel"
 	"github.com/xhd2015/ai-critic/server/startup"
 	"github.com/xhd2015/ai-critic/server/subprocess"
+	"github.com/xhd2015/ai-critic/server/systemservices"
 	"github.com/xhd2015/ai-critic/server/terminal"
 	"github.com/xhd2015/ai-critic/server/textconvert"
 	"github.com/xhd2015/ai-critic/server/tools"
@@ -642,6 +643,12 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Services API
 	services.RegisterAPI(mux)
+
+	// System services: the server's own in-process subsystems, listed next to
+	// user services in the GUI and the CLI.
+	if err := systemservices.Register(services.GetDefaultManager()); err != nil {
+		return fmt.Errorf("register system services: %w", err)
+	}
 
 	// Event bus: main-mux WebSocket subscribe (publish is loopback-only HTTP)
 	eventbus.RegisterDefault(mux)
