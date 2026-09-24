@@ -13,7 +13,7 @@ Run 2 (`edit notes.md`, no editor flag):
 
 ```
 Using remembered flags: --work-dir __STAGING__ --editor __EDITOR__
-Downloading notes.md -> __STAGED__ (6 B)
+Skipped download: __STAGED__ already matches the remote (md5 __MD5__)
 Opening __EDITOR__ __STAGED__
 Saved __REMOTE__ (7 B, md5 __MD5B__)
 ```
@@ -22,7 +22,9 @@ Saved __REMOTE__ (7 B, md5 __MD5B__)
 
 1. Both runs exit 0.
 2. Run 1 prints `Remembered flags for edit:` including `--editor <script>`, then `Saved`.
-3. Run 2 prints `Using remembered flags:` including the same `--editor`, and saves again.
+3. Run 2 prints `Using remembered flags:` including the same `--editor`, then
+   reuses the staged copy written by run 1 (`Skipped download: …`, no download
+   request) and saves again — reuse and remembered flags compose.
 4. Remote `notes.md` contains `second\n` after run 2 — only possible if the
    remembered script ran (a `vim` fallback fails the terminal guard).
 5. The CLI config file records the editor flag.
@@ -71,7 +73,10 @@ func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err 
 		editorFlag,
 		"Saved "+resp.RemotePath,
 	)
-	combinedHasNone(t, resp.SecondCombined, "needs a terminal", "file not changed", "Error")
+	combinedHasNone(t, resp.SecondCombined, "needs a terminal", "file not changed", "Downloading", "Error")
+	// Run 1 has no staged copy and must download; run 2 reuses it, so the total
+	// stays at exactly one download for the whole leaf.
+	assertRequestCount(t, resp, "/api/files/download", 1)
 
 	assertRemoteContent(t, resp, "notes.md", "second\n")
 
@@ -104,10 +109,11 @@ __STAGING__: type=string
 __EDITOR__: type=string
 __STAGED__: type=string
 __REMOTE__: type=string
+__MD5__: type=string
 __MD5B__: type=string
 ---
 Using remembered flags: --work-dir __STAGING__ --editor __EDITOR__
-Downloading notes.md -> __STAGED__ (6 B)
+Skipped download: __STAGED__ already matches the remote (md5 __MD5__)
 Opening __EDITOR__ __STAGED__
 Saved __REMOTE__ (7 B, md5 __MD5B__)
 `)

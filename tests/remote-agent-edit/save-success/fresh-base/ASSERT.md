@@ -9,9 +9,10 @@ Saved __REMOTE__ (4 B, md5 __MD5__)
 ## Expected
 
 1. Exit code 0 and a `Saved` line.
-2. No conflict, even though the staged path already existed with the same size:
-   the fresh download replaced it before the editor ran.
-3. Remote `notes.md` contains `new\n`; the staged copy contains `new\n` (not `ZZZZ`).
+2. A `Downloading` line — the same-size staged copy has a **different** md5, so
+   it must not be reused.
+3. Exactly one `/api/files/download` request and no `Skipped download` line.
+4. Remote `notes.md` contains `new\n`; the staged copy contains `new\n` (not `ZZZZ`).
 
 ## Side Effects
 
@@ -19,8 +20,9 @@ Saved __REMOTE__ (4 B, md5 __MD5__)
 
 ## Errors
 
-- `Error: ... changed on the server ...` (409) — the stale same-size copy was
-  used as the base version (resume/skip bug).
+- `Error: … changed on the server …` (409) — the stale same-size copy was used
+  as the base version.
+- `Skipped download` printed for a digest mismatch (size-based reuse).
 - Staged content still `ZZZZ`.
 
 ## Exit Code
@@ -42,9 +44,10 @@ func Assert(t *testing.T, _ *session.Doctest, req *Request, resp *Response, err 
 	}
 	assertExit(t, resp, 0)
 
-	combinedHasAll(t, resp.Combined, "Saved "+resp.RemotePath)
-	combinedHasNone(t, resp.Combined, "changed on the server", "Error")
+	combinedHasAll(t, resp.Combined, "Downloading", "Saved "+resp.RemotePath)
+	combinedHasNone(t, resp.Combined, "changed on the server", "Skipped download", "Error")
 
+	assertRequestCount(t, resp, "/api/files/download", 1)
 	assertRemoteContent(t, resp, "notes.md", "new\n")
 	assertStagedContent(t, resp, "new\n")
 

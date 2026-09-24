@@ -10,23 +10,25 @@ stale staged "ZZZZ" + remote "old\n" -> remote-agent edit -> fresh download -> S
 ## Preconditions
 
 Remote `notes.md` contains `old\n` (4 bytes). The staged path is pre-seeded with
-`ZZZZ` (also 4 bytes) to trigger the download resume/skip path.
+`ZZZZ` (also 4 bytes) to probe the resume/skip download path.
 
 ## Steps
 
-1. Seed `notes.md` via `setEditArgs`, set `StaleStaged`.
+1. Seed `notes.md` via `setEditArgs`, set `StagedPreseed` to a same-size digest-mismatch copy.
 2. Editor writes `new\n`.
-3. Assert exit 0, `Saved`, and no conflict — proving the CLI forced a fresh download
-   instead of reusing the same-size staged file.
+3. Assert exit 0, `Downloading` (a digest mismatch must never be treated as "up to
+   date"), exactly one download request, `Saved`, and no conflict.
 
 ## Context
 
-Regression leaf — save-success/fresh-base. `Client.DownloadFile` returns early when
-the local file size equals the remote size, which would make the stale copy the
-recorded base and turn the save into a spurious 409.
+Regression leaf — save-success/fresh-base. The staged copy is compared by **md5**,
+not size: `Client.DownloadFile` returns early when the local file size equals the
+remote size, which would make the stale copy the recorded base and turn the save
+into a spurious 409.
 
 ```go
 import (
+	"strings"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
@@ -34,7 +36,7 @@ import (
 
 func Setup(t *testing.T, _ *session.Doctest, req *Request) error {
 	setEditArgs(req, standardRemoteFile, standardRemoteInitial)
-	req.StaleStaged = true
+	req.StagedPreseed = strings.Repeat("Z", len(standardRemoteInitial))
 	req.EditorWrite = "new\n"
 	return nil
 }

@@ -7,7 +7,7 @@ the download-time md5 as precondition.
 
 Most leaves are **L2 in-process** (`fileupload.RegisterAPIForHome` +
 `agentcli.RunWithWriters`) with a generated fake editor. Two sparse **L3 e2e**
-smokes (2/21 leaves, inside the 10% budget) keep the product binary path:
+smokes (2/26 leaves, inside the 10% budget) keep the product binary path:
 round trip + terminal-editor tty guard.
 
 # DSN (Domain Specific Notion)
@@ -33,6 +33,8 @@ binary path (`UseCLI` + `label: heavy, e2e`): `e2e/roundtrip` and
 - **agentHome** — temp home for CLI config (`--remember-flags`) and L3 credentials.
 - **agentWorkDir / stagingDir** — per-leaf staging root passed via `--work-dir`;
   the staged copy lives at `<stagingDir>/<absolute remote path>`.
+- **request log** — the L2 server records `METHOD /path` for every request so
+  leaves can assert that no download happened.
 - **session cache** — doctest-injected `DOCTEST_SESSION_ID` keys
   `$TMPDIR/remote-agent-edit-doctest-<id>/` for L3 shared binaries (file lock).
 
@@ -43,8 +45,16 @@ binary path (`UseCLI` + `label: heavy, e2e`): `e2e/roundtrip` and
 - The staged copy is `0600` under a `0700` staging root; the remote file keeps its
   mode, and a symlinked remote path is written through (link preserved, warning on
   stderr).
-- The base md5 is taken after a **fresh** download (`DownloadOptions.NoResume`), so
-  a same-size staged copy from an earlier run can never become the base.
+- A staged copy whose bytes hash to the **reported remote digest** is reused, so
+  editing the same file again transfers nothing (`Skipped download: … already
+  matches the remote`); leaves prove it with `/api/files/download` request counts.
+  Digest equality is the only reuse signal — a same-size copy with different bytes
+  is never reused.
+- Otherwise the base md5 is taken after a **fresh** download
+  (`DownloadOptions.NoResume`).
+- When the server cannot report the digest (older build) or the digest probe
+  fails, the CLI warns on stderr and downloads the full copy; the optimization
+  never fails an edit.
 - Unchanged staged content short-circuits with `file not changed` (exit 0, no
   request); an editor exit ≠ 0 aborts without uploading.
 - A rejected write (409) keeps the staged copy and prints the conflict recipe
@@ -69,7 +79,12 @@ binary path (`UseCLI` + `label: heavy, e2e`): `e2e/roundtrip` and
  |    +-- new-file/                      (LEAF)  absent remote -> Created (parents made)
  |    +-- no-change/                     (LEAF)  no-op editor -> "file not changed"
  |    +-- reverted-content/              (LEAF)  identical rewrite -> "file not changed"
- |    +-- fresh-base/                    (LEAF)  stale same-size staged copy refreshed
+ |    +-- fresh-base/                    (LEAF)  digest mismatch (same size) -> download
+ |    +-- reuse-staged-copy/             (LEAF)  staged == remote -> download skipped
+ |    +-- reuse-staged-copy-no-change/   (LEAF)  reuse + no-op editor -> zero transfer
+ |    +-- pending-edits-not-reused/      (LEAF)  divergent staged copy always downloads
+ |    +-- legacy-server-digest/          (LEAF)  no digest -> warn + download
+ |    +-- digest-probe-fails/            (LEAF)  probe error -> warn + fallback check
  |    +-- editor-with-args/              (LEAF)  --editor="script --mark" arg split
  |    +-- converged-md5/                 (LEAF)  409 but remote == staged -> exit 0
  |    +-- symlink-target/                (LEAF)  write through symlink + warning
@@ -96,27 +111,32 @@ binary path (`UseCLI` + `label: heavy, e2e`): `e2e/roundtrip` and
 
 | # | Leaf | Description |
 |---|------|-------------|
-| 1 | `save-success/edited-file` | Remote file edited and saved; staged copy kept |
-| 2 | `save-success/new-file` | Missing remote file staged empty, then created |
-| 3 | `save-success/no-change` | Unchanged content → `file not changed`, no write |
-| 4 | `save-success/fresh-base` | Same-size stale staged copy never becomes the base |
+| 1 | `save-success/converged-md5` | Remote already matches → exit 0, nothing written |
+| 2 | `save-success/digest-probe-fails` | Failed digest probe → warning + fallback, edit succeeds |
+| 3 | `save-success/dotfile` | Dotfile staged and saved |
+| 4 | `save-success/edited-file` | Remote file edited and saved; staged copy kept |
 | 5 | `save-success/editor-with-args` | `--editor` value with arguments |
-| 6 | `save-success/converged-md5` | Remote already matches → exit 0, nothing written |
-| 7 | `save-success/symlink-target` | Symlink preserved, target rewritten, warning |
-| 8 | `save-success/symlink-target` | Symlink preserved, target rewritten, warning |
-| 9 | `save-success/preserves-mode` | 0755 remote file stays executable |
-| 10 | `save-success/remote-empty-file` | Existing empty file → `Saved`, not `Created` |
-| 11 | `save-success/dotfile` | Dotfile staged and saved |
-| 12 | `save-success/tilde-path` | `~/path` resolved against the server home |
-| 13 | `save-success/remember-flags` | Remembered editor replayed on the next run |
-| 14 | `save-rejected/conflict-md5` | md5 conflict → 409, recipe, staged kept |
-| 15 | `save-rejected/conflict-deleted` | Remote deleted during edit → 409, no resurrection |
-| 16 | `save-rejected/editor-nonzero` | Editor abort → nothing uploaded |
-| 17 | `save-rejected/editor-missing` | Missing editor binary → hint, no write |
-| 18 | `save-rejected/remote-is-dir` | Directory target refused before download |
-| 19 | `save-rejected/staged-file-deleted` | Staged copy removed by the editor → Error |
-| 20 | `save-rejected/terminal-editor-no-tty` | `vim` without tty → hint, never launched (L3) |
-| 21 | `e2e/roundtrip` | L3: product server + `remote-agent edit` |
+| 6 | `save-success/fresh-base` | Digest mismatch (same size) always downloads |
+| 7 | `save-success/legacy-server-digest` | Missing digest → warning + full download |
+| 8 | `save-success/new-file` | Missing remote file staged empty, then created |
+| 9 | `save-success/no-change` | No-op editor → `file not changed`, no request |
+| 10 | `save-success/pending-edits-not-reused` | Divergent staged copy is never reused |
+| 11 | `save-success/preserves-mode` | 0755 remote file stays executable |
+| 12 | `save-success/remember-flags` | Remembered editor replayed on the next run |
+| 13 | `save-success/remote-empty-file` | Existing empty file → `Saved`, not `Created` |
+| 14 | `save-success/reuse-staged-copy` | Staged copy matches remote → download skipped |
+| 15 | `save-success/reuse-staged-copy-no-change` | Reuse + unchanged → no download, no write |
+| 16 | `save-success/reverted-content` | Identical rewrite → `file not changed`, no write |
+| 17 | `save-success/symlink-target` | Symlink preserved, target rewritten, warning |
+| 18 | `save-success/tilde-path` | `~/path` resolved against the server home |
+| 19 | `save-rejected/conflict-deleted` | Remote deleted during edit → 409, no resurrection |
+| 20 | `save-rejected/conflict-md5` | md5 conflict → 409, recipe, staged kept |
+| 21 | `save-rejected/editor-missing` | Missing editor binary → hint, no write |
+| 22 | `save-rejected/editor-nonzero` | Editor abort → nothing uploaded |
+| 23 | `save-rejected/remote-is-dir` | Directory target refused before download |
+| 24 | `save-rejected/staged-file-deleted` | Staged copy removed by the editor → Error |
+| 25 | `save-rejected/terminal-editor-no-tty` | `vim` without tty → hint, never launched (L3) |
+| 26 | `e2e/roundtrip` | L3: product server + `remote-agent edit` |
 
 ## Parameter Coverage
 
@@ -124,7 +144,8 @@ binary path (`UseCLI` + `label: heavy, e2e`): `e2e/roundtrip` and
 |-------------------------|--------|
 | Write outcome (200 / 409 / no request) | edited-file, conflict-md5, no-change |
 | Remote state (exists / empty / absent / changed / deleted / directory) | edited-file, remote-empty-file, new-file, conflict-md5, conflict-deleted, remote-is-dir |
-| Base freshness (fresh / stale same-size / converged / reverted) | edited-file, fresh-base, converged-md5, reverted-content |
+| Base freshness (fresh / same-size mismatch / converged / reverted) | edited-file, fresh-base, converged-md5, reverted-content |
+| Staged reuse (match / mismatch / pending / no digest / probe error) | reuse-staged-copy, fresh-base, pending-edits-not-reused, legacy-server-digest, digest-probe-fails |
 | Editor behavior (write / no-op / abort / missing / needs tty / args / removes staged) | edited-file, no-change, editor-nonzero, editor-missing, terminal-editor-no-tty, editor-with-args, staged-file-deleted |
 | Metadata (mode / symlink) | preserves-mode, symlink-target |
 | Path shape (regular / dotfile / nested new / `~/` / symlink) | edited-file, dotfile, new-file, tilde-path, symlink-target |
@@ -224,9 +245,16 @@ type Request struct {
 	// ServerSymlinks maps a serverHome-relative link to a serverHome-relative target.
 	ServerSymlinks map[string]string
 
-	// StaleStaged seeds the staged path with same-size, different content
-	// before the run (regression guard for the resume/skip download path).
-	StaleStaged bool
+	// StagedPreseed, when set, is written to the staged path before the run.
+	// It seeds "a previous edit's copy" (identical → reuse) or pending edits
+	// (different → must download).
+	StagedPreseed string
+	// LegacyCheckNoMD5 emulates a server that predates digest reporting: the
+	// /api/files/check response has its md5 field stripped.
+	LegacyCheckNoMD5 bool
+	// DigestProbeStatus, when non-zero, makes /api/files/check fail with that
+	// status for requests that ask for a digest (md5: true).
+	DigestProbeStatus int
 
 	// FakeTerminalEditor installs a fake executable with this name (e.g. "vim")
 	// under the work dir and returns its absolute path as --editor. The fake
@@ -258,6 +286,10 @@ type Response struct {
 
 	// EditorRan reports that the fake terminal editor executable was invoked.
 	EditorRan bool
+
+	// Requests lists "METHOD /path" for every request the L2 server handled
+	// (used to prove that a download was actually skipped).
+	Requests []string
 
 	SecondExitCode int
 	SecondStdout   string
@@ -315,15 +347,11 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp.RemotePath = filepath.Join(serverHome, filepath.FromSlash(req.RemoteRel))
 	resp.StagedPath = filepath.Join(stagingDir, resp.RemotePath)
 
-	if req.StaleStaged {
-		stale := bytes.Repeat([]byte("Z"), len(readFileOrEmpty(resp.RemotePath)))
-		if len(stale) == 0 {
-			stale = []byte("stale")
-		}
+	if req.StagedPreseed != "" {
 		if err := os.MkdirAll(filepath.Dir(resp.StagedPath), 0700); err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(resp.StagedPath, stale, 0600); err != nil {
+		if err := os.WriteFile(resp.StagedPath, []byte(req.StagedPreseed), 0600); err != nil {
 			return nil, err
 		}
 	}
@@ -507,6 +535,106 @@ func argsContainPrefix(args []string, prefix string) bool {
 	return false
 }
 
+// requestLog records every request path the L2 server handled, so a leaf can
+// prove that a download was (or was not) issued.
+type requestLog struct {
+	mu    sync.Mutex
+	paths []string
+}
+
+func (l *requestLog) add(path string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.paths = append(l.paths, path)
+}
+
+func (l *requestLog) snapshot() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.paths...)
+}
+
+func withRequestLog(next http.Handler, log *requestLog) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.add(r.URL.Path)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// legacyCheckWriter buffers a /api/files/check response and strips its md5
+// field, emulating a server build that predates digest reporting.
+type legacyCheckWriter struct {
+	http.ResponseWriter
+	status int
+	body   bytes.Buffer
+}
+
+func (w *legacyCheckWriter) WriteHeader(status int) {
+	w.status = status
+}
+
+func (w *legacyCheckWriter) Write(p []byte) (int, error) {
+	return w.body.Write(p)
+}
+
+func (w *legacyCheckWriter) flush() {
+	out := w.body.Bytes()
+	var payload map[string]any
+	if json.Unmarshal(out, &payload) == nil {
+		delete(payload, "md5")
+		if stripped, err := json.Marshal(payload); err == nil {
+			out = stripped
+		}
+	}
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	w.ResponseWriter.WriteHeader(w.status)
+	_, _ = w.ResponseWriter.Write(out)
+}
+
+func withLegacyCheck(next http.Handler, enabled bool) http.Handler {
+	if !enabled {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/files/check" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		writer := &legacyCheckWriter{ResponseWriter: w}
+		next.ServeHTTP(writer, r)
+		writer.flush()
+	})
+}
+
+// withDigestProbeFailure fails /api/files/check requests that ask for a digest,
+// emulating a proxy timeout or a hashing error on the digest probe.
+func withDigestProbeFailure(next http.Handler, status int) http.Handler {
+	if status == 0 {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/files/check" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		var probe struct {
+			MD5 bool `json:"md5"`
+		}
+		if json.Unmarshal(body, &probe) == nil && probe.MD5 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"error":"probe unavailable"}`))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func runInProcessL2(t *testing.T, d *session.Doctest, req *Request, resp *Response, serverHome, agentHome, agentWorkDir, editorFlag string) (*Response, error) {
 	t.Helper()
 
@@ -522,7 +650,11 @@ func runInProcessL2(t *testing.T, d *session.Doctest, req *Request, resp *Respon
 		return nil, fmt.Errorf("listen in-process edit server: %w", err)
 	}
 	serverPort := ln.Addr().(*net.TCPAddr).Port
-	srv := &http.Server{Handler: mux}
+	log := &requestLog{}
+	handler := withRequestLog(mux, log)
+	handler = withLegacyCheck(handler, req.LegacyCheckNoMD5)
+	handler = withDigestProbeFailure(handler, req.DigestProbeStatus)
+	srv := &http.Server{Handler: handler}
 	go func() { _ = srv.Serve(ln) }()
 	t.Cleanup(func() { _ = srv.Close() })
 
@@ -559,6 +691,7 @@ func runInProcessL2(t *testing.T, d *session.Doctest, req *Request, resp *Respon
 	}
 
 	resp.EditorRan = fileExists(filepath.Join(agentWorkDir, "editor-ran"))
+	resp.Requests = log.snapshot()
 	return resp, nil
 }
 

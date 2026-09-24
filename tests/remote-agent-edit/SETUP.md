@@ -293,4 +293,25 @@ func assertEditorDidNotRun(t *testing.T, resp *Response) {
 		t.Fatal("editor executable ran, but the run should have failed before launching it")
 	}
 }
+
+// requestCount counts the L2 server requests for an exact path.
+func requestCount(resp *Response, path string) int {
+	n := 0
+	for _, p := range resp.Requests {
+		if p == path {
+			n++
+		}
+	}
+	return n
+}
+
+// assertRequestCount pins how many times a path was requested, which is how the
+// download-skip optimization is proven (stdout alone cannot show it).
+func assertRequestCount(t *testing.T, resp *Response, path string, want int) {
+	t.Helper()
+	if got := requestCount(resp, path); got != want {
+		t.Fatalf("requests to %s = %d, want %d;\nall requests:\n%s",
+			path, got, want, strings.Join(resp.Requests, "\n"))
+	}
+}
 ```

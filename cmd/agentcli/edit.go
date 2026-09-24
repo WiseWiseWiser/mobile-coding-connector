@@ -36,6 +36,9 @@ content is uploaded only when the remote file still has the md5 recorded at
 download time; otherwise the save fails, nothing is written, and the staged
 copy is kept so the conflict can be resolved by hand.
 
+A staged copy that already matches the remote content is reused, so editing the
+same file again transfers nothing.
+
 Arguments:
   REMOTE_PATH          Path on the server. May use ~/ for the server home;
                        relative paths resolve against the server home.
@@ -55,6 +58,11 @@ Examples:
   %s edit /etc/nginx/nginx.conf
   %s edit '~/notes/todo.md' --editor=nano
   %s edit /etc/app/config.yaml --editor=code --remember-flags
+
+Notes:
+  When the staged copy already matches the remote content (same md5), the
+  download is skipped and the staged copy is used as-is. If the server cannot
+  report the remote digest, the full copy is downloaded as before.
 `, name, defaultEditWorkDir, name, defaultEditWorkDir, name, name, name)
 }
 
@@ -105,12 +113,26 @@ func runEdit(cli *client.Client, args []string) error {
 		return err
 	}
 
-	info, err := cli.CheckPath(remotePath)
-	if err != nil {
-		return fmt.Errorf("failed to check remote path %s: %w", remotePath, err)
+	// Ask for the remote digest together with existence: a staged copy that
+	// already hashes to it can be reused, so a repeat edit transfers nothing.
+	info, err := cli.CheckPathMD5(remotePath)
+	probeFailed := err != nil
+	if probeFailed {
+		// The digest is an optimization only. Never fail an edit because the
+		// server could not produce it (proxy timeout, hashing error, old build).
+		fmt.Fprintf(os.Stderr, "warning: remote digest unavailable (%v); downloading the full copy\n", err)
+		info, err = cli.CheckPath(remotePath)
+		if err != nil {
+			return fmt.Errorf("failed to check remote path %s: %w", remotePath, err)
+		}
 	}
 	if info.IsDir {
 		return fmt.Errorf("remote path %s is a directory, not a file", remotePath)
+	}
+	// One warning per run: after a failed probe the fallback check cannot report
+	// a digest either, and repeating the reason would only add noise.
+	if info.Exists && info.MD5 == "" && !probeFailed {
+		fmt.Fprintln(os.Stderr, "warning: server did not report the remote digest; downloading the full copy")
 	}
 
 	// Resolve and validate the editor before downloading: a missing binary or a
@@ -132,24 +154,30 @@ func runEdit(cli *client.Client, args []string) error {
 		return fmt.Errorf("failed to create staging directory: %w", err)
 	}
 
-	if info.Exists {
-		fmt.Printf("Downloading %s -> %s (%s)\n", file, stagedPath, formatSize(info.Size))
-		if _, err := cli.DownloadFile(remotePath, stagedPath, client.DownloadOptions{NoResume: true}, nil); err != nil {
-			return fmt.Errorf("failed to download %s: %w", remotePath, err)
-		}
+	baseMD5 := ""
+	if info.Exists && stagedCopyMatches(stagedPath, info.MD5) {
+		fmt.Printf("Skipped download: %s already matches the remote (md5 %s)\n", stagedPath, info.MD5)
+		baseMD5 = info.MD5
 	} else {
-		fmt.Printf("Remote %s is missing; starting from an empty file\n", file)
-		if err := os.WriteFile(stagedPath, nil, 0600); err != nil {
-			return fmt.Errorf("failed to create staged file: %w", err)
+		if info.Exists {
+			fmt.Printf("Downloading %s -> %s (%s)\n", file, stagedPath, formatSize(info.Size))
+			if _, err := cli.DownloadFile(remotePath, stagedPath, client.DownloadOptions{NoResume: true}, nil); err != nil {
+				return fmt.Errorf("failed to download %s: %w", remotePath, err)
+			}
+		} else {
+			fmt.Printf("Remote %s is missing; starting from an empty file\n", file)
+			if err := os.WriteFile(stagedPath, nil, 0600); err != nil {
+				return fmt.Errorf("failed to create staged file: %w", err)
+			}
 		}
-	}
-	// Staged copies can hold secrets (dotfiles, .env, private keys): keep them
-	// readable only by this user regardless of the download default.
-	_ = os.Chmod(stagedPath, 0600)
+		// Staged copies can hold secrets (dotfiles, .env, private keys): keep
+		// them readable only by this user regardless of the download default.
+		_ = os.Chmod(stagedPath, 0600)
 
-	baseMD5, err := fileMD5Hex(stagedPath)
-	if err != nil {
-		return fmt.Errorf("failed to hash staged copy: %w", err)
+		baseMD5, err = fileMD5Hex(stagedPath)
+		if err != nil {
+			return fmt.Errorf("failed to hash staged copy: %w", err)
+		}
 	}
 
 	fmt.Printf("Opening %s %s\n", editor.String(), stagedPath)
@@ -402,6 +430,22 @@ func editConflictError(remotePath, stagedPath string, conflict *client.FileConfl
 	fmt.Fprintf(&b, "        %s download %s %s.remote\n", active.Name, remotePath, stagedPath)
 	fmt.Fprintf(&b, "        %s upload %s %s\n", active.Name, stagedPath, remotePath)
 	return errors.New(b.String())
+}
+
+// stagedCopyMatches reports whether the staged copy can be used as the edit base
+// without downloading: the remote digest must be known (so an absent path or an
+// old server never reuses anything) and the staged bytes must hash to it. Digest
+// equality means the staged copy is byte-identical to the remote content, so the
+// save precondition stays exactly the same.
+func stagedCopyMatches(stagedPath, remoteMD5 string) bool {
+	if remoteMD5 == "" {
+		return false
+	}
+	stagedMD5, err := fileMD5Hex(stagedPath)
+	if err != nil {
+		return false
+	}
+	return stagedMD5 == remoteMD5
 }
 
 // fileMD5Hex returns the hex md5 of a file's contents.

@@ -16,6 +16,8 @@ remote-agent edit /etc/app/config.yaml --editor=code --remember-flags
 | Behavior | Detail |
 |----------|--------|
 | Staging | Remote file → `/tmp/remote-agent-edit/<remote-path>` (dirs/files `0700`/`0600`); `--work-dir` overrides |
+| Reuse | Staged copy already matches the remote md5 → **download skipped** (`Skipped download: …`, one check request only) |
+| Digest unavailable | Server cannot report the remote md5 (old build, hashing error) → `warning:` on stderr, full download, edit still succeeds |
 | Missing remote file | Staged copy starts empty; saving creates the file |
 | Write-back | Uploaded with the md5 recorded at download time as precondition |
 | No change | Editor exit without content change → `file not changed`, no request |
@@ -38,8 +40,10 @@ remote-agent upload /tmp/remote-agent-edit/etc/app/config.yaml /etc/app/config.y
 ```
 
 Re-running `edit` re-downloads the remote content and replaces the staged copy,
-so merge before re-running.
+so merge before re-running. (A staged copy is only reused when it still matches
+the remote md5, so pending edits are never mistaken for an up-to-date base.)
 
 Server side: `POST /api/files/write` (`path`, `expected_md5`, `file`) returns
 409 with both hashes when the precondition fails; a missing file counts as the
-md5 of empty content.
+md5 of empty content. `POST /api/files/check` takes an opt-in `md5: true` field
+for the reuse check and reports no digest for missing paths or directories.

@@ -1,6 +1,8 @@
 package agentcli
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -9,6 +11,12 @@ import (
 
 	"github.com/xhd2015/ai-critic/client"
 )
+
+// testMD5 is the md5 of a literal used by reuse-decision tests.
+func testMD5(content string) string {
+	sum := md5.Sum([]byte(content))
+	return hex.EncodeToString(sum[:])
+}
 
 func TestResolveEditorDefaultsToVim(t *testing.T) {
 	t.Setenv("VISUAL", "")
@@ -265,6 +273,7 @@ func TestEditHelpListsOptions(t *testing.T) {
 		"--remember-flags",
 		"--work-dir DIR",
 		defaultEditWorkDir,
+		"download is skipped",
 	} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help missing %q", want)
@@ -274,6 +283,36 @@ func TestEditHelpListsOptions(t *testing.T) {
 	local := editHelpFor(LocalProfile())
 	if !strings.Contains(local, "local-agent edit <REMOTE_PATH>") {
 		t.Error("local help should use the local-agent name")
+	}
+}
+
+// TestStagedCopyMatches covers the reuse decision: only a staged copy whose
+// bytes hash to the reported remote digest may skip the download.
+func TestStagedCopyMatches(t *testing.T) {
+	dir := t.TempDir()
+	staged := filepath.Join(dir, "staged.txt")
+	if err := os.WriteFile(staged, []byte("old\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(dir, "absent.txt")
+
+	tests := []struct {
+		name       string
+		stagedPath string
+		remoteMD5  string
+		want       bool
+	}{
+		{"matching digest", staged, testMD5("old\n"), true},
+		{"different digest", staged, testMD5("new\n"), false},
+		{"unknown remote digest", staged, "", false},
+		{"missing staged copy", missing, testMD5("old\n"), false},
+		{"missing staged copy and unknown digest", missing, "", false},
+	}
+	for _, tc := range tests {
+		if got := stagedCopyMatches(tc.stagedPath, tc.remoteMD5); got != tc.want {
+			t.Errorf("%s: stagedCopyMatches(%q, %q) = %v, want %v",
+				tc.name, filepath.Base(tc.stagedPath), tc.remoteMD5, got, tc.want)
+		}
 	}
 }
 

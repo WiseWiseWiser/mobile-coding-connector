@@ -19,6 +19,10 @@ type FileInfo struct {
 	ModTime  string `json:"mod_time,omitempty"`
 	IsDir    bool   `json:"is_dir"`
 	FileMode string `json:"file_mode,omitempty"`
+	// MD5 is the content digest, set only when the caller asked for it
+	// (request field "md5") and the path is a regular file. Missing paths and
+	// directories report no digest.
+	MD5 string `json:"md5,omitempty"`
 }
 
 // RegisterAPI registers the file upload/download endpoints using the process
@@ -108,6 +112,9 @@ func handleCheck(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Path string `json:"path"`
+		// MD5 asks for the content digest of a regular file. Off by default:
+		// hashing reads the whole file, and most callers only need existence.
+		MD5 bool `json:"md5"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -134,6 +141,15 @@ func handleCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	digest := ""
+	if req.MD5 && !info.IsDir() {
+		digest, err = fileMD5(cleanPath)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to hash file: %v", err))
+			return
+		}
+	}
+
 	writeJSON(w, FileInfo{
 		Exists:   true,
 		Path:     cleanPath,
@@ -141,6 +157,7 @@ func handleCheck(w http.ResponseWriter, r *http.Request) {
 		ModTime:  info.ModTime().Format(time.RFC3339),
 		IsDir:    info.IsDir(),
 		FileMode: info.Mode().String(),
+		MD5:      digest,
 	})
 }
 

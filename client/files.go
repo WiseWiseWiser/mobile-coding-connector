@@ -27,6 +27,10 @@ type PathInfo struct {
 	Path   string `json:"path"`
 	Size   int64  `json:"size"`
 	IsDir  bool   `json:"is_dir"`
+	// MD5 is the content digest. It is set only by CheckPathMD5, and stays
+	// empty for missing paths, directories, and servers that predate digest
+	// reporting.
+	MD5 string `json:"md5,omitempty"`
 }
 
 func (c *Client) BrowseDir(path string) (*BrowseResult, error) {
@@ -42,7 +46,24 @@ func (c *Client) BrowseDir(path string) (*BrowseResult, error) {
 
 // CheckPath reports whether path exists on the server and whether it is a directory.
 func (c *Client) CheckPath(path string) (*PathInfo, error) {
-	body, err := json.Marshal(map[string]string{"path": path})
+	return c.checkPath(path, false)
+}
+
+// CheckPathMD5 is CheckPath plus the file's md5 digest, computed on the server.
+// The digest is empty when the path is missing or is a directory, and when the
+// server does not support digest reporting (older builds ignore the request
+// field), which callers must treat as "digest unavailable" rather than "empty
+// file".
+func (c *Client) CheckPathMD5(path string) (*PathInfo, error) {
+	return c.checkPath(path, true)
+}
+
+func (c *Client) checkPath(path string, wantMD5 bool) (*PathInfo, error) {
+	payload := map[string]any{"path": path}
+	if wantMD5 {
+		payload["md5"] = true
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
