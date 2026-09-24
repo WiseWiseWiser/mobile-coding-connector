@@ -52,6 +52,7 @@ remote-agent skill --list
 | `config` | Default domain / `config --web` |
 | `exec` | Verbatim remote shell |
 | `upload` | Files: gzip + resume · dirs: tar.xz pack→merge, `--no-override` |
+| `edit` | Remote file → local editor → md5-guarded write-back; conflicts keep the staged copy |
 | `service` | Lifecycle + **`service upgrade`** |
 | `install` | Cross-build a local Go CLI onto the remote PATH |
 | `cron` | Remote schedules |
@@ -72,6 +73,7 @@ remote-agent skill --list
 | Default server | → topic **`config`** |
 | One-shot shell | → **`exec`** |
 | Mac→remote files | → **`upload`** |
+| Edit one remote file locally | → **`edit`** |
 | Long-lived / replace binary | → **`service`** |
 | Cross-build a CLI onto remote PATH | → **`install`** |
 | Scheduled remote shell | → **`cron`** |

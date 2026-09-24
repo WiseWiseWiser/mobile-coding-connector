@@ -227,7 +227,7 @@ func handleConfigAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		normalizeIncomingConfig(&req)
-		if err := saveConfig(&req); err != nil {
+		if err := saveConfigMergingDomains(&req); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -258,6 +258,26 @@ func normalizeIncomingConfig(cfg *agentConfig) {
 	if !seen[cfg.Default] {
 		cfg.Default = ""
 	}
+}
+
+// saveConfigMergingDomains persists a partial update from the config UI: the
+// request carries only the fields the UI renders (default + domains), so
+// everything else must be preserved from the stored config. Replacing the
+// whole file here used to drop project bindings and remembered flags.
+func saveConfigMergingDomains(req *agentConfig) error {
+	existing, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	merged := agentConfig{}
+	if existing != nil {
+		merged = *existing
+	}
+	merged.Default = req.Default
+	merged.Domains = req.Domains
+	merged.LegacyServer = ""
+	merged.LegacyToken = ""
+	return saveConfig(&merged)
 }
 
 func handleConfigTest(w http.ResponseWriter, r *http.Request) {

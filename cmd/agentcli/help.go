@@ -29,6 +29,7 @@ Commands:
   Files
     upload               Upload a local file to the server
     download             Download a remote file
+    edit                 Edit a remote file with a local editor
     paste-bin            Read/write the Quick Transfer scratch pad
 
   Remote shell
@@ -98,6 +99,7 @@ Commands:
   Files
     upload               Upload a local file to the server
     download             Download a remote file
+    edit                 Edit a remote file with a local editor
     paste-bin            Read/write the Quick Transfer scratch pad
 
   Remote shell

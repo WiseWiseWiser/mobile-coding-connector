@@ -37,6 +37,7 @@ func RegisterAPI(mux *http.ServeMux) {
 func RegisterAPIForHome(mux *http.ServeMux, home string) {
 	mux.HandleFunc("/api/files/check", handleCheck)
 	mux.HandleFunc("/api/files/upload", handleUpload)
+	mux.HandleFunc("/api/files/write", handleWrite)
 	mux.HandleFunc("/api/files/download", handleDownload)
 	mux.HandleFunc("/api/files/browse", handleBrowse)
 	mux.HandleFunc("/api/files/home", func(w http.ResponseWriter, r *http.Request) {

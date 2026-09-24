@@ -26,6 +26,10 @@ type agentConfig struct {
 	// ProjectBindings maps (server, remote_dir) to a local git checkout path.
 	ProjectBindings []projectBinding `json:"project_bindings,omitempty"`
 
+	// RememberedFlags stores, per command name, the flags last saved with that
+	// command's --remember-flags option (currently only `edit`).
+	RememberedFlags map[string][]string `json:"remembered_flags,omitempty"`
+
 	// Legacy single-domain fields, kept for backward compatibility when
 	// reading old config files. They are migrated into Domains on load
 	// and are not written out in new files.

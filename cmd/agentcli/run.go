@@ -101,6 +101,16 @@ func runCLI(profile Profile, args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 		return runDownload(cli, rest)
+	case "edit":
+		if wantsHelp(rest) {
+			fmt.Fprint(stdout, strings.TrimRight(editHelpFor(active), "\n")+"\n")
+			return nil
+		}
+		cli, err := resolve()
+		if err != nil {
+			return err
+		}
+		return runEdit(cli, rest)
 	case "paste-bin":
 		return runPasteBin(resolve, rest)
 	case "local":

@@ -28,6 +28,12 @@ type DownloadRetryConfig struct {
 type DownloadOptions struct {
 	Retry  *DownloadRetryConfig
 	DryRun bool
+	// NoResume forces a full download from offset 0 and truncates any existing
+	// local file. Use it when the local bytes must be the exact current remote
+	// content (e.g. an edit session that records a base hash): the default
+	// resume path reuses a local file whose size already matches the remote,
+	// which can silently keep a stale copy.
+	NoResume bool
 }
 
 type downloadHTTPError struct {

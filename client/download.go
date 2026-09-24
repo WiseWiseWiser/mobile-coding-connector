@@ -99,6 +99,12 @@ func (c *Client) DownloadFile(remotePath, localPath string, opts DownloadOptions
 		localSize = st
 		localExists = true
 	}
+	if opts.NoResume {
+		// Treat any existing local file as absent so the download always
+		// fetches the current remote bytes and truncates the local copy.
+		localSize = 0
+		localExists = false
+	}
 
 	startOffset := int64(0)
 	truncate := true

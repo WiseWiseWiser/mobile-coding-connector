@@ -21,6 +21,7 @@ var skillRoot string
 //go:embed config
 //go:embed exec
 //go:embed upload
+//go:embed edit
 //go:embed service
 //go:embed cron
 //go:embed seal
