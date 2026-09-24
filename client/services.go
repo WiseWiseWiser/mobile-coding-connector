@@ -32,18 +32,21 @@ type ServicePortForwardStatus struct {
 }
 
 type ServiceDefinition struct {
-	ID            string              `json:"id,omitempty"`
-	Name          string              `json:"name"`
-	Command       string              `json:"command"`
-	WorkingDir    string              `json:"workingDir,omitempty"`
-	ExtraEnv      map[string]string   `json:"extraEnv,omitempty"`
-	PortForward   *ServicePortForward `json:"portForward,omitempty"`
-	UpgradeTarget string              `json:"upgradeTarget,omitempty"`
-	Enabled       *bool               `json:"enabled,omitempty"`
-	RequireAuth   bool                `json:"requireAuth,omitempty"`
-	AuthUser      string              `json:"authUser,omitempty"`
-	AuthTokenMode string              `json:"authTokenMode,omitempty"`
-	AuthToken     string              `json:"authToken,omitempty"`
+	ID                    string              `json:"id,omitempty"`
+	Name                  string              `json:"name"`
+	Command               string              `json:"command"`
+	WorkingDir            string              `json:"workingDir,omitempty"`
+	ExtraEnv              map[string]string   `json:"extraEnv,omitempty"`
+	PortForward           *ServicePortForward `json:"portForward,omitempty"`
+	UpgradeTarget         string              `json:"upgradeTarget,omitempty"`
+	UpgradePreStopCmds    []string            `json:"upgradePreStopCmds,omitempty"`
+	UpgradePostStopCmds   []string            `json:"upgradePostStopCmds,omitempty"`
+	UpgradeTimeoutSeconds *int                `json:"upgradeTimeoutSeconds,omitempty"`
+	Enabled               *bool               `json:"enabled,omitempty"`
+	RequireAuth           bool                `json:"requireAuth,omitempty"`
+	AuthUser              string              `json:"authUser,omitempty"`
+	AuthTokenMode         string              `json:"authTokenMode,omitempty"`
+	AuthToken             string              `json:"authToken,omitempty"`
 }
 
 type ServiceStatus struct {
@@ -65,11 +68,15 @@ type ServiceStatus struct {
 	Enabled        bool                      `json:"enabled"`
 	PortForward    *ServicePortForwardStatus `json:"portForward,omitempty"`
 	UpgradeTarget  string                    `json:"upgradeTarget,omitempty"`
-	RequireAuth    bool                      `json:"requireAuth,omitempty"`
-	AuthUser       string                    `json:"authUser,omitempty"`
-	AuthTokenMode  string                    `json:"authTokenMode,omitempty"`
-	AuthToken      string                    `json:"authToken,omitempty"`
-	AuthTokens     []string                  `json:"authTokens,omitempty"`
+	// Upgrade step configuration, mirrored so `service update` round-trips it.
+	UpgradePreStopCmds    []string `json:"upgradePreStopCmds,omitempty"`
+	UpgradePostStopCmds   []string `json:"upgradePostStopCmds,omitempty"`
+	UpgradeTimeoutSeconds *int     `json:"upgradeTimeoutSeconds,omitempty"`
+	RequireAuth           bool     `json:"requireAuth,omitempty"`
+	AuthUser              string   `json:"authUser,omitempty"`
+	AuthTokenMode         string   `json:"authTokenMode,omitempty"`
+	AuthToken             string   `json:"authToken,omitempty"`
+	AuthTokens            []string `json:"authTokens,omitempty"`
 
 	// System-service detail. Empty for user services.
 	Detail    string `json:"detail,omitempty"`
@@ -117,18 +124,35 @@ type LogStreamEvent struct {
 }
 
 type ServiceUpgradeRequest struct {
-	ID        string `json:"id"`
-	TmpPath   string `json:"tmpPath"`
-	LocalBase string `json:"localBase"`
+	ID string `json:"id"`
+	// TmpPath and LocalBase describe an uploaded binary; empty means a
+	// step-only upgrade.
+	TmpPath   string `json:"tmpPath,omitempty"`
+	LocalBase string `json:"localBase,omitempty"`
 	Target    string `json:"target,omitempty"`
+	// One-run overrides of the stored steps.
+	PreStopCmds    []string `json:"preStopCmds,omitempty"`
+	PostStopCmds   []string `json:"postStopCmds,omitempty"`
+	TimeoutSeconds *int     `json:"timeoutSeconds,omitempty"`
+}
+
+// ServiceUpgradeStep is one executed upgrade step.
+type ServiceUpgradeStep struct {
+	Phase      string `json:"phase"`
+	Index      int    `json:"index"`
+	Total      int    `json:"total"`
+	Command    string `json:"command"`
+	ExitCode   int    `json:"exitCode"`
+	DurationMs int64  `json:"durationMs"`
 }
 
 type ServiceUpgradeResult struct {
-	Status           string         `json:"status"`
-	TmpPath          string         `json:"tmpPath"`
-	TargetPath       string         `json:"targetPath"`
-	RememberedTarget string         `json:"rememberedTarget,omitempty"`
-	Service          *ServiceStatus `json:"service,omitempty"`
+	Status           string               `json:"status"`
+	TmpPath          string               `json:"tmpPath,omitempty"`
+	TargetPath       string               `json:"targetPath,omitempty"`
+	RememberedTarget string               `json:"rememberedTarget,omitempty"`
+	Service          *ServiceStatus       `json:"service,omitempty"`
+	Steps            []ServiceUpgradeStep `json:"steps,omitempty"`
 }
 
 // ListServices returns every managed service.
@@ -269,6 +293,12 @@ func (c *Client) UpgradeService(upgrade ServiceUpgradeRequest) (*ServiceUpgradeR
 		return nil, fmt.Errorf("decode /api/services/upgrade response: %w", err)
 	}
 	return &out, nil
+}
+
+// UpgradeServiceStream runs an upgrade over SSE, reporting each phase and step
+// output line through handler as it happens.
+func (c *Client) UpgradeServiceStream(upgrade ServiceUpgradeRequest, handler func(ServerStreamEvent)) (*SSEStreamResult, error) {
+	return c.StreamSSEWithDone("/api/services/upgrade/stream", upgrade, handler)
 }
 
 func (c *Client) postServiceAction(path string, id string) error {

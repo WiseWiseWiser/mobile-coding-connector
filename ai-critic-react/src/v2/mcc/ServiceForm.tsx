@@ -98,6 +98,46 @@ export function ServiceForm({ open, form, onChange, onSubmit, onCancel, onOpenNe
                     />
                     <div className="mcc-service-field-hint">One <code>KEY=VALUE</code> entry per line.</div>
                 </div>
+                <div className="mcc-form-field">
+                    <label>Upgrade Pre-Stop Steps</label>
+                    <textarea
+                        className="mcc-service-env-input"
+                        placeholder={'git fetch --all\ngo build -o /tmp/app.new ./cmd/app'}
+                        value={form.upgradePreStopText}
+                        onChange={(e) => onChange((prev) => ({ ...prev, upgradePreStopText: e.target.value }))}
+                        rows={4}
+                    />
+                    <div className="mcc-service-field-hint">
+                        One shell step per line, run by <code>service upgrade</code> while the service is still
+                        running. The first failure aborts and leaves the service untouched.
+                    </div>
+                </div>
+                <div className="mcc-form-field">
+                    <label>Upgrade Post-Stop Steps</label>
+                    <textarea
+                        className="mcc-service-env-input"
+                        placeholder={'mv /tmp/app.new "$REMOTE_AGENT_UPGRADE_TARGET"'}
+                        value={form.upgradePostStopText}
+                        onChange={(e) => onChange((prev) => ({ ...prev, upgradePostStopText: e.target.value }))}
+                        rows={4}
+                    />
+                    <div className="mcc-service-field-hint">
+                        One shell step per line, run after the service stops. A failure restarts the service
+                        before reporting.
+                    </div>
+                </div>
+                <div className="mcc-form-field">
+                    <label>Upgrade Step Timeout</label>
+                    <input
+                        type="text"
+                        placeholder="10m"
+                        value={form.upgradeTimeout}
+                        onChange={(e) => onChange((prev) => ({ ...prev, upgradeTimeout: e.target.value }))}
+                    />
+                    <div className="mcc-service-field-hint">
+                        Per-step limit such as <code>10m</code>; <code>0</code> disables it. Empty uses 15m.
+                    </div>
+                </div>
             </div>
 
             <button

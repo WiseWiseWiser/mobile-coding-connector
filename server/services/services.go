@@ -22,6 +22,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/procenv"
 	"github.com/xhd2015/ai-critic/server/proxy/portforward"
 	"github.com/xhd2015/ai-critic/server/services/authproxy"
+	"github.com/xhd2015/ai-critic/server/streaming/progress"
 )
 
 const (
@@ -61,6 +62,18 @@ type ServiceDefinition struct {
 	// UpgradeTarget remembers the remote binary path used by remote-agent
 	// service upgrade. It does not affect the running command itself.
 	UpgradeTarget string `json:"upgradeTarget,omitempty"`
+	// UpgradePreStopCmds are remote shell steps run by `service upgrade`
+	// *before* the service is stopped, so a build or fetch runs while the old
+	// process still serves. The first failing step aborts the upgrade and
+	// leaves the service untouched.
+	UpgradePreStopCmds []string `json:"upgradePreStopCmds,omitempty"`
+	// UpgradePostStopCmds are remote shell steps run *after* the service is
+	// stopped and after an uploaded binary is moved into place. A failure
+	// aborts the upgrade but restarts the service before reporting.
+	UpgradePostStopCmds []string `json:"upgradePostStopCmds,omitempty"`
+	// UpgradeTimeoutSeconds bounds each upgrade step. Nil means the default;
+	// an explicit 0 disables the timeout.
+	UpgradeTimeoutSeconds *int `json:"upgradeTimeoutSeconds,omitempty"`
 	// Enabled controls boot auto-start and daemon reconcile. Defaults to true
 	// when absent. Disable/enable do not immediately stop or start processes.
 	Enabled *bool `json:"enabled,omitempty"`
@@ -104,11 +117,16 @@ type ServiceStatus struct {
 	Enabled        bool                      `json:"enabled"`
 	PortForward    *ServicePortForwardStatus `json:"portForward,omitempty"`
 	UpgradeTarget  string                    `json:"upgradeTarget,omitempty"`
-	RequireAuth    bool                      `json:"requireAuth,omitempty"`
-	AuthUser       string                    `json:"authUser,omitempty"`
-	AuthTokenMode  string                    `json:"authTokenMode,omitempty"`
-	AuthToken      string                    `json:"authToken,omitempty"`
-	AuthTokens     []string                  `json:"authTokens,omitempty"`
+	// UpgradePreStopCmds and UpgradePostStopCmds mirror the definition so a
+	// service update round-trip preserves them.
+	UpgradePreStopCmds    []string `json:"upgradePreStopCmds,omitempty"`
+	UpgradePostStopCmds   []string `json:"upgradePostStopCmds,omitempty"`
+	UpgradeTimeoutSeconds *int     `json:"upgradeTimeoutSeconds,omitempty"`
+	RequireAuth           bool     `json:"requireAuth,omitempty"`
+	AuthUser              string   `json:"authUser,omitempty"`
+	AuthTokenMode         string   `json:"authTokenMode,omitempty"`
+	AuthToken             string   `json:"authToken,omitempty"`
+	AuthTokens            []string `json:"authTokens,omitempty"`
 
 	// System-service detail. Empty for user services.
 	Detail    string `json:"detail,omitempty"`
@@ -142,19 +160,105 @@ const (
 )
 
 type ServiceUpgradeRequest struct {
-	ID        string `json:"id"`
-	TmpPath   string `json:"tmpPath"`
-	LocalBase string `json:"localBase"`
+	ID string `json:"id"`
+	// TmpPath and LocalBase describe an uploaded binary. When both are empty
+	// the upgrade runs the service's configured steps only, with no artifact
+	// to move.
+	TmpPath   string `json:"tmpPath,omitempty"`
+	LocalBase string `json:"localBase,omitempty"`
 	Target    string `json:"target,omitempty"`
+	// PreStopCmds, PostStopCmds and TimeoutSeconds override the stored
+	// definition for this run only. Nil keeps the configured value.
+	PreStopCmds    []string `json:"preStopCmds,omitempty"`
+	PostStopCmds   []string `json:"postStopCmds,omitempty"`
+	TimeoutSeconds *int     `json:"timeoutSeconds,omitempty"`
+}
+
+// ServiceUpgradeStep records one executed shell step of an upgrade.
+type ServiceUpgradeStep struct {
+	Phase      string `json:"phase"`
+	Index      int    `json:"index"`
+	Total      int    `json:"total"`
+	Command    string `json:"command"`
+	ExitCode   int    `json:"exitCode"`
+	DurationMs int64  `json:"durationMs"`
 }
 
 type ServiceUpgradeResult struct {
-	Status           string         `json:"status"`
-	TmpPath          string         `json:"tmpPath"`
-	TargetPath       string         `json:"targetPath"`
-	RememberedTarget string         `json:"rememberedTarget,omitempty"`
-	Service          *ServiceStatus `json:"service,omitempty"`
+	Status           string               `json:"status"`
+	TmpPath          string               `json:"tmpPath,omitempty"`
+	TargetPath       string               `json:"targetPath,omitempty"`
+	RememberedTarget string               `json:"rememberedTarget,omitempty"`
+	Service          *ServiceStatus       `json:"service,omitempty"`
+	Steps            []ServiceUpgradeStep `json:"steps,omitempty"`
 }
+
+// Upgrade phases, used in errors and step records.
+const (
+	UpgradePhasePreStop  = "pre-stop"
+	UpgradePhasePostStop = "post-stop"
+)
+
+// DefaultUpgradeStepTimeout bounds each upgrade step unless the service sets
+// upgradeTimeoutSeconds (an explicit 0 disables the bound).
+const DefaultUpgradeStepTimeout = 15 * time.Minute
+
+// UpgradeError describes a failed upgrade precisely enough for a caller to
+// explain which step broke and what happened to the service.
+type UpgradeError struct {
+	Phase     string
+	Index     int
+	Total     int
+	Command   string
+	ExitCode  int
+	TimedOut  bool
+	Tail      []string
+	Resumed   bool
+	ResumeErr error
+	// ServiceDown reports that the service is stopped with no successful
+	// resume, which is the only outcome callers must escalate loudly.
+	ServiceDown bool
+	Cause       error
+}
+
+func (e *UpgradeError) Error() string {
+	var b strings.Builder
+	switch {
+	case e.Phase == UpgradePhasePreStop || e.Phase == UpgradePhasePostStop:
+		fmt.Fprintf(&b, "%s command %d/%d", e.Phase, e.Index, e.Total)
+	case e.Phase != "":
+		fmt.Fprintf(&b, "%s", e.Phase)
+	default:
+		b.WriteString("upgrade")
+	}
+	switch {
+	case e.TimedOut:
+		b.WriteString(" timed out")
+	case e.ExitCode >= 0 && (e.Phase == UpgradePhasePreStop || e.Phase == UpgradePhasePostStop):
+		fmt.Fprintf(&b, " failed with exit code %d", e.ExitCode)
+	}
+	if e.Cause != nil {
+		fmt.Fprintf(&b, ": %v", e.Cause)
+	}
+	if len(e.Tail) > 0 {
+		fmt.Fprintf(&b, "\n%s", strings.Join(e.Tail, "\n"))
+	}
+	switch {
+	case e.ServiceDown:
+		b.WriteString("\nand restarting the service also failed")
+		if e.ResumeErr != nil {
+			fmt.Fprintf(&b, ": %v", e.ResumeErr)
+		}
+		b.WriteString(" — the service is STOPPED")
+	case e.Resumed:
+		b.WriteString("\nthe service was resumed and is running")
+	case e.Phase == UpgradePhasePreStop:
+		b.WriteString("\nthe service was never stopped")
+	}
+	return b.String()
+}
+
+func (e *UpgradeError) Unwrap() error { return e.Cause }
 
 type serviceUpgradeTargetSelection struct {
 	Input      string
@@ -282,6 +386,9 @@ func RegisterAPIWithManager(mux *http.ServeMux, m *Manager) {
 	})
 	mux.HandleFunc("/api/services/upgrade", func(w http.ResponseWriter, r *http.Request) {
 		handleUpgradeServiceWith(m, w, r)
+	})
+	mux.HandleFunc("/api/services/upgrade/stream", func(w http.ResponseWriter, r *http.Request) {
+		handleUpgradeServiceStreamWith(m, w, r)
 	})
 }
 
@@ -508,28 +615,31 @@ func (m *Manager) buildStatusListLocked(defs []ServiceDefinition) []ServiceStatu
 		}
 
 		result = append(result, ServiceStatus{
-			ID:             def.ID,
-			Name:           def.Name,
-			Kind:           ServiceKindUser,
-			Command:        def.Command,
-			WorkingDir:     def.WorkingDir,
-			ExtraEnv:       cloneStringMap(def.ExtraEnv),
-			EffectivePath:  lookupEnvValue(serviceEnv, "PATH"),
-			LogPath:        logPath,
-			Status:         status,
-			PID:            pid,
-			LastStartedAt:  lastStartedAt,
-			LastExitedAt:   lastExitedAt,
-			LastExitError:  lastExitError,
-			DesiredRunning: desired,
-			Enabled:        serviceEnabled(def),
-			PortForward:    pfStatus,
-			UpgradeTarget:  def.UpgradeTarget,
-			RequireAuth:    def.RequireAuth,
-			AuthUser:       def.AuthUser,
-			AuthTokenMode:  def.AuthTokenMode,
-			AuthToken:      def.AuthToken,
-			AuthTokens:     inspectAuthTokens(def),
+			ID:                    def.ID,
+			Name:                  def.Name,
+			Kind:                  ServiceKindUser,
+			Command:               def.Command,
+			WorkingDir:            def.WorkingDir,
+			ExtraEnv:              cloneStringMap(def.ExtraEnv),
+			EffectivePath:         lookupEnvValue(serviceEnv, "PATH"),
+			LogPath:               logPath,
+			Status:                status,
+			PID:                   pid,
+			LastStartedAt:         lastStartedAt,
+			LastExitedAt:          lastExitedAt,
+			LastExitError:         lastExitError,
+			DesiredRunning:        desired,
+			Enabled:               serviceEnabled(def),
+			PortForward:           pfStatus,
+			UpgradeTarget:         def.UpgradeTarget,
+			UpgradePreStopCmds:    cloneCmdList(def.UpgradePreStopCmds),
+			UpgradePostStopCmds:   cloneCmdList(def.UpgradePostStopCmds),
+			UpgradeTimeoutSeconds: cloneIntPtr(def.UpgradeTimeoutSeconds),
+			RequireAuth:           def.RequireAuth,
+			AuthUser:              def.AuthUser,
+			AuthTokenMode:         def.AuthTokenMode,
+			AuthToken:             def.AuthToken,
+			AuthTokens:            inspectAuthTokens(def),
 		})
 	}
 	return result
@@ -547,6 +657,11 @@ func (m *Manager) createOrUpdate(def ServiceDefinition, restartChanged bool) (*S
 	def.WorkingDir = normalizeWorkingDir(def.WorkingDir)
 	def.ExtraEnv = normalizeExtraEnv(def.ExtraEnv)
 	def.UpgradeTarget = strings.TrimSpace(def.UpgradeTarget)
+	def.UpgradePreStopCmds = normalizeUpgradeCmds(def.UpgradePreStopCmds)
+	def.UpgradePostStopCmds = normalizeUpgradeCmds(def.UpgradePostStopCmds)
+	if def.UpgradeTimeoutSeconds != nil && *def.UpgradeTimeoutSeconds < 0 {
+		return nil, fmt.Errorf("upgrade timeout must not be negative")
+	}
 	normalizeAuthFields(&def)
 	// A write addressed at a system service must not create a user service with
 	// the same id, which would shadow the registered one. Checked before
@@ -817,48 +932,6 @@ func (m *Manager) statusByID(id string) (*ServiceStatus, bool) {
 		}
 	}
 	return nil, false
-}
-
-func (m *Manager) Upgrade(req ServiceUpgradeRequest) (*ServiceUpgradeResult, error) {
-	id := strings.TrimSpace(req.ID)
-	tmpPath := strings.TrimSpace(req.TmpPath)
-	localBase := normalizeUpgradeLocalBase(req.LocalBase)
-	if id == "" {
-		return nil, fmt.Errorf("service id is required")
-	}
-	if err := m.rejectSystemServiceEdit(id, "upgraded"); err != nil {
-		return nil, err
-	}
-	if tmpPath == "" {
-		return nil, fmt.Errorf("temporary upload path is required")
-	}
-	if localBase == "" {
-		return nil, fmt.Errorf("local binary basename is required")
-	}
-
-	target, err := m.selectServiceUpgradeTarget(id, localBase, req.Target)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := m.stop(id, true, true); err != nil {
-		return nil, err
-	}
-	if err := moveServiceUpgradeFile(tmpPath, target.Path); err != nil {
-		return nil, err
-	}
-	status, err := m.Start(id)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ServiceUpgradeResult{
-		Status:           "ok",
-		TmpPath:          tmpPath,
-		TargetPath:       target.Path,
-		RememberedTarget: target.Remembered,
-		Service:          status,
-	}, nil
 }
 
 func (m *Manager) selectServiceUpgradeTarget(id string, localBase string, targetFlag string) (*serviceUpgradeTargetSelection, error) {
@@ -2235,9 +2308,80 @@ func handleUpgradeServiceWith(manager *Manager, w http.ResponseWriter, r *http.R
 	}
 	result, err := manager.Upgrade(req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), upgradeErrorStatus(err))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(result)
+}
+
+// handleUpgradeServiceStreamWith streams an upgrade as SSE: one section frame
+// per phase, verbatim log frames for step output, then a summary and done.
+func handleUpgradeServiceStreamWith(manager *Manager, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req ServiceUpgradeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	pw := progress.NewWriter(w)
+	if pw == nil {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Step output is forwarded from the command's pipe-copying goroutine, so
+	// frame writes are serialized here.
+	var emitMu sync.Mutex
+	emit := func(event UpgradeEvent) {
+		emitMu.Lock()
+		defer emitMu.Unlock()
+		switch event.Kind {
+		case UpgradeEventSection:
+			_ = pw.EmitSection(event.Message)
+		case UpgradeEventLog:
+			_ = pw.EmitLog(event.Message, true)
+		}
+	}
+
+	result, err := manager.UpgradeWithEmitter(req, emit)
+	if err != nil {
+		emitMu.Lock()
+		defer emitMu.Unlock()
+		_ = pw.EmitError(err.Error())
+		return
+	}
+
+	emitMu.Lock()
+	defer emitMu.Unlock()
+	for _, line := range upgradeSummaryLines(result) {
+		_ = pw.EmitLog(line, true)
+	}
+	summary := map[string]any{
+		"status":  result.Status,
+		"steps":   len(result.Steps),
+		"tmpPath": result.TmpPath,
+	}
+	if result.TargetPath != "" {
+		summary["targetPath"] = result.TargetPath
+	}
+	if result.Service != nil {
+		summary["service"] = result.Service
+		summary["pid"] = result.Service.PID
+	}
+	_ = pw.EmitDone(summary)
+}
+
+// upgradeErrorStatus maps an upgrade failure to an HTTP status: validation
+// problems stay 400, while a valid request whose pipeline failed is a conflict.
+func upgradeErrorStatus(err error) int {
+	var upgradeErr *UpgradeError
+	if errors.As(err, &upgradeErr) {
+		return http.StatusConflict
+	}
+	return http.StatusBadRequest
 }

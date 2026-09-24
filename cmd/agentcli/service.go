@@ -72,6 +72,13 @@ Required:
 Options:
   --working-dir DIR           Working directory for the process.
   --upgrade-target PATH       Remembered service upgrade target.
+  --upgrade-pre-stop-cmd CMD  Step run by 'service upgrade' while the service is
+                              still running, e.g. 'git fetch' or a build.
+                              Can be repeated; runs in order.
+  --upgrade-post-stop-cmd CMD Step run by 'service upgrade' after the service is
+                              stopped, e.g. swapping a freshly built binary.
+                              Can be repeated; runs in order.
+  --upgrade-timeout DURATION  Per-step timeout, e.g. 10m; 0 disables it.
   --env KEY=VALUE             Environment variable. Can be repeated.
   --port N                    Port-forward port.
   --port-label LABEL          Port-forward label.
@@ -118,6 +125,13 @@ Options:
   --command COMMAND           Set shell command.
   --working-dir DIR           Set working directory.
   --upgrade-target PATH       Set remembered service upgrade target.
+  --upgrade-pre-stop-cmd CMD  Set a pre-stop upgrade step (repeatable; replaces
+                              the stored pre-stop steps).
+  --upgrade-post-stop-cmd CMD Set a post-stop upgrade step (repeatable; replaces
+                              the stored post-stop steps).
+  --upgrade-timeout DURATION  Set the per-step timeout, e.g. 10m; 0 disables it.
+  --clear-upgrade-pre-stop-cmds   Remove all pre-stop upgrade steps.
+  --clear-upgrade-post-stop-cmds  Remove all post-stop upgrade steps.
   --env KEY=VALUE             Set or replace an environment variable.
                               Can be repeated.
   --unset-env KEY             Remove an environment variable.

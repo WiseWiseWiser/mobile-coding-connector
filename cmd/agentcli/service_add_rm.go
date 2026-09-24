@@ -10,21 +10,24 @@ import (
 
 func runServiceAdd(resolve func() (*client.Client, error), args []string) error {
 	var (
-		name           string
-		command        string
-		workingDir     string
-		upgradeTarget  string
-		envSet         []string
-		port           int
-		portLabel      string
-		portProvider   string
-		portBaseDomain string
-		portSubdomain  string
-		requireAuth    bool
-		authUser       string
-		authToken      string
-		disabled       bool
-		start          bool
+		name                string
+		command             string
+		workingDir          string
+		upgradeTarget       string
+		upgradePreStopCmds  []string
+		upgradePostStopCmds []string
+		upgradeTimeout      string
+		envSet              []string
+		port                int
+		portLabel           string
+		portProvider        string
+		portBaseDomain      string
+		portSubdomain       string
+		requireAuth         bool
+		authUser            string
+		authToken           string
+		disabled            bool
+		start               bool
 	)
 
 	args, err := flags.
@@ -32,6 +35,9 @@ func runServiceAdd(resolve func() (*client.Client, error), args []string) error 
 		String("--command", &command).
 		String("--working-dir", &workingDir).
 		String("--upgrade-target", &upgradeTarget).
+		StringSlice("--upgrade-pre-stop-cmd", &upgradePreStopCmds).
+		StringSlice("--upgrade-post-stop-cmd", &upgradePostStopCmds).
+		String("--upgrade-timeout", &upgradeTimeout).
 		StringSlice("--env", &envSet).
 		Int("--port", &port).
 		String("--port-label", &portLabel).
@@ -62,10 +68,19 @@ func runServiceAdd(resolve func() (*client.Client, error), args []string) error 
 	}
 
 	def := client.ServiceDefinition{
-		Name:          name,
-		Command:       command,
-		WorkingDir:    strings.TrimSpace(workingDir),
-		UpgradeTarget: strings.TrimSpace(upgradeTarget),
+		Name:                name,
+		Command:             command,
+		WorkingDir:          strings.TrimSpace(workingDir),
+		UpgradeTarget:       strings.TrimSpace(upgradeTarget),
+		UpgradePreStopCmds:  upgradePreStopCmds,
+		UpgradePostStopCmds: upgradePostStopCmds,
+	}
+	if strings.TrimSpace(upgradeTimeout) != "" {
+		seconds, _, err := parseUpgradeTimeout(upgradeTimeout, nil)
+		if err != nil {
+			return err
+		}
+		def.UpgradeTimeoutSeconds = &seconds
 	}
 	if disabled {
 		enabled := false

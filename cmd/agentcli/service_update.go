@@ -45,23 +45,28 @@ func runServiceRename(resolve func() (*client.Client, error), args []string) err
 func runServiceUpdate(resolve func() (*client.Client, error), args []string) error {
 	originalArgs := append([]string(nil), args...)
 	var (
-		name             string
-		command          string
-		workingDir       string
-		upgradeTarget    string
-		envSet           []string
-		envUnset         []string
-		clearEnv         bool
-		port             int
-		portLabel        string
-		portProvider     string
-		portBaseDomain   string
-		portSubdomain    string
-		clearPortForward bool
-		requireAuth      bool
-		authUser         string
-		authToken        string
-		clearAuth        bool
+		name                 string
+		command              string
+		workingDir           string
+		upgradeTarget        string
+		upgradePreStopCmds   []string
+		upgradePostStopCmds  []string
+		upgradeTimeout       string
+		clearUpgradePreStop  bool
+		clearUpgradePostStop bool
+		envSet               []string
+		envUnset             []string
+		clearEnv             bool
+		port                 int
+		portLabel            string
+		portProvider         string
+		portBaseDomain       string
+		portSubdomain        string
+		clearPortForward     bool
+		requireAuth          bool
+		authUser             string
+		authToken            string
+		clearAuth            bool
 	)
 
 	args, err := flags.
@@ -69,6 +74,11 @@ func runServiceUpdate(resolve func() (*client.Client, error), args []string) err
 		String("--command", &command).
 		String("--working-dir", &workingDir).
 		String("--upgrade-target", &upgradeTarget).
+		StringSlice("--upgrade-pre-stop-cmd", &upgradePreStopCmds).
+		StringSlice("--upgrade-post-stop-cmd", &upgradePostStopCmds).
+		String("--upgrade-timeout", &upgradeTimeout).
+		Bool("--clear-upgrade-pre-stop-cmds", &clearUpgradePreStop).
+		Bool("--clear-upgrade-post-stop-cmds", &clearUpgradePostStop).
 		StringSlice("--env", &envSet).
 		StringSlice("--unset-env", &envUnset).
 		Bool("--clear-env", &clearEnv).
@@ -121,6 +131,37 @@ func runServiceUpdate(resolve func() (*client.Client, error), args []string) err
 	}
 	if specified["--upgrade-target"] {
 		def.UpgradeTarget = strings.TrimSpace(upgradeTarget)
+		updateCount++
+	}
+
+	if clearUpgradePreStop && len(upgradePreStopCmds) > 0 {
+		return fmt.Errorf("--clear-upgrade-pre-stop-cmds cannot be combined with --upgrade-pre-stop-cmd")
+	}
+	if clearUpgradePostStop && len(upgradePostStopCmds) > 0 {
+		return fmt.Errorf("--clear-upgrade-post-stop-cmds cannot be combined with --upgrade-post-stop-cmd")
+	}
+	// Steps are an ordered pipeline, so supplying any replaces the stored list
+	// rather than merging into it.
+	if clearUpgradePreStop {
+		def.UpgradePreStopCmds = nil
+		updateCount++
+	} else if len(upgradePreStopCmds) > 0 {
+		def.UpgradePreStopCmds = upgradePreStopCmds
+		updateCount++
+	}
+	if clearUpgradePostStop {
+		def.UpgradePostStopCmds = nil
+		updateCount++
+	} else if len(upgradePostStopCmds) > 0 {
+		def.UpgradePostStopCmds = upgradePostStopCmds
+		updateCount++
+	}
+	if specified["--upgrade-timeout"] {
+		seconds, _, err := parseUpgradeTimeout(upgradeTimeout, originalArgs)
+		if err != nil {
+			return err
+		}
+		def.UpgradeTimeoutSeconds = &seconds
 		updateCount++
 	}
 
@@ -249,18 +290,31 @@ func serviceDefinitionFromStatus(service *client.ServiceStatus) client.ServiceDe
 		return client.ServiceDefinition{}
 	}
 	return client.ServiceDefinition{
-		ID:            service.ID,
-		Name:          service.Name,
-		Command:       service.Command,
-		WorkingDir:    service.WorkingDir,
-		ExtraEnv:      cloneServiceEnv(service.ExtraEnv),
-		PortForward:   servicePortForwardFromStatus(service.PortForward),
-		UpgradeTarget: service.UpgradeTarget,
-		RequireAuth:   service.RequireAuth,
-		AuthUser:      service.AuthUser,
-		AuthTokenMode: service.AuthTokenMode,
-		AuthToken:     service.AuthToken,
+		ID:                    service.ID,
+		Name:                  service.Name,
+		Command:               service.Command,
+		WorkingDir:            service.WorkingDir,
+		ExtraEnv:              cloneServiceEnv(service.ExtraEnv),
+		PortForward:           servicePortForwardFromStatus(service.PortForward),
+		UpgradeTarget:         service.UpgradeTarget,
+		UpgradePreStopCmds:    append([]string(nil), service.UpgradePreStopCmds...),
+		UpgradePostStopCmds:   append([]string(nil), service.UpgradePostStopCmds...),
+		UpgradeTimeoutSeconds: cloneServiceIntPtr(service.UpgradeTimeoutSeconds),
+		RequireAuth:           service.RequireAuth,
+		AuthUser:              service.AuthUser,
+		AuthTokenMode:         service.AuthTokenMode,
+		AuthToken:             service.AuthToken,
 	}
+}
+
+// cloneServiceIntPtr copies an optional int so an update round-trip does not
+// alias the status value.
+func cloneServiceIntPtr(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
 }
 
 func servicePortForwardFromStatus(pf *client.ServicePortForwardStatus) *client.ServicePortForward {
@@ -301,25 +355,30 @@ func parseServiceEnvAssignment(assignment string) (string, string, error) {
 
 func serviceUpdateSpecifiedFlags(args []string) map[string]bool {
 	valueFlags := map[string]bool{
-		"--name":             true,
-		"--command":          true,
-		"--working-dir":      true,
-		"--upgrade-target":   true,
-		"--env":              true,
-		"--unset-env":        true,
-		"--port":             true,
-		"--port-label":       true,
-		"--port-provider":    true,
-		"--port-base-domain": true,
-		"--port-subdomain":   true,
-		"--auth-user":        true,
-		"--auth-token":       true,
+		"--name":                  true,
+		"--command":               true,
+		"--working-dir":           true,
+		"--upgrade-target":        true,
+		"--upgrade-pre-stop-cmd":  true,
+		"--upgrade-post-stop-cmd": true,
+		"--upgrade-timeout":       true,
+		"--env":                   true,
+		"--unset-env":             true,
+		"--port":                  true,
+		"--port-label":            true,
+		"--port-provider":         true,
+		"--port-base-domain":      true,
+		"--port-subdomain":        true,
+		"--auth-user":             true,
+		"--auth-token":            true,
 	}
 	boolFlags := map[string]bool{
-		"--clear-env":          true,
-		"--clear-port-forward": true,
-		"--require-auth":       true,
-		"--clear-auth":         true,
+		"--clear-env":                    true,
+		"--clear-port-forward":           true,
+		"--require-auth":                 true,
+		"--clear-auth":                   true,
+		"--clear-upgrade-pre-stop-cmds":  true,
+		"--clear-upgrade-post-stop-cmds": true,
 	}
 	specified := map[string]bool{}
 	for i := 0; i < len(args); i++ {

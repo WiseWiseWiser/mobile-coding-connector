@@ -6,7 +6,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { ServiceCard } from './ServiceCard';
 import { ServiceForm } from './ServiceForm';
 import { SystemServiceCard } from './SystemServiceCard';
-import { createDefaultForm, toFormState, type ServiceFormState } from './serviceFormState';
+import { createDefaultForm, parseUpgradeSteps, parseUpgradeTimeoutInput, toFormState, type ServiceFormState } from './serviceFormState';
 import { disableMessage, enableMessage, parseEnvText } from './serviceFormat';
 
 interface ServicesSectionProps {
@@ -147,6 +147,12 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
         setSaving(true);
         setActionError(null);
         try {
+            const upgradeTimeout = parseUpgradeTimeoutInput(form.upgradeTimeout);
+            if (upgradeTimeout.error) {
+                setActionError(upgradeTimeout.error);
+                setSaving(false);
+                return;
+            }
             await saveService({
                 id: form.id,
                 name,
@@ -154,6 +160,11 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                 workingDir: workingDir || undefined,
                 extraEnv: parsedEnv.env,
                 portForward,
+                // Carried through so saving the form cannot silently drop the
+                // configured upgrade steps.
+                upgradePreStopCmds: parseUpgradeSteps(form.upgradePreStopText),
+                upgradePostStopCmds: parseUpgradeSteps(form.upgradePostStopText),
+                upgradeTimeoutSeconds: upgradeTimeout.seconds,
                 requireAuth: form.requireAuth,
                 authUser: form.authUserMode === 'fixed' ? form.authUser.trim() : undefined,
                 authTokenMode: form.requireAuth || form.authTokenMode === 'custom' || form.authUserMode === 'fixed' ? form.authTokenMode : undefined,
@@ -208,6 +219,7 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                             onDisable={() => setDisableTarget(service)}
                             onEnable={() => setEnableTarget(service)}
                             onDelete={() => setDeleteTarget(service)}
+                            onUpgraded={() => { void refreshServices(); }}
                         />
                     ))}
                     {!loading && userServices.length === 0 && (

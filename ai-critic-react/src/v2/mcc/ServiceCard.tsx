@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { consumeSSEStream } from '../../api/sse';
 import { streamLogFile } from '../../api/logs';
-import type { ServiceStatus } from '../../api/services';
+import { upgradeServiceStream, type ServiceStatus } from '../../api/services';
 import { LogViewer } from '../LogViewer';
 import { appendLogLine, formatTime, stringifyEnvMap } from './serviceFormat';
 
@@ -14,13 +14,17 @@ export interface ServiceCardProps {
     onDisable: () => void;
     onEnable: () => void;
     onDelete: () => void;
+    onUpgraded?: () => void;
 }
 
 /** ServiceCard renders one user-defined service: a command the server keeps alive. */
-export function ServiceCard({ service, onEdit, onStart, onStop, onRestart, onDisable, onEnable, onDelete }: ServiceCardProps) {
+export function ServiceCard({ service, onEdit, onStart, onStop, onRestart, onDisable, onEnable, onDelete, onUpgraded }: ServiceCardProps) {
     const [showLogs, setShowLogs] = useState(false);
     const [logLines, setLogLines] = useState<{ text: string; error?: boolean }[]>([]);
     const [streaming, setStreaming] = useState(false);
+    const [upgradeLines, setUpgradeLines] = useState<{ text: string; error?: boolean }[]>([]);
+    const [showUpgrade, setShowUpgrade] = useState(false);
+    const [upgrading, setUpgrading] = useState(false);
 
     useEffect(() => {
         if (!showLogs || !service.logPath) return;
@@ -59,6 +63,33 @@ export function ServiceCard({ service, onEdit, onStart, onStop, onRestart, onDis
 
     const canStop = service.pid > 0 || service.desiredRunning;
     const isDisabled = service.enabled === false;
+    const upgradeSteps = (service.upgradePreStopCmds?.length || 0) + (service.upgradePostStopCmds?.length || 0);
+    const canUpgrade = upgradeSteps > 0 || !!service.upgradeTarget;
+
+    const runUpgrade = async () => {
+        setShowUpgrade(true);
+        setUpgrading(true);
+        setUpgradeLines([]);
+        try {
+            await upgradeServiceStream(service.id, (event) => {
+                if (event.type === 'section') {
+                    setUpgradeLines((prev) => appendLogLine(prev, { text: `── ${event.message}` }));
+                } else if (event.type === 'log') {
+                    setUpgradeLines((prev) => appendLogLine(prev, { text: event.message || '' }));
+                } else if (event.type === 'error') {
+                    setUpgradeLines((prev) => appendLogLine(prev, { text: event.message || 'upgrade failed', error: true }));
+                }
+            });
+            onUpgraded?.();
+        } catch (err) {
+            setUpgradeLines((prev) => appendLogLine(prev, {
+                text: err instanceof Error ? err.message : String(err),
+                error: true,
+            }));
+        } finally {
+            setUpgrading(false);
+        }
+    };
 
     return (
         <div className={`mcc-port-card mcc-service-card mcc-service-card--${service.status}`}>
@@ -138,6 +169,17 @@ export function ServiceCard({ service, onEdit, onStart, onStop, onRestart, onDis
                 )}
                 <button
                     type="button"
+                    className="mcc-port-action-btn"
+                    onClick={runUpgrade}
+                    disabled={!canUpgrade || upgrading}
+                    title={canUpgrade
+                        ? `${service.upgradePreStopCmds?.length || 0} pre-stop · ${service.upgradePostStopCmds?.length || 0} post-stop steps`
+                        : 'No upgrade steps configured'}
+                >
+                    {upgrading ? 'Upgrading…' : 'Upgrade'}
+                </button>
+                <button
+                    type="button"
                     className={`mcc-port-action-btn mcc-port-logs-btn ${showLogs ? 'active' : ''}`}
                     onClick={() => setShowLogs((prev) => !prev)}
                 >
@@ -151,6 +193,16 @@ export function ServiceCard({ service, onEdit, onStart, onStop, onRestart, onDis
                     lines={logLines}
                     pending={streaming}
                     pendingMessage="Streaming service logs..."
+                    className="mcc-port-logs-margin"
+                    maxHeight={220}
+                />
+            )}
+
+            {showUpgrade && (
+                <LogViewer
+                    lines={upgradeLines}
+                    pending={upgrading}
+                    pendingMessage="Running upgrade steps..."
                     className="mcc-port-logs-margin"
                     maxHeight={220}
                 />
