@@ -490,6 +490,13 @@ func (m *Manager) StartHealthCheck() {
 }
 
 func (m *Manager) AutoStartConfiguredServices() {
+	// Reclaim processes a previous instance left behind before starting
+	// anything: an orphan still holds its port, so its replacement would die
+	// with "address already in use".
+	if reclaimed := m.ReconcileOrphans(); len(reclaimed) > 0 {
+		fmt.Printf("[services] reclaimed %d orphaned service process(es)\n", len(reclaimed))
+	}
+
 	// Defer briefly so early API calls (e.g. disable before autostart) can
 	// persist policy changes before the boot snapshot is applied.
 	time.Sleep(2 * time.Second)
@@ -516,6 +523,10 @@ func (m *Manager) AutoStartConfiguredServices() {
 	}
 }
 
+// Shutdown stops every managed service. Stops run concurrently: each waits up
+// to 5s for its process to die, so stopping a fleet sequentially can outlast the
+// caller's cleanup budget and leave the last services running when the process
+// is replaced.
 func (m *Manager) Shutdown() {
 	m.mu.Lock()
 	var ids []string
@@ -529,8 +540,75 @@ func (m *Manager) Shutdown() {
 	}
 	m.mu.Unlock()
 
+	var wg sync.WaitGroup
 	for _, id := range ids {
-		_ = m.stop(id, true, true)
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			_ = m.stop(id, true, true)
+		}(id)
+	}
+	wg.Wait()
+}
+
+// ForceStopAll kills any managed service process that is still alive, returning
+// the names it had to kill. It is the backstop for an interrupted shutdown: a
+// survivor keeps its port, and the next instance's copy then dies with
+// "address already in use".
+func ForceStopAll() []string {
+	return defaultManager.forceStopAll()
+}
+
+func (m *Manager) forceStopAll() []string {
+	type survivor struct {
+		name string
+		pid  int
+	}
+	m.mu.Lock()
+	var alive []survivor
+	for id, proc := range m.processes {
+		if proc == nil || proc.pid <= 0 || !processAlive(proc.pid) {
+			continue
+		}
+		name := proc.def.Name
+		if name == "" {
+			name = id
+		}
+		alive = append(alive, survivor{name: name, pid: proc.pid})
+	}
+	m.mu.Unlock()
+
+	var killed []string
+	for _, s := range alive {
+		// Escalate straight to SIGKILL: cleanup already gave this process its
+		// SIGTERM grace period before timing out.
+		pgid, err := processGroupID(s.pid)
+		if err != nil {
+			pgid = s.pid
+		}
+		_ = syscall.Kill(-pgid, syscall.SIGKILL)
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) && processAlive(s.pid) {
+			time.Sleep(50 * time.Millisecond)
+		}
+		m.clearProcessPIDByPID(s.pid)
+		killed = append(killed, s.name)
+	}
+	return killed
+}
+
+// clearProcessPIDByPID forgets a pid after a forced kill, so status stops
+// claiming a process that is gone.
+func (m *Manager) clearProcessPIDByPID(pid int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, proc := range m.processes {
+		if proc != nil && proc.pid == pid {
+			proc.pid = 0
+			proc.cmd = nil
+			proc.status = StatusStopped
+			proc.desired = false
+		}
 	}
 }
 
@@ -1120,6 +1198,14 @@ func (m *Manager) start(id string, force bool) error {
 	proc.lastExitError = ""
 	m.mu.Unlock()
 
+	// Persist the pid so a later instance can reclaim this process if it is
+	// orphaned by a crash or an interrupted shutdown.
+	pgid, pgidErr := processGroupID(pid)
+	if pgidErr != nil {
+		pgid = pid
+	}
+	m.recordRuntimeProcess(id, pid, pgid, def.Command)
+
 	if err := m.ensurePortForward(id, def); err != nil {
 		_, _ = logFile.WriteString(fmt.Sprintf("[%s] failed to ensure port forwarding: %v\n", time.Now().Format(time.RFC3339), err))
 		m.setRuntimeError(id, err.Error())
@@ -1259,12 +1345,14 @@ func (m *Manager) stop(id string, removeForward bool, wait bool) error {
 
 func (m *Manager) clearProcessPID(id string, pid int) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if current := m.processes[id]; current != nil && current.pid == pid {
 		current.pid = 0
 		current.cmd = nil
 		current.runStartedAt = time.Time{}
 	}
+	m.mu.Unlock()
+	// The process is gone, so its runtime record has nothing left to reclaim.
+	m.forgetRuntimeProcess(id)
 }
 
 // RepublishForward tears down one service's port forward and re-establishes it.

@@ -283,10 +283,28 @@ func (p *OwnedProvider) Start(port int, hostname string) (*portforward.TunnelHan
 		Result: resultCh,
 		Logs:   logs,
 		Stop: func() {
-			fmt.Fprintf(logs, "[cleanup] Removing route for %s\n", hostname)
-			if err := b.RemoveRoute(context.Background(), "", hostname); err != nil {
-				fmt.Fprintf(logs, "[cleanup] Warning: remove route: %v\n", err)
-			}
+			stopOwnedForward(hostname, func(message string) { fmt.Fprintln(logs, message) })
 		},
 	}, nil
+}
+
+// stopOwnedForward tears down what Start created for hostname. It must mirror
+// Start's branch: the host path publishes through the domains layer (which owns
+// proxy-mode sessions and their edge mappings), while the qemu path owns a
+// cloudflared backend route.
+func stopOwnedForward(hostname string, logFn func(string)) {
+	if logFn == nil {
+		logFn = func(string) {}
+	}
+	logFn(fmt.Sprintf("[cleanup] Removing route for %s", hostname))
+	if serverqemu.Enabled() {
+		b := serverqemu.CloudflaredBackend()
+		if err := b.RemoveRoute(context.Background(), "", hostname); err != nil {
+			logFn(fmt.Sprintf("[cleanup] Warning: remove route: %v", err))
+		}
+		return
+	}
+	if err := domains.StopHostDomainTunnel(hostname, logFn); err != nil {
+		logFn(fmt.Sprintf("[cleanup] Warning: remove route: %v", err))
+	}
 }

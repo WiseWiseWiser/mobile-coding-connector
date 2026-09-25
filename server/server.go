@@ -338,78 +338,105 @@ func Serve(port int, dev bool) error {
 		cleanupDone := make(chan struct{})
 
 		go func() {
-			// Stop agent children first — highest priority for orphan cleanup on shutdown.
-			fmt.Println("Stopping agents module...")
-			agents.Shutdown()
-			fmt.Println("Stopping terminal PTY sessions...")
-			terminal.Shutdown()
-
-			// Stop all domain health check goroutines
-			fmt.Println("Stopping domain health check goroutines...")
-			domains.StopAllDomainHealthChecks()
-
-			// Stop unified tunnel health checks
-			fmt.Println("Stopping unified tunnel health checks...")
-			unified_tunnel.StopGlobalHealthChecks()
-
-			// Stop opencode web server if enabled
-			if opencode_exposed.IsWebServerEnabled() {
-				fmt.Println("Stopping opencode web server...")
-				_, err := opencode_exposed.StopWebServer()
-				if err != nil {
-					fmt.Printf("Warning: failed to stop opencode web server: %v\n", err)
-				}
-			}
-
-			// Stop all port forwards (tunnels)
-			pfManager := portforward.GetDefaultManager()
-			for _, pf := range pfManager.List() {
-				fmt.Printf("Stopping port forward for port %d...\n", pf.LocalPort)
-				pfManager.Remove(pf.LocalPort)
-			}
-
-			// Stop managed services
-			fmt.Println("Stopping managed services...")
-			services.Shutdown()
-
-			// Stop cron tasks
-			fmt.Println("Stopping cron tasks...")
-			crontasks.Shutdown()
-
-			// Stop all managed subprocesses
-			fmt.Println("Stopping all managed subprocesses...")
-			subprocess.GetManager().StopAll()
-
-			// Shutdown HTTP server
-			fmt.Println("Shutting down HTTP server...")
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
-			defer cancel()
-
-			if err := server.Shutdown(shutdownCtx); err != nil {
-				fmt.Printf("Server shutdown error: %v\n", err)
-			}
-
-			fmt.Println("All cleanup operations completed")
+			runShutdownCleanup(server, cleanupTimeout)
 			close(cleanupDone)
 		}()
 
-		// Wait for cleanup with timeout
-		select {
-		case <-cleanupDone:
-			fmt.Println("Graceful shutdown completed within timeout")
-		case <-time.After(cleanupTimeout):
-			fmt.Printf("Warning: Cleanup timeout (%v) reached, forcing %s\n", cleanupTimeout, shutdownMode)
-		}
+		return awaitCleanupThenFinish(cleanupDone, cleanupTimeout)
+	}
+}
 
-		// Check if this is a restart (exec) or shutdown
-		if shutdownMode == "restart" {
-			fmt.Println("Restart mode: proceeding with exec restart")
-			// execRestart should have already been called, this is a fallback
-			return nil
-		}
+// awaitCleanupThenFinish waits for cleanup to finish, force-stopping survivors
+// when it times out, and then performs a pending exec restart when one was
+// requested. It is the only place the restart exec happens: syscall.Exec never
+// returns, so running it anywhere else — or before this point — replaces the
+// process image while children are still being stopped and orphans them.
+func awaitCleanupThenFinish(cleanupDone <-chan struct{}, cleanupTimeout time.Duration) error {
+	select {
+	case <-cleanupDone:
+		fmt.Println("Graceful shutdown completed within timeout")
+	case <-time.After(cleanupTimeout):
+		fmt.Printf("Warning: Cleanup timeout (%v) reached, forcing %s\n", cleanupTimeout, shutdownMode)
+		// Cleanup was cut short, so children may still be running. Kill them
+		// rather than exec over them: an orphan holds its port and the next
+		// instance's copy dies on "address already in use".
+		forceStopRemainingChildren()
+	}
 
-		fmt.Println("Server shutdown complete")
-		return nil
+	if shutdownMode == "restart" {
+		fmt.Println("Restart mode: proceeding with exec restart")
+		// execProcess only returns on failure.
+		return performPendingRestart(takePendingRestart())
+	}
+
+	fmt.Println("Server shutdown complete")
+	return nil
+}
+
+// runShutdownCleanup stops every subsystem the server owns, in the order that
+// keeps children from outliving their parent.
+func runShutdownCleanup(server *http.Server, cleanupTimeout time.Duration) {
+	// Stop agent children first — highest priority for orphan cleanup on shutdown.
+	fmt.Println("Stopping agents module...")
+	agents.Shutdown()
+	fmt.Println("Stopping terminal PTY sessions...")
+	terminal.Shutdown()
+
+	// Stop all domain health check goroutines
+	fmt.Println("Stopping domain health check goroutines...")
+	domains.StopAllDomainHealthChecks()
+
+	// Stop unified tunnel health checks
+	fmt.Println("Stopping unified tunnel health checks...")
+	unified_tunnel.StopGlobalHealthChecks()
+
+	// Stop opencode web server if enabled
+	if opencode_exposed.IsWebServerEnabled() {
+		fmt.Println("Stopping opencode web server...")
+		_, err := opencode_exposed.StopWebServer()
+		if err != nil {
+			fmt.Printf("Warning: failed to stop opencode web server: %v\n", err)
+		}
+	}
+
+	// Stop all port forwards (tunnels)
+	pfManager := portforward.GetDefaultManager()
+	for _, pf := range pfManager.List() {
+		fmt.Printf("Stopping port forward for port %d...\n", pf.LocalPort)
+		pfManager.Remove(pf.LocalPort)
+	}
+
+	// Stop managed services
+	fmt.Println("Stopping managed services...")
+	services.Shutdown()
+
+	// Stop cron tasks
+	fmt.Println("Stopping cron tasks...")
+	crontasks.Shutdown()
+
+	// Stop all managed subprocesses
+	fmt.Println("Stopping all managed subprocesses...")
+	subprocess.GetManager().StopAll()
+
+	// Shutdown HTTP server
+	fmt.Println("Shutting down HTTP server...")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		fmt.Printf("Server shutdown error: %v\n", err)
+	}
+
+	fmt.Println("All cleanup operations completed")
+}
+
+// forceStopRemainingChildren kills anything the interrupted cleanup left behind,
+// logging each survivor so an incomplete shutdown is visible rather than silent.
+func forceStopRemainingChildren() {
+	if killed := services.ForceStopAll(); len(killed) > 0 {
+		for _, name := range killed {
+			fmt.Printf("Warning: killed service %q that outlived cleanup\n", name)
+		}
 	}
 }
 
@@ -1250,21 +1277,14 @@ func handleExecRestart(w http.ResponseWriter, r *http.Request) {
 	// Set shutdown mode to restart so the shutdown flow knows to proceed with exec
 	SetShutdownMode("restart")
 
+	// Record what to run. The shutdown cleanup owner performs the exec once
+	// cleanup finishes; execing here would replace the process image while
+	// children are still being stopped and orphan them.
+	plan := setPendingRestart(newerBin)
+
 	// Trigger graceful shutdown first
 	sw.SendLog("Initiating graceful shutdown (30s max)...")
-	shutdownDone := make(chan struct{})
-	go func() {
-		ShutdownServer()
-		close(shutdownDone)
-	}()
-
-	// Wait for shutdown with timeout
-	select {
-	case <-shutdownDone:
-		sw.SendLog("Graceful shutdown completed")
-	case <-time.After(30 * time.Second):
-		sw.SendLog("Graceful shutdown timeout reached, proceeding with restart")
-	}
+	ShutdownServer()
 
 	sw.SendDone(map[string]string{
 		"success":   "true",
@@ -1278,16 +1298,9 @@ func handleExecRestart(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	// Small delay to allow SSE to be sent
-	time.Sleep(100 * time.Millisecond)
-
-	// Execute the new binary, replacing current process
-	// syscall.Exec never returns on success
-	err = syscall.Exec(newerBin, args, os.Environ())
-
-	// If we get here, exec failed
-	// Cannot send SSE anymore since we've already sent done, so just log
-	fmt.Fprintf(os.Stderr, "ERROR: syscall.Exec failed: %v\n", err)
+	// Release the exec only after this response is written, so the caller sees
+	// the restart acknowledgement before the process is replaced.
+	close(plan.released)
 }
 
 // findNewerBinary looks for a newer version of the binary (e.g., binary-v2 when current is binary-v1)
@@ -1421,11 +1434,85 @@ func SetShutdownMode(mode string) {
 	shutdownMode = mode
 }
 
-// ShutdownServer initiates server shutdown
+// restartPlan is a pending exec restart. The HTTP handler records it and returns;
+// the shutdown cleanup owner performs the exec once cleanup has finished, so a
+// restart can never replace the process image while children are still being
+// stopped.
+type restartPlan struct {
+	bin string
+	// released is closed by the handler once its response is written, so the
+	// exec does not cut off the stream that told the caller a restart is coming.
+	released chan struct{}
+}
+
+var (
+	pendingRestartMu sync.Mutex
+	pendingRestart   *restartPlan
+)
+
+// setPendingRestart records the binary the next exec restart should run.
+func setPendingRestart(bin string) *restartPlan {
+	plan := &restartPlan{bin: bin, released: make(chan struct{})}
+	pendingRestartMu.Lock()
+	pendingRestart = plan
+	pendingRestartMu.Unlock()
+	return plan
+}
+
+// takePendingRestart returns and clears the pending restart plan.
+func takePendingRestart() *restartPlan {
+	pendingRestartMu.Lock()
+	defer pendingRestartMu.Unlock()
+	plan := pendingRestart
+	pendingRestart = nil
+	return plan
+}
+
+// execProcess replaces the current process image. Injected so tests can assert
+// when the restart exec happens relative to cleanup.
+var execProcess = func(bin string, argv []string, env []string) error {
+	return syscall.Exec(bin, argv, env)
+}
+
+// restartReleaseGrace bounds how long the exec waits for the handler to finish
+// writing its response, so a vanished client cannot wedge a restart.
+const restartReleaseGrace = 2 * time.Second
+
+// performPendingRestart execs the pending binary. It must only be called by the
+// shutdown cleanup owner, after cleanup has completed: syscall.Exec never
+// returns, so anything still running (including children mid-stop) dies with
+// the old image and is orphaned.
+func performPendingRestart(plan *restartPlan) error {
+	if plan == nil {
+		return fmt.Errorf("restart requested but no binary was recorded")
+	}
+	select {
+	case <-plan.released:
+	case <-time.After(restartReleaseGrace):
+		fmt.Printf("Warning: restart response not released within %v, proceeding with exec\n", restartReleaseGrace)
+	}
+	fmt.Printf("Restart mode: exec %s\n", plan.bin)
+	return execProcess(plan.bin, os.Args, os.Environ())
+}
+
+// ShutdownServer initiates server shutdown. It is idempotent: shutdown can be
+// requested from several places at once (CLI, GUI, signal), and a second close
+// of the shutdown channel would panic.
 func ShutdownServer() {
+	shutdownMu.Lock()
+	defer shutdownMu.Unlock()
+	if shutdownRequested {
+		return
+	}
+	shutdownRequested = true
 	eventbus.StopPublishServer()
 	close(globalShutdownChan)
 }
+
+var (
+	shutdownMu        sync.Mutex
+	shutdownRequested bool
+)
 
 // WaitForShutdown returns a channel that will be closed when shutdown is requested
 func WaitForShutdown() <-chan struct{} {

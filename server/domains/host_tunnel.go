@@ -1,6 +1,7 @@
 package domains
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -79,4 +80,24 @@ func StartHostDomainTunnel(domain string, port int, logFn cloudflareSettings.Log
 	}
 	logFn("retry with tunnel name " + name)
 	return cloudflareSettings.StartDomainTunnel(domain, port, name, logFn)
+}
+
+// StopHostDomainTunnel tears down the tunnel StartHostDomainTunnel started.
+//
+// In proxy mode the publish owns a mapping on the edge, and only stopping its
+// session deletes that mapping. Removing the cloudflared backend route instead
+// (as the owned-domain port forward used to) strands the hostname: the edge
+// keeps serving a mapping whose dial pool is dead, and the next start sees a
+// live-looking pool, skips publishing, and leaves the hostname broken until the
+// server restarts.
+func StopHostDomainTunnel(domain string, logFn cloudflareSettings.LogFunc) error {
+	if logFn == nil {
+		logFn = func(string) {}
+	}
+	if cloudflareSettings.ProxyModeEnabled() {
+		logFn("stopping proxy publish for " + domain)
+		return cloudflareSettings.StopDomainTunnel(domain, "")
+	}
+	b := serverqemu.CloudflaredBackend()
+	return b.RemoveRoute(context.Background(), "", domain)
 }

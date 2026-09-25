@@ -7,7 +7,40 @@ import (
 	"testing"
 
 	cloudflareSettings "github.com/xhd2015/ai-critic/server/cloudflare"
+	"github.com/xhd2015/ai-critic/server/config"
 )
+
+// TestStopHostDomainTunnelStopsProxySession covers the seam the owned-domain
+// port forward calls on removal. In proxy mode the publish owns an edge mapping,
+// so the stop must cancel the session; tearing down a cloudflared route instead
+// leaves the hostname published on a dead dial pool.
+func TestStopHostDomainTunnelStopsProxySession(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "cloudflare.json")
+	if err := os.WriteFile(cfgPath, []byte(`{"mode":"proxy"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cloudflareSettings.SetConfigFile(cfgPath)
+	t.Cleanup(func() { cloudflareSettings.SetConfigFile(config.CloudflareFile) })
+
+	const domain = "host-stop.example.com"
+	cloudflareSettings.SetTestProxySession(domain, true)
+	t.Cleanup(func() { cloudflareSettings.SetTestProxySession(domain, false) })
+	restoreCounts := cloudflareSettings.SetTestProxyDialCounts(map[string]int{domain: 32}, nil)
+	t.Cleanup(restoreCounts)
+
+	if got := cloudflareSettings.GetDomainTunnelStatus(domain); got.Status != "active" {
+		t.Fatalf("precondition: status = %q, want %q", got.Status, "active")
+	}
+
+	if err := StopHostDomainTunnel(domain, nil); err != nil {
+		t.Fatalf("StopHostDomainTunnel() error = %v", err)
+	}
+
+	if got := cloudflareSettings.GetDomainTunnelStatus(domain); got.Status == "active" {
+		t.Fatalf("publish session survived StopHostDomainTunnel: status = %q", got.Status)
+	}
+}
 
 func TestEnsurePersistedTunnelNameGenerates(t *testing.T) {
 	dir := t.TempDir()
