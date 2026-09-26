@@ -19,6 +19,7 @@ var skillRoot string
 // after edits.
 //
 //go:embed config
+//go:embed alias
 //go:embed exec
 //go:embed upload
 //go:embed edit

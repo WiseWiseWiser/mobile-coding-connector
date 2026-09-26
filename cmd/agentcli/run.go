@@ -37,12 +37,17 @@ func runCLI(profile Profile, args []string, stdout, stderr io.Writer) error {
 
 	var server string
 	var token string
+	var aliasName string
 	var port int
 	tokenSpecified := hasGlobalFlag(args, "--token")
 
 	parser := flags.
 		String("--server", &server).
 		String("--token", &token)
+	if profile.Name != "local-agent" {
+		// Aliases name another remote server; local-agent has exactly one.
+		parser = parser.String("--alias", &aliasName)
+	}
 	if profile.SupportsPortFlag {
 		parser = parser.Int("--port", &port)
 	}
@@ -63,6 +68,9 @@ func runCLI(profile Profile, args []string, stdout, stderr io.Writer) error {
 	if profile.SupportsPortFlag && server != "" && port > 0 {
 		return fmt.Errorf("--port and --server cannot be used together")
 	}
+	if err := validateAliasFlagConflicts(aliasName, server, tokenSpecified); err != nil {
+		return err
+	}
 
 	if len(args) == 0 {
 		fmt.Fprint(stdout, strings.TrimRight(help, "\n")+"\n")
@@ -73,12 +81,17 @@ func runCLI(profile Profile, args []string, stdout, stderr io.Writer) error {
 	rest := args[1:]
 
 	resolve := func() (*client.Client, error) {
-		return resolveClient(server, port, token, tokenSpecified)
+		return resolveClient(server, port, token, tokenSpecified, aliasName)
 	}
 
 	switch cmd {
 	case "config":
-		return runConfig(rest)
+		return runConfig(rest, stdout, stderr, server, aliasName)
+	case "alias":
+		if profile.Name == "local-agent" {
+			return fmt.Errorf("unknown command: %s", cmd)
+		}
+		return runAlias(rest, stdout, stderr, aliasName)
 	case "ping":
 		return runPing(resolve, rest)
 	case "install":
@@ -175,18 +188,57 @@ func runCLI(profile Profile, args []string, stdout, stderr io.Writer) error {
 	case "sync":
 		return runSync(rest)
 	case "event-bus":
-		return runEventBus(stdout, stderr, server, token, tokenSpecified, rest)
+		return runEventBus(stdout, stderr, server, token, tokenSpecified, aliasName, rest)
 	default:
 		return fmt.Errorf("unknown command: %s", cmd)
 	}
 }
 
-func resolveClient(server string, port int, token string, tokenSpecified bool) (*client.Client, error) {
+// validateAliasFlagConflicts rejects --alias combined with the flags that name
+// a server or token for the same invocation. Conflict detection for a
+// subcommand-level target (config set) lives with that subcommand.
+//
+// --port cannot conflict with --alias: it is a local-agent flag, and aliases
+// are remote-agent only.
+func validateAliasFlagConflicts(aliasName, server string, tokenSpecified bool) error {
+	if aliasName == "" {
+		return nil
+	}
+	if server != "" {
+		return fmt.Errorf("--alias and --server cannot be used together")
+	}
+	if tokenSpecified {
+		return fmt.Errorf("--alias and --token cannot be used together")
+	}
+	return nil
+}
+
+// resolveClient builds the API client for one invocation. An alias names the
+// server, so its token comes from the saved domain for that server.
+func resolveClient(server string, port int, token string, tokenSpecified bool, aliasName string) (*client.Client, error) {
 	if port > 0 {
 		server = fmt.Sprintf("http://localhost:%d", port)
 	}
 
 	cfg, _ := loadConfig()
+
+	if aliasName != "" {
+		store, err := loadAliasStore()
+		if err != nil {
+			return nil, err
+		}
+		entry := store.Find(aliasName)
+		if entry == nil {
+			return nil, fmt.Errorf("unknown alias %q (available: %s); run '%s alias list'",
+				aliasName, store.Available(), active.Name)
+		}
+		server = entry.Server
+		if !tokenSpecified {
+			if domain := cfg.FindDomain(server); domain != nil {
+				token = domain.Token
+			}
+		}
+	}
 
 	if server == "" {
 		def := cfg.DefaultDomain()
@@ -233,7 +285,7 @@ func hasGlobalFlag(args []string, name string) bool {
 			return true
 		}
 		switch arg {
-		case "--server", "--token", "--port":
+		case "--server", "--token", "--port", "--alias":
 			if i+1 < len(args) {
 				i++
 			}

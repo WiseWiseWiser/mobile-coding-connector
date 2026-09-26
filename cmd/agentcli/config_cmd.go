@@ -4,10 +4,13 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -39,11 +42,15 @@ and token are used automatically (built-in default: http://localhost:%d).`,
 	} else {
 		extra = `
 When other commands run without --server, the default domain's server and token
-are used automatically.`
+are used automatically (remote-agent can also target a saved alias with --alias NAME).`
 	}
 	return fmt.Sprintf(`Usage: %s config [--web] [--show] [--json]
+       %s config set [--server URL | --alias NAME] [options]
 
 Manage saved server domains and the default domain.
+
+Subcommands:
+  set       Add a domain, or update the token of an existing one
 
 Flags:
   --web     Open a local web page to manage domains (blocks until shutdown)
@@ -53,11 +60,12 @@ Flags:
 With no flags, print this help.%s
 
 Examples:
-  %s config                 # show this help
-  %s config --show          # dump saved config JSON
-  %s config --show --json   # same as --show
-  %s config --web           # open config UI in browser
-`, p.Name, extra, p.Name, p.Name, p.Name, p.Name)
+  %s config                                   # show this help
+  %s config --show                            # dump saved config JSON
+  %s config --show --json                     # same as --show
+  %s config --web                             # open config UI in browser
+  %s config set --server URL --token-stdin    # save a token for any server
+`, p.Name, p.Name, extra, p.Name, p.Name, p.Name, p.Name, p.Name)
 }
 
 func configPageDataFor(p Profile) configPageData {
@@ -92,19 +100,38 @@ func renderConfigHTML(p Profile) (string, error) {
 	return buf.String(), nil
 }
 
-func runConfig(args []string) error {
+func runConfig(args []string, stdout, stderr io.Writer, globalServer, globalAlias string) error {
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	if stderr == nil {
+		stderr = os.Stderr
+	}
+	// Word subcommands are detected before flag parsing so that an unknown one
+	// reports itself instead of its follow-on flags.
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		if args[0] == "set" {
+			return runConfigSet(args[1:], stdout, stderr, globalServer, globalAlias)
+		}
+		return fmt.Errorf("unknown config subcommand %q; see '%s config --help'", args[0], active.Name)
+	}
+
 	var web, show, asJSON bool
 	args, err := flags.
 		Bool("--web", &web).
 		Bool("--show", &show).
 		Bool("--json", &asJSON).
-		Help("-h,--help", configHelpFor(active)).
+		HelpFunc("-h,--help", func() { fmt.Fprint(stdout, configHelpFor(active)) }).
+		HelpNoExit().
 		Parse(args)
 	if err != nil {
+		if errors.Is(err, flags.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 	if len(args) > 0 {
-		return fmt.Errorf("config takes no arguments, got %v; see '%s config --help'", args, active.Name)
+		return fmt.Errorf("unknown config subcommand %q; see '%s config --help'", args[0], active.Name)
 	}
 
 	if show && web {
@@ -122,7 +149,7 @@ func runConfig(args []string) error {
 	}
 
 	// Bare config: print help (do not open UI).
-	fmt.Print(configHelpFor(active))
+	fmt.Fprint(stdout, configHelpFor(active))
 	return nil
 }
 

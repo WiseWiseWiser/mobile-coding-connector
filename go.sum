@@ -97,8 +97,8 @@ github.com/xhd2015/bak-files v0.0.5 h1:ddyYiYW9srYs0arlFkh4YmL/9wgWPo3GuelWd/bAk
 github.com/xhd2015/bak-files v0.0.5/go.mod h1:mGnhnJhlUV/Y5OwcQw8UZAQhNyMawm+nvfpUE8aZFi0=
 github.com/xhd2015/doctest v0.0.117 h1:yZ+Wf7dIHfRXVpOkaUkVo/W8/DRX7TnUJuVevYB1i7g=
 github.com/xhd2015/doctest v0.0.117/go.mod h1:6CgOQAYnMLnMQ84BUbZ0Z7fj39LavsqgxXyiHDpuSHU=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.187 h1:3g9trx4lkk7Sifn37T3asNc0R8tbPf1gTQoj0HT9LEs=
-github.com/xhd2015/dot-pkgs/go-pkgs v0.0.187/go.mod h1:rbA6ttLFEN1d78090+OnJo5Ghcsn8P91a0Eo2OUsxhQ=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.189 h1:3L0faFZ3mKv2rAKD3HDsN7sh2DxQ2Hz7M6/fCmlhPbk=
+github.com/xhd2015/dot-pkgs/go-pkgs v0.0.189/go.mod h1:rbA6ttLFEN1d78090+OnJo5Ghcsn8P91a0Eo2OUsxhQ=
 github.com/xhd2015/gitops v0.0.31 h1:dyiUIHzxeTCrG6dySEvfS5TpzooDxM8tXR+qlWDb+LQ=
 github.com/xhd2015/gitops v0.0.31/go.mod h1:KS8y6tZ3FG+myEaR+H6MvoR099YrP/ADIHZX9ROpZo8=
 github.com/xhd2015/go-coverage v1.0.41 h1:JjUcE93IMz0KHmdCYUKq9JN/EDC/5k0OEhsMAeVvL88=

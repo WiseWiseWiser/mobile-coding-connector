@@ -76,7 +76,7 @@ Global options (before event-bus):
 )
 
 // runEventBus dispatches the event-bus subcommand.
-func runEventBus(stdout, stderr io.Writer, server, token string, tokenSpecified bool, args []string) error {
+func runEventBus(stdout, stderr io.Writer, server, token string, tokenSpecified bool, aliasName string, args []string) error {
 	if stdout == nil {
 		stdout = io.Discard
 	}
@@ -93,7 +93,7 @@ func runEventBus(stdout, stderr io.Writer, server, token string, tokenSpecified 
 	rest := args[1:]
 	switch sub {
 	case "listen":
-		return runEventBusListenCLI(stdout, stderr, server, token, tokenSpecified, rest)
+		return runEventBusListenCLI(stdout, stderr, server, token, tokenSpecified, aliasName, rest)
 	case "-h", "--help":
 		fmt.Fprint(stdout, strings.TrimRight(eventBusRootHelp, "\n")+"\n")
 		return nil
@@ -102,7 +102,7 @@ func runEventBus(stdout, stderr io.Writer, server, token string, tokenSpecified 
 	}
 }
 
-func runEventBusListenCLI(stdout, stderr io.Writer, server, token string, tokenSpecified bool, args []string) error {
+func runEventBusListenCLI(stdout, stderr io.Writer, server, token string, tokenSpecified bool, aliasName string, args []string) error {
 	if wantsHelp(args) {
 		fmt.Fprint(stdout, strings.TrimRight(eventBusListenHelp, "\n")+"\n")
 		return nil
@@ -133,15 +133,19 @@ func runEventBusListenCLI(stdout, stderr io.Writer, server, token string, tokenS
 	}
 
 	// Resolve server/token from config when not fully specified (same as other commands).
-	if server == "" || (!tokenSpecified && token == "") {
-		cli, resolveErr := resolveClient(server, 0, token, tokenSpecified)
+	if aliasName != "" || server == "" || (!tokenSpecified && token == "") {
+		cli, resolveErr := resolveClient(server, 0, token, tokenSpecified, aliasName)
 		if resolveErr == nil && cli != nil {
-			if server == "" {
+			if server == "" || aliasName != "" {
 				server = cli.Server
 			}
 			if !tokenSpecified && token == "" {
 				token = cli.Token
 			}
+		} else if aliasName != "" {
+			// Unknown alias / unreadable store: surface it instead of falling
+			// back to the default domain.
+			return resolveErr
 		} else if server == "" {
 			return fmt.Errorf("no server specified and no default domain configured. " +
 				"Pass --server, or run 'remote-agent config' to add a domain and mark it as default.")

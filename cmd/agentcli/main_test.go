@@ -9,7 +9,7 @@ import (
 func TestResolveClientUsesSavedTokenForExplicitMatchingServer(t *testing.T) {
 	writeTestConfig(t)
 
-	cli, err := resolveClient("https://agent.example.com", 0, "", false)
+	cli, err := resolveClient("https://agent.example.com", 0, "", false, "")
 	if err != nil {
 		t.Fatalf("resolveClient() error = %v", err)
 	}
@@ -21,7 +21,7 @@ func TestResolveClientUsesSavedTokenForExplicitMatchingServer(t *testing.T) {
 func TestResolveClientMatchesExplicitServerWithTrailingSlash(t *testing.T) {
 	writeTestConfig(t)
 
-	cli, err := resolveClient("https://agent.example.com/", 0, "", false)
+	cli, err := resolveClient("https://agent.example.com/", 0, "", false, "")
 	if err != nil {
 		t.Fatalf("resolveClient() error = %v", err)
 	}
@@ -36,7 +36,7 @@ func TestResolveClientMatchesExplicitServerWithTrailingSlash(t *testing.T) {
 func TestResolveClientExplicitTokenOverridesSavedToken(t *testing.T) {
 	writeTestConfig(t)
 
-	cli, err := resolveClient("https://agent.example.com", 0, "override-token", true)
+	cli, err := resolveClient("https://agent.example.com", 0, "override-token", true, "")
 	if err != nil {
 		t.Fatalf("resolveClient() error = %v", err)
 	}
@@ -58,7 +58,7 @@ func TestResolveClientUsesSavedTokenFromLegacyConfig(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	cli, err := resolveClient("https://legacy.example.com", 0, "", false)
+	cli, err := resolveClient("https://legacy.example.com", 0, "", false, "")
 	if err != nil {
 		t.Fatalf("resolveClient() error = %v", err)
 	}

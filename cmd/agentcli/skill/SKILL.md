@@ -49,7 +49,8 @@ remote-agent skill --list
 
 | Topic | Covers |
 |-------|--------|
-| `config` | Default domain / `config --web` |
+| `config` | Default domain / `config --web` / `config set` tokens |
+| `alias` | Named wrappers (`xdev-agent`) for other servers + `--alias` targeting |
 | `exec` | Verbatim remote shell |
 | `upload` | Files: gzip + resume · dirs: tar.xz pack→merge, `--no-override` |
 | `edit` | Remote file → local editor → md5-guarded write-back; conflicts keep the staged copy |

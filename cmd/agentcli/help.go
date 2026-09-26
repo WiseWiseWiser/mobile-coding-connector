@@ -83,6 +83,8 @@ then most commands use saved credentials.
 
 Global options:
   --server URL    Server base URL (default: saved domain from 'config')
+  --alias NAME    Target a saved alias's server (see 'remote-agent alias'); also
+                  a 'config set' target, so 'xdev-agent config set --token-stdin' works
   --token TOKEN   Bearer token (default: saved token for --server)
   -h, --help      Show this help
 
@@ -138,9 +140,10 @@ Commands:
     event-bus            Subscribe to server event notification bus
 
   Local & tooling
+    alias                Named wrapper commands for other servers (list/add/update/delete/install/which)
     local                Local-machine utilities
     skill                Show/install remote-agent skill (--show / --install / --list)
-    config               Manage saved server domains (local web UI)
+    config               Manage saved server domains and tokens (config set, local web UI)
     sync                 Unison pair store (local↔remote sync profiles)
     ssh                  SSH tunnel relay (serve + client)
 
