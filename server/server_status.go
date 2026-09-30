@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -82,189 +83,149 @@ func handleServerStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, err := getServerStatus()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+	json.NewEncoder(w).Encode(getServerStatus())
 }
 
-func getServerStatus() (*ServerStatus, error) {
+func getServerStatus() *ServerStatus {
+	status := &ServerStatus{}
+
 	mem, err := getMemoryStatus()
 	if err != nil {
-		return nil, err
+		fmt.Printf("[server-status] memory: %v\n", err)
+	} else {
+		status.Memory = mem
 	}
 
 	disk, err := getDiskStatus()
 	if err != nil {
-		return nil, err
+		fmt.Printf("[server-status] disk: %v\n", err)
+	} else {
+		status.Disk = disk
 	}
 
 	cpu, err := getCPUStatus()
 	if err != nil {
-		return nil, err
+		fmt.Printf("[server-status] cpu: %v\n", err)
+	} else {
+		status.CPU = cpu
 	}
 
 	osInfo, err := getOSInfo()
 	if err != nil {
-		return nil, err
+		fmt.Printf("[server-status] os: %v\n", err)
+	} else {
+		status.OSInfo = osInfo
 	}
 
 	topCPU, err := getTopProcessesByCPU(3)
 	if err != nil {
-		return nil, err
+		fmt.Printf("[server-status] top cpu: %v\n", err)
+	} else {
+		status.TopCPU = topCPU
 	}
 
 	topMem, err := getTopProcessesByMem(3)
 	if err != nil {
-		return nil, err
+		fmt.Printf("[server-status] top mem: %v\n", err)
+	} else {
+		status.TopMem = topMem
 	}
 
-	return &ServerStatus{
-		Memory: mem,
-		Disk:   disk,
-		CPU:    cpu,
-		OSInfo: osInfo,
-		TopCPU: topCPU,
-		TopMem: topMem,
-	}, nil
+	if status.Disk == nil {
+		status.Disk = []DiskStatus{}
+	}
+	if status.TopCPU == nil {
+		status.TopCPU = []ProcessStatus{}
+	}
+	if status.TopMem == nil {
+		status.TopMem = []ProcessStatus{}
+	}
+	return status
 }
 
 func getMemoryStatus() (MemoryStatus, error) {
-	var memStatus MemoryStatus
-
+	if runtime.GOOS == "darwin" {
+		return getDarwinMemoryStatus()
+	}
 	data, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
-		return memStatus, err
+		return MemoryStatus{}, err
 	}
+	return parseLinuxMeminfo(string(data))
+}
 
-	var memTotal, memFree, memAvailable uint64
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		value, err := strconv.ParseUint(fields[1], 10, 64)
-		if err != nil {
-			continue
-		}
-		value *= 1024
-
-		switch fields[0] {
-		case "MemTotal:":
-			memTotal = value
-		case "MemFree:":
-			memFree = value
-		case "MemAvailable:":
-			memAvailable = value
-		}
+func getDarwinMemoryStatus() (MemoryStatus, error) {
+	totalOut, err := exec.Command("sysctl", "-n", "hw.memsize").Output()
+	if err != nil {
+		return MemoryStatus{}, err
 	}
-
-	if memAvailable == 0 {
-		memAvailable = memFree
+	total, err := strconv.ParseUint(strings.TrimSpace(string(totalOut)), 10, 64)
+	if err != nil {
+		return MemoryStatus{}, fmt.Errorf("parse hw.memsize: %w", err)
 	}
-
-	used := memTotal - memAvailable
-	usedPercent := float64(used) / float64(memTotal) * 100
-
-	return MemoryStatus{
-		Total:       memTotal,
-		Used:        used,
-		Free:        memFree,
-		UsedPercent: usedPercent,
-	}, nil
+	vmOut, err := exec.Command("vm_stat").Output()
+	if err != nil {
+		return MemoryStatus{}, err
+	}
+	return parseDarwinVmStat(string(vmOut), total)
 }
 
 func getDiskStatus() ([]DiskStatus, error) {
-	var disks []DiskStatus
-
-	cmd := exec.Command("df", "-B1", "--output=source,size,used,avail,target")
-	output, err := cmd.Output()
+	if runtime.GOOS == "darwin" {
+		output, err := exec.Command("df", "-kP").Output()
+		if err != nil {
+			return nil, err
+		}
+		return parsePOSIXDfKP(string(output), 1024), nil
+	}
+	output, err := exec.Command("df", "-B1", "--output=source,size,used,avail,target").Output()
 	if err != nil {
-		return disks, err
+		return nil, err
 	}
-
-	lines := strings.Split(string(output), "\n")
-	for i, line := range lines {
-		if i == 0 || strings.TrimSpace(line) == "" {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 5 {
-			continue
-		}
-
-		size, _ := strconv.ParseUint(fields[1], 10, 64)
-		used, _ := strconv.ParseUint(fields[2], 10, 64)
-		avail, _ := strconv.ParseUint(fields[3], 10, 64)
-
-		var usePercent float64
-		if size > 0 {
-			usePercent = float64(used) / float64(size) * 100
-		}
-
-		disks = append(disks, DiskStatus{
-			Filesystem: fields[0],
-			Size:       size,
-			Used:       used,
-			Available:  avail,
-			UsePercent: usePercent,
-			MountPoint: fields[4],
-		})
-	}
-
-	return disks, nil
+	return parseGNUDfOutput(string(output)), nil
 }
 
 func getCPUStatus() (CPUStatus, error) {
-	var cpuStatus CPUStatus
-	cpuStatus.NumCPU = runtime.NumCPU()
-
-	cmd := exec.Command("top", "-bn1")
-	output, err := cmd.Output()
+	cpuStatus := CPUStatus{NumCPU: runtime.NumCPU()}
+	if runtime.GOOS == "darwin" {
+		output, err := exec.Command("top", "-l", "1", "-n", "0", "-s", "0").Output()
+		if err != nil {
+			return cpuStatus, err
+		}
+		cpuStatus.UsedPercent = parseDarwinTopCPU(string(output))
+		return cpuStatus, nil
+	}
+	output, err := exec.Command("top", "-bn1").Output()
 	if err != nil {
 		return cpuStatus, err
 	}
-
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "Cpu(s)") || strings.HasPrefix(line, "%Cpu(s)") {
-			fields := strings.Fields(line)
-			for i, field := range fields {
-				if strings.Contains(field, "id") {
-					idleStr := fields[i-1]
-					idle := parseFloat(strings.TrimSuffix(idleStr, ","))
-					cpuStatus.UsedPercent = 100 - idle
-					break
-				}
-			}
-			break
-		}
-	}
-
+	cpuStatus.UsedPercent = parseLinuxTopCPU(string(output))
 	return cpuStatus, nil
 }
 
 func getOSInfo() (OSInfo, error) {
 	var osInfo OSInfo
 
-	data, err := os.ReadFile("/etc/os-release")
-	if err == nil {
-		lines := strings.Split(string(data), "\n")
-		for _, line := range lines {
-			if strings.HasPrefix(line, "PRETTY_NAME=") {
-				osInfo.OS = strings.Trim(strings.TrimPrefix(line, "PRETTY_NAME="), "\"")
-				break
-			}
+	if runtime.GOOS == "darwin" {
+		nameOut, _ := exec.Command("sw_vers", "-productName").Output()
+		verOut, _ := exec.Command("sw_vers", "-productVersion").Output()
+		name := strings.TrimSpace(string(nameOut))
+		ver := strings.TrimSpace(string(verOut))
+		switch {
+		case name != "" && ver != "":
+			osInfo.OS = name + " " + ver
+		case name != "":
+			osInfo.OS = name
+		default:
+			osInfo.OS = "Darwin"
 		}
+	} else if data, err := os.ReadFile("/etc/os-release"); err == nil {
+		osInfo.OS = parsePrettyName(string(data))
 	}
 
 	if osInfo.OS == "" {
-		cmd := exec.Command("uname", "-o")
+		cmd := exec.Command("uname", "-s")
 		output, _ := cmd.Output()
 		osInfo.OS = strings.TrimSpace(string(output))
 	}
@@ -293,7 +254,12 @@ func getTopProcessesByMem(n int) ([]ProcessStatus, error) {
 func getTopProcesses(n int, sortBy string) ([]ProcessStatus, error) {
 	var processes []ProcessStatus
 
-	cmd := exec.Command("ps", "aux", "--no-headers")
+	var cmd *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		cmd = exec.Command("ps", "aux")
+	} else {
+		cmd = exec.Command("ps", "aux", "--no-headers")
+	}
 	output, err := cmd.Output()
 	if err != nil {
 		return processes, err
@@ -312,6 +278,9 @@ func getTopProcesses(n int, sortBy string) ([]ProcessStatus, error) {
 	for _, line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) < 11 {
+			continue
+		}
+		if fields[0] == "USER" || fields[0] == "UID" {
 			continue
 		}
 

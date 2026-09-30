@@ -25,6 +25,30 @@ func TestGetDomainTunnelStatusUsesEdgeDialsForProxySessions(t *testing.T) {
 	}
 }
 
+func TestHostDomainStatusRequiresEdgeRegistration(t *testing.T) {
+	const domain = "mac-agent-aes42.example.com"
+
+	stopped := hostDomainStatus(domain, false, false, 0)
+	if stopped.Status != "connecting" {
+		t.Fatalf("not running: %#v", stopped)
+	}
+
+	connecting := hostDomainStatus(domain, true, false, 0)
+	if connecting.Status != "connecting" {
+		t.Fatalf("no probe yet: %#v", connecting)
+	}
+
+	down := hostDomainStatus(domain, true, true, 530)
+	if down.Status != "error" || down.Error != "no live edge connector" {
+		t.Fatalf("530: %#v", down)
+	}
+
+	ok := hostDomainStatus(domain, true, true, 200)
+	if ok.Status != "active" {
+		t.Fatalf("200: %#v", ok)
+	}
+}
+
 func TestGetDomainTunnelStatusKeepsOptimisticWhenEdgeUnreachable(t *testing.T) {
 	SetTestProxySession("app.example.com", true)
 	t.Cleanup(func() { SetTestProxySession("app.example.com", false) })

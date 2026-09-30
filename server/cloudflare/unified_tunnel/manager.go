@@ -28,7 +28,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
 	"sort"
@@ -98,8 +97,9 @@ type UnifiedTunnelManager struct {
 	running                bool
 	paused                 bool                 // when true, health checks are paused globally
 	healthCheckPausedUntil map[string]time.Time // mappingID -> time when health check should resume
-	rebuildTimer           *time.Timer          // debounced rebuild timer
-	rebuildDebounce        time.Duration        // per-instance override; 0 uses DefaultRebuildDebounce
+	lastHealthProbe        map[string]healthProbe
+	rebuildTimer           *time.Timer   // debounced rebuild timer
+	rebuildDebounce        time.Duration // per-instance override; 0 uses DefaultRebuildDebounce
 }
 
 var (
@@ -114,6 +114,7 @@ func GetUnifiedTunnelManager() *UnifiedTunnelManager {
 		unifiedManager = &UnifiedTunnelManager{
 			mappings:               make(map[string]*IngressMapping),
 			healthCheckPausedUntil: make(map[string]time.Time),
+			lastHealthProbe:        make(map[string]healthProbe),
 		}
 	})
 	return unifiedManager
@@ -125,6 +126,7 @@ func NewUnifiedTunnelManager(group string) *UnifiedTunnelManager {
 		group:                  group,
 		mappings:               make(map[string]*IngressMapping),
 		healthCheckPausedUntil: make(map[string]time.Time),
+		lastHealthProbe:        make(map[string]healthProbe),
 	}
 }
 
@@ -528,6 +530,7 @@ func (utm *UnifiedTunnelManager) buildConfig() *CloudflaredConfig {
 	return &CloudflaredConfig{
 		Tunnel:          tunnelID,
 		CredentialsFile: credFile,
+		Protocol:        DefaultTunnelProtocol,
 		Ingress:         rules,
 	}
 }
@@ -627,9 +630,12 @@ func (utm *UnifiedTunnelManager) startProcessLocked() error {
 		fmt.Printf("[unified-tunnel] startProcessLocked: killed stale connector PIDs: %v\n", killed)
 	}
 
-	// Start cloudflared
-	cmd := exec.Command("cloudflared", "tunnel", "--config", cfgPath, "run", tunnelRef)
-	fmt.Printf("[unified-tunnel] startProcessLocked: executing: cloudflared tunnel --config %s run %s\n", cfgPath, tunnelRef)
+	// Start cloudflared. Pin HTTP/2: QUIC is blocked on many networks and
+	// health-check SIGTERM resets cloudflared's QUIC→HTTP/2 fallback.
+	args := CloudflaredRunArgs(cfgPath, tunnelRef, DefaultTunnelProtocol)
+	cmd := exec.Command("cloudflared", args...)
+	cmd.Env = withTunnelProtocolEnv(os.Environ(), DefaultTunnelProtocol)
+	fmt.Printf("[unified-tunnel] startProcessLocked: executing: cloudflared %s\n", strings.Join(args, " "))
 
 	if logFile != nil {
 		cmd.Stdout = logFile
@@ -1036,37 +1042,15 @@ func (utm *UnifiedTunnelManager) StartHealthChecks(callback MappingHealthCallbac
 	return cancel
 }
 
-// checkMappingHealth checks if a mapping's hostname is reachable via HTTPS ping
-// It checks root path and /ping, accepting any 2xx/3xx or 530 as "healthy"
+// checkMappingHealth checks if a mapping's hostname is reachable via HTTPS ping.
+// Cloudflare 530 (origin not registered) is treated as connecting, not a restart trigger.
 func (utm *UnifiedTunnelManager) checkMappingHealth(hostname string) bool {
 	fmt.Printf("[unified-tunnel] checkMappingHealth: checking health for hostname=%s\n", hostname)
-	client := &http.Client{
-		Timeout: 10 * time.Second,
+	healthy := utm.ProbeAndRecord(hostname)
+	if code, ok := utm.LastHealthProbe(hostname); ok {
+		fmt.Printf("[unified-tunnel] checkMappingHealth: %s status=%d healthy=%v\n", hostname, code, healthy)
 	}
-
-	urls := []string{
-		fmt.Sprintf("https://%s/", hostname),
-		fmt.Sprintf("https://%s/ping", hostname),
-	}
-
-	for _, url := range urls {
-		fmt.Printf("[unified-tunnel] checkMappingHealth: trying %s\n", url)
-		resp, err := client.Get(url)
-		if err != nil {
-			fmt.Printf("[unified-tunnel] checkMappingHealth: %s failed: %v\n", url, err)
-			continue
-		}
-		resp.Body.Close()
-
-		if resp.StatusCode >= 200 && resp.StatusCode < 500 {
-			fmt.Printf("[unified-tunnel] checkMappingHealth: %s returned status %d, healthy=true\n", url, resp.StatusCode)
-			return true
-		}
-		fmt.Printf("[unified-tunnel] checkMappingHealth: %s returned status %d, unhealthy\n", url, resp.StatusCode)
-	}
-
-	fmt.Printf("[unified-tunnel] checkMappingHealth: all URLs failed for %s, marking unhealthy\n", hostname)
-	return false
+	return healthy
 }
 
 // RestartMapping triggers a single tunnel restart to refresh the connection

@@ -10,7 +10,14 @@ import (
 
 	"github.com/xhd2015/ai-critic/server/cmdjson"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/cloudflare"
+	"gopkg.in/yaml.v3"
 )
+
+// DefaultTunnelProtocol is the cloudflared edge transport for HTTP origins.
+// QUIC (UDP 7844) is blocked on many networks; pinning HTTP/2 is how this
+// host stayed connected for hours. Restarting on 530 without this pin
+// resets fallback and leaves the public hostname on Cloudflare 1033.
+const DefaultTunnelProtocol = "http2"
 
 // TunnelInfo represents a Cloudflare tunnel.
 type TunnelInfo struct {
@@ -24,6 +31,7 @@ type TunnelInfo struct {
 type CloudflaredConfig struct {
 	Tunnel          string        `yaml:"tunnel"`
 	CredentialsFile string        `yaml:"credentials-file"`
+	Protocol        string        `yaml:"protocol,omitempty"`
 	Ingress         []IngressRule `yaml:"ingress"`
 }
 
@@ -160,23 +168,51 @@ func CreateDNSRoute(tunnelRef, hostname string) error {
 	return nil
 }
 
-// WriteCloudflaredConfig writes a cloudflared config YAML file.
-// Delegates to the shared cloudflare.WriteConfig.
+// CloudflaredRunArgs is the cloudflared argv after the binary name.
+func CloudflaredRunArgs(cfgPath, tunnelRef, protocol string) []string {
+	if strings.TrimSpace(protocol) == "" {
+		protocol = DefaultTunnelProtocol
+	}
+	return []string{"tunnel", "--config", cfgPath, "--protocol", protocol, "run", tunnelRef}
+}
+
+// withTunnelProtocolEnv sets TUNNEL_TRANSPORT_PROTOCOL, replacing any existing value.
+func withTunnelProtocolEnv(base []string, protocol string) []string {
+	if strings.TrimSpace(protocol) == "" {
+		protocol = DefaultTunnelProtocol
+	}
+	prefix := "TUNNEL_TRANSPORT_PROTOCOL="
+	out := make([]string, 0, len(base)+1)
+	for _, e := range base {
+		if strings.HasPrefix(e, prefix) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return append(out, prefix+protocol)
+}
+
+// WriteCloudflaredConfig writes a cloudflared config YAML file, including
+// protocol: http2 so edge registration does not depend on QUIC.
 func WriteCloudflaredConfig(path string, cfg *CloudflaredConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("config is nil")
 	}
-	shared := &cloudflare.Config{
-		Tunnel:          cfg.Tunnel,
-		CredentialsFile: cfg.CredentialsFile,
+	if strings.TrimSpace(cfg.Protocol) == "" {
+		cfg.Protocol = DefaultTunnelProtocol
 	}
-	for _, rule := range cfg.Ingress {
-		shared.Ingress = append(shared.Ingress, cloudflare.IngressRule{
-			Hostname: rule.Hostname,
-			Service:  rule.Service,
-		})
+	cfgDir := filepath.Dir(path)
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create config directory %s: %v", cfgDir, err)
 	}
-	return cloudflare.WriteConfig(path, shared)
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("failed to write config: %v", err)
+	}
+	return nil
 }
 
 // DefaultConfigDir returns the default cloudflared config directory (~/.cloudflared).

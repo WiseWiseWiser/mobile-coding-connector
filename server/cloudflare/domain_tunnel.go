@@ -75,19 +75,37 @@ func GetDomainTunnelStatus(domain string) DomainTunnelStatus {
 		if m.Hostname == domain {
 			running, ok := tg.TryIsRunning()
 			if !ok || !running {
-				return DomainTunnelStatus{
-					Status:    "connecting",
-					TunnelURL: fmt.Sprintf("https://%s", domain),
-				}
+				return hostDomainStatus(domain, false, false, 0)
 			}
-			return DomainTunnelStatus{
-				Status:    "active",
-				TunnelURL: fmt.Sprintf("https://%s", domain),
-			}
+			code, probeOK := tg.LastHealthProbe(domain)
+			return hostDomainStatus(domain, true, probeOK, code)
 		}
 	}
 
 	return DomainTunnelStatus{Status: "stopped"}
+}
+
+// hostDomainStatus maps process-alive + last public GET to the status the UI
+// shows. PID running is not "active": Cloudflare 530 means no edge connector.
+func hostDomainStatus(domain string, running, probeOK bool, code int) DomainTunnelStatus {
+	url := fmt.Sprintf("https://%s", domain)
+	if !running {
+		return DomainTunnelStatus{Status: "connecting", TunnelURL: url}
+	}
+	if !probeOK {
+		return DomainTunnelStatus{Status: "connecting", TunnelURL: url}
+	}
+	if unified_tunnel.IsEdgeRegistered(code) {
+		return DomainTunnelStatus{Status: "active", TunnelURL: url}
+	}
+	if code == unified_tunnel.CloudflareErrorOriginDown {
+		return DomainTunnelStatus{
+			Status:    "error",
+			TunnelURL: url,
+			Error:     "no live edge connector",
+		}
+	}
+	return DomainTunnelStatus{Status: "connecting", TunnelURL: url}
 }
 
 // LogFunc is a callback for streaming log messages during tunnel operations.

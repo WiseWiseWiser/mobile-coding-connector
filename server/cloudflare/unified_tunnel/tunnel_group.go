@@ -3,7 +3,6 @@ package unified_tunnel
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
@@ -188,7 +187,7 @@ func (tg *TunnelGroup) StartHealthChecks(callback MappingHealthCallback) {
 					}
 
 					fmt.Printf("[tunnel-group:%s] StartHealthChecks: checking mapping id=%s hostname=%s\n", tg.name, m.ID, m.Hostname)
-					healthy := tg.checkMappingHealth(m.Hostname)
+					healthy := tg.tunnelMgr.ProbeAndRecord(m.Hostname)
 
 					state, exists := states[m.ID]
 					if !exists {
@@ -227,35 +226,8 @@ func (tg *TunnelGroup) StopHealthChecks() {
 	}
 }
 
-func (tg *TunnelGroup) checkMappingHealth(hostname string) bool {
-	fmt.Printf("[tunnel-group:%s] checkMappingHealth: checking health for hostname=%s\n", tg.name, hostname)
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	urls := []string{
-		fmt.Sprintf("https://%s/", hostname),
-		fmt.Sprintf("https://%s/ping", hostname),
-	}
-
-	for _, url := range urls {
-		fmt.Printf("[tunnel-group:%s] checkMappingHealth: trying %s\n", tg.name, url)
-		resp, err := client.Get(url)
-		if err != nil {
-			fmt.Printf("[tunnel-group:%s] checkMappingHealth: %s failed: %v\n", tg.name, url, err)
-			continue
-		}
-		resp.Body.Close()
-
-		if resp.StatusCode >= 200 && resp.StatusCode < 500 {
-			fmt.Printf("[tunnel-group:%s] checkMappingHealth: %s returned status %d, healthy=true\n", tg.name, url, resp.StatusCode)
-			return true
-		}
-		fmt.Printf("[tunnel-group:%s] checkMappingHealth: %s returned status %d, unhealthy\n", tg.name, url, resp.StatusCode)
-	}
-
-	fmt.Printf("[tunnel-group:%s] checkMappingHealth: all URLs failed for %s, marking unhealthy\n", tg.name, hostname)
-	return false
+func (tg *TunnelGroup) LastHealthProbe(hostname string) (int, bool) {
+	return tg.tunnelMgr.LastHealthProbe(hostname)
 }
 
 func (tg *TunnelGroup) SetConfig(cfg config.CloudflareTunnelConfig) {

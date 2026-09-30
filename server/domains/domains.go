@@ -627,28 +627,10 @@ func StopAllDomainHealthChecks() {
 // checkDomainPing checks if the domain's /ping endpoint is reachable.
 // Returns true if ping succeeds, false otherwise.
 func checkDomainPing(domain string) bool {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	urls := []string{
-		fmt.Sprintf("https://%s/", domain),
-		fmt.Sprintf("https://%s/ping", domain),
-	}
-
-	for _, url := range urls {
-		resp, err := client.Get(url)
-		if err != nil {
-			continue
-		}
-		resp.Body.Close()
-
-		if resp.StatusCode >= 200 && resp.StatusCode < 500 {
-			return true
-		}
-	}
-
-	return false
+	// Cloudflare 530 is "connecting", not a restart trigger: SIGTERM resets
+	// QUIC→HTTP/2 fallback and is what kept mac-agent-aes42 on error 1033.
+	tg := unified_tunnel.GetTunnelGroupManager().GetCoreGroup()
+	return tg.TunnelMgr().ProbeAndRecord(domain)
 }
 
 // DomainTunnelInfo represents information about an active domain tunnel
