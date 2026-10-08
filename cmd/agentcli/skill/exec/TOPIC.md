@@ -11,6 +11,7 @@ Args after `exec` go to the remote **verbatim**; exit code mirrors the remote pr
 ```bash
 remote-agent exec ls -la /tmp
 remote-agent exec sh -c 'echo hi; uname -a'
+remote-agent exec -- sh -c 'echo hi; uname -a'
 remote-agent exec bash -c 'curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:PORT/health'
 ```
 

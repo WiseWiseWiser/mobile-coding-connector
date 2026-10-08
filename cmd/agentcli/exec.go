@@ -19,12 +19,14 @@ code mirrors the remote exit code.
 When stdin/stdout are attached to an interactive terminal, 'exec' switches
 to a PTY-backed mode so the remote process can receive live user input.
 
-Every argument after 'exec' is forwarded verbatim to the remote process,
-so there is no need for '--' or client-side flag parsing.
+Every argument after 'exec' is forwarded verbatim to the remote process.
+A leading '--' separator is accepted and ignored, so
+'remote-agent exec -- sh -c ...' is the same as 'remote-agent exec sh -c ...'.
 
 Examples:
   remote-agent exec ls -la /tmp
   remote-agent exec sh -c 'echo hi; sleep 1'
+  remote-agent exec -- sh -c 'echo hi; sleep 1'
   remote-agent exec python3
 `
 
@@ -35,7 +37,13 @@ Examples:
 // commands with flags of their own (e.g. 'remote-agent exec ls -la') without
 // needing '--'. The only recognized client-side token is '--help' / '-h' as
 // the first argument, matching common CLI conventions.
+//
+// A leading '--' separator is consumed here (standard convention, and what
+// users and the project's own docs type). It must be dropped before argv
+// reaches the remote: the server resolves argv[0] as a binary name, so a
+// forwarded '--' fails with "executable file not found in PATH: --".
 func runExec(resolve func() (*client.Client, error), args []string) error {
+	args = stripLeadingDashDash(args)
 	if len(args) == 0 {
 		return fmt.Errorf("exec requires <BINARY> [ARGS...]; see 'remote-agent exec --help'")
 	}
