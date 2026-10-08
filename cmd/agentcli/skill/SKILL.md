@@ -27,6 +27,7 @@ remote-agent skill --list
 
 - `remote-agent` exec / upload / service / cron / git / server / request
 - Long-lived remote processes; scheduled **remote** shell; Mac→remote files
+- Another server than the default → its alias wrapper (`xdev-agent exec …`)
 - Go module cache via GOPROXY (`go` topic), not a mounted network FS
 
 ## When not to use
@@ -40,6 +41,7 @@ remote-agent skill --list
 | Rule | Detail |
 |------|--------|
 | Host of work | `exec` / `service` / `cron` run **on the remote**, not the Mac |
+| Alias binary | User named an alias wrapper (`<name>-agent`) → run **that** binary for every operation; never rewrite it to `remote-agent --alias <name>` |
 | Pack credentials | Pack Mac SMC/SSH on the **Mac**; ship with `upload` |
 | Cron ≠ upload | `cron` cannot pack Mac tokens or run Mac `upload` |
 | Transport | Prefer `remote-agent` over ad-hoc scp for this server |
@@ -72,6 +74,7 @@ remote-agent skill --list
 | Need | Use |
 |------|-----|
 | Default server | → topic **`config`** |
+| Another server (alias) | → topic **`alias`** (`<name>-agent`; `--alias NAME`) |
 | One-shot shell | → **`exec`** |
 | Mac→remote files | → **`upload`** |
 | Edit one remote file locally | → **`edit`** |

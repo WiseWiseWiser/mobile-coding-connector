@@ -49,6 +49,29 @@ Wrappers only carry `--alias`, so:
 - `alias update xdev --server …` takes effect immediately (no rewrite).
 - tokens are never stored in a world-readable script.
 
+## Choosing the binary (agents)
+
+| Situation | Use |
+| --- | --- |
+| User names an alias wrapper (`xdev-agent`, `stage-agent`, …) | that binary for **every** command — it already means `remote-agent --alias xdev` |
+| User names a server/host ("on x.dev") but no wrapper | `remote-agent alias list` (or `alias which <name>`) to resolve it, then the wrapper |
+| No wrapper on this machine (remote host, CI, another `$HOME`) | `remote-agent --alias NAME` if that HOME has the store; otherwise ask — aliases are per-machine state (store + wrapper + token) |
+| Target server unreachable | no CLI path applies → `ssh <host>` (e.g. restart the previous binary by hand) |
+
+A wrapper passes `--alias <name>`, so it targets **that** alias's server; bare
+`remote-agent` keeps targeting the **default** server. Never rewrite a
+user-named wrapper back to `remote-agent --alias <name>` — the wrapper is what
+the user asked for, and it stays correct when the alias is retargeted.
+
+```console
+$ xdev-agent server upgrade --from-source --source-dir ~/Projects/xhd2015/ai-critic
+# = remote-agent --alias xdev server upgrade …  →  the x.dev server, not the default
+
+$ remote-agent alias list                 # discover what the user could mean
+NAME   BINARY      INSTALLED                SERVER
+xdev   xdev-agent  ~/.local/bin/xdev-agent  https://agent-xdev-aes562.xhd2015.xyz
+```
+
 ## Tokens (config set)
 
 Tokens belong to **servers**, not aliases. `config set` writes the server this
@@ -69,6 +92,7 @@ remote-agent --alias xdev config set --clear-token             # drop the token
 
 | Rule | Detail |
 | --- | --- |
+| Alias binary first | User said `xdev-agent` → use `xdev-agent` for every command (it carries `--alias xdev`); bare `remote-agent` targets the default server |
 | Wrapper ownership | Only files carrying the generated marker are overwritten/removed; anything else needs `--force` |
 | Missing token | `alias add`/`list`/`which` warn and report `missing`; run the wrapper's `config set --token-stdin` |
 | Retargeting | `alias update <name> --server URL`; `config set --server` with a different server is a conflict error |

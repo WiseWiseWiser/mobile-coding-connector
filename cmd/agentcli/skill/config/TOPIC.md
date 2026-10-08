@@ -38,4 +38,8 @@ an alias with `remote-agent alias update <name> --server URL` instead.
 `--token` works but is visible in shell history and `ps`; prefer `--token-stdin`.
 Tokens are never echoed back. See the `alias` topic for wrapper commands.
 
+Tokens are per **server**, so when the user names an alias wrapper, set its
+token through that wrapper (`xdev-agent config set --token-stdin`) instead of
+spelling out the URL.
+
 Prefer `config --web` for editing multiple domains. Do not commit tokens.
