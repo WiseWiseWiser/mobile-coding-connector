@@ -55,8 +55,22 @@ func rotatePersistedTunnelName() (string, error) {
 // ai-critic-* tunnel name. On missing local credentials it allocates a unique
 // name and retries once.
 func StartHostDomainTunnel(domain string, port int, logFn cloudflareSettings.LogFunc) (*cloudflareSettings.DomainTunnelStatus, error) {
+	return startHostDomainTunnel(domain, port, logFn, false)
+}
+
+// ForceStartHostDomainTunnel is StartHostDomainTunnel that does not keep a
+// tunnel already marked active. Used when switching backends.
+func ForceStartHostDomainTunnel(domain string, port int, logFn cloudflareSettings.LogFunc) (*cloudflareSettings.DomainTunnelStatus, error) {
+	return startHostDomainTunnel(domain, port, logFn, true)
+}
+
+func startHostDomainTunnel(domain string, port int, logFn cloudflareSettings.LogFunc, force bool) (*cloudflareSettings.DomainTunnelStatus, error) {
+	start := cloudflareSettings.StartDomainTunnel
+	if force {
+		start = cloudflareSettings.ForceStartDomainTunnel
+	}
 	if serverqemu.Enabled() {
-		return cloudflareSettings.StartDomainTunnel(domain, port, "", logFn)
+		return start(domain, port, "", logFn)
 	}
 	name, err := EnsurePersistedTunnelName()
 	if err != nil {
@@ -66,7 +80,7 @@ func StartHostDomainTunnel(domain string, port int, logFn cloudflareSettings.Log
 		logFn = func(string) {}
 	}
 	logFn("using tunnel name " + name)
-	status, err := cloudflareSettings.StartDomainTunnel(domain, port, name, logFn)
+	status, err := start(domain, port, name, logFn)
 	if err == nil {
 		return status, nil
 	}
@@ -79,7 +93,7 @@ func StartHostDomainTunnel(domain string, port int, logFn cloudflareSettings.Log
 		return nil, err
 	}
 	logFn("retry with tunnel name " + name)
-	return cloudflareSettings.StartDomainTunnel(domain, port, name, logFn)
+	return start(domain, port, name, logFn)
 }
 
 // StopHostDomainTunnel tears down the tunnel StartHostDomainTunnel started.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/xhd2015/ai-critic/client"
@@ -72,11 +73,45 @@ func TestPrintUploadProgress_stream(t *testing.T) {
 	}
 }
 
+func TestPrintUploadProgress_resumeIncludesErr(t *testing.T) {
+	out := captureStderr(t, func() {
+		printUploadProgress(client.UploadProgress{
+			Phase:          client.UploadStreamResuming,
+			CompletedBytes: 4 * 1024 * 1024,
+			Err:            fmt.Errorf("write tcp 10.0.0.1:1->1.2.3.4:443: i/o timeout"),
+		})
+	})
+	if !strings.Contains(out, "warning: websocket lost at") || !strings.Contains(out, "resuming from offset") {
+		t.Fatalf("missing resume line: %q", out)
+	}
+	if !strings.Contains(out, "i/o timeout") {
+		t.Fatalf("missing error: %q", out)
+	}
+}
+
 func TestUploadFailureHint_sessionLost(t *testing.T) {
 	hint := uploadFailureHint(fmt.Errorf("upload chunk 28 failed: 404 Not Found: upload session not found"))
 	if hint == "" || !bytes.Contains([]byte(hint), []byte("re-run upload")) {
 		t.Fatalf("hint = %q", hint)
 	}
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	fn()
+	w.Close()
+	os.Stderr = old
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
 }
 
 func captureStdout(t *testing.T, fn func()) string {

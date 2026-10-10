@@ -35,6 +35,9 @@ func printUploadProgress(p client.UploadProgress) {
 	case client.UploadStreamResuming:
 		msg := fmt.Sprintf("warning: websocket lost at %s; resuming from offset %d",
 			formatSize(p.CompletedBytes), p.CompletedBytes)
+		if p.Err != nil {
+			msg += ": " + p.Err.Error()
+		}
 		if stderrColorEnabled() {
 			msg = colorLabel(msg)
 		}

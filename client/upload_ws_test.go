@@ -7,8 +7,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/xhd2015/ai-critic/server/fileupload"
 )
 
@@ -72,6 +75,78 @@ func TestUploadFileWS_NoCompressAndChmod(t *testing.T) {
 	}
 	if st.Mode()&0o111 == 0 {
 		t.Fatalf("mode=%s want executable", st.Mode())
+	}
+}
+
+func TestFrameForRateStaysSmallOnSlowLink(t *testing.T) {
+	const rate = 40 * 1024
+	// 40KB/s can finish 256KB in 6.4s, which is inside the 10s budget, but
+	// 512KB would take 12.8s. The frame must not grow into that.
+	if got := frameForRate(wsInitFrame, rate); got != wsInitFrame*2 && got != wsInitFrame {
+		t.Fatalf("first grow = %d", got)
+	}
+	cur := wsInitFrame
+	for i := 0; i < 8; i++ {
+		cur = frameForRate(cur, rate)
+	}
+	if cur > 256*1024 {
+		t.Fatalf("frame grew to %d at 40KB/s; want <= 256KB", cur)
+	}
+	if cur < wsInitFrame {
+		t.Fatalf("frame = %d", cur)
+	}
+}
+
+func TestWriteDeadlineForFloorRate(t *testing.T) {
+	if got := writeDeadlineFor(64 * 1024); got != 8*time.Second {
+		t.Fatalf("64KB deadline = %s, want 8s", got)
+	}
+	if got := writeDeadlineFor(1 << 20); got != 128*time.Second {
+		t.Fatalf("1MB deadline = %s, want 128s", got)
+	}
+}
+
+func TestUploadWriteDeadlineFiresWhenStalled(t *testing.T) {
+	done := make(chan struct{})
+	up := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := up.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		// Read nothing. The client write blocks once the TCP window fills.
+		<-done
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	defer close(done)
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	started := time.Now()
+	payload := bytes.Repeat([]byte("x"), 64*1024)
+	var writeErr error
+	for i := 0; i < 64; i++ {
+		writeErr = writeWSBinary(conn, payload)
+		if writeErr != nil {
+			break
+		}
+	}
+	if writeErr == nil {
+		t.Fatal("stalled write did not fail")
+	}
+	elapsed := time.Since(started)
+	// The blocked frame is 64KB, so the floor-rate deadline is 8s. Allow
+	// the kernel buffer to fill before that deadline starts.
+	if elapsed > 30*time.Second {
+		t.Fatalf("stalled write took %s, want the 8s frame deadline", elapsed)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/xhd2015/ai-critic/client"
+	"github.com/xhd2015/ai-critic/cmd/agentcli/streamcmd"
 	serverqemu "github.com/xhd2015/ai-critic/server/qemu"
 	shared "github.com/xhd2015/dot-pkgs/go-pkgs/qemu"
 	"github.com/xhd2015/less-gen/flags"
@@ -53,7 +54,7 @@ const qemuCFHelp = `Usage: %s qemu cloudflared <command> [OPTIONS]
 Guest cloudflared inside the qemu guest.
 
 Commands:
-  status     guest ssh + cf pid + public url + cert
+  status     guest cloudflared; lines appear as each probe returns
   doctor     status + log tail + hints
   start      idempotent quick tunnel (--url)
   stop       kill guest cloudflared (qemu kept)
@@ -97,6 +98,22 @@ func runQemu(resolve func() (*client.Client, error), args []string) error {
 	switch cmd {
 	case "cloudflared":
 		return runQemuCloudflared(resolve, rest)
+	case "status":
+		if len(rest) > 0 && isHelpToken(rest[0]) {
+			fmt.Printf("Usage: %s qemu status\n\nPrint each guest fact as soon as the probe returns.\n", active.Name)
+			return nil
+		}
+		if active.Name != "local-agent" {
+			return streamQemuProbe(resolve, "/api/remote-agent/qemu/status/stream")
+		}
+		f, rem, err := parseQemuFlags(rest)
+		if err != nil {
+			return err
+		}
+		if len(rem) > 0 {
+			return fmt.Errorf("status takes no args (got %v)", rem)
+		}
+		return runQemuAction(resolve, "status", f)
 	case "config":
 		return runQemuConfig(resolve, rest)
 	case "sh":
@@ -267,6 +284,9 @@ func runQemuCloudflared(resolve func() (*client.Client, error), args []string) e
 
 	if active.Name == "local-agent" {
 		return runQemuCFLocal(action, f)
+	}
+	if action == "status" {
+		return streamQemuProbe(resolve, "/api/remote-agent/qemu/cloudflared/status/stream")
 	}
 	cli, err := resolve()
 	if err != nil {
@@ -494,6 +514,14 @@ func runQemuExec(resolve func() (*client.Client, error), args []string) error {
 		return err
 	}
 	return printQemuResp(resp)
+}
+
+func streamQemuProbe(resolve func() (*client.Client, error), path string) error {
+	return streamcmd.Run(resolve, streamcmd.Spec{
+		Method:  "GET",
+		Path:    path,
+		Printer: streamcmd.Printer{Log: printStreamLine},
+	})
 }
 
 func printQemuResp(resp *serverqemu.ActionResponse) error {

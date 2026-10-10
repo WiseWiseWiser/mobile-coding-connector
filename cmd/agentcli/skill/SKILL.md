@@ -64,6 +64,7 @@ remote-agent skill --list
 | `server` | `build-next` / `restart` streams |
 | `request` | Arbitrary API paths |
 | `proxy` | List configured HTTP proxies |
+| `cloudflared` | Switch origin backend: native, qemu, or proxy |
 | `cloudflare-proxy` | Origin via edge `local-agent cloudflare-proxy` (no origin cloudflared) |
 | `grok` | Start/resume remote Grok in this terminal tab |
 | `deploy-service` | Recipe: install → upload → service add w/ domain → verify |
@@ -88,6 +89,7 @@ remote-agent skill --list
 | Remote Grok TUI (this tab) | → **`grok`** |
 | Stand up a web service + public domain | → **`deploy-service`** |
 | GOPROXY / module cache offload | → **`go`** |
+| Switch origin cloudflared backend (native / qemu / proxy) | → **`cloudflared`** |
 | Origin behind CF proxy (no origin cloudflared) | → **`cloudflare-proxy`** |
 
 ## Related

@@ -377,19 +377,22 @@ func proxyUpgrade(w http.ResponseWriter, r *http.Request, backend net.Conn) erro
 	if err := r.Write(backend); err != nil {
 		return err
 	}
-	errc := make(chan struct{}, 2)
+	// Both directions run together. A slow write back to the visitor must not
+	// stop the dial from being read, up to the dial's own frame bound. The
+	// first direction to finish closes the other and its error is returned;
+	// logging that as a clean 101 hid every stalled upload.
+	errc := make(chan error, 2)
 	go func() {
-		_, _ = io.Copy(backend, bufrw)
+		_, err := io.Copy(backend, bufrw)
+		errc <- err
 		_ = backend.Close()
-		errc <- struct{}{}
 	}()
 	go func() {
-		_, _ = io.Copy(client, backend)
+		_, err := io.Copy(client, backend)
+		errc <- err
 		_ = client.Close()
-		errc <- struct{}{}
 	}()
-	<-errc
-	return nil
+	return <-errc
 }
 
 func dialURL(r *http.Request, id, tok string) string {

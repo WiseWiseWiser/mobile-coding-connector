@@ -2,6 +2,7 @@ package cloudflareproxy
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -15,6 +16,93 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+func TestProxyUpgradeSlowReturnStillForwards(t *testing.T) {
+	backend, dial := net.Pipe()
+	t.Cleanup(func() {
+		_ = backend.Close()
+		_ = dial.Close()
+	})
+	got := make(chan int, 1)
+	go func() {
+		buf := make([]byte, 32*1024)
+		n := 0
+		for n < 600*1024 {
+			rn, err := dial.Read(buf)
+			n += rn
+			if err != nil {
+				break
+			}
+		}
+		got <- n
+	}()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = proxyUpgrade(w, r, backend)
+	}))
+	t.Cleanup(srv.Close)
+
+	conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	if _, err := io.WriteString(conn, "GET /upload HTTP/1.1\r\nHost: app.example\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	payload := strings.Repeat("b", 600*1024)
+	if _, err := io.WriteString(conn, payload); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case n := <-got:
+		if n < 512*1024 {
+			t.Fatalf("forwarded %d bytes, want > 512KB while the return path is stalled", n)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("forward path stalled behind a delayed return path")
+	}
+}
+
+func TestProxyUpgradeReturnsCopyError(t *testing.T) {
+	errCh := make(chan error, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		errCh <- proxyUpgrade(w, r, badDialConn{})
+	}))
+	t.Cleanup(srv.Close)
+
+	conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	_, _ = io.WriteString(conn, "GET /upload HTTP/1.1\r\nHost: app.example\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
+
+	select {
+	case got := <-errCh:
+		if got == nil || !strings.Contains(got.Error(), "dial read failed") {
+			t.Fatalf("proxyUpgrade err = %v", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("proxyUpgrade did not return the copy error")
+	}
+}
+
+type badDialConn struct{}
+
+func (badDialConn) Read([]byte) (int, error)         { return 0, errors.New("dial read failed") }
+func (badDialConn) Write(p []byte) (int, error)      { return len(p), nil }
+func (badDialConn) Close() error                     { return nil }
+func (badDialConn) LocalAddr() net.Addr              { return pipeAddr("local") }
+func (badDialConn) RemoteAddr() net.Addr             { return pipeAddr("remote") }
+func (badDialConn) SetDeadline(time.Time) error      { return nil }
+func (badDialConn) SetReadDeadline(time.Time) error  { return nil }
+func (badDialConn) SetWriteDeadline(time.Time) error { return nil }
+
+type pipeAddr string
+
+func (a pipeAddr) Network() string { return "tcp" }
+func (a pipeAddr) String() string  { return string(a) }
 
 func TestDialURLPublicIsWSS(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodPost, "http://cfproxy.example.com/api/mappings", nil)
@@ -468,6 +556,118 @@ func TestPooledConnKeepalivePings(t *testing.T) {
 	if !pc.alive() {
 		t.Fatal("dial retired even though the origin kept answering keepalive pings")
 	}
+}
+
+// A data write holds the websocket lock. The ping must not retire the dial
+// when it loses that race, and it must resume once the dial goes quiet.
+func TestSlowWriteDoesNotRetireDial(t *testing.T) {
+	oldPing, oldPong, oldWrite := pooledPingInterval, pooledPongWait, pooledWriteWait
+	pooledPingInterval = 30 * time.Millisecond
+	pooledPongWait = 2 * time.Second
+	pooledWriteWait = 40 * time.Millisecond
+	t.Cleanup(func() {
+		pooledPingInterval, pooledPongWait, pooledWriteWait = oldPing, oldPong, oldWrite
+	})
+
+	release := make(chan struct{})
+	var hold atomic.Bool
+	pings := make(chan struct{}, 8)
+	up := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := up.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		c.SetPingHandler(func(appData string) error {
+			select {
+			case pings <- struct{}{}:
+			default:
+			}
+			return c.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(time.Second))
+		})
+		for {
+			if _, _, err := c.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(peer.Close)
+
+	target, err := url.Parse(peer.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := websocket.Dialer{
+		HandshakeTimeout: 5 * time.Second,
+		NetDial: func(network, addr string) (net.Conn, error) {
+			c, err := net.Dial(network, target.Host)
+			if err != nil {
+				return nil, err
+			}
+			return &gateConn{Conn: c, hold: &hold, release: release}, nil
+		},
+	}
+	c, _, err := d.Dial("ws://"+target.Host+"/dial/slow", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc := newPooledConn(c)
+	t.Cleanup(func() { pc.Close() })
+
+	hold.Store(true)
+	writeDone := make(chan error, 1)
+	go func() {
+		_, err := pc.Write([]byte("upload-bytes"))
+		writeDone <- err
+	}()
+
+	time.Sleep(8 * pooledWriteWait)
+	if !pc.alive() {
+		t.Fatal("dial retired while a data write held the socket")
+	}
+
+	hold.Store(false)
+	close(release)
+	select {
+	case err := <-writeDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("write did not finish after the gate opened")
+	}
+	if !pc.alive() {
+		t.Fatal("dial retired after the slow write finished")
+	}
+
+	// Drain pings that raced the write, then require one after a quiet interval.
+	for {
+		select {
+		case <-pings:
+		default:
+			goto quiet
+		}
+	}
+quiet:
+	select {
+	case <-pings:
+	case <-time.After(8 * pooledPingInterval):
+		t.Fatal("no keepalive ping after the dial went quiet")
+	}
+}
+
+type gateConn struct {
+	net.Conn
+	hold    *atomic.Bool
+	release <-chan struct{}
+}
+
+func (g *gateConn) Write(p []byte) (int, error) {
+	if g.hold.Load() {
+		<-g.release
+	}
+	return g.Conn.Write(p)
 }
 
 // A dial that died while pooled is retired instead of being handed to a visitor,

@@ -11,6 +11,7 @@ import (
 // SSOT: this directory. After edits, mirror SKILL.md and topics to
 // $AI/skills/remote-agent (downstream copy). TestSkillIndexMatchesTree
 // guards index↔tree consistency.
+//
 //go:embed SKILL.md
 var skillRoot string
 
@@ -35,6 +36,7 @@ var skillRoot string
 //go:embed deploy-service
 //go:embed go
 //go:embed cloudflare-proxy
+//go:embed cloudflared
 var skillTree embed.FS
 
 const skillName = "remote-agent"

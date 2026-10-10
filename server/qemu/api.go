@@ -15,13 +15,13 @@ import (
 
 // ActionRequest is the JSON body for qemu lifecycle / cloudflared actions.
 type ActionRequest struct {
-	DryRun  bool   `json:"dry_run,omitempty"`
-	Yes     bool   `json:"yes,omitempty"`
-	Deep    bool   `json:"deep,omitempty"`
-	Lines   int    `json:"lines,omitempty"`
-	URL     string `json:"url,omitempty"`
-	Origin  string `json:"origin,omitempty"`
-	Timeout int    `json:"timeout,omitempty"`
+	DryRun  bool     `json:"dry_run,omitempty"`
+	Yes     bool     `json:"yes,omitempty"`
+	Deep    bool     `json:"deep,omitempty"`
+	Lines   int      `json:"lines,omitempty"`
+	URL     string   `json:"url,omitempty"`
+	Origin  string   `json:"origin,omitempty"`
+	Timeout int      `json:"timeout,omitempty"`
 	Argv    []string `json:"argv,omitempty"`
 }
 
@@ -41,6 +41,8 @@ type ConfigResponse struct {
 // RegisterAPI mounts qemu remote-agent endpoints.
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/remote-agent/qemu/config", handleConfig)
+	mux.HandleFunc("/api/remote-agent/qemu/status/stream", handleGuestStatusStream)
+	mux.HandleFunc("/api/remote-agent/qemu/cloudflared/status/stream", handleGuestCFStatusStream)
 	mux.HandleFunc("/api/remote-agent/qemu/", handleQemuPath)
 }
 

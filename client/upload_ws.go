@@ -24,6 +24,14 @@ const (
 	wsInitWindow = 512 * 1024
 	wsMaxWindow  = 8 * 1024 * 1024
 	wsMaxTries   = 8
+	// wsFrameBudget is how long a larger frame is allowed to take. A slow
+	// link stays on a small frame instead of growing into the write deadline.
+	wsFrameBudget = 10 * time.Second
+	// wsMinRate is the floor used to size the write deadline. A stuck write
+	// still fails; a slow one that keeps moving does not.
+	wsMinRate = 8 * 1024
+	// wsReadIdle is how long the read side waits for a pong or another write.
+	wsReadIdle = 60 * time.Second
 )
 
 var errUploadWSUnsupported = errors.New("server does not support websocket upload")
@@ -97,6 +105,60 @@ func (c *Client) uploadFileWS(localFile, remotePath string, origSize int64, opts
 	return nil, fmt.Errorf("upload failed at offset %d: %w", lastOffset, lastErr)
 }
 
+// frameForRate grows cur only when rate can send the next size inside
+// wsFrameBudget. A zero rate keeps the current frame.
+func frameForRate(cur int, rate int64) int {
+	if cur < wsInitFrame {
+		cur = wsInitFrame
+	}
+	if cur >= wsMaxFrame || rate <= 0 {
+		if cur > wsMaxFrame {
+			return wsMaxFrame
+		}
+		return cur
+	}
+	next := cur * 2
+	if next > wsMaxFrame {
+		next = wsMaxFrame
+	}
+	if time.Duration(next)*time.Second/time.Duration(rate) > wsFrameBudget {
+		return cur
+	}
+	return next
+}
+
+func writeWSBinary(conn *websocket.Conn, p []byte) error {
+	_ = conn.SetWriteDeadline(time.Now().Add(writeDeadlineFor(len(p))))
+	if err := conn.WriteMessage(websocket.BinaryMessage, p); err != nil {
+		return err
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(wsReadIdle))
+	return nil
+}
+
+// writeDeadlineFor is how long one frame may take at wsMinRate.
+func writeDeadlineFor(frame int) time.Duration {
+	if frame < 1 {
+		frame = 1
+	}
+	d := time.Duration(frame) * time.Second / wsMinRate
+	if d < time.Second {
+		return time.Second
+	}
+	return d
+}
+
+func rateSince(start time.Time, n int64) int64 {
+	if n <= 0 {
+		return 0
+	}
+	sec := time.Since(start).Seconds()
+	if sec <= 0 {
+		return 0
+	}
+	return int64(float64(n) / sec)
+}
+
 func backoff(try int) time.Duration {
 	d := 200 * time.Millisecond
 	for i := 1; i < try && i < 4; i++ {
@@ -114,9 +176,9 @@ func (c *Client) uploadFileWSOnce(wirePath, remotePath, hash string, wireSize, o
 		return nil, hintOffset, err
 	}
 	defer conn.Close()
-	_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(wsReadIdle))
 	conn.SetPongHandler(func(string) error {
-		return conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return conn.SetReadDeadline(time.Now().Add(wsReadIdle))
 	})
 
 	open := wsOpenMsg{
@@ -227,11 +289,8 @@ func (c *Client) uploadFileWSOnce(wirePath, remotePath, hash string, wireSize, o
 				acked = a
 			}
 			okFrames++
-			if okFrames%8 == 0 && frame < wsMaxFrame {
-				frame *= 2
-				if frame > wsMaxFrame {
-					frame = wsMaxFrame
-				}
+			if okFrames%8 == 0 {
+				frame = frameForRate(frame, rateSince(t0, sent-offset))
 			}
 			if window < wsMaxWindow {
 				window *= 2
@@ -270,8 +329,7 @@ func (c *Client) uploadFileWSOnce(wirePath, remotePath, hash string, wireSize, o
 		if got == 0 {
 			break
 		}
-		_ = conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
-		if werr := conn.WriteMessage(websocket.BinaryMessage, buf[:got]); werr != nil {
+		if werr := writeWSBinary(conn, buf[:got]); werr != nil {
 			return nil, acked, werr
 		}
 		sent += int64(got)

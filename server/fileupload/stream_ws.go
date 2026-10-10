@@ -146,6 +146,12 @@ func handleUploadWS(w http.ResponseWriter, r *http.Request, home string) {
 	stopPing := startStreamPing(conn)
 	defer stopPing()
 
+	// Acks go out on their own goroutine. WriteMessage must not share the
+	// read loop: a blocked ack used to stop ReadMessage, the dial window
+	// filled at 512KB, and the splice died.
+	out := newStreamWriter(conn)
+	defer out.close()
+
 	written := offset
 	lastAck := offset
 	lastSync := offset
@@ -161,12 +167,12 @@ func handleUploadWS(w http.ResponseWriter, r *http.Request, home string) {
 		switch mt {
 		case websocket.BinaryMessage:
 			if written+int64(len(data)) > open.Size {
-				writeStreamErr(conn, "payload exceeds declared size")
+				_ = out.sendWait(streamErrMsg{Type: "error", Message: "payload exceeds declared size"})
 				return
 			}
 			n, werr := f.Write(data)
 			if werr != nil {
-				writeStreamErr(conn, "write payload: "+werr.Error())
+				_ = out.sendWait(streamErrMsg{Type: "error", Message: "write payload: " + werr.Error()})
 				return
 			}
 			written += int64(n)
@@ -175,7 +181,7 @@ func handleUploadWS(w http.ResponseWriter, r *http.Request, home string) {
 				lastSync = written
 			}
 			if written-lastAck >= streamAckEvery || written == open.Size {
-				if err := writeStreamJSON(conn, streamAckMsg{Type: "ack", Offset: written}); err != nil {
+				if err := out.send(streamAckMsg{Type: "ack", Offset: written}); err != nil {
 					return
 				}
 				lastAck = written
@@ -185,43 +191,43 @@ func handleUploadWS(w http.ResponseWriter, r *http.Request, home string) {
 				Type string `json:"type"`
 			}
 			if err := json.Unmarshal(data, &msg); err != nil {
-				writeStreamErr(conn, "invalid text message")
+				_ = out.sendWait(streamErrMsg{Type: "error", Message: "invalid text message"})
 				return
 			}
 			switch msg.Type {
 			case "commit":
 				if written != open.Size {
-					writeStreamErr(conn, fmt.Sprintf("commit at offset %d, want %d", written, open.Size))
+					_ = out.sendWait(streamErrMsg{Type: "error", Message: fmt.Sprintf("commit at offset %d, want %d", written, open.Size)})
 					return
 				}
 				if err := f.Sync(); err != nil {
-					writeStreamErr(conn, "fsync: "+err.Error())
+					_ = out.sendWait(streamErrMsg{Type: "error", Message: "fsync: " + err.Error()})
 					return
 				}
 				if err := f.Close(); err != nil {
-					writeStreamErr(conn, "close payload: "+err.Error())
+					_ = out.sendWait(streamErrMsg{Type: "error", Message: "close payload: " + err.Error()})
 					return
 				}
 				payloadClosed = true
 				got, herr := hashFile(payloadPath)
 				if herr != nil {
-					writeStreamErr(conn, "hash payload: "+herr.Error())
+					_ = out.sendWait(streamErrMsg{Type: "error", Message: "hash payload: " + herr.Error()})
 					return
 				}
 				if got != open.Hash {
-					writeStreamErr(conn, "hash mismatch (remote cache is for a different payload)")
+					_ = out.sendWait(streamErrMsg{Type: "error", Message: "hash mismatch (remote cache is for a different payload)"})
 					return
 				}
 				finalSize, dest, ierr := installStreamPayload(dir, payloadPath, destPath, open)
 				if ierr != nil {
-					writeStreamErr(conn, ierr.Error())
+					_ = out.sendWait(streamErrMsg{Type: "error", Message: ierr.Error()})
 					return
 				}
 				committed = true
-				_ = writeStreamJSON(conn, streamDoneMsg{Type: "done", Status: "ok", Path: dest, Size: finalSize})
+				_ = out.sendWait(streamDoneMsg{Type: "done", Status: "ok", Path: dest, Size: finalSize})
 				return
 			default:
-				writeStreamErr(conn, "unknown message type "+msg.Type)
+				_ = out.sendWait(streamErrMsg{Type: "error", Message: "unknown message type " + msg.Type})
 				return
 			}
 		}

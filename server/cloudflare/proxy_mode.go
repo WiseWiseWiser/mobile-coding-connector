@@ -38,6 +38,13 @@ func proxySessionActive(domain string) bool {
 	return ok
 }
 
+// StopProxyPublish cancels the in-process proxy publish for domain.
+// The edge mapping is deleted when that publish returns. It does not
+// touch qemu or host cloudflared routes.
+func StopProxyPublish(domain string) bool {
+	return stopProxySession(domain)
+}
+
 func stopProxySession(domain string) bool {
 	proxySessMu.Lock()
 	sess, ok := proxySess[domain]

@@ -288,15 +288,29 @@ func EnsureGroupTunnelConfigured(group string, tunnelName string, logFn LogFunc)
 // This function uses the core tunnel group, so multiple domains share
 // a single cloudflared process. If a tunnel is already configured, it reuses it.
 func StartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc) (*DomainTunnelStatus, error) {
+	return startDomainTunnel(domain, port, tunnelName, logFn, false)
+}
+
+// ForceStartDomainTunnel starts the backend selected by the current config
+// even when GetDomainTunnelStatus already reports active. A live proxy session
+// would otherwise hide a switch onto qemu or native cloudflared.
+func ForceStartDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc) (*DomainTunnelStatus, error) {
+	return startDomainTunnel(domain, port, tunnelName, logFn, true)
+}
+
+func startDomainTunnel(domain string, port int, tunnelName string, logFn LogFunc, force bool) (*DomainTunnelStatus, error) {
 	if logFn == nil {
 		logFn = func(string) {}
 	}
 
-	// Check if this domain is already running
-	status := GetDomainTunnelStatus(domain)
-	if status.Status == "active" {
-		logFn("Tunnel already running for " + domain)
-		return &status, nil
+	// Check if this domain is already running. Callers that are changing
+	// backend pass force so a stale "active" session cannot skip the switch.
+	if !force {
+		status := GetDomainTunnelStatus(domain)
+		if status.Status == "active" {
+			logFn("Tunnel already running for " + domain)
+			return &status, nil
+		}
 	}
 
 	if cfg, err := LoadConfig(); err == nil && proxyModeEnabled(cfg) {

@@ -2,6 +2,7 @@ package cloudflareproxy
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -42,11 +43,12 @@ var (
 	// the origin. Every ping is answered, so sustained silence means the dial is
 	// gone and must not be handed to a visitor.
 	pooledPongWait = 70 * time.Second
+	// pooledWriteWait bounds a single control-frame write. A timeout means a
+	// data write still holds the lock, not that the dial is dead.
+	pooledWriteWait = 10 * time.Second
 )
 
 const (
-	// pooledWriteWait bounds a single control-frame write.
-	pooledWriteWait = 10 * time.Second
 	// pooledFrameQueue is how many response frames the reader may buffer ahead
 	// of the request that is consuming them.
 	pooledFrameQueue = 128
@@ -67,6 +69,13 @@ type pooledConn struct {
 	closeOnce sync.Once
 	mu        sync.Mutex
 	dead      bool
+
+	// writeMu guards writing and lastWrite. A data write is the keepalive
+	// while it runs; pingLoop must not treat that as silence, and must not
+	// retire the dial when its own control write loses the lock.
+	writeMu   sync.Mutex
+	writing   bool
+	lastWrite time.Time
 
 	// buf holds the unread tail of the current frame. Only the request
 	// goroutine that took this socket touches it.
@@ -109,6 +118,11 @@ func (p *pooledConn) readLoop() {
 }
 
 // pingLoop keeps an idle dial alive across the public hop.
+//
+// A dial that is carrying a request already sends data. Pinging then races
+// the data write for the socket lock, and a 10s timeout used to close a slow
+// but live upload. Ping only after the dial has been quiet, and ignore a
+// timeout: a real close still surfaces from Read or Write.
 func (p *pooledConn) pingLoop() {
 	t := time.NewTicker(pooledPingInterval)
 	defer t.Stop()
@@ -117,13 +131,52 @@ func (p *pooledConn) pingLoop() {
 		case <-p.closed:
 			return
 		case <-t.C:
-			// WriteControl is safe alongside a request's data writes.
-			if err := p.ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(pooledWriteWait)); err != nil {
-				p.markDead()
-				return
+			if p.recentlyWritten() {
+				continue
 			}
+			err := p.ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(pooledWriteWait))
+			if err == nil || !pingErrFatal(err) {
+				continue
+			}
+			p.markDead()
+			return
 		}
 	}
+}
+
+func (p *pooledConn) recentlyWritten() bool {
+	p.writeMu.Lock()
+	defer p.writeMu.Unlock()
+	if p.writing {
+		return true
+	}
+	return !p.lastWrite.IsZero() && time.Since(p.lastWrite) < pooledPingInterval
+}
+
+func (p *pooledConn) beginWrite() {
+	p.writeMu.Lock()
+	p.writing = true
+	p.writeMu.Unlock()
+}
+
+func (p *pooledConn) endWrite() {
+	p.writeMu.Lock()
+	p.writing = false
+	p.lastWrite = time.Now()
+	p.writeMu.Unlock()
+}
+
+// pingErrFatal reports whether a ping failure means the dial is gone.
+// A write timeout means a data frame still holds the lock.
+func pingErrFatal(err error) bool {
+	if err == nil {
+		return false
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return false
+	}
+	return true
 }
 
 func (p *pooledConn) alive() bool {
@@ -171,7 +224,10 @@ func (p *pooledConn) Write(b []byte) (int, error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
-	if err := p.ws.WriteMessage(websocket.BinaryMessage, b); err != nil {
+	p.beginWrite()
+	err := p.ws.WriteMessage(websocket.BinaryMessage, b)
+	p.endWrite()
+	if err != nil {
 		p.markDead()
 		return 0, err
 	}

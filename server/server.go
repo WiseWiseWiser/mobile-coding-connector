@@ -35,6 +35,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/checkpoint"
 	cloudflareSettings "github.com/xhd2015/ai-critic/server/cloudflare"
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
+	servercloudflared "github.com/xhd2015/ai-critic/server/cloudflared"
 	serverconfig "github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/ai-critic/server/crontasks"
 	"github.com/xhd2015/ai-critic/server/domains"
@@ -639,6 +640,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// QEMU guest + guest-cloudflared API (remote-agent qemu / qemu.json)
 	serverqemu.RegisterAPI(mux)
+
+	// Origin cloudflared backend switch (remote-agent cloudflared use)
+	servercloudflared.RegisterAPI(mux)
 
 	// Go mod proxy (remote-agent go mod-proxy; serves cache/download)
 	servergomod.RegisterAPI(mux)
