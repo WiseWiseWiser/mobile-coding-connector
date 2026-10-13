@@ -29,12 +29,14 @@ remote-agent skill --list
 - Long-lived remote processes; scheduled **remote** shell; Mac→remote files
 - Another server than the default → its alias wrapper (`xdev-agent exec …`)
 - Go module cache via GOPROXY (`go` topic), not a mounted network FS
+- Expose a running port at a domain the user names → `port mapping` (`port` topic)
 
 ## When not to use
 
 - Pack / validate sealed bins → **remote-agent-manager devbox**
 - Create/register devbox SSH keys → **create-devbox-ssh**
 - CodeLens watchdog ops → `$AI/knowledges/codelens/server/watchdog/TOPIC.md`
+- A throwaway URL, no name wanted → `port visit`, not `port mapping`
 
 ## Hard rules
 
@@ -64,6 +66,7 @@ remote-agent skill --list
 | `server` | `build-next` / `restart` streams |
 | `request` | Arbitrary API paths |
 | `proxy` | List configured HTTP proxies |
+| `port` | Publish a port: persistent `mapping add/list/update/delete`, short-lived `visit` |
 | `cloudflared` | Switch origin backend: native, qemu, or proxy |
 | `cloudflare-proxy` | Origin via edge `local-agent cloudflare-proxy` (no origin cloudflared) |
 | `grok` | Start/resume remote Grok in this terminal tab |
@@ -86,6 +89,7 @@ remote-agent skill --list
 | Remote git | → **`git`** |
 | Build-next / restart | → **`server`** |
 | Raw HTTP API | → **`request`** |
+| Publish a port at a stable hostname | → topic **`port`** |
 | Remote Grok TUI (this tab) | → **`grok`** |
 | Stand up a web service + public domain | → **`deploy-service`** |
 | GOPROXY / module cache offload | → **`go`** |

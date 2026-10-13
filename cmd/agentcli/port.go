@@ -5,20 +5,29 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/xhd2015/ai-critic/client"
 	"github.com/xhd2015/less-gen/flags"
 )
 
-const portHelp = `Usage: remote-agent port <subcommand> [args...]
+func portHelpText() string {
+	return fmt.Sprintf(`Usage: %[1]s port <subcommand> [args...]
 
-List remote listening ports and open short-lived public visits.
+List listening ports, publish them, and open short-lived public visits.
 
 Subcommands:
   list [--json] [--forwards]
-      List ports listening on the remote machine (PORT / PID / COMMAND).
+      List ports listening on the server (PORT / PID / COMMAND).
+
+  mapping add <port> --hostname H [--provider owned|quick] [--json]
+  mapping list [--json]
+  mapping update <port> --hostname H [--provider owned|quick] [--json]
+  mapping delete <port> [--forget] [--json]
+      Persistent public mapping for a port (survives restarts).
 
   visit <port> [--provider auto|owned|quick] [--idle 10m] [--json] [--detach]
       Open an ad-hoc public URL for a local port (idle reverse-proxy hop).
@@ -28,23 +37,52 @@ Subcommands:
 
   visit stop <id|port>
       Stop an active ad-hoc visit by session id or local port.
-`
+`, active.Name)
+}
 
-const portListHelp = `Usage: remote-agent port list [--json] [--forwards]
+func portListHelpText() string {
+	return fmt.Sprintf(`Usage: %s port list [--json] [--forwards]
 
-List TCP ports currently listening on the remote server.
+List TCP ports currently listening on the server.
 
 Options:
   --json       Emit a JSON array (no ANSI).
   --forwards   Also include active persistent port forwards.
   -h, --help   Show this help message.
-`
+`, active.Name)
+}
 
-const portVisitHelp = `Usage: remote-agent port visit <port> [options...]
-       remote-agent port visit list
-       remote-agent port visit stop <id|port>
+func portMappingHelpText() string {
+	return fmt.Sprintf(`Usage: %[1]s port mapping <add|list|update|delete> [args...]
 
-Open a short-lived public mapping for a remote local port via Cloudflare
+Publish a port at a hostname that survives restarts, unlike 'port visit'.
+
+  %[1]s port mapping add <port> --hostname H [--provider owned|quick] [--json]
+  %[1]s port mapping list [--json]
+  %[1]s port mapping update <port> --hostname H [--provider owned|quick] [--json]
+  %[1]s port mapping delete <port> [--forget] [--json]
+
+Options:
+  --hostname H   Public hostname, e.g. house-design-aes821.xhd2015.xyz.
+  --provider P   owned (default) | quick | localtunnel, or a canonical server
+                 name (cloudflare_owned, cloudflare_quick).
+  --forget       delete: also clear the name saved for this port.
+  --json         Machine-readable JSON on stdout (no ANSI).
+
+Notes:
+  A hostname already mapped to another port is taken over (the stale mapping is
+  dropped), so 'delete' the other port first if that was not intended.
+  'delete' keeps the saved name unless --forget is passed, so re-adding the same
+  port at the same hostname needs no retyping.
+`, active.Name)
+}
+
+func portVisitHelpText() string {
+	return fmt.Sprintf(`Usage: %[1]s port visit <port> [options...]
+       %[1]s port visit list
+       %[1]s port visit stop <id|port>
+
+Open a short-lived public mapping for a port via Cloudflare
 (owned domain when available, else trycloudflare). Traffic is routed through
 an idle reverse-proxy hop that shuts down after inactivity.
 
@@ -54,11 +92,12 @@ Options:
   --json                        Machine-readable JSON on stdout (no ANSI).
   --detach                      Start and exit; leave the visit running on the server.
   -h, --help                    Show this help message.
-`
+`, active.Name)
+}
 
 func runPort(resolve func() (*client.Client, error), args []string) error {
 	if len(args) == 0 {
-		fmt.Print(portHelp)
+		fmt.Print(portHelpText())
 		return nil
 	}
 	sub := args[0]
@@ -66,14 +105,386 @@ func runPort(resolve func() (*client.Client, error), args []string) error {
 	switch sub {
 	case "list":
 		return runPortList(resolve, rest)
+	case "mapping":
+		return runPortMapping(resolve, rest)
 	case "visit":
 		return runPortVisit(resolve, rest)
 	case "-h", "--help":
-		fmt.Print(portHelp)
+		fmt.Print(portHelpText())
 		return nil
 	default:
 		return fmt.Errorf("unknown port subcommand: %s", sub)
 	}
+}
+
+// portMappingProviders maps the short names users type onto the names the
+// server expects. A canonical name is passed through untouched so scripts that
+// already speak the API keep working.
+var portMappingProviders = map[string]string{
+	"owned":       "cloudflare_owned",
+	"quick":       "cloudflare_quick",
+	"localtunnel": "localtunnel",
+}
+
+func normalizePortProvider(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "cloudflare_owned", nil
+	}
+	if canonical, ok := portMappingProviders[name]; ok {
+		return canonical, nil
+	}
+	switch name {
+	case "cloudflare_owned", "cloudflare_quick", "cloudflare_tunnel", "localtunnel":
+		return name, nil
+	}
+	return "", fmt.Errorf("unknown provider: %s (want owned|quick|localtunnel or cloudflare_owned|cloudflare_quick)", name)
+}
+
+func runPortMapping(resolve func() (*client.Client, error), args []string) error {
+	if len(args) == 0 {
+		fmt.Print(portMappingHelpText())
+		return nil
+	}
+	sub := args[0]
+	rest := args[1:]
+	switch sub {
+	case "add":
+		return runPortMappingAdd(resolve, rest, false)
+	case "update":
+		return runPortMappingAdd(resolve, rest, true)
+	case "list":
+		return runPortMappingList(resolve, rest)
+	case "delete", "remove", "rm":
+		return runPortMappingDelete(resolve, rest)
+	case "-h", "--help":
+		fmt.Print(portMappingHelpText())
+		return nil
+	default:
+		return fmt.Errorf("unknown port mapping subcommand: %s", sub)
+	}
+}
+
+// runPortMappingAdd publishes a port. update re-publishes one that is already
+// mapped: the server refuses a second mapping on the same port, so the old one
+// is removed first and restored if the new one fails.
+func runPortMappingAdd(resolve func() (*client.Client, error), args []string, update bool) error {
+	var hostname, provider string
+	var jsonOut bool
+	args, err := flags.
+		String("--hostname", &hostname).
+		String("--provider", &provider).
+		Bool("--json", &jsonOut).
+		Help("-h,--help", portMappingHelpText()).
+		HelpNoExit().
+		Parse(args)
+	if err != nil {
+		if errors.Is(err, flags.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	verb := "add"
+	if update {
+		verb = "update"
+	}
+	if len(args) == 0 {
+		return fmt.Errorf("port mapping %s requires a port number; see '%s port mapping --help'", verb, active.Name)
+	}
+	if len(args) > 1 {
+		return fmt.Errorf("unexpected arguments: %v", args[1:])
+	}
+	port, err := strconv.Atoi(args[0])
+	if err != nil {
+		return fmt.Errorf("invalid port: %s", args[0])
+	}
+	if port <= 0 || port > 65535 {
+		return fmt.Errorf("invalid port: %d", port)
+	}
+	hostname = strings.TrimSpace(hostname)
+	if hostname == "" {
+		return fmt.Errorf("port mapping %s requires --hostname", verb)
+	}
+	if strings.ContainsAny(hostname, " \t/") {
+		return fmt.Errorf("invalid --hostname %q: want a bare hostname", hostname)
+	}
+	canonical, err := normalizePortProvider(provider)
+	if err != nil {
+		return err
+	}
+
+	cli, err := resolve()
+	if err != nil {
+		return err
+	}
+
+	var previous *client.PortForwardInfo
+	if update {
+		forwards, err := cli.ListPortForwards()
+		if err != nil {
+			return err
+		}
+		for i := range forwards {
+			if forwards[i].LocalPort == port {
+				previous = &forwards[i]
+				break
+			}
+		}
+		if previous == nil {
+			return fmt.Errorf("port %d is not mapped; use 'port mapping add %d --hostname %s'", port, port, hostname)
+		}
+		if previous.Label == hostname {
+			fmt.Printf("mapping unchanged\n")
+			fmt.Printf("  Port:      %d\n", port)
+			fmt.Printf("  Hostname:  %s\n", hostname)
+			return nil
+		}
+		if err := cli.RemovePortForward(port); err != nil {
+			return fmt.Errorf("remove old mapping: %w", err)
+		}
+	}
+
+	// Remember the name first, mirroring the web UI, so the hostname survives
+	// a later delete and can be reused without retyping.
+	if err := cli.SetPortMappingName(port, hostname); err != nil {
+		if update {
+			restorePortMapping(cli, previous)
+		}
+		return fmt.Errorf("save mapping name: %w", err)
+	}
+	if err := cli.AddPortForward(port, hostname, canonical, "", ""); err != nil {
+		if update {
+			restorePortMapping(cli, previous)
+		}
+		if strings.Contains(err.Error(), "already being forwarded") {
+			return fmt.Errorf("%w; use 'port mapping update %d --hostname %s'", err, port, hostname)
+		}
+		if strings.Contains(err.Error(), "409") {
+			return fmt.Errorf("%w; run 'port mapping list' to find the port holding it", err)
+		}
+		return err
+	}
+
+	forward, err := findPortForward(cli, port)
+	if err != nil {
+		return err
+	}
+	if !portIsListening(cli, port) {
+		fmt.Fprintf(os.Stderr, "warning: port %d is not listening; the mapping is published but will not serve until something binds it\n", port)
+	}
+
+	if jsonOut {
+		out := map[string]interface{}{
+			"port":       port,
+			"hostname":   hostname,
+			"provider":   canonical,
+			"status":     forward.Status,
+			"public_url": forward.PublicURL,
+		}
+		if previous != nil {
+			out["previous_hostname"] = previous.Label
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetEscapeHTML(false)
+		return enc.Encode(out)
+	}
+
+	fmt.Printf("mapping %s\n", map[bool]string{false: "added", true: "updated"}[update])
+	fmt.Printf("  Port:      %d\n", port)
+	if previous != nil {
+		fmt.Printf("  Hostname:  %s   (was %s)\n", hostname, previous.Label)
+	} else {
+		fmt.Printf("  Hostname:  %s\n", hostname)
+	}
+	fmt.Printf("  Provider:  %s\n", canonical)
+	if forward.PublicURL != "" {
+		fmt.Printf("  URL:       %s\n", forward.PublicURL)
+	}
+	fmt.Printf("  Name:      saved (--forget on delete to clear)\n")
+	return nil
+}
+
+// restorePortMapping best-effort puts the old mapping back after a failed
+// update, so a typo cannot leave the port unpublished.
+func restorePortMapping(cli *client.Client, previous *client.PortForwardInfo) {
+	if previous == nil {
+		return
+	}
+	if err := cli.AddPortForward(previous.LocalPort, previous.Label, previous.Provider, "", ""); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not restore %s on port %d: %v\n", previous.Label, previous.LocalPort, err)
+	}
+}
+
+func findPortForward(cli *client.Client, port int) (*client.PortForwardInfo, error) {
+	forwards, err := cli.ListPortForwards()
+	if err != nil {
+		return nil, err
+	}
+	for i := range forwards {
+		if forwards[i].LocalPort == port {
+			return &forwards[i], nil
+		}
+	}
+	return &client.PortForwardInfo{LocalPort: port}, nil
+}
+
+func portIsListening(cli *client.Client, port int) bool {
+	ports, err := cli.ListLocalPorts()
+	if err != nil {
+		// A failed probe must not fail a mapping that already succeeded.
+		return true
+	}
+	for _, p := range ports {
+		if p.Port == port {
+			return true
+		}
+	}
+	return false
+}
+
+func runPortMappingList(resolve func() (*client.Client, error), args []string) error {
+	var jsonOut bool
+	args, err := flags.
+		Bool("--json", &jsonOut).
+		Help("-h,--help", portMappingHelpText()).
+		HelpNoExit().
+		Parse(args)
+	if err != nil {
+		if errors.Is(err, flags.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if len(args) > 0 {
+		return fmt.Errorf("port mapping list takes no arguments, got %v", args)
+	}
+
+	cli, err := resolve()
+	if err != nil {
+		return err
+	}
+	forwards, err := cli.ListPortForwards()
+	if err != nil {
+		return err
+	}
+	names, err := cli.ListPortMappingNames()
+	if err != nil {
+		return err
+	}
+
+	type row struct {
+		Port      int    `json:"port"`
+		Status    string `json:"status"`
+		Provider  string `json:"provider"`
+		PublicURL string `json:"publicUrl"`
+		SavedName string `json:"savedName,omitempty"`
+	}
+	rows := make([]row, 0, len(forwards))
+	seen := map[int]bool{}
+	for _, f := range forwards {
+		seen[f.LocalPort] = true
+		rows = append(rows, row{
+			Port: f.LocalPort, Status: f.Status, Provider: f.Provider,
+			PublicURL: f.PublicURL, SavedName: names[strconv.Itoa(f.LocalPort)],
+		})
+	}
+	// A saved name with no live mapping is worth showing: that is exactly the
+	// state after 'delete', and it is what re-add would reuse.
+	for portStr, domain := range names {
+		port, err := strconv.Atoi(portStr)
+		if err != nil || seen[port] {
+			continue
+		}
+		rows = append(rows, row{Port: port, Status: "inactive", SavedName: domain})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Port < rows[j].Port })
+
+	if jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetEscapeHTML(false)
+		return enc.Encode(rows)
+	}
+	if len(rows) == 0 {
+		fmt.Println("No port mappings.")
+		return nil
+	}
+	fmt.Printf("%-7s %-9s %-18s %s\n", "PORT", "STATUS", "PROVIDER", "PUBLIC URL")
+	for _, r := range rows {
+		url := r.PublicURL
+		if url == "" {
+			if r.SavedName != "" {
+				url = "(saved name: " + r.SavedName + ")"
+			} else {
+				url = "-"
+			}
+		}
+		provider := r.Provider
+		if provider == "" {
+			provider = "-"
+		}
+		fmt.Printf("%-7d %-9s %-18s %s\n", r.Port, r.Status, provider, url)
+	}
+	fmt.Printf("\n%d mapping(s)\n", len(rows))
+	return nil
+}
+
+func runPortMappingDelete(resolve func() (*client.Client, error), args []string) error {
+	var forget, jsonOut bool
+	args, err := flags.
+		Bool("--forget", &forget).
+		Bool("--json", &jsonOut).
+		Help("-h,--help", portMappingHelpText()).
+		HelpNoExit().
+		Parse(args)
+	if err != nil {
+		if errors.Is(err, flags.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if len(args) != 1 {
+		return fmt.Errorf("port mapping delete requires a port number; see '%s port mapping --help'", active.Name)
+	}
+	port, err := strconv.Atoi(args[0])
+	if err != nil {
+		return fmt.Errorf("invalid port: %s", args[0])
+	}
+
+	cli, err := resolve()
+	if err != nil {
+		return err
+	}
+	names, err := cli.ListPortMappingNames()
+	if err != nil {
+		return err
+	}
+	savedName := names[strconv.Itoa(port)]
+
+	if err := cli.RemovePortForward(port); err != nil {
+		return err
+	}
+	if forget {
+		if err := cli.DeletePortMappingName(port); err != nil {
+			return err
+		}
+		savedName = ""
+	}
+
+	if jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetEscapeHTML(false)
+		return enc.Encode(map[string]interface{}{
+			"port": port, "deleted": true, "saved_name": savedName, "forgot": forget,
+		})
+	}
+	fmt.Printf("mapping deleted\n")
+	fmt.Printf("  Port:  %d\n", port)
+	if forget {
+		fmt.Printf("  Name:  cleared\n")
+	} else if savedName != "" {
+		fmt.Printf("  Name:  %s kept (--forget to clear)\n", savedName)
+	}
+	return nil
 }
 
 func runPortList(resolve func() (*client.Client, error), args []string) error {
@@ -82,7 +493,7 @@ func runPortList(resolve func() (*client.Client, error), args []string) error {
 	args, err := flags.
 		Bool("--json", &jsonOut).
 		Bool("--forwards", &withForwards).
-		Help("-h,--help", portListHelp).
+		Help("-h,--help", portListHelpText()).
 		HelpNoExit().
 		Parse(args)
 	if err != nil {
@@ -177,11 +588,11 @@ func runPortList(resolve func() (*client.Client, error), args []string) error {
 
 func runPortVisit(resolve func() (*client.Client, error), args []string) error {
 	if len(args) == 0 {
-		fmt.Print(portVisitHelp)
+		fmt.Print(portVisitHelpText())
 		return nil
 	}
 	if args[0] == "-h" || args[0] == "--help" {
-		fmt.Print(portVisitHelp)
+		fmt.Print(portVisitHelpText())
 		return nil
 	}
 	if args[0] == "list" {
@@ -200,7 +611,7 @@ func runPortVisit(resolve func() (*client.Client, error), args []string) error {
 		String("--idle", &idleStr).
 		Bool("--json", &jsonOut).
 		Bool("--detach", &detach).
-		Help("-h,--help", portVisitHelp).
+		Help("-h,--help", portVisitHelpText()).
 		HelpNoExit().
 		Parse(args)
 	if err != nil {
@@ -290,7 +701,7 @@ func runPortVisitList(resolve func() (*client.Client, error), args []string) err
 	var jsonOut bool
 	args, err := flags.
 		Bool("--json", &jsonOut).
-		Help("-h,--help", portVisitHelp).
+		Help("-h,--help", portVisitHelpText()).
 		HelpNoExit().
 		Parse(args)
 	if err != nil {
@@ -334,7 +745,7 @@ func runPortVisitList(resolve func() (*client.Client, error), args []string) err
 
 func runPortVisitStop(resolve func() (*client.Client, error), args []string) error {
 	args, err := flags.
-		Help("-h,--help", portVisitHelp).
+		Help("-h,--help", portVisitHelpText()).
 		HelpNoExit().
 		Parse(args)
 	if err != nil {

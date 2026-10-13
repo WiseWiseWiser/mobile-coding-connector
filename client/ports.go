@@ -69,6 +69,60 @@ func (c *Client) ListPortForwards() ([]PortForwardInfo, error) {
 	return out, nil
 }
 
+// ListPortMappingNames returns every saved port → domain name
+// (GET /api/ports/mapping-names). The server keeps the name after the forward is
+// removed, so a port can be republished at the same hostname later.
+func (c *Client) ListPortMappingNames() (map[string]string, error) {
+	out := map[string]string{}
+	if err := c.getJSON("/api/ports/mapping-names", &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SetPortMappingName remembers the domain used for a port
+// (POST /api/ports/mapping-names).
+func (c *Client) SetPortMappingName(port int, domain string) error {
+	return c.postJSON("/api/ports/mapping-names", map[string]interface{}{
+		"port":   port,
+		"domain": domain,
+	}, nil)
+}
+
+// DeletePortMappingName forgets the saved domain for a port
+// (DELETE /api/ports/mapping-names?port=). The forward itself is untouched.
+func (c *Client) DeletePortMappingName(port int) error {
+	q := url.Values{}
+	q.Set("port", strconv.Itoa(port))
+	return c.sendJSON(http.MethodDelete, "/api/ports/mapping-names?"+q.Encode(), nil, nil)
+}
+
+// AddPortForward publishes a port at a hostname (POST /api/ports). The server
+// builds the hostname from subdomain+baseDomain when both are set, otherwise it
+// uses label as the hostname verbatim.
+func (c *Client) AddPortForward(port int, label, provider, baseDomain, subdomain string) error {
+	body := map[string]interface{}{
+		"port":     port,
+		"label":    label,
+		"provider": provider,
+	}
+	if baseDomain != "" {
+		body["baseDomain"] = baseDomain
+	}
+	if subdomain != "" {
+		body["subdomain"] = subdomain
+	}
+	return c.postJSON("/api/ports", body, nil)
+}
+
+// RemovePortForward stops publishing a port (DELETE /api/ports?port=). The saved
+// mapping name is deliberately left alone — use DeletePortMappingName to clear it.
+func (c *Client) RemovePortForward(port int) error {
+	q := url.Values{}
+	q.Set("port", strconv.Itoa(port))
+	return c.sendJSON(http.MethodDelete, "/api/ports?"+q.Encode(), nil, nil)
+}
+
 // StartPortVisit starts an ad-hoc visit (POST /api/ports/visit).
 // idle <= 0 means the server default (10m).
 func (c *Client) StartPortVisit(port int, provider string, idle time.Duration) (*PortVisit, error) {

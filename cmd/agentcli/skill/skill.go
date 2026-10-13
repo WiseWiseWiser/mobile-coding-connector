@@ -31,6 +31,7 @@ var skillRoot string
 //go:embed server
 //go:embed request
 //go:embed proxy
+//go:embed port
 //go:embed grok
 //go:embed install
 //go:embed deploy-service
