@@ -29,6 +29,10 @@ type PortForwardInfo struct {
 	Status    string `json:"status"`
 	Provider  string `json:"provider"`
 	Type      string `json:"type"`
+	// Bootstrap marks a forward the server started for itself at boot (a domain tunnel), rather
+	// than one somebody asked for. With Type it is what tells apart two rows that otherwise
+	// render as identical URLs — the ambiguity 'port mapping list' used to leave.
+	Bootstrap bool   `json:"bootstrap,omitempty"`
 	Error     string `json:"error,omitempty"`
 }
 

@@ -353,6 +353,77 @@ func TestPortMappingListJSON(t *testing.T) {
 	}
 }
 
+// The SOURCE column exists because two mappings with different origins used to render as
+// identical rows: 'service list' showed the service's forward, 'port mapping list' showed the
+// same URL with nothing saying where it came from.
+func TestPortForwardSourceNamesTheOrigin(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   client.PortForwardInfo
+		want string
+	}{
+		// A service's forward and a hand-added one are both this type — which is exactly why the
+		// column may not claim "service" or "manual".
+		{"service forward", client.PortForwardInfo{Type: "port_forward"}, "forward"},
+		{"hand-added forward", client.PortForwardInfo{Type: "port_forward"}, "forward"},
+		{"no type reported", client.PortForwardInfo{}, "forward"},
+		{"boot domain tunnel", client.PortForwardInfo{Type: "domain", Bootstrap: true}, "domain(boot)"},
+		{"requested domain tunnel", client.PortForwardInfo{Type: "domain"}, "domain"},
+		{"exposed url", client.PortForwardInfo{Type: "exposed_url"}, "exposed"},
+		// An unknown future type is shown as-is rather than dropped or mislabelled.
+		{"unknown type", client.PortForwardInfo{Type: "something_new"}, "something_new"},
+	} {
+		if got := portForwardSource(tc.in); got != tc.want {
+			t.Errorf("%s: portForwardSource = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The two live rows that caused the confusion must not collapse to the same label.
+//
+// This asserts the labels by value, not merely that they differ: an earlier version checked only
+// inequality and still passed when Bootstrap was ignored — "domain" and "forward" are different
+// strings, so the boot tunnel was indistinguishable from a requested one and nothing caught it.
+func TestPortForwardSourceDistinguishesTheReportedPair(t *testing.T) {
+	cases := []struct {
+		name string
+		in   client.PortForwardInfo
+		want string
+	}{
+		{"8095 (the service's live row)", client.PortForwardInfo{LocalPort: 8095, Type: "port_forward"}, "forward"},
+		{"23712 (the boot domain tunnel)", client.PortForwardInfo{LocalPort: 23712, Type: "domain", Bootstrap: true}, "domain(boot)"},
+	}
+	seen := map[string]string{}
+	for _, tc := range cases {
+		got := portForwardSource(tc.in)
+		if got != tc.want {
+			t.Errorf("%s: portForwardSource = %q, want %q", tc.name, got, tc.want)
+		}
+		seen[got] = tc.name
+	}
+	if len(seen) != len(cases) {
+		t.Fatalf("two rows share a label (%v); the confusion would remain", seen)
+	}
+}
+
+// source is in the machine-readable output too, or scripts keep the ambiguity.
+func TestPortMappingListJSONCarriesSource(t *testing.T) {
+	stub := newPortStub()
+	out, err := runMapping(t, stub, "list", "--json")
+	if err != nil {
+		t.Fatalf("list --json: %v", err)
+	}
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(out), &rows); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, out)
+	}
+	for _, r := range rows {
+		if r["source"] == nil || r["source"] == "" {
+			t.Fatalf("row %#v has no source", r)
+		}
+	}
+}
+
 func TestPortMappingHelpUsesProfileName(t *testing.T) {
 	for _, tc := range []struct {
 		profile Profile

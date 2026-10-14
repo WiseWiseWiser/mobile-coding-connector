@@ -74,6 +74,14 @@ Notes:
   dropped), so 'delete' the other port first if that was not intended.
   'delete' keeps the saved name unless --forget is passed, so re-adding the same
   port at the same hostname needs no retyping.
+
+  'list' shows a SOURCE column so two mappings are not mistaken for one another:
+    forward        a plain port forward — added by hand, or by a service definition
+                   (the two are indistinguishable, so neither is claimed)
+    domain(boot)   a domain tunnel the server started for itself at boot
+    domain         a domain tunnel requested explicitly
+    exposed        an exposed URL
+  A mapping whose name is saved but which is not serving shows '-' instead.
 `, active.Name)
 }
 
@@ -342,6 +350,32 @@ func portIsListening(cli *client.Client, port int) bool {
 	return false
 }
 
+// portForwardSource names where a forward came from, so two rows with different origins do not
+// render as the same URL.
+//
+// It reports what the server already knows rather than inventing a field: `Type` distinguishes a
+// plain forward from a domain/exposed/opencode tunnel, and `Bootstrap` separates a forward the
+// server started for itself at boot from one somebody asked for. What it deliberately does NOT
+// claim is "service" vs "manual" — the two are indistinguishable today, and naming one of them
+// would be a guess printed as fact.
+func portForwardSource(f client.PortForwardInfo) string {
+	switch f.Type {
+	case "", "port_forward":
+		// A plain forward: added by hand, or by a service definition. Both are this type, so the
+		// distinction is not knowable here and the column says only what is true.
+		return "forward"
+	case "domain":
+		if f.Bootstrap {
+			return "domain(boot)"
+		}
+		return "domain"
+	case "exposed_url":
+		return "exposed"
+	default:
+		return f.Type
+	}
+}
+
 func runPortMappingList(resolve func() (*client.Client, error), args []string) error {
 	var jsonOut bool
 	args, err := flags.
@@ -374,6 +408,7 @@ func runPortMappingList(resolve func() (*client.Client, error), args []string) e
 
 	type row struct {
 		Port      int    `json:"port"`
+		Source    string `json:"source,omitempty"`
 		Status    string `json:"status"`
 		Provider  string `json:"provider"`
 		PublicURL string `json:"publicUrl"`
@@ -384,8 +419,9 @@ func runPortMappingList(resolve func() (*client.Client, error), args []string) e
 	for _, f := range forwards {
 		seen[f.LocalPort] = true
 		rows = append(rows, row{
-			Port: f.LocalPort, Status: f.Status, Provider: f.Provider,
-			PublicURL: f.PublicURL, SavedName: names[strconv.Itoa(f.LocalPort)],
+			Port: f.LocalPort, Source: portForwardSource(f), Status: f.Status,
+			Provider: f.Provider, PublicURL: f.PublicURL,
+			SavedName: names[strconv.Itoa(f.LocalPort)],
 		})
 	}
 	// A saved name with no live mapping is worth showing: that is exactly the
@@ -408,7 +444,7 @@ func runPortMappingList(resolve func() (*client.Client, error), args []string) e
 		fmt.Println("No port mappings.")
 		return nil
 	}
-	fmt.Printf("%-7s %-9s %-18s %s\n", "PORT", "STATUS", "PROVIDER", "PUBLIC URL")
+	fmt.Printf("%-7s %-13s %-9s %-18s %s\n", "PORT", "SOURCE", "STATUS", "PROVIDER", "PUBLIC URL")
 	for _, r := range rows {
 		url := r.PublicURL
 		if url == "" {
@@ -422,7 +458,12 @@ func runPortMappingList(resolve func() (*client.Client, error), args []string) e
 		if provider == "" {
 			provider = "-"
 		}
-		fmt.Printf("%-7d %-9s %-18s %s\n", r.Port, r.Status, provider, url)
+		source := r.Source
+		if source == "" {
+			// A saved name with no live mapping: nothing is serving it, so there is no origin.
+			source = "-"
+		}
+		fmt.Printf("%-7d %-13s %-9s %-18s %s\n", r.Port, source, r.Status, provider, url)
 	}
 	fmt.Printf("\n%d mapping(s)\n", len(rows))
 	return nil
