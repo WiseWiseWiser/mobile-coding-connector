@@ -53,6 +53,7 @@ Commands:
 
   Operations
     service              Managed services (start/stop/logs/upgrade)
+    hostmon              Host CPU and disk I/O sampler (off until enabled)
     cron                 Scheduled cron tasks (interval or UTC cron)
     server               Server lifecycle (build-next, upgrade, restart, status)
     install              Cross-build a local Go CLI and install it on the remote
@@ -126,6 +127,7 @@ Commands:
 
   Operations
     service              Managed services (start/stop/logs/upgrade)
+    hostmon              Host CPU and disk I/O sampler (off until enabled)
     cron                 Scheduled cron tasks (interval or UTC cron)
     server               Server lifecycle (build-next, upgrade, restart, status)
     install              Cross-build a local Go CLI and install it on the remote

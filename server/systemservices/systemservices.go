@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/xhd2015/ai-critic/server/gomod"
+	"github.com/xhd2015/ai-critic/server/hostmon"
 	"github.com/xhd2015/ai-critic/server/openclaw"
 	"github.com/xhd2015/ai-critic/server/proxy/wsproxy"
 	"github.com/xhd2015/ai-critic/server/services"
@@ -25,6 +26,7 @@ const (
 	CFProxyID  = "sys-cloudflare-proxy"
 	GoModID    = "sys-go-mod-proxy"
 	OpenClawID = "sys-openclaw"
+	HostMonID  = "sys-host-monitor"
 )
 
 // Register adds every system service to m. Registration order is the order the
@@ -61,6 +63,12 @@ func Register(m *services.Manager) error {
 			Description: "Slack socket-mode gateway; simulated until the real integration lands",
 			Controller:  openClawController{},
 		},
+		{
+			ID:          HostMonID,
+			Name:        "Host Monitor",
+			Description: "Samples CPU and disk I/O so a later reboot can show which process caused the load",
+			Controller:  hostMonController{},
+		},
 	}
 	for _, entry := range entries {
 		if registered[entry.ID] {
@@ -85,6 +93,9 @@ var (
 	_ services.SystemController   = openClawController{}
 	_ services.SystemLifecycle    = openClawController{}
 	_ services.SystemAutoStarter  = openClawController{}
+	_ services.SystemController   = hostMonController{}
+	_ services.SystemLifecycle    = hostMonController{}
+	_ services.SystemAutoStarter  = hostMonController{}
 	_ services.SystemController   = &cloudFlareProxyController{}
 	_ services.SystemRestarter    = &cloudFlareProxyController{}
 	_ services.SystemHostProvider = &cloudFlareProxyController{}
@@ -259,6 +270,35 @@ func (openClawController) SetSystemAutoStart(enabled bool) error {
 	}
 	merged := openclaw.MergeConfig(cfg, openclaw.ConfigUpdate{AutoStart: boolPtr(enabled)})
 	return openclaw.SaveConfig(merged)
+}
+
+// hostMonController wraps the in-process /proc sampler.
+type hostMonController struct{}
+
+func (hostMonController) SystemStatus() services.SystemRuntime {
+	status := hostmon.Default().Status()
+	detail := "not running"
+	if status.Running {
+		detail = "sampling every 15s"
+	}
+	return services.SystemRuntime{
+		Running:   status.Running,
+		AutoStart: boolPtr(status.AutoStart),
+		LogPath:   status.LogPath,
+		Detail:    detail,
+	}
+}
+
+func (hostMonController) StartSystem() error {
+	return hostmon.Default().Start()
+}
+
+func (hostMonController) StopSystem() error {
+	return hostmon.Default().Stop()
+}
+
+func (hostMonController) SetSystemAutoStart(enabled bool) error {
+	return hostmon.Default().SetAutoStart(enabled)
 }
 
 func formatPort(port int) string {

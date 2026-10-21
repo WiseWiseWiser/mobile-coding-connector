@@ -51,6 +51,7 @@ import (
 	servergit "github.com/xhd2015/ai-critic/server/git"
 	"github.com/xhd2015/ai-critic/server/github"
 	servergomod "github.com/xhd2015/ai-critic/server/gomod"
+	serverhostmon "github.com/xhd2015/ai-critic/server/hostmon"
 	"github.com/xhd2015/ai-critic/server/keepalive"
 	"github.com/xhd2015/ai-critic/server/localadhoc"
 	"github.com/xhd2015/ai-critic/server/localclipboard"
@@ -647,6 +648,10 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Go mod proxy (remote-agent go mod-proxy; serves cache/download)
 	servergomod.RegisterAPI(mux)
 	go servergomod.BootAutoStart()
+
+	// Host CPU/disk sampler. Off unless the operator enabled it.
+	serverhostmon.RegisterAPI(mux)
+	go serverhostmon.Boot()
 
 	// Domains API
 	domains.RegisterAPI(mux)

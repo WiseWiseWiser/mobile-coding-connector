@@ -165,6 +165,8 @@ func runCLI(profile Profile, args []string, stdout, stderr io.Writer) error {
 		return runBookmarks(resolve, rest)
 	case "service":
 		return runService(resolve, rest)
+	case "hostmon":
+		return runHostmon(resolve, rest)
 	case "cron":
 		return runCron(resolve, rest)
 	case "server":
