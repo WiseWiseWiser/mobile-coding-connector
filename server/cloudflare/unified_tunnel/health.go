@@ -114,5 +114,19 @@ func (utm *UnifiedTunnelManager) ProbeAndRecord(hostname string) bool {
 	if err != nil && code == 0 {
 		return false
 	}
-	return IsHealthCheckHealthy(code)
+	if !IsHealthCheckHealthy(code) {
+		return false
+	}
+	// 530 means "connector still registering" only while a process is alive.
+	// A dead process plus 530/1033 must fail so RestartMapping can bring it back.
+	if code == CloudflareErrorOriginDown && !utm.connectorRunning() {
+		return false
+	}
+	return true
+}
+
+func (utm *UnifiedTunnelManager) connectorRunning() bool {
+	utm.mu.RLock()
+	defer utm.mu.RUnlock()
+	return utm.running && utm.cmd != nil && utm.cmd.Process != nil
 }

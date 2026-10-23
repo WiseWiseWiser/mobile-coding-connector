@@ -32,8 +32,18 @@ type PortForwardInfo struct {
 	// Bootstrap marks a forward the server started for itself at boot (a domain tunnel), rather
 	// than one somebody asked for. With Type it is what tells apart two rows that otherwise
 	// render as identical URLs — the ambiguity 'port mapping list' used to leave.
-	Bootstrap bool   `json:"bootstrap,omitempty"`
-	Error     string `json:"error,omitempty"`
+	Bootstrap bool      `json:"bootstrap,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	Auth      *PortAuth `json:"auth,omitempty"`
+}
+
+// PortAuth is the login hop attached to a port mapping.
+type PortAuth struct {
+	Required  bool   `json:"required"`
+	Ephemeral bool   `json:"ephemeral,omitempty"`
+	TokenMode string `json:"tokenMode,omitempty"`
+	User      string `json:"user,omitempty"`
+	Token     string `json:"token,omitempty"`
 }
 
 // PortVisit is an ad-hoc visit session from /api/ports/visit.
@@ -105,6 +115,13 @@ func (c *Client) DeletePortMappingName(port int) error {
 // builds the hostname from subdomain+baseDomain when both are set, otherwise it
 // uses label as the hostname verbatim.
 func (c *Client) AddPortForward(port int, label, provider, baseDomain, subdomain string) error {
+	_, err := c.AddPortForwardAuth(port, label, provider, baseDomain, subdomain, PortAuth{})
+	return err
+}
+
+// AddPortForwardAuth is AddPortForward with an optional login hop.
+// The returned forward includes auth.token when the server generated one.
+func (c *Client) AddPortForwardAuth(port int, label, provider, baseDomain, subdomain string, auth PortAuth) (*PortForwardInfo, error) {
 	body := map[string]interface{}{
 		"port":     port,
 		"label":    label,
@@ -116,7 +133,35 @@ func (c *Client) AddPortForward(port int, label, provider, baseDomain, subdomain
 	if subdomain != "" {
 		body["subdomain"] = subdomain
 	}
-	return c.postJSON("/api/ports", body, nil)
+	if auth.Required {
+		body["auth"] = auth
+	}
+	var out PortForwardInfo
+	if err := c.postJSON("/api/ports", body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListPortMappingAuth returns saved mapping auth flags
+// (GET /api/ports/mapping-auth).
+func (c *Client) ListPortMappingAuth() (map[string]PortAuth, error) {
+	out := map[string]PortAuth{}
+	if err := c.getJSON("/api/ports/mapping-auth", &out); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = map[string]PortAuth{}
+	}
+	return out, nil
+}
+
+// DeletePortMappingAuth forgets saved auth flags for a port
+// (DELETE /api/ports/mapping-auth?port=).
+func (c *Client) DeletePortMappingAuth(port int) error {
+	q := url.Values{}
+	q.Set("port", strconv.Itoa(port))
+	return c.sendJSON(http.MethodDelete, "/api/ports/mapping-auth?"+q.Encode(), nil, nil)
 }
 
 // RemovePortForward stops publishing a port (DELETE /api/ports?port=). The saved

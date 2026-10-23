@@ -100,6 +100,10 @@ type UnifiedTunnelManager struct {
 	lastHealthProbe        map[string]healthProbe
 	rebuildTimer           *time.Timer   // debounced rebuild timer
 	rebuildDebounce        time.Duration // per-instance override; 0 uses DefaultRebuildDebounce
+	stopRequested          bool          // set by stopProcessLocked so the waiter does not respawn
+	restartAttempt         int           // unexpected-exit backoff step
+	startedAt              time.Time     // when the current process was spawned
+	sleepFor               func(time.Duration)
 }
 
 var (
@@ -661,31 +665,94 @@ func (utm *UnifiedTunnelManager) startProcessLocked() error {
 
 	utm.cmd = cmd
 	utm.running = true
+	utm.stopRequested = false
+	utm.startedAt = time.Now()
 	fmt.Printf("[unified-tunnel] startProcessLocked: process started with PID %d\n", cmd.Process.Pid)
 	quicktest.LogHeavyOperationWithCallerStack("[unified-tunnel] startProcessLocked: PID=%d", cmd.Process.Pid)
 
-	// Start goroutine to wait for process
+	// Start goroutine to wait for process. An update or crash exits on purpose;
+	// restart unless stopProcessLocked asked for the stop.
 	go func() {
 		fmt.Printf("[unified-tunnel] startProcessLocked: waiting for process to exit...\n")
-		cmd.Wait()
+		_ = cmd.Wait()
 		fmt.Printf("[unified-tunnel] startProcessLocked: process exited\n")
 		if logFile != nil {
 			logFile.Close()
 		}
-		utm.mu.Lock()
-		if utm.cmd == cmd {
-			utm.cmd = nil
-			utm.running = false
-		}
-		utm.mu.Unlock()
+		utm.handleProcessExit(cmd)
 	}()
 
 	return nil
 }
 
+const (
+	restartBackoffMin = 2 * time.Second
+	restartBackoffCap = 30 * time.Second
+)
+
+// restartDelay is 2s, 4s, 8s, … capped at 30s.
+func restartDelay(attempt int) time.Duration {
+	if attempt < 0 {
+		attempt = 0
+	}
+	delay := restartBackoffMin
+	for i := 0; i < attempt; i++ {
+		if delay >= restartBackoffCap/2 {
+			return restartBackoffCap
+		}
+		delay *= 2
+	}
+	if delay > restartBackoffCap {
+		return restartBackoffCap
+	}
+	return delay
+}
+
+func (utm *UnifiedTunnelManager) sleep(delay time.Duration) {
+	if utm.sleepFor != nil {
+		utm.sleepFor(delay)
+		return
+	}
+	time.Sleep(delay)
+}
+
+// handleProcessExit restarts cloudflared after an update or crash.
+// An intentional stopProcessLocked sets stopRequested so this does not respawn.
+func (utm *UnifiedTunnelManager) handleProcessExit(cmd *exec.Cmd) {
+	utm.mu.Lock()
+	owned := utm.cmd == cmd
+	if owned {
+		utm.cmd = nil
+		utm.running = false
+	}
+	if !owned || utm.stopRequested {
+		utm.mu.Unlock()
+		return
+	}
+	if !utm.startedAt.IsZero() && time.Since(utm.startedAt) >= restartBackoffCap {
+		utm.restartAttempt = 0
+	}
+	delay := restartDelay(utm.restartAttempt)
+	utm.restartAttempt++
+	utm.mu.Unlock()
+
+	utm.sleep(delay)
+
+	utm.mu.Lock()
+	defer utm.mu.Unlock()
+	if utm.stopRequested || utm.running || utm.cmd != nil {
+		return
+	}
+	if err := utm.startProcessLocked(); err != nil {
+		fmt.Printf("[unified-tunnel] handleProcessExit: restart failed: %v\n", err)
+	}
+}
+
 // stopProcessLocked stops the running cloudflared process
 // Must be called with utm.mu held
 func (utm *UnifiedTunnelManager) stopProcessLocked() {
+	utm.stopRequested = true
+	utm.restartAttempt = 0
 	if hook := getTestStopProcessHook(); hook != nil {
 		hook(utm)
 		return

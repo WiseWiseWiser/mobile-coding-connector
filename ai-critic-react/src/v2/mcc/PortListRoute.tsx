@@ -35,6 +35,16 @@ export function PortListRoute() {
             onPortSubdomainChange={ctx.onPortSubdomainChange}
             onPortBaseDomainChange={ctx.onPortBaseDomainChange}
             onGenerateSubdomain={ctx.onGenerateSubdomain}
+            requireAuth={ctx.requireAuth}
+            authUserMode={ctx.authUserMode}
+            authUser={ctx.authUser}
+            authTokenMode={ctx.authTokenMode}
+            authToken={ctx.authToken}
+            onRequireAuthChange={ctx.onRequireAuthChange}
+            onAuthUserModeChange={ctx.onAuthUserModeChange}
+            onAuthUserChange={ctx.onAuthUserChange}
+            onAuthTokenModeChange={ctx.onAuthTokenModeChange}
+            onAuthTokenChange={ctx.onAuthTokenChange}
             onAddPort={ctx.onAddPort}
             onRemovePort={ctx.onRemovePort}
             onNavigateToView={ctx.navigateToView}

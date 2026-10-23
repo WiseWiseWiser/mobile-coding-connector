@@ -39,6 +39,12 @@ export interface PortForward {
     error?: string;
     bootstrap?: boolean; // true if started during server bootstrap (e.g., domain tunnels)
     type?: PortForwardType; // source type
+    auth?: {
+        required?: boolean;
+        ephemeral?: boolean;
+        tokenMode?: string;
+        user?: string;
+    };
 }
 
 export type ProviderInfo = ApiProviderInfo;

@@ -20,7 +20,6 @@ import (
 	"github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/ai-critic/server/domains"
 	"github.com/xhd2015/ai-critic/server/jsonfile"
-	"github.com/xhd2015/ai-critic/server/quicktest"
 )
 
 // PortProtectionConfig holds the list of protected ports
@@ -120,14 +119,15 @@ type Provider interface {
 
 // PortForward represents a single port forward entry (API response)
 type PortForward struct {
-	LocalPort int             `json:"localPort"`
-	Label     string          `json:"label"`
-	PublicURL string          `json:"publicUrl"`
-	Status    string          `json:"status"`
-	Provider  string          `json:"provider"`
-	Error     string          `json:"error,omitempty"`
-	Bootstrap bool            `json:"bootstrap,omitempty"` // true if started during server bootstrap (e.g., domain tunnels)
-	Type      PortForwardType `json:"type"`                // source type
+	LocalPort int              `json:"localPort"`
+	Label     string           `json:"label"`
+	PublicURL string           `json:"publicUrl"`
+	Status    string           `json:"status"`
+	Provider  string           `json:"provider"`
+	Error     string           `json:"error,omitempty"`
+	Bootstrap bool             `json:"bootstrap,omitempty"` // true if started during server bootstrap (e.g., domain tunnels)
+	Type      PortForwardType  `json:"type"`                // source type
+	Auth      *config.PortAuth `json:"auth,omitempty"`
 }
 
 // tunnel represents a running tunnel
@@ -139,16 +139,19 @@ type tunnel struct {
 	status    string
 	errMsg    string
 	stop      func()
+	closeAuth func()
 	logs      *LogBuffer
+	auth      config.PortAuth
 }
 
 // Manager manages port forwards using registered providers
 type Manager struct {
-	mu          sync.Mutex
-	tunnels     map[int]*tunnel     // keyed by local port
-	providers   map[string]Provider // keyed by provider name
-	subscribers map[int]chan []PortForward
-	nextSubID   int
+	mu             sync.Mutex
+	tunnels        map[int]*tunnel     // keyed by local port
+	providers      map[string]Provider // keyed by provider name
+	subscribers    map[int]chan []PortForward
+	nextSubID      int
+	authSecretPath string
 }
 
 // NewManager creates a new port forward manager
@@ -201,15 +204,7 @@ func (m *Manager) notifySubscribers() {
 func (m *Manager) listLocked() []PortForward {
 	result := make([]PortForward, 0, len(m.tunnels))
 	for _, t := range m.tunnels {
-		result = append(result, PortForward{
-			LocalPort: t.port,
-			Label:     t.label,
-			PublicURL: t.publicURL,
-			Status:    t.status,
-			Provider:  t.provider,
-			Error:     t.errMsg,
-			Type:      PortForwardTypePortForward,
-		})
+		result = append(result, t.asPortForward(false))
 	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].LocalPort < result[j].LocalPort
@@ -399,124 +394,6 @@ func parseServiceURL(service string) int {
 	return 0
 }
 
-// Add starts a new port forward using the specified provider
-func (m *Manager) Add(port int, label string, providerName string) (*PortForward, error) {
-	m.mu.Lock()
-	if _, exists := m.tunnels[port]; exists {
-		m.mu.Unlock()
-		return nil, fmt.Errorf("port %d is already being forwarded", port)
-	}
-
-	// Default to localtunnel
-	if providerName == "" {
-		providerName = ProviderLocaltunnel
-	}
-	p, ok := m.providers[providerName]
-	if !ok {
-		m.mu.Unlock()
-		return nil, fmt.Errorf("unknown provider: %s", providerName)
-	}
-
-	var staleSameHost []*tunnel
-	if isCloudflareHostnameProvider(providerName) {
-		for existingPort, existing := range m.tunnels {
-			if existingPort == port || !isCloudflareHostnameProvider(existing.provider) {
-				continue
-			}
-			if sameForwardHostname(existing.label, label) {
-				fmt.Printf("[Manager.Add] Replacing stale Cloudflare hostname mapping: port=%d label=%q -> port=%d\n",
-					existingPort, existing.label, port)
-				delete(m.tunnels, existingPort)
-				staleSameHost = append(staleSameHost, existing)
-			}
-		}
-	}
-
-	t := &tunnel{
-		port:     port,
-		label:    label,
-		provider: providerName,
-		status:   StatusConnecting,
-	}
-	m.tunnels[port] = t
-	m.notifySubscribers()
-	m.mu.Unlock()
-
-	for _, stale := range staleSameHost {
-		if stale.stop != nil {
-			stale.stop()
-		}
-	}
-
-	fmt.Printf("[Manager.Add] Starting tunnel with provider: %s, label: %q\n", providerName, label)
-	quicktest.LogHeavyOperationWithCallerStack("[Manager.Add] provider=%s label=%q", providerName, label)
-
-	// Start the tunnel
-	handle, err := p.Start(port, label)
-	if err != nil {
-		m.mu.Lock()
-		t.status = StatusError
-		t.errMsg = err.Error()
-		m.notifySubscribers()
-		m.mu.Unlock()
-		return &PortForward{
-			LocalPort: port,
-			Label:     label,
-			Provider:  providerName,
-			Status:    StatusError,
-			Error:     err.Error(),
-		}, nil
-	}
-
-	t.stop = handle.Stop
-	t.logs = handle.Logs
-
-	applyResult := func(result TunnelResult) {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		if _, exists := m.tunnels[port]; !exists {
-			return
-		}
-		if result.Err != nil {
-			t.status = StatusError
-			t.errMsg = result.Err.Error()
-			t.publicURL = ""
-		} else {
-			t.status = StatusActive
-			t.publicURL = result.PublicURL
-			t.errMsg = ""
-		}
-		m.notifySubscribers()
-	}
-
-	// Providers may buffer a result before returning (sync upsert). Consume it
-	// immediately so status does not stick on "connecting".
-	select {
-	case result := <-handle.Result:
-		applyResult(result)
-		return &PortForward{
-			LocalPort: port,
-			Label:     label,
-			Provider:  providerName,
-			PublicURL: t.publicURL,
-			Status:    t.status,
-			Error:     t.errMsg,
-		}, nil
-	default:
-	}
-
-	go func() {
-		applyResult(<-handle.Result)
-	}()
-
-	return &PortForward{
-		LocalPort: port,
-		Label:     label,
-		Provider:  providerName,
-		Status:    StatusConnecting,
-	}, nil
-}
-
 func isCloudflareHostnameProvider(provider string) bool {
 	return provider == ProviderCloudflareOwned || provider == ProviderCloudflareTunnel
 }
@@ -537,9 +414,7 @@ func (m *Manager) Remove(port int) error {
 	m.notifySubscribers()
 	m.mu.Unlock()
 
-	if t.stop != nil {
-		t.stop()
-	}
+	stopTunnel(t)
 	return nil
 }
 
@@ -724,6 +599,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ports/local/events", handleLocalPortEvents)
 	mux.HandleFunc("/api/ports/protected", handleProtectedPorts)
 	mux.HandleFunc("/api/ports/mapping-names", handlePortMappingNames)
+	mux.HandleFunc("/api/ports/mapping-auth", handlePortMappingAuth)
 	mux.HandleFunc("/api/ports/tunnel-groups", handleTunnelGroups)
 	mux.HandleFunc("/api/ports/restart-dns", handleRestartDNS)
 	mux.HandleFunc("/api/ports/ensure-tunnel", handleEnsureTunnel)
@@ -969,11 +845,12 @@ func handleListPorts(w http.ResponseWriter, _ *http.Request) {
 }
 
 type addPortRequest struct {
-	Port       int    `json:"port"`
-	Label      string `json:"label"`
-	Provider   string `json:"provider"`
-	BaseDomain string `json:"baseDomain"`
-	Subdomain  string `json:"subdomain"`
+	Port       int              `json:"port"`
+	Label      string           `json:"label"`
+	Provider   string           `json:"provider"`
+	BaseDomain string           `json:"baseDomain"`
+	Subdomain  string           `json:"subdomain"`
+	Auth       *config.PortAuth `json:"auth"`
 }
 
 func handleAddPort(w http.ResponseWriter, r *http.Request) {
@@ -984,8 +861,8 @@ func handleAddPort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("[handleAddPort] RECEIVED: port=%d provider=%q label=%q baseDomain=%q subdomain=%q\n",
-		req.Port, req.Provider, req.Label, req.BaseDomain, req.Subdomain)
+	fmt.Printf("[handleAddPort] RECEIVED: port=%d provider=%q label=%q baseDomain=%q subdomain=%q auth=%+v\n",
+		req.Port, req.Provider, req.Label, req.BaseDomain, req.Subdomain, req.Auth)
 
 	if req.Port <= 0 || req.Port > 65535 {
 		http.Error(w, "invalid port number", http.StatusBadRequest)
@@ -1021,15 +898,51 @@ func handleAddPort(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[handleAddPort] Using label as hostname: %s (isCloudflare=%v, hasSubdomain=%v)\n", hostname, isCloudflareProvider, req.Subdomain != "")
 	}
 
-	pf, err := defaultManager.Add(req.Port, hostname, req.Provider)
+	forward := ForwardRequest{
+		Port:     req.Port,
+		Label:    hostname,
+		Provider: req.Provider,
+	}
+	if req.Auth != nil && req.Auth.Required {
+		auth, err := resolveForwardAuth(req.Port, req.Auth)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		forward.Auth = auth
+	}
+
+	pf, err := defaultManager.AddForward(forward)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
+	if persistErr := persistForwardAuth(req.Port, forward.Auth); persistErr != nil {
+		fmt.Printf("[handleAddPort] warning: persist auth flags: %v\n", persistErr)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(pf)
+	json.NewEncoder(w).Encode(createdPortForward(pf, forward.Auth))
+}
+
+func createdPortForward(pf *PortForward, auth config.PortAuth) *PortForward {
+	if pf == nil {
+		return pf
+	}
+	out := *pf
+	if auth.Required {
+		a := auth
+		out.Auth = &a
+	}
+	return &out
+}
+
+func persistForwardAuth(port int, auth config.PortAuth) error {
+	if !auth.Required {
+		return config.DeletePortMappingAuth(port)
+	}
+	return config.SetPortMappingAuth(port, auth)
 }
 
 func handleRemovePort(w http.ResponseWriter, r *http.Request) {

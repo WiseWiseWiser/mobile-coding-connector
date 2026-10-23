@@ -7,7 +7,8 @@ import { NavTabs } from './types';
 import { useV2Context } from '../V2Context';
 import { fetchRandomDomain } from '../../api/domains';
 import type { AddPortRequest } from '../../api/ports';
-import { fetchAllPortMappingNames, savePortMappingName, type PortMappingNames } from '../../api/ports';
+import { fetchAllPortMappingAuth, fetchAllPortMappingNames, savePortMappingName, type PortMappingAuth, type PortMappingNames } from '../../api/ports';
+import type { AuthTokenMode, AuthUserMode } from './ServiceAuthFields';
 
 export interface PortsOutletContext {
     ports: ReturnType<typeof useV2Context>['portForwards']['ports'];
@@ -28,6 +29,16 @@ export interface PortsOutletContext {
     onPortSubdomainChange: (value: string) => void;
     onPortBaseDomainChange: (value: string) => void;
     onGenerateSubdomain: () => void;
+    requireAuth: boolean;
+    authUserMode: AuthUserMode;
+    authUser: string;
+    authTokenMode: AuthTokenMode;
+    authToken: string;
+    onRequireAuthChange: (value: boolean) => void;
+    onAuthUserModeChange: (value: AuthUserMode) => void;
+    onAuthUserChange: (value: string) => void;
+    onAuthTokenModeChange: (value: AuthTokenMode) => void;
+    onAuthTokenChange: (value: string) => void;
     onAddPort: () => void;
     onRemovePort: (port: number) => void;
     navigateToView: (view: string) => void;
@@ -47,6 +58,12 @@ export function PortsLayout() {
     const [newPortBaseDomain, setNewPortBaseDomain] = useState('');
     const [portActionError, setPortActionError] = useState<string | null>(null);
     const [portMappingNames, setPortMappingNames] = useState<PortMappingNames>({});
+    const [portMappingAuth, setPortMappingAuth] = useState<PortMappingAuth>({});
+    const [requireAuth, setRequireAuth] = useState(false);
+    const [authUserMode, setAuthUserMode] = useState<AuthUserMode>('any');
+    const [authUser, setAuthUser] = useState('');
+    const [authTokenMode, setAuthTokenMode] = useState<AuthTokenMode>('shared');
+    const [authToken, setAuthToken] = useState('');
 
     // Refs to track latest state values (avoid stale closures)
     const subdomainRef = useRef(newPortSubdomain);
@@ -61,6 +78,9 @@ export function PortsLayout() {
         fetchAllPortMappingNames()
             .then(names => setPortMappingNames(names))
             .catch(() => { /* ignore errors */ });
+        fetchAllPortMappingAuth()
+            .then(auth => setPortMappingAuth(auth))
+            .catch(() => { /* ignore errors */ });
     }, []);
 
     // Apply saved mapping name when port number changes (for Cloudflare providers)
@@ -69,6 +89,15 @@ export function PortsLayout() {
         
         const portNum = parseInt(newPortNumber, 10);
         if (!portNum || portNum <= 0) return;
+
+        const savedAuth = portMappingAuth[String(portNum)];
+        if (savedAuth?.required) {
+            setRequireAuth(true);
+            setAuthUserMode(savedAuth.user ? 'fixed' : 'any');
+            setAuthUser(savedAuth.user || '');
+            setAuthTokenMode(savedAuth.tokenMode === 'custom' ? 'custom' : 'shared');
+            setAuthToken(savedAuth.token || '');
+        }
 
         const savedDomain = portMappingNames[String(portNum)];
         if (!savedDomain) return;
@@ -86,7 +115,7 @@ export function PortsLayout() {
             setNewPortSubdomain(subdomain);
             setNewPortBaseDomain(baseDomain);
         }
-    }, [newPortNumber, portMappingNames, newPortProvider]);
+    }, [newPortNumber, portMappingNames, portMappingAuth, newPortProvider]);
 
     const generateSubdomain = useCallback(async (baseDomain?: string) => {
         try {
@@ -134,6 +163,16 @@ export function PortsLayout() {
                 req.label = `${newPortSubdomain}.${newPortBaseDomain}`;
             }
         }
+        if (requireAuth) {
+            req.auth = { required: true };
+            if (authUserMode === 'fixed' && authUser) {
+                req.auth.user = authUser;
+            }
+            if (authTokenMode === 'custom') {
+                req.auth.tokenMode = 'custom';
+                req.auth.token = authToken;
+            }
+        }
 
         console.log('[PortsLayout] Adding port:', {
             portNum,
@@ -170,6 +209,11 @@ export function PortsLayout() {
             setNewPortLabel('');
             setNewPortSubdomain('');
             setNewPortBaseDomain('');
+            setRequireAuth(false);
+            setAuthUserMode('any');
+            setAuthUser('');
+            setAuthTokenMode('shared');
+            setAuthToken('');
         } catch (err) {
             setPortActionError(err instanceof Error ? err.message : String(err));
         }
@@ -236,6 +280,16 @@ export function PortsLayout() {
             }
         },
         onGenerateSubdomain: () => generateSubdomain(),
+        requireAuth,
+        authUserMode,
+        authUser,
+        authTokenMode,
+        authToken,
+        onRequireAuthChange: setRequireAuth,
+        onAuthUserModeChange: setAuthUserMode,
+        onAuthUserChange: setAuthUser,
+        onAuthTokenModeChange: setAuthTokenMode,
+        onAuthTokenChange: setAuthToken,
         onAddPort: handleAddPort,
         onRemovePort: handleRemovePort,
         navigateToView,

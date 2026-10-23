@@ -23,10 +23,12 @@ domain they want, it is `mapping`.
 
 ```bash
 local-agent port mapping add 9999 --hostname house-design-aes821.xhd2015.xyz
+local-agent port mapping add 8422 --hostname eluc-on-mac.xhd2015.xyz --require-auth
 local-agent port mapping list
+local-agent port mapping list --show-token
 local-agent port mapping update 9999 --hostname house-design-v2.xhd2015.xyz
 local-agent port mapping delete 9999              # keeps the saved name
-local-agent port mapping delete 9999 --forget     # also clears it
+local-agent port mapping delete 9999 --forget     # also clears name and auth flags
 ```
 
 ```console
@@ -64,6 +66,9 @@ PORT    STATUS    PROVIDER           PUBLIC URL
 | `update` rolls back on failure | Old mapping is re-added, so a typo cannot leave the port unpublished |
 | A hostname on another port is **taken over** | The stale mapping is dropped silently. Check `list` first if that was not the intent |
 | `--provider` | `owned` (default) and `quick`, or canonical `cloudflare_owned` / `cloudflare_quick` |
+| `--require-auth` | Login hop. Generates a per-mapping token (not `server-credentials`) unless `--auth-token` or `--shared-token`. Username omitted = any. Does not start or kill the process. |
+| `--show-token` | `list`: print user + token for auth-gated mappings. |
+| `--clear-auth` | `update` (or `add`) without a login hop. `update` without this flag keeps the previous hop. |
 
 ```console
 $ local-agent port mapping add 9999 --hostname h.xhd2015.xyz

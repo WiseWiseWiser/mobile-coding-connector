@@ -10,6 +10,7 @@ import { CloudflareInlineDiagnostics } from './CloudflareInlineDiagnostics';
 import { TunnelGroupsSection } from './TunnelGroupsSection';
 import { PortForwardCard } from './PortForwardCard';
 import { ServicesSection } from './ServicesSection';
+import { ServiceAuthFields, type AuthTokenMode, type AuthUserMode } from './ServiceAuthFields';
 
 // ---- Port Forwarding View ----
 
@@ -32,6 +33,16 @@ export interface PortForwardingViewProps {
     onPortSubdomainChange?: (value: string) => void;
     onPortBaseDomainChange?: (value: string) => void;
     onGenerateSubdomain?: () => void;
+    requireAuth: boolean;
+    authUserMode: AuthUserMode;
+    authUser: string;
+    authTokenMode: AuthTokenMode;
+    authToken: string;
+    onRequireAuthChange: (value: boolean) => void;
+    onAuthUserModeChange: (value: AuthUserMode) => void;
+    onAuthUserChange: (value: string) => void;
+    onAuthTokenModeChange: (value: AuthTokenMode) => void;
+    onAuthTokenChange: (value: string) => void;
     onAddPort: () => void;
     onRemovePort: (port: number) => void;
     onNavigateToView: (view: string) => void;
@@ -60,6 +71,16 @@ export function PortForwardingView({
     onPortSubdomainChange,
     onPortBaseDomainChange,
     onGenerateSubdomain,
+    requireAuth,
+    authUserMode,
+    authUser,
+    authTokenMode,
+    authToken,
+    onRequireAuthChange,
+    onAuthUserModeChange,
+    onAuthUserChange,
+    onAuthTokenModeChange,
+    onAuthTokenChange,
     onAddPort,
     onRemovePort,
     onNavigateToView,
@@ -173,6 +194,18 @@ export function PortForwardingView({
                                 )}
                             </>
                         )}
+                        <ServiceAuthFields
+                            requireAuth={requireAuth}
+                            authUserMode={authUserMode}
+                            authUser={authUser}
+                            authTokenMode={authTokenMode}
+                            authToken={authToken}
+                            onRequireAuthChange={onRequireAuthChange}
+                            onAuthUserModeChange={onAuthUserModeChange}
+                            onAuthUserChange={onAuthUserChange}
+                            onAuthTokenModeChange={onAuthTokenModeChange}
+                            onAuthTokenChange={onAuthTokenChange}
+                        />
                         <button 
                             className="mcc-forward-btn" 
                             onClick={onAddPort}

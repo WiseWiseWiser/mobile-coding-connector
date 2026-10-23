@@ -40,6 +40,14 @@ export async function fetchProviders(): Promise<ProviderInfo[]> {
     return data ?? [];
 }
 
+export interface PortAuth {
+    required?: boolean;
+    ephemeral?: boolean;
+    tokenMode?: string;
+    user?: string;
+    token?: string;
+}
+
 export interface PortForwardData {
     localPort: number;
     label: string;
@@ -47,6 +55,7 @@ export interface PortForwardData {
     status: string;
     provider: string;
     error?: string;
+    auth?: PortAuth;
 }
 
 export async function fetchPorts(): Promise<PortForwardData[]> {
@@ -64,6 +73,7 @@ export interface AddPortRequest {
     provider: string;
     baseDomain?: string;
     subdomain?: string;
+    auth?: PortAuth;
 }
 
 export async function addPort(req: AddPortRequest): Promise<void> {
@@ -104,6 +114,16 @@ export interface PortMappingName {
 }
 
 export type PortMappingNames = Record<string, string>;
+
+export type PortMappingAuth = Record<string, PortAuth>;
+
+export async function fetchAllPortMappingAuth(): Promise<PortMappingAuth> {
+    const resp = await fetch('/api/ports/mapping-auth');
+    if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    }
+    return await resp.json() as PortMappingAuth;
+}
 
 export async function fetchPortMappingName(port: number): Promise<string | null> {
     const resp = await fetch(`/api/ports/mapping-names?port=${port}`);

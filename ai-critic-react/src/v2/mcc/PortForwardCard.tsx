@@ -64,6 +64,11 @@ export function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwar
                         {port.type.replace('_', ' ')}
                     </span>
                 )}
+                {port.auth?.required && (
+                    <span className="mcc-port-bootstrap-badge" title={port.auth.tokenMode ? `Auth: ${port.auth.tokenMode}` : 'Auth'}>
+                        Auth
+                    </span>
+                )}
             </div>
             {port.publicUrl ? (
                 <div className="mcc-port-url">

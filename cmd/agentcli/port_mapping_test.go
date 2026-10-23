@@ -23,6 +23,7 @@ type portStub struct {
 	bodies     []string
 	forwards   []map[string]any
 	names      map[string]string
+	auth       map[string]map[string]any
 	failMethod string
 	failPath   string
 	status     int
@@ -30,7 +31,7 @@ type portStub struct {
 }
 
 func newPortStub() *portStub {
-	return &portStub{names: map[string]string{}}
+	return &portStub{names: map[string]string{}, auth: map[string]map[string]any{}}
 }
 
 func (s *portStub) record(r *http.Request) {
@@ -59,13 +60,26 @@ func (s *portStub) handler() http.Handler {
 			port := int(body["port"].(float64))
 			host, _ := body["label"].(string)
 			provider, _ := body["provider"].(string)
-			s.forwards = []map[string]any{{
+			fwd := map[string]any{
 				"localPort": port, "label": host, "provider": provider,
 				"status": "active", "publicUrl": "https://" + host,
-			}}
+			}
+			if auth, ok := body["auth"].(map[string]any); ok {
+				if required, _ := auth["required"].(bool); required {
+					if _, has := auth["token"]; !has {
+						if mode, _ := auth["tokenMode"].(string); mode != "shared" {
+							auth["token"] = "generated-from-stub"
+							auth["ephemeral"] = true
+							auth["tokenMode"] = "ephemeral"
+						}
+					}
+					fwd["auth"] = auth
+				}
+			}
+			s.forwards = []map[string]any{fwd}
 			s.names[fmt.Sprint(port)] = host
 			w.WriteHeader(http.StatusCreated)
-			io.WriteString(w, `{"success":true}`)
+			_ = json.NewEncoder(w).Encode(fwd)
 		case r.URL.Path == "/api/ports" && r.Method == http.MethodDelete:
 			port := r.URL.Query().Get("port")
 			s.forwards = nil
@@ -81,6 +95,11 @@ func (s *portStub) handler() http.Handler {
 			io.WriteString(w, `{"success":true}`)
 		case r.URL.Path == "/api/ports/mapping-names" && r.Method == http.MethodDelete:
 			delete(s.names, r.URL.Query().Get("port"))
+			io.WriteString(w, `{"success":true}`)
+		case r.URL.Path == "/api/ports/mapping-auth" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(s.auth)
+		case r.URL.Path == "/api/ports/mapping-auth" && r.Method == http.MethodDelete:
+			delete(s.auth, r.URL.Query().Get("port"))
 			io.WriteString(w, `{"success":true}`)
 		case r.URL.Path == "/api/ports/local":
 			io.WriteString(w, `[{"port":9999,"pid":1,"command":"backend"}]`)
@@ -474,5 +493,128 @@ func TestPortHelpUsesProfileName(t *testing.T) {
 		if !strings.Contains(out.String(), tc.want) {
 			t.Fatalf("%s help missing %q:\n%s", tc.profile.Name, tc.want, out.String())
 		}
+	}
+}
+
+func TestPortMappingAddRequireAuthSendsFlag(t *testing.T) {
+	stub := newPortStub()
+	out, err := runMapping(t, stub, "add", "8422", "--hostname", "eluc-on-mac.xhd2015.xyz", "--require-auth")
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	var body map[string]any
+	for _, b := range stub.bodiesCopy() {
+		if strings.Contains(b, `"label":"eluc-on-mac.xhd2015.xyz"`) {
+			_ = json.Unmarshal([]byte(b), &body)
+		}
+	}
+	auth, _ := body["auth"].(map[string]any)
+	if auth["required"] != true {
+		t.Fatalf("POST /api/ports body = %v, want auth.required true", body)
+	}
+	if auth["tokenMode"] == "shared" {
+		t.Fatalf("default require-auth must not send shared: %v", auth)
+	}
+	if !strings.Contains(out, "Auth:") || !strings.Contains(out, "required") {
+		t.Fatalf("output missing auth: %s", out)
+	}
+	if !strings.Contains(out, "Token:") || !strings.Contains(out, "generated-from-stub") {
+		t.Fatalf("output missing generated token: %s", out)
+	}
+}
+
+func TestPortMappingAddAuthFlagsRequireRequireAuth(t *testing.T) {
+	stub := newPortStub()
+	_, err := runMapping(t, stub, "add", "8422", "--hostname", "eluc-on-mac.xhd2015.xyz", "--auth-token", "s3cret")
+	if err == nil || !strings.Contains(err.Error(), "--require-auth") {
+		t.Fatalf("err = %v, want --require-auth", err)
+	}
+	if len(stub.callsCopy()) != 0 {
+		t.Fatalf("no request should be sent, got %v", stub.callsCopy())
+	}
+}
+
+func TestPortMappingListShowsAuthColumn(t *testing.T) {
+	stub := newPortStub()
+	stub.forwards = []map[string]any{{
+		"localPort": 8422, "label": "eluc-on-mac.xhd2015.xyz",
+		"provider": "cloudflare_owned", "status": "active",
+		"publicUrl": "https://eluc-on-mac.xhd2015.xyz",
+		"auth":      map[string]any{"required": true, "ephemeral": true, "tokenMode": "ephemeral"},
+	}}
+	stub.names["3080"] = "dsh-on-mac.xhd2015.xyz"
+	stub.auth["8422"] = map[string]any{"required": true, "ephemeral": true, "tokenMode": "ephemeral", "token": "map-token"}
+	stub.auth["3080"] = map[string]any{"required": true, "ephemeral": true, "tokenMode": "ephemeral", "token": "inactive-token"}
+	out, err := runMapping(t, stub, "list")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if !strings.Contains(out, "AUTH") || !strings.Contains(out, "required") {
+		t.Fatalf("list missing AUTH column:\n%s", out)
+	}
+	if strings.Contains(out, "map-token") || strings.Contains(out, "inactive-token") {
+		t.Fatalf("default list leaked tokens:\n%s", out)
+	}
+}
+
+func TestPortMappingListShowToken(t *testing.T) {
+	stub := newPortStub()
+	stub.forwards = []map[string]any{{
+		"localPort": 8422, "label": "eluc-on-mac.xhd2015.xyz",
+		"provider": "cloudflare_owned", "status": "active",
+		"publicUrl": "https://eluc-on-mac.xhd2015.xyz",
+		"auth":      map[string]any{"required": true, "ephemeral": true, "tokenMode": "ephemeral"},
+	}}
+	stub.auth["8422"] = map[string]any{"required": true, "ephemeral": true, "tokenMode": "ephemeral", "token": "map-token"}
+	out, err := runMapping(t, stub, "list", "--show-token")
+	if err != nil {
+		t.Fatalf("list --show-token: %v", err)
+	}
+	if !strings.Contains(out, "map-token") || !strings.Contains(out, "ephemeral") {
+		t.Fatalf("missing mapping token:\n%s", out)
+	}
+}
+
+func TestPortMappingListJSONOmitsTokenByDefault(t *testing.T) {
+	stub := newPortStub()
+	stub.forwards = []map[string]any{{
+		"localPort": 8422, "status": "active", "provider": "cloudflare_owned",
+		"auth": map[string]any{"required": true, "tokenMode": "ephemeral"},
+	}}
+	stub.auth["8422"] = map[string]any{"required": true, "tokenMode": "ephemeral", "token": "secret"}
+	out, err := runMapping(t, stub, "list", "--json")
+	if err != nil {
+		t.Fatalf("list --json: %v", err)
+	}
+	if strings.Contains(out, "secret") {
+		t.Fatalf("json leaked token: %s", out)
+	}
+}
+
+func TestPortMappingSharedTokenConflictsWithAuthToken(t *testing.T) {
+	stub := newPortStub()
+	_, err := runMapping(t, stub, "add", "8422", "--hostname", "eluc-on-mac.xhd2015.xyz",
+		"--require-auth", "--shared-token", "--auth-token", "x")
+	if err == nil || !strings.Contains(err.Error(), "--shared-token") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPortMappingDeleteForgetClearsAuth(t *testing.T) {
+	stub := newPortStub()
+	stub.forwards = []map[string]any{{"localPort": 8422, "label": "eluc-on-mac.xhd2015.xyz", "status": "active"}}
+	stub.names["8422"] = "eluc-on-mac.xhd2015.xyz"
+	stub.auth["8422"] = map[string]any{"required": true}
+	if _, err := runMapping(t, stub, "delete", "8422", "--forget"); err != nil {
+		t.Fatalf("delete --forget: %v", err)
+	}
+	var forgotAuth bool
+	for _, c := range stub.callsCopy() {
+		if c == "DELETE /api/ports/mapping-auth?port=8422" {
+			forgotAuth = true
+		}
+	}
+	if !forgotAuth {
+		t.Fatalf("--forget should clear auth flags, calls = %v", stub.callsCopy())
 	}
 }

@@ -3,6 +3,8 @@ package unified_tunnel
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -50,8 +52,10 @@ func TestProbeHostnameTreats530AsHealthy(t *testing.T) {
 	t.Cleanup(SetHealthCheckBaseURLForTest(srv.URL))
 
 	utm, _ := testTunnelManager(t)
+	utm.running = true
+	utm.cmd = &exec.Cmd{Process: &os.Process{Pid: os.Getpid()}}
 	if !utm.ProbeAndRecord("mac-agent-aes42.example.com") {
-		t.Fatal("530 should be treated as healthy so health checks do not SIGTERM")
+		t.Fatal("530 should be treated as healthy while the connector process is alive")
 	}
 	code, ok := utm.LastHealthProbe("mac-agent-aes42.example.com")
 	if !ok || code != 530 {
@@ -80,6 +84,19 @@ func TestProbeHostname200HealthyAndRegistered(t *testing.T) {
 	}
 	if !IsEdgeRegistered(code) {
 		t.Fatal("200 should count as registered")
+	}
+}
+
+func TestProbe530UnhealthyWhenConnectorDown(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(530)
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(SetHealthCheckBaseURLForTest(srv.URL))
+
+	utm, _ := testTunnelManager(t)
+	if utm.ProbeAndRecord("dead.example.com") {
+		t.Fatal("530 with no connector process must be unhealthy so the tunnel is restarted")
 	}
 }
 

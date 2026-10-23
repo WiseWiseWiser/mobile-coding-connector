@@ -23,9 +23,9 @@ Subcommands:
   list [--json] [--forwards]
       List ports listening on the server (PORT / PID / COMMAND).
 
-  mapping add <port> --hostname H [--provider owned|quick] [--json]
-  mapping list [--json]
-  mapping update <port> --hostname H [--provider owned|quick] [--json]
+  mapping add <port> --hostname H [--provider owned|quick] [--require-auth] [--json]
+  mapping list [--json] [--show-token]
+  mapping update <port> --hostname H [--provider owned|quick] [--require-auth|--clear-auth] [--json]
   mapping delete <port> [--forget] [--json]
       Persistent public mapping for a port (survives restarts).
 
@@ -57,17 +57,25 @@ func portMappingHelpText() string {
 
 Publish a port at a hostname that survives restarts, unlike 'port visit'.
 
-  %[1]s port mapping add <port> --hostname H [--provider owned|quick] [--json]
-  %[1]s port mapping list [--json]
-  %[1]s port mapping update <port> --hostname H [--provider owned|quick] [--json]
+  %[1]s port mapping add <port> --hostname H [--provider owned|quick] [--require-auth] [--json]
+  %[1]s port mapping list [--json] [--show-token]
+  %[1]s port mapping update <port> --hostname H [--provider owned|quick] [--require-auth|--clear-auth] [--json]
   %[1]s port mapping delete <port> [--forget] [--json]
 
 Options:
-  --hostname H   Public hostname, e.g. house-design-aes821.xhd2015.xyz.
-  --provider P   owned (default) | quick | localtunnel, or a canonical server
-                 name (cloudflare_owned, cloudflare_quick).
-  --forget       delete: also clear the name saved for this port.
-  --json         Machine-readable JSON on stdout (no ANSI).
+  --hostname H     Public hostname, e.g. house-design-aes821.xhd2015.xyz.
+  --provider P     owned (default) | quick | localtunnel, or a canonical server
+                   name (cloudflare_owned, cloudflare_quick).
+  --require-auth   Gate the public URL with a login page. Generates a
+                   per-mapping token (not the server credential) unless
+                   --auth-token or --shared-token is set.
+  --auth-user NAME Require this username (omit = any user).
+  --auth-token TOK User-chosen token (not generated).
+  --shared-token   Use the server credential instead of a mapping token.
+  --clear-auth     Do not gate the public URL (update, or add).
+  --show-token     list: print login user and token for auth-gated mappings.
+  --forget         delete: also clear the name and auth flags saved for this port.
+  --json           Machine-readable JSON on stdout (no ANSI).
 
 Notes:
   A hostname already mapped to another port is taken over (the stale mapping is
@@ -177,11 +185,16 @@ func runPortMapping(resolve func() (*client.Client, error), args []string) error
 // mapped: the server refuses a second mapping on the same port, so the old one
 // is removed first and restored if the new one fails.
 func runPortMappingAdd(resolve func() (*client.Client, error), args []string, update bool) error {
-	var hostname, provider string
-	var jsonOut bool
+	var hostname, provider, authUser, authToken string
+	var jsonOut, requireAuth, clearAuth, sharedToken bool
 	args, err := flags.
 		String("--hostname", &hostname).
 		String("--provider", &provider).
+		Bool("--require-auth", &requireAuth).
+		String("--auth-user", &authUser).
+		String("--auth-token", &authToken).
+		Bool("--shared-token", &sharedToken).
+		Bool("--clear-auth", &clearAuth).
 		Bool("--json", &jsonOut).
 		Help("-h,--help", portMappingHelpText()).
 		HelpNoExit().
@@ -241,12 +254,20 @@ func runPortMappingAdd(resolve func() (*client.Client, error), args []string, up
 		if previous == nil {
 			return fmt.Errorf("port %d is not mapped; use 'port mapping add %d --hostname %s'", port, port, hostname)
 		}
-		if previous.Label == hostname {
-			fmt.Printf("mapping unchanged\n")
-			fmt.Printf("  Port:      %d\n", port)
-			fmt.Printf("  Hostname:  %s\n", hostname)
-			return nil
-		}
+	}
+
+	auth, err := resolvePortMappingAuth(update, previous, requireAuth, clearAuth, sharedToken, authUser, authToken)
+	if err != nil {
+		return err
+	}
+	if update && previous != nil && previous.Label == hostname &&
+		portMappingAuthUnchanged(previous.Auth, auth) {
+		fmt.Printf("mapping unchanged\n")
+		fmt.Printf("  Port:      %d\n", port)
+		fmt.Printf("  Hostname:  %s\n", hostname)
+		return nil
+	}
+	if update && previous != nil {
 		if err := cli.RemovePortForward(port); err != nil {
 			return fmt.Errorf("remove old mapping: %w", err)
 		}
@@ -260,7 +281,8 @@ func runPortMappingAdd(resolve func() (*client.Client, error), args []string, up
 		}
 		return fmt.Errorf("save mapping name: %w", err)
 	}
-	if err := cli.AddPortForward(port, hostname, canonical, "", ""); err != nil {
+	created, err := cli.AddPortForwardAuth(port, hostname, canonical, "", "", auth)
+	if err != nil {
 		if update {
 			restorePortMapping(cli, previous)
 		}
@@ -277,6 +299,10 @@ func runPortMappingAdd(resolve func() (*client.Client, error), args []string, up
 	if err != nil {
 		return err
 	}
+	printAuth := auth
+	if created != nil && created.Auth != nil && created.Auth.Required {
+		printAuth = *created.Auth
+	}
 	if !portIsListening(cli, port) {
 		fmt.Fprintf(os.Stderr, "warning: port %d is not listening; the mapping is published but will not serve until something binds it\n", port)
 	}
@@ -288,6 +314,9 @@ func runPortMappingAdd(resolve func() (*client.Client, error), args []string, up
 			"provider":   canonical,
 			"status":     forward.Status,
 			"public_url": forward.PublicURL,
+		}
+		if printAuth.Required {
+			out["auth"] = printAuth
 		}
 		if previous != nil {
 			out["previous_hostname"] = previous.Label
@@ -305,11 +334,90 @@ func runPortMappingAdd(resolve func() (*client.Client, error), args []string, up
 		fmt.Printf("  Hostname:  %s\n", hostname)
 	}
 	fmt.Printf("  Provider:  %s\n", canonical)
+	if printAuth.Required {
+		fmt.Printf("  Auth:      required  (%s, %s)\n", portMappingAuthMode(printAuth), portMappingAuthUser(printAuth.User))
+		if printAuth.Token != "" {
+			fmt.Printf("  Token:     %s\n", printAuth.Token)
+		}
+	}
 	if forward.PublicURL != "" {
 		fmt.Printf("  URL:       %s\n", forward.PublicURL)
 	}
 	fmt.Printf("  Name:      saved (--forget on delete to clear)\n")
 	return nil
+}
+
+func resolvePortMappingAuth(update bool, previous *client.PortForwardInfo, requireAuth, clearAuth, sharedToken bool, authUser, authToken string) (client.PortAuth, error) {
+	authUser = strings.TrimSpace(authUser)
+	authToken = strings.TrimSpace(authToken)
+	if requireAuth && clearAuth {
+		return client.PortAuth{}, fmt.Errorf("--clear-auth cannot be combined with --require-auth")
+	}
+	if sharedToken && authToken != "" {
+		return client.PortAuth{}, fmt.Errorf("--shared-token cannot be combined with --auth-token")
+	}
+	if !requireAuth && (authUser != "" || authToken != "" || sharedToken) {
+		return client.PortAuth{}, fmt.Errorf("--auth-user, --auth-token, and --shared-token require --require-auth")
+	}
+	if clearAuth {
+		return client.PortAuth{}, nil
+	}
+	if requireAuth {
+		auth := client.PortAuth{Required: true, User: authUser}
+		if sharedToken {
+			auth.TokenMode = "shared"
+			return auth, nil
+		}
+		if authToken != "" {
+			auth.TokenMode = "custom"
+			auth.Token = authToken
+			return auth, nil
+		}
+		auth.Required = true
+		return auth, nil
+	}
+	if update && previous != nil && previous.Auth != nil && previous.Auth.Required {
+		return client.PortAuth{Required: true, User: previous.Auth.User}, nil
+	}
+	return client.PortAuth{}, nil
+}
+
+func portMappingAuthUnchanged(previous *client.PortAuth, next client.PortAuth) bool {
+	prevRequired := previous != nil && previous.Required
+	if prevRequired != next.Required {
+		return false
+	}
+	if !next.Required {
+		return true
+	}
+	if next.Token != "" || next.TokenMode == "shared" || next.TokenMode == "custom" {
+		return false
+	}
+	if previous != nil && previous.TokenMode == "shared" {
+		return false
+	}
+	prevUser := ""
+	if previous != nil {
+		prevUser = previous.User
+	}
+	return prevUser == next.User
+}
+
+func portMappingAuthMode(auth client.PortAuth) string {
+	if auth.TokenMode == "" {
+		if auth.Ephemeral {
+			return "ephemeral"
+		}
+		return "ephemeral"
+	}
+	return auth.TokenMode
+}
+
+func portMappingAuthUser(user string) string {
+	if strings.TrimSpace(user) == "" {
+		return "any user"
+	}
+	return "user " + user
 }
 
 // restorePortMapping best-effort puts the old mapping back after a failed
@@ -318,7 +426,12 @@ func restorePortMapping(cli *client.Client, previous *client.PortForwardInfo) {
 	if previous == nil {
 		return
 	}
-	if err := cli.AddPortForward(previous.LocalPort, previous.Label, previous.Provider, "", ""); err != nil {
+	auth := client.PortAuth{}
+	if previous.Auth != nil {
+		auth = *previous.Auth
+		auth.Token = ""
+	}
+	if _, err := cli.AddPortForwardAuth(previous.LocalPort, previous.Label, previous.Provider, "", "", auth); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not restore %s on port %d: %v\n", previous.Label, previous.LocalPort, err)
 	}
 }
@@ -377,9 +490,10 @@ func portForwardSource(f client.PortForwardInfo) string {
 }
 
 func runPortMappingList(resolve func() (*client.Client, error), args []string) error {
-	var jsonOut bool
+	var jsonOut, showToken bool
 	args, err := flags.
 		Bool("--json", &jsonOut).
+		Bool("--show-token", &showToken).
 		Help("-h,--help", portMappingHelpText()).
 		HelpNoExit().
 		Parse(args)
@@ -405,22 +519,29 @@ func runPortMappingList(resolve func() (*client.Client, error), args []string) e
 	if err != nil {
 		return err
 	}
+	savedAuth, err := cli.ListPortMappingAuth()
+	if err != nil {
+		return err
+	}
 
 	type row struct {
-		Port      int    `json:"port"`
-		Source    string `json:"source,omitempty"`
-		Status    string `json:"status"`
-		Provider  string `json:"provider"`
-		PublicURL string `json:"publicUrl"`
-		SavedName string `json:"savedName,omitempty"`
+		Port      int              `json:"port"`
+		Source    string           `json:"source,omitempty"`
+		Status    string           `json:"status"`
+		Provider  string           `json:"provider"`
+		Auth      *client.PortAuth `json:"auth,omitempty"`
+		PublicURL string           `json:"publicUrl"`
+		SavedName string           `json:"savedName,omitempty"`
 	}
 	rows := make([]row, 0, len(forwards))
 	seen := map[int]bool{}
 	for _, f := range forwards {
 		seen[f.LocalPort] = true
+		auth := mergeMappingAuth(f.Auth, savedAuth[strconv.Itoa(f.LocalPort)], showToken)
 		rows = append(rows, row{
 			Port: f.LocalPort, Source: portForwardSource(f), Status: f.Status,
 			Provider: f.Provider, PublicURL: f.PublicURL,
+			Auth:      auth,
 			SavedName: names[strconv.Itoa(f.LocalPort)],
 		})
 	}
@@ -431,7 +552,9 @@ func runPortMappingList(resolve func() (*client.Client, error), args []string) e
 		if err != nil || seen[port] {
 			continue
 		}
-		rows = append(rows, row{Port: port, Status: "inactive", SavedName: domain})
+		saved := savedAuth[portStr]
+		auth := mergeMappingAuth(nil, saved, showToken)
+		rows = append(rows, row{Port: port, Status: "inactive", SavedName: domain, Auth: auth})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Port < rows[j].Port })
 
@@ -444,7 +567,7 @@ func runPortMappingList(resolve func() (*client.Client, error), args []string) e
 		fmt.Println("No port mappings.")
 		return nil
 	}
-	fmt.Printf("%-7s %-13s %-9s %-18s %s\n", "PORT", "SOURCE", "STATUS", "PROVIDER", "PUBLIC URL")
+	fmt.Printf("%-7s %-13s %-9s %-18s %-10s %s\n", "PORT", "SOURCE", "STATUS", "PROVIDER", "AUTH", "PUBLIC URL")
 	for _, r := range rows {
 		url := r.PublicURL
 		if url == "" {
@@ -460,13 +583,56 @@ func runPortMappingList(resolve func() (*client.Client, error), args []string) e
 		}
 		source := r.Source
 		if source == "" {
-			// A saved name with no live mapping: nothing is serving it, so there is no origin.
 			source = "-"
 		}
-		fmt.Printf("%-7d %-13s %-9s %-18s %s\n", r.Port, source, r.Status, provider, url)
+		authLabel := "-"
+		if r.Auth != nil && r.Auth.Required {
+			authLabel = "required"
+		}
+		fmt.Printf("%-7d %-13s %-9s %-18s %-10s %s\n", r.Port, source, r.Status, provider, authLabel, url)
+		if showToken && r.Auth != nil && r.Auth.Required {
+			if r.Auth.Token == "" {
+				fmt.Fprintf(os.Stderr, "warning: port %d requires auth but no token is configured\n", r.Port)
+			} else {
+				user := strings.TrimSpace(r.Auth.User)
+				if user == "" {
+					user = "any"
+				}
+				fmt.Printf("        user: %s    token: %s  %s\n", user, portMappingAuthMode(*r.Auth), r.Auth.Token)
+			}
+		}
 	}
 	fmt.Printf("\n%d mapping(s)\n", len(rows))
 	return nil
+}
+
+func mergeMappingAuth(live *client.PortAuth, saved client.PortAuth, includeToken bool) *client.PortAuth {
+	var out client.PortAuth
+	if live != nil && live.Required {
+		out = *live
+	}
+	if saved.Required {
+		if !out.Required {
+			out = saved
+		}
+		if includeToken && out.Token == "" && saved.Token != "" {
+			out.Token = saved.Token
+		}
+		if out.TokenMode == "" {
+			out.TokenMode = saved.TokenMode
+		}
+		if out.User == "" {
+			out.User = saved.User
+		}
+		out.Ephemeral = out.Ephemeral || saved.Ephemeral
+	}
+	if !out.Required {
+		return nil
+	}
+	if !includeToken {
+		out.Token = ""
+	}
+	return &out
 }
 
 func runPortMappingDelete(resolve func() (*client.Client, error), args []string) error {
@@ -506,6 +672,9 @@ func runPortMappingDelete(resolve func() (*client.Client, error), args []string)
 	}
 	if forget {
 		if err := cli.DeletePortMappingName(port); err != nil {
+			return err
+		}
+		if err := cli.DeletePortMappingAuth(port); err != nil {
 			return err
 		}
 		savedName = ""

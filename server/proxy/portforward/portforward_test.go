@@ -54,8 +54,9 @@ func TestAddNonCloudflareForwardAllowsDuplicateLabels(t *testing.T) {
 type testProvider struct {
 	name string
 
-	mu    sync.Mutex
-	stops int
+	mu       sync.Mutex
+	stops    int
+	lastPort int
 }
 
 func (p *testProvider) Name() string        { return p.name }
@@ -64,6 +65,9 @@ func (p *testProvider) Description() string { return p.name }
 func (p *testProvider) Available() bool     { return true }
 
 func (p *testProvider) Start(port int, hostname string) (*TunnelHandle, error) {
+	p.mu.Lock()
+	p.lastPort = port
+	p.mu.Unlock()
 	resultCh := make(chan TunnelResult, 1)
 	resultCh <- TunnelResult{PublicURL: fmt.Sprintf("https://%s", hostname)}
 	return &TunnelHandle{
@@ -81,4 +85,10 @@ func (p *testProvider) StopCount() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.stops
+}
+
+func (p *testProvider) LastPort() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastPort
 }
