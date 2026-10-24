@@ -90,6 +90,9 @@ Notes:
     domain         a domain tunnel requested explicitly
     exposed        an exposed URL
   A mapping whose name is saved but which is not serving shows '-' instead.
+  Live mappings are restored when the server starts, and retried with backoff
+  if the tunnel drops. 'delete' stops restore; saved names remain unless
+  --forget.
 `, active.Name)
 }
 

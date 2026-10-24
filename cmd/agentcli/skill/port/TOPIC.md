@@ -69,6 +69,7 @@ PORT    STATUS    PROVIDER           PUBLIC URL
 | `--require-auth` | Login hop. Generates a per-mapping token (not `server-credentials`) unless `--auth-token` or `--shared-token`. Username omitted = any. Does not start or kill the process. |
 | `--show-token` | `list`: print user + token for auth-gated mappings. |
 | `--clear-auth` | `update` (or `add`) without a login hop. `update` without this flag keeps the previous hop. |
+| Restore | Live mappings (`port-mapping-desired.json`) are republished on server start and retried with 2s–30s backoff. `delete` stops restore; saved names stay unless `--forget`. |
 
 ```console
 $ local-agent port mapping add 9999 --hostname h.xhd2015.xyz

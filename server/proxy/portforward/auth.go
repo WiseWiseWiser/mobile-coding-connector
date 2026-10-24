@@ -184,6 +184,7 @@ func (m *Manager) AddForward(req ForwardRequest) (*PortForward, error) {
 	}
 	if proxy != nil {
 		t.closeAuth = func() { _ = proxy.Close() }
+		t.hopAlive = proxy.Alive
 	}
 	m.tunnels[port] = t
 	m.notifySubscribers()

@@ -103,3 +103,74 @@ func TestFindStaleTunnelConnectorsIgnoresOtherTunnel(t *testing.T) {
 		t.Fatalf("stale = %#v, want none", stale)
 	}
 }
+
+func TestFindStaleTunnelConnectorsDuplicateCanonical(t *testing.T) {
+	oldList := listCloudflaredProcesses
+	t.Cleanup(func() { listCloudflaredProcesses = oldList })
+
+	canonical := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(canonical, []byte("tunnel: test\n"), 0644); err != nil {
+		t.Fatalf("write canonical config: %v", err)
+	}
+
+	listCloudflaredProcesses = func() ([]CloudflaredProcess, error) {
+		args := []string{"cloudflared", "tunnel", "--config", canonical, "run", "ai-critic-vq35xx0d03"}
+		return []CloudflaredProcess{
+			{PID: 8765, Args: args},
+			{PID: 82434, Args: args},
+		}, nil
+	}
+
+	stale, err := FindStaleTunnelConnectors("ai-critic-vq35xx0d03", "", canonical, 82434)
+	if err != nil {
+		t.Fatalf("FindStaleTunnelConnectors: %v", err)
+	}
+	if len(stale) != 1 || stale[0].PID != 8765 {
+		t.Fatalf("stale = %#v, want pid 8765", stale)
+	}
+}
+
+func TestFindStaleTunnelConnectorsKeepPIDZeroLeavesCanonical(t *testing.T) {
+	oldList := listCloudflaredProcesses
+	t.Cleanup(func() { listCloudflaredProcesses = oldList })
+
+	canonical := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(canonical, []byte("tunnel: test\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	listCloudflaredProcesses = func() ([]CloudflaredProcess, error) {
+		args := []string{"cloudflared", "tunnel", "--config", canonical, "run", "ai-critic-vq35xx0d03"}
+		return []CloudflaredProcess{{PID: 21585, Args: args}}, nil
+	}
+	stale, err := FindStaleTunnelConnectors("ai-critic-vq35xx0d03", "", canonical, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != 0 {
+		t.Fatalf("stale = %#v, want none when keepPID is dead/0", stale)
+	}
+}
+
+func TestCanonicalPIDsSameConfig(t *testing.T) {
+	oldList := listCloudflaredProcesses
+	t.Cleanup(func() { listCloudflaredProcesses = oldList })
+
+	canonical := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(canonical, []byte("tunnel: test\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	listCloudflaredProcesses = func() ([]CloudflaredProcess, error) {
+		args := []string{"cloudflared", "tunnel", "--config", canonical, "run", "ai-critic-vq35xx0d03"}
+		return []CloudflaredProcess{
+			{PID: 21818, Args: args},
+			{PID: 22667, Args: args},
+		}, nil
+	}
+	pids, err := CanonicalPIDs("ai-critic-vq35xx0d03", "", canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pids) != 2 {
+		t.Fatalf("pids = %v, want 2", pids)
+	}
+}

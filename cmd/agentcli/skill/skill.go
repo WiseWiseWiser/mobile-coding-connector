@@ -35,6 +35,7 @@ var skillRoot string
 //go:embed grok
 //go:embed install
 //go:embed deploy-service
+//go:embed initialize-new-server
 //go:embed go
 //go:embed cloudflare-proxy
 //go:embed cloudflared

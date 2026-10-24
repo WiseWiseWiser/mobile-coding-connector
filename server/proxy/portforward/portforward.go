@@ -140,6 +140,7 @@ type tunnel struct {
 	errMsg    string
 	stop      func()
 	closeAuth func()
+	hopAlive  func() bool
 	logs      *LogBuffer
 	auth      config.PortAuth
 }
@@ -152,6 +153,10 @@ type Manager struct {
 	subscribers    map[int]chan []PortForward
 	nextSubID      int
 	authSecretPath string
+	now            func() time.Time
+	restoreMu      sync.Mutex
+	restore        map[int]*restoreAttempt
+	restoreStop    chan struct{}
 }
 
 // NewManager creates a new port forward manager
@@ -920,6 +925,16 @@ func handleAddPort(w http.ResponseWriter, r *http.Request) {
 	if persistErr := persistForwardAuth(req.Port, forward.Auth); persistErr != nil {
 		fmt.Printf("[handleAddPort] warning: persist auth flags: %v\n", persistErr)
 	}
+	provider := req.Provider
+	if strings.TrimSpace(provider) == "" {
+		provider = ProviderCloudflareOwned
+	}
+	if persistErr := config.SetPortMappingDesired(req.Port, config.PortMappingDesiredSpec{
+		Hostname: hostname,
+		Provider: provider,
+	}); persistErr != nil {
+		fmt.Printf("[handleAddPort] warning: persist desired mapping: %v\n", persistErr)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -967,15 +982,23 @@ func handleRemovePort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := defaultManager.Remove(port); err != nil {
+	err = defaultManager.Remove(port)
+	if persistErr := config.DeletePortMappingDesired(port); persistErr != nil {
+		fmt.Printf("[handleRemovePort] warning: clear desired mapping: %v\n", persistErr)
+	}
+	if err != nil {
 		if strings.Contains(err.Error(), "not being forwarded") {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			// Already down: still 200 so delete stops watchdog restore.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{"status": "removed"})
+			return
 		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "removed"})
 }

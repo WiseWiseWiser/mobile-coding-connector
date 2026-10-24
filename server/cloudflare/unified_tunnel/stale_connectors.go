@@ -85,6 +85,33 @@ func canonicalConfigPath(path string) string {
 	return path
 }
 
+// CanonicalPIDs returns live cloudflared PIDs for this tunnel using the canonical config.
+func CanonicalPIDs(tunnelRef, tunnelID, canonicalCfgPath string) ([]int, error) {
+	canonicalCfgPath = canonicalConfigPath(canonicalCfgPath)
+	procs, err := listCloudflaredProcesses()
+	if err != nil {
+		return nil, err
+	}
+	var pids []int
+	for _, proc := range procs {
+		cfgPath, ref, ok := ParseCloudflaredTunnelArgs(proc.Args)
+		if !ok {
+			continue
+		}
+		if !tunnelRefMatches(ref, tunnelRef, tunnelID) {
+			continue
+		}
+		if canonicalConfigPath(cfgPath) != canonicalCfgPath {
+			continue
+		}
+		if _, err := os.Stat(cfgPath); err != nil {
+			continue
+		}
+		pids = append(pids, proc.PID)
+	}
+	return pids, nil
+}
+
 // FindStaleTunnelConnectors returns cloudflared connectors for the tunnel that use
 // a non-canonical or missing config file. keepPID is preserved (managed connector).
 func FindStaleTunnelConnectors(tunnelRef, tunnelID, canonicalCfgPath string, keepPID int) ([]StaleConnector, error) {
@@ -117,6 +144,10 @@ func FindStaleTunnelConnectors(tunnelRef, tunnelID, canonicalCfgPath string, kee
 			}
 		} else if cfgAbs != canonicalCfgPath {
 			reason = fmt.Sprintf("non-canonical config %s (want %s)", cfgPath, canonicalCfgPath)
+		} else if keepPID > 0 {
+			// Same canonical config, extra process: Cloudflare load-balances
+			// and the old origin (dead auth hop) returns 502.
+			reason = "duplicate connector"
 		}
 		if reason == "" {
 			continue

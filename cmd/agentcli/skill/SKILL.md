@@ -30,6 +30,7 @@ remote-agent skill --list
 - Another server than the default → its alias wrapper (`xdev-agent exec …`)
 - Go module cache via GOPROXY (`go` topic), not a mounted network FS
 - Expose a running port at a domain the user names → `port mapping` (`port` topic)
+- First ai-critic on a **new** Linux host (no `/ping` yet) → `initialize-new-server`
 
 ## When not to use
 
@@ -37,6 +38,7 @@ remote-agent skill --list
 - Create/register devbox SSH keys → **create-devbox-ssh**
 - CodeLens watchdog ops → `$AI/knowledges/codelens/server/watchdog/TOPIC.md`
 - A throwaway URL, no name wanted → `port visit`, not `port mapping`
+- Host already serves `/ping` → topic **`server`** (upgrade), not `initialize-new-server`
 
 ## Hard rules
 
@@ -71,6 +73,7 @@ remote-agent skill --list
 | `cloudflare-proxy` | Origin via edge `local-agent cloudflare-proxy` (no origin cloudflared) |
 | `grok` | Start/resume remote Grok in this terminal tab |
 | `deploy-service` | Recipe: install → upload → service add w/ domain → verify |
+| `initialize-new-server` | SSH bootstrap of ai-critic on a new Linux host (no HTTP yet) |
 | `go` | GOPROXY on remote + local fast-fail relay |
 
 ## Command map
@@ -92,6 +95,7 @@ remote-agent skill --list
 | Publish a port at a stable hostname | → topic **`port`** |
 | Remote Grok TUI (this tab) | → **`grok`** |
 | Stand up a web service + public domain | → **`deploy-service`** |
+| New Linux host, no ai-critic yet | → **`initialize-new-server`** (SSH) |
 | GOPROXY / module cache offload | → **`go`** |
 | Switch origin cloudflared backend (native / qemu / proxy) | → **`cloudflared`** |
 | Origin behind CF proxy (no origin cloudflared) | → **`cloudflare-proxy`** |
