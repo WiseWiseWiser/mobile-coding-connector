@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "npx tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:terminal": "node --experimental-strip-types --test tests/terminal-connection.test.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

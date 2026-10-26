@@ -1,6 +1,6 @@
 import '@xterm/xterm/css/xterm.css';
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
-import { usePureTerminal, type TerminalTheme } from '../../hooks/usePureTerminal';
+import { usePureTerminal, type TerminalTheme, type TerminalConnectionState } from '../../hooks/usePureTerminal';
 import './PureTerminalView.css';
 
 export interface PureTerminalViewProps {
@@ -20,6 +20,7 @@ export interface PureTerminalViewProps {
     onSessionId?: (sessionId: string) => void;
     /** Called when connection status changes */
     onConnectionChange?: (connected: boolean) => void;
+    onStateChange?: (state: TerminalConnectionState) => void;
     /** Called when user presses a key after connection closes */
     onCloseRequest?: () => void;
     /** Whether the terminal should auto-focus on mount */
@@ -64,6 +65,7 @@ export const PureTerminalView = forwardRef<PureTerminalViewHandle, PureTerminalV
         sessionId,
         onSessionId,
         onConnectionChange,
+        onStateChange,
         onCloseRequest,
         autoFocus,
     }, ref) {
@@ -85,6 +87,7 @@ export const PureTerminalView = forwardRef<PureTerminalViewHandle, PureTerminalV
             sessionId,
             onSessionId,
             onConnectionChange,
+            onStateChange,
             onCloseRequest,
         });
 

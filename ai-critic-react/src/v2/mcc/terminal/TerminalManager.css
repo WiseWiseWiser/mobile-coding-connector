@@ -88,6 +88,13 @@
     color: #60a5fa;
 }
 
+.terminal-selection-notice {
+    padding: 8px 12px;
+    color: #facc15;
+    background: #1e293b;
+    font-size: 13px;
+}
+
 .terminal-instances-container {
     flex: 1;
     position: relative;

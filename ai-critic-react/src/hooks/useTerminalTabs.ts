@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { deleteTerminalSession } from '../api/terminal';
+import { useCurrent } from './useCurrent';
 
 export interface TerminalTab {
     id: string;
@@ -17,6 +18,8 @@ interface UseTerminalTabsOptions {
     loadSessions?: () => Promise<Array<{ id: string; name: string; cwd?: string }>>;
     /** Default working directory for new tabs */
     defaultCwd?: string;
+    /** URL-selected backend session, applied after initial loading. */
+    selectedSessionId?: string;
 }
 
 interface UseTerminalTabsReturn {
@@ -45,6 +48,7 @@ function getNextTerminalName(existingNames: string[]): string {
 
 export function useTerminalTabs(options: UseTerminalTabsOptions = {}): UseTerminalTabsReturn {
     const { loadSessions, defaultCwd } = options;
+    const selectionRef = useCurrent(options.selectedSessionId);
 
     const [tabs, setTabs] = useState<TerminalTab[]>([]);
     const [activeTabId, setActiveTabId] = useState<string | null>(null);
@@ -59,10 +63,14 @@ export function useTerminalTabs(options: UseTerminalTabsOptions = {}): UseTermin
         setLoading(true);
         loadSessions()
             .then(sessions => {
-                if (sessions.length === 0) {
+                if (sessions.length === 0 && selectionRef.current) {
+                    setError('The selected terminal is no longer available. Create a new terminal to continue.');
+                    setTabs([]);
+                    setActiveTabId(null);
+                } else if (sessions.length === 0) {
                     // Create a default terminal tab
                     const defaultTab: TerminalTab = {
-                        id: `term-${Date.now()}`,
+                        id: `term-${crypto.randomUUID()}`,
                         name: 'Terminal 1',
                         cwd: defaultCwd,
                     };
@@ -76,20 +84,15 @@ export function useTerminalTabs(options: UseTerminalTabsOptions = {}): UseTermin
                         sessionId: s.id,
                     }));
                     setTabs(restored);
-                    setActiveTabId(restored[0].id);
+                    setActiveTabId((restored.find(t => t.sessionId === selectionRef.current) ?? restored[0]).id);
                 }
                 setLoading(false);
             })
             .catch(err => {
                 setError(err?.message || 'Failed to load sessions');
-                // Still create a default tab so the user isn't stuck
-                const defaultTab: TerminalTab = {
-                    id: `term-${Date.now()}`,
-                    name: 'Terminal 1',
-                    cwd: defaultCwd,
-                };
-                setTabs([defaultTab]);
-                setActiveTabId(defaultTab.id);
+                // A failed list request must not create a replacement shell.
+                setTabs([]);
+                setActiveTabId(null);
                 setLoading(false);
             });
     };
@@ -99,7 +102,7 @@ export function useTerminalTabs(options: UseTerminalTabsOptions = {}): UseTermin
         loadedRef.current = true;
         if (tabs.length === 0) {
             const defaultTab: TerminalTab = {
-                id: `term-${Date.now()}`,
+                id: `term-${crypto.randomUUID()}`,
                 name: 'Terminal 1',
                 cwd: defaultCwd,
             };
@@ -109,7 +112,7 @@ export function useTerminalTabs(options: UseTerminalTabsOptions = {}): UseTermin
     }
 
     const createTab = (opts?: { name?: string; cwd?: string; initialCommand?: string; autoFocus?: boolean }) => {
-        const newId = `term-${Date.now()}`;
+        const newId = `term-${crypto.randomUUID()}`;
         const newName = opts?.name || getNextTerminalName(tabs.map(t => t.name));
         const newTab: TerminalTab = {
             id: newId,
@@ -134,7 +137,7 @@ export function useTerminalTabs(options: UseTerminalTabsOptions = {}): UseTermin
             if (next.length === 0) {
                 // Create a new default tab when closing the last one
                 const defaultTab: TerminalTab = {
-                    id: `term-${Date.now()}`,
+                    id: `term-${crypto.randomUUID()}`,
                     name: 'Terminal 1',
                     cwd: defaultCwd,
                 };

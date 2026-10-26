@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useCurrent } from '../../../hooks/useCurrent';
 import '@xterm/xterm/css/xterm.css';
 import { PureTerminalView, type PureTerminalViewHandle } from '../../../components/pure-terminal/PureTerminalView';
 import type { TerminalTheme } from '../../../hooks/usePureTerminal';
 import { useTerminalTabs } from '../../../hooks/useTerminalTabs';
+import { useTerminalSelection } from '../../../hooks/useTerminalSelection';
+import type { TerminalConnectionState } from '../../../hooks/usePureTerminal';
 import { useProjectDir } from '../../../hooks/project/useProjectDir';
 import './TerminalManager.css';
 
@@ -45,6 +48,7 @@ interface TerminalManagerProps {
 interface TerminalInstanceHandle {
     fit: () => void;
     focus: () => void;
+    reconnect: () => void;
 }
 
 // Ctrl mode state ref to share between component and callbacks
@@ -70,7 +74,7 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
     sessionId?: string;
     autoFocus?: boolean;
     onConnectionChange: (connected: boolean) => void;
-    onReconnectRef: (reconnect: (() => void) | null) => void;
+    onStateChange: (state: TerminalConnectionState) => void;
     onSessionId: (sessionId: string) => void;
     onCloseTab: () => void;
     onAutoFocusHandled: () => void;
@@ -83,7 +87,7 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
     sessionId,
     autoFocus,
     onConnectionChange,
-    onReconnectRef,
+    onStateChange,
     onSessionId,
     onCloseTab,
     onAutoFocusHandled,
@@ -164,13 +168,8 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
     useImperativeHandle(ref, () => ({
         fit: () => setTimeout(() => pureTerminalRef.current?.fit(), 50),
         focus: () => pureTerminalRef.current?.focus(),
+        reconnect: () => pureTerminalRef.current?.reconnect(),
     }));
-
-    // Report reconnect function to parent
-    const onReconnectRefCb = useCurrent(onReconnectRef);
-    if (isActive && pureTerminalRef.current) {
-        onReconnectRefCb.current(() => pureTerminalRef.current?.reconnect());
-    }
 
     const ctrlInputRef = useRef<HTMLInputElement | null>(null);
     const handleCtrl = () => {
@@ -224,6 +223,7 @@ const TerminalInstance = forwardRef<TerminalInstanceHandle, {
                     sessionId={sessionId}
                     onSessionId={onSessionId}
                     onConnectionChange={handleConnectionChange}
+                    onStateChange={onStateChange}
                     onCloseRequest={onCloseTab}
                     autoFocus={autoFocus}
                 />
@@ -278,6 +278,7 @@ export interface TerminalManagerHandle {
 export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManagerProps>(function TerminalManager({ isVisible, loadSessions, defaultCwd }, ref) {
     const { projectDir: resolvedProjectDir } = useProjectDir();
     const [zenMode, setZenMode] = useState(false);
+    const [searchParams] = useSearchParams();
 
     // Use the unified terminal tabs hook
     const {
@@ -294,6 +295,7 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
     } = useTerminalTabs({
         loadSessions,
         defaultCwd: defaultCwd || resolvedProjectDir,
+        selectedSessionId: searchParams.get('terminal') ?? undefined,
     });
 
     // Trigger loading when component becomes visible
@@ -304,8 +306,12 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isVisible]);
 
-    const [activeConnected, setActiveConnected] = useState(false);
-    const activeReconnectRef = useRef<(() => void) | null>(null);
+    const selectionNotice = useTerminalSelection({ tabs, activeTabId, loading, isVisible, setActiveTabId });
+    const [states, setStates] = useState<Record<string, TerminalConnectionState>>({});
+    const activeState = (activeTabId && states[activeTabId]) || 'connecting';
+    const activeConnected = activeState === 'connected';
+    const statusText = { connecting: 'Connecting', connected: 'Connected', reconnecting: 'Reconnecting', exited: 'Exited', unavailable: 'Unavailable' }[activeState];
+    const retryable = activeState === 'connecting' || activeState === 'reconnecting';
     
     // Store refs to terminal instances for imperative fit calls
     const terminalRefsMap = useRef<Record<string, TerminalInstanceHandle | null>>({});
@@ -324,6 +330,7 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
             window.setTimeout(fitActiveTerminal, 50),
             window.setTimeout(fitActiveTerminal, 150),
         ];
+        document.querySelector('.terminal-tab-item.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         return () => {
             timeouts.forEach(window.clearTimeout);
         };
@@ -434,11 +441,12 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
                 ) : (
                     <button
                         className="terminal-connection-status disconnected clickable"
-                        onClick={() => activeReconnectRef.current?.()}
+                        onClick={() => activeTabId && terminalRefsMap.current[activeTabId]?.reconnect()}
+                        disabled={!retryable}
                         title="Click to reconnect"
                     >
                         <span className="status-dot">○</span>
-                        <span className="status-text">Reconnect</span>
+                        <span className="status-text">{statusText}</span>
                     </button>
                 )}
                 <button
@@ -449,6 +457,7 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
                     {zenMode ? 'Exit Zen' : 'Zen'}
                 </button>
             </div>
+            {selectionNotice && <div role="status" className="terminal-selection-notice">{selectionNotice}</div>}
             <div className="terminal-instances-container">
                 {tabs.map(tab => (
                     <TerminalInstance
@@ -461,8 +470,8 @@ export const TerminalManager = forwardRef<TerminalManagerHandle, TerminalManager
                         initialCommand={tab.initialCommand}
                         sessionId={tab.sessionId}
                         autoFocus={tab.autoFocus}
-                        onConnectionChange={setActiveConnected}
-                        onReconnectRef={(fn) => { if (activeTabId === tab.id) activeReconnectRef.current = fn; }}
+                        onConnectionChange={() => { /* Per-session state below is authoritative. */ }}
+                        onStateChange={state => setStates(prev => prev[tab.id] === state ? prev : { ...prev, [tab.id]: state })}
                         onSessionId={(sid) => setTabSessionId(tab.id, sid)}
                         onCloseTab={() => closeTab(tab.id)}
                         onAutoFocusHandled={() => clearAutoFocus(tab.id)}
