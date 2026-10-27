@@ -5,6 +5,7 @@ go 1.25.10
 require (
 	github.com/creack/pty v1.1.24
 	github.com/gorilla/websocket v1.5.3
+	github.com/jezek/xgb v1.1.1
 	github.com/pkg/sftp v1.13.9
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e

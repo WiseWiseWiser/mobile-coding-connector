@@ -110,6 +110,45 @@ You can add more credentials after setup:
 - **API**: `POST /api/auth/credentials/add` with `{"token": "your-token"}`
 - **Manual**: Append a new line to `.ai-critic/server-credentials`
 
+## Screen Mirror
+
+Open `/screen` to see the host desktop in the browser, and press **Take control**
+to move its mouse and type on its keyboard from a phone. A `REMOTE` / `WEB` chip
+switches between driving the Mac and browsing the picture (pan, pinch, zoom,
+fullscreen); WEB mode sends nothing to the host. A long press in REMOTE latches
+the mouse button, so one finger can drag a window or select text. A text draft
+can be composed in either mode but is only sent with control taken in REMOTE, and
+it survives a refused send.
+Capture only runs while a page is open — the stream is started by the first viewer
+and stopped when the last one leaves (after a short grace for tab switches).
+
+Input needs Accessibility permission on macOS, and macOS 26 capture needs Screen
+Recording plus the bundled ScreenCaptureKit helper. See
+[docs/SCREEN_MIRROR.md](docs/SCREEN_MIRROR.md) for gestures, zoom, the iOS
+fullscreen fallback, and known limits.
+
+## Browser Cast
+
+Open `/browser` to drive a real Chrome window from the phone: tap, scroll, type
+in the URL bar, and click through the rendered page, including a login form or a
+QR code, **even while the Mac is locked**. It reuses the
+[browser-agent](https://github.com/xhd2015/browser-agent) extension and the
+DevTools protocol instead of the OS event tap, which is why it keeps working
+when the screen mirror cannot.
+
+Switch between **iPhone**, **iPad** and **Mac** window sizes; these are true
+window resizes (macOS may clamp them) and the toolbar reports the size the page
+actually got. A session rail lists the Chrome windows the agent can drive and
+their tabs, so you can switch windows, open or close tabs, and start a new window
+without leaving the page. **CAST** mode streams adaptively while you interact,
+**SHOT** mode is 1 fps with an instant frame per action for slow connections.
+Capture only runs while a `/browser` page is open, and the daemon port stays on
+loopback.
+
+Requires browser-agent 1.0.20+ and its extension loaded in Chrome. See
+[docs/BROWSER_CAST.md](docs/BROWSER_CAST.md) for the protocol, presets and
+limits.
+
 ## Run with Keep Alive Daemon
 If the server panics, the process ends. To make it auto restart, add a `keep-alive` sub command:
 

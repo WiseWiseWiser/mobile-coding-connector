@@ -1,0 +1,1357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no,maximum-scale=1">
+<meta name="theme-color" content="#0b0d10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>browser · sessions + tabs + zoom mockup</title>
+<style>
+  :root{
+    --bg:#0b0d10; --panel:#12151a; --chip:#1c2128; --line:#22262c; --line2:#30363d;
+    --text:#e6e8eb; --dim:#9aa4b2; --green:#2ea043; --amber:#d29922; --blue:#388bfd; --red:#da3633;
+    --rail:288px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{
+    margin:0;height:100%;background:var(--bg);color:var(--text);
+    font:400 14px/1.3 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;
+    overscroll-behavior:none;user-select:none;-webkit-user-select:none;overflow:hidden;
+  }
+  #app{
+    position:fixed;inset:0;display:flex;overflow:hidden;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .flex{flex:1;min-width:0}
+
+  /* ================= session rail ================= */
+  .rail{
+    flex:none;width:var(--rail);display:flex;flex-direction:column;
+    background:linear-gradient(180deg,#101419,#0c0f13);border-right:1px solid var(--line);
+    min-height:0;z-index:30;
+  }
+  .rail-h{display:flex;align-items:center;gap:7px;padding:12px 12px 8px}
+  .rail-title{font-size:10px;font-weight:800;letter-spacing:.13em;color:#8b98a8;text-transform:uppercase}
+  .count{
+    min-width:18px;height:17px;padding:0 5px;border-radius:999px;background:var(--chip);
+    border:1px solid var(--line2);color:#aab6c4;font:700 10px/17px inherit;text-align:center;
+  }
+  .rail-body{flex:1;min-height:0;overflow-y:auto;padding:2px 8px 10px;overscroll-behavior:contain}
+  .rail-body::-webkit-scrollbar{width:8px}
+  .rail-body::-webkit-scrollbar-thumb{background:#242a32;border-radius:4px}
+
+  .srow{
+    display:flex;align-items:center;gap:7px;padding:7px 8px;border-radius:9px;cursor:pointer;
+    border:1px solid transparent;
+  }
+  .srow:hover{background:#151a21}
+  .srow.on{background:#182231;border-color:#25384f}
+  .srow .caret{flex:none;width:9px;font-size:9px;color:#6b7684;transition:transform .14s ease}
+  .srow .caret.open{transform:rotate(90deg)}
+  .srow .caret.dim{opacity:.22}
+  .srow .caret:hover{color:#cfd8e3}
+  .sdot{flex:none;width:7px;height:7px;border-radius:50%;background:#3b444f}
+  .sdot.ok{background:var(--green);box-shadow:0 0 7px rgba(46,160,67,.8)}
+  .sdot.warn{background:var(--amber);box-shadow:0 0 7px rgba(210,153,34,.8)}
+  .sname{flex:1;min-width:0;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .srow.on .sname{color:#eaf2ff}
+  .schip{
+    flex:none;padding:2px 5px;border-radius:5px;background:#0e1217;border:1px solid #242b34;
+    color:#94a2b3;font:600 9.5px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  .srow .ghost{font-size:9px;color:#59636f}
+  .trow{
+    display:flex;align-items:center;gap:7px;margin:1px 0 1px 18px;padding:5px 7px;border-radius:7px;
+    cursor:pointer;border-left:2px solid transparent;
+  }
+  .trow:hover{background:#141920}
+  .trow.on{background:#101a27;border-left-color:var(--blue)}
+  .tdot{flex:none;width:5px;height:5px;border-radius:50%;background:#39424d}
+  .trow.on .tdot{background:var(--blue);box-shadow:0 0 6px rgba(56,139,253,.85)}
+  .ttitle{
+    flex:1;min-width:0;font-size:11.5px;color:#9dabb9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .trow.on .ttitle{color:#dbe8f7}
+  .tnum{font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#4d5763}
+  .none{display:flex;align-items:center;gap:6px;margin:2px 0 4px 20px;padding:4px 7px;color:#5f6a77;font-size:10.5px}
+  .none button{
+    margin-left:auto;height:22px;padding:0 7px;border-radius:6px;background:#1a212a;color:#a9b7c6;
+    border:1px solid #2b3440;font:600 10px/1 inherit;cursor:pointer;
+  }
+  .rail-sep{height:1px;background:#1a1f26;margin:6px 8px}
+
+  .rail-f{flex:none;padding:8px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+  .newwin{
+    width:100%;height:32px;border-radius:8px;background:#16233a;color:#cfe2ff;
+    border:1px solid #28405f;font:600 11.5px/1 inherit;cursor:pointer;
+  }
+  .newwin:active{background:#1c2d49}
+  .rail-note{
+    display:flex;align-items:center;gap:5px;padding:0 2px;color:#59636f;
+    font:500 9.5px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;overflow:hidden;
+  }
+  .rail-note .sep{opacity:.5}
+  .mini-dot{width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
+
+  .scrim{display:none}
+  .drawer-only{display:none!important}
+
+  /* ================= main column ================= */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+
+  .bar{
+    flex:none;display:flex;align-items:center;gap:6px;padding:6px 8px;min-height:46px;
+    background:linear-gradient(180deg,#161b22,#10141a);border-bottom:1px solid var(--line);
+  }
+  .icon{
+    flex:none;width:32px;height:30px;display:grid;place-items:center;
+    background:var(--chip);color:#cdd6e1;border:1px solid var(--line2);border-radius:7px;
+    font-size:15px;line-height:1;cursor:pointer;
+  }
+  .icon:active{background:#262d36}
+  .icon.sm{width:26px;height:24px;font-size:12px;border-radius:6px}
+  .icon.on{background:#1d3a6b;border-color:#2f5da8;color:#cfe3ff}
+  .dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+  .dot.off{background:#4b5561;box-shadow:none}
+  .title{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;margin-right:2px}
+  .title strong{font-size:12.5px;font-weight:700;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .title .meta{font:500 10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;color:#8c98a6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .seg{flex:none;display:flex;padding:2px;gap:2px;background:#0e1217;border:1px solid #252c35;border-radius:8px}
+  .seg button{
+    height:24px;padding:0 9px;border:0;border-radius:6px;background:transparent;color:#93a1b1;
+    font:600 11px/1 inherit;cursor:pointer;white-space:nowrap;
+  }
+  .seg button.on{background:#22344d;color:#dbe9ff;box-shadow:inset 0 0 0 1px #33507a}
+  .seg button:not(.on):active{background:#1a2029}
+
+  .pill{
+    flex:none;height:28px;padding:0 9px;display:inline-flex;align-items:center;gap:5px;border-radius:999px;
+    background:#16211a;color:#b7ecc6;border:1px solid #2b5335;font:700 10.5px/1 inherit;cursor:pointer;
+  }
+  .pill b{font:700 9.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#7fd196}
+  .pill.shot{background:#241f10;border-color:#5b4a1d;color:#f0d99a}
+  .pill.shot b{color:#d8b45e}
+  .pill:active{filter:brightness(1.18)}
+
+  /* ---------- tab strip ---------- */
+  .tabsrow{
+    position:relative;flex:none;display:flex;align-items:center;gap:4px;padding:4px 6px;min-height:34px;
+    background:#0d1015;border-bottom:1px solid var(--line);overflow:hidden;
+  }
+  .tabsrow::after{
+    content:"";position:absolute;right:32px;top:1px;bottom:1px;width:22px;pointer-events:none;
+    background:linear-gradient(90deg,rgba(13,16,21,0),#0d1015 88%);
+  }
+  .tabs{
+    flex:1 1 auto;display:flex;align-items:center;gap:4px;min-width:0;overflow-x:auto;scrollbar-width:none;
+    scroll-behavior:smooth;
+  }
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{
+    flex:none;display:flex;align-items:center;gap:6px;height:25px;max-width:214px;padding:0 5px 0 8px;
+    border-radius:7px 7px 4px 4px;background:#141920;border:1px solid #222832;color:#93a1b0;
+    font-size:11px;cursor:pointer;white-space:nowrap;
+  }
+  .tab .fav{flex:none;width:12px;height:12px;border-radius:3px;background:#4b5b6d;color:#0b0f14;
+    display:grid;place-items:center;font:800 7px/1 inherit}
+  .tab .nm{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .tab.on{background:#1a2431;border-color:#2d3f55;color:#e7eff9;box-shadow:inset 0 -2px 0 var(--blue)}
+  .tab .x{
+    flex:none;width:16px;height:16px;border:0;border-radius:4px;background:transparent;color:#69737f;
+    font:600 12px/1 inherit;cursor:pointer;display:grid;place-items:center;
+  }
+  .tab:hover .x,.tab.on .x{color:#a7b4c2}
+  .tab .x:hover{background:#2b3542;color:#fff}
+  .tabadd{
+    flex:none;width:25px;height:25px;border-radius:6px;background:transparent;color:#8b98a6;
+    border:1px solid transparent;font:600 15px/1 inherit;cursor:pointer;
+  }
+  .tabadd:hover{background:#171d25;border-color:#252d37;color:#dfe7f0}
+  .tabcount{display:none;font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#7d8a98}
+
+  /* ---------- url bar ---------- */
+  .urlrow{flex:none;display:flex;align-items:center;gap:6px;padding:5px 8px;background:#0d1015;border-bottom:1px solid var(--line)}
+  .uzone{
+    flex:1;min-width:0;display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;
+    background:#12161c;border:1px solid #252c36;border-radius:7px;
+  }
+  .uzone:focus-within{border-color:#33507a;box-shadow:0 0 0 2px rgba(56,139,253,.14)}
+  .uzone .lock{flex:none;font-size:10px;color:#5c6875}
+  #url{
+    flex:1;min-width:0;height:100%;background:transparent;border:0;outline:0;color:#d5dee9;
+    font:500 11.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  .go{
+    flex:none;height:28px;padding:0 11px;border-radius:7px;background:#20304a;color:#cfe2ff;
+    border:1px solid #2e4463;font:700 11px/1 inherit;cursor:pointer;
+  }
+  .go:active{background:#27405f}
+
+  /* ================= stage ================= */
+  .stage{
+    position:relative;flex:1;min-height:0;background:
+      radial-gradient(120% 90% at 50% 0%,#10151c 0%,#05070a 70%);
+    overflow:hidden;touch-action:none;
+  }
+  #page{
+    position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;
+    box-shadow:0 0 0 1px #2b323c,0 24px 70px rgba(0,0,0,.6);
+    background:#fff;overflow:hidden;
+  }
+  .site{container-type:inline-size;width:100%;height:100%;overflow:hidden}
+
+  .frameline{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 2px rgba(46,160,67,.35)}
+  #app.lens-view .frameline{box-shadow:inset 0 0 0 2px rgba(56,139,253,.55)}
+
+  .hud{
+    position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:6px;
+    padding:4px 8px;border-radius:999px;background:rgba(10,13,18,.74);
+    border:1px solid rgba(120,140,165,.26);color:#c9d4e1;font-size:10px;
+    backdrop-filter:blur(7px);pointer-events:none;max-width:calc(100% - 90px);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .hud b{color:#fff;font:700 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+  .hud .sep{opacity:.35}
+  .hud .tag{color:#8fd6a3;font-weight:700;letter-spacing:.05em}
+  #app.lens-view .hud .tag{color:#8fbcf7}
+
+  .panhint{
+    position:absolute;left:50%;top:10px;transform:translateX(-50%);
+    padding:4px 10px;border-radius:999px;background:rgba(10,13,18,.78);border:1px solid rgba(120,140,165,.28);
+    color:#aebbcb;font-size:10px;backdrop-filter:blur(7px);pointer-events:none;
+    opacity:0;transition:opacity .18s ease;white-space:nowrap;
+  }
+  .panhint.show{opacity:1}
+
+  .zoomer{
+    position:absolute;right:9px;bottom:10px;display:flex;flex-direction:column;gap:5px;align-items:center;
+  }
+  .zoomer button{
+    width:36px;height:34px;border-radius:9px;display:grid;place-items:center;
+    background:rgba(17,22,29,.86);color:#e2eaf4;border:1px solid rgba(120,140,165,.3);
+    font:600 16px/1 system-ui;backdrop-filter:blur(8px);cursor:pointer;
+  }
+  .zoomer button:active{background:rgba(44,56,71,.92)}
+  .zoomer button.fit{font-size:13px}
+  .zoomlab{
+    padding:2px 6px;border-radius:6px;background:rgba(10,13,18,.8);border:1px solid rgba(120,140,165,.24);
+    color:#b9c5d3;font:700 9.5px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+
+  .tap{position:absolute;width:38px;height:38px;margin:-19px 0 0 -19px;border-radius:50%;pointer-events:none;
+    border:2px solid #f0a13a;background:radial-gradient(circle,rgba(240,161,58,.34),rgba(240,161,58,0) 68%);
+    animation:tap .55s ease-out forwards}
+  @keyframes tap{from{transform:scale(.35);opacity:1}to{transform:scale(1.25);opacity:0}}
+  .cursor{
+    position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;pointer-events:none;
+    background:radial-gradient(circle at 35% 30%,#ffd9a3,#e8932b 62%,#a9621a);
+    box-shadow:0 0 0 1.5px rgba(12,10,8,.55),0 2px 8px rgba(0,0,0,.45);
+    transition:transform .1s ease-out,opacity .2s;opacity:0;
+  }
+
+  .empty{
+    position:absolute;inset:0;display:grid;place-items:center;padding:20px;
+    background:rgba(6,8,11,.86);backdrop-filter:blur(3px);z-index:5;
+  }
+  .empty[hidden]{display:none}
+  .empty .card{
+    max-width:330px;text-align:center;padding:20px;border-radius:14px;background:#11151b;
+    border:1px solid var(--line2);box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+  .empty h3{margin:0 0 6px;font-size:13.5px}
+  .empty p{margin:0 0 14px;font-size:11.5px;color:#93a0af;line-height:1.45}
+  .empty button{
+    height:32px;padding:0 14px;border-radius:8px;background:#16233a;color:#cfe2ff;
+    border:1px solid #28405f;font:600 11.5px/1 inherit;cursor:pointer;
+  }
+
+  /* ---------- key bar ---------- */
+  .keys{
+    flex:none;display:flex;flex-direction:column;gap:6px;padding:6px 8px;
+    background:var(--panel);border-top:1px solid var(--line);
+  }
+  .keys[hidden]{display:none}
+  .keys .row{display:flex;gap:5px;align-items:center;overflow-x:auto;scrollbar-width:none}
+  .keys .row::-webkit-scrollbar{display:none}
+  .key{
+    flex:none;min-width:36px;height:28px;padding:0 8px;border-radius:7px;background:var(--chip);
+    color:#dbe3ec;border:1px solid var(--line2);font:600 10.5px/1 inherit;cursor:pointer;white-space:nowrap;
+  }
+  .key:active{background:#2a323d}
+  .key.ghost{background:#14181e;color:#798491}
+  .keys .text{flex:1;display:flex;gap:5px;min-width:120px}
+  .keys input{
+    flex:1;min-width:0;height:28px;padding:0 8px;border-radius:7px;background:#0e1116;
+    border:1px solid var(--line2);color:var(--text);font-size:14px;outline:0;
+  }
+  .keys input::placeholder{color:#6b7684;font-size:11px}
+
+  /* ---------- dock ---------- */
+  .dock{
+    flex:none;display:flex;align-items:center;gap:6px;padding:6px 8px;min-height:44px;
+    background:linear-gradient(180deg,#10141a,#0d1116);border-top:1px solid var(--line);
+  }
+  .lens{flex:none;display:flex;padding:2px;gap:2px;background:#0b0e12;border:1px solid #242b34;border-radius:8px}
+  .lens button{
+    height:24px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#8d99a7;
+    font:800 10px/1 inherit;letter-spacing:.06em;cursor:pointer;
+  }
+  .lens button.on{background:#1c3f27;color:#b9f0c9;box-shadow:inset 0 0 0 1px #2d6b41}
+  .lens button[data-lens="view"].on{background:#1c3355;color:#c6ddff;box-shadow:inset 0 0 0 1px #2f5687}
+  .zread{
+    flex:none;min-width:44px;text-align:center;color:#cdd8e5;
+    font:700 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  .mini{
+    flex:none;height:26px;padding:0 9px;border-radius:7px;background:#161c24;color:#aab7c5;
+    border:1px solid #262e38;font:600 10.5px/1 inherit;cursor:pointer;
+  }
+  .mini:active{background:#1f2833}
+  .dock .hint{font-size:10px;color:#5e6874;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* ================= overlays ================= */
+  .toast{
+    position:fixed;left:50%;bottom:64px;transform:translateX(-50%) translateY(6px);
+    padding:7px 12px;border-radius:9px;background:rgba(8,10,13,.94);border:1px solid var(--line2);
+    color:#dbe4ee;font-size:11px;pointer-events:none;opacity:0;transition:opacity .16s ease,transform .16s ease;
+    max-width:90vw;text-align:center;z-index:60;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  .sheet{
+    position:fixed;inset:auto 0 0 0;z-index:70;max-height:82vh;overflow:auto;
+    padding:16px 16px calc(16px + env(safe-area-inset-bottom));
+    background:rgba(13,16,21,.98);border-top:1px solid var(--line2);border-radius:16px 16px 0 0;
+    box-shadow:0 -20px 60px rgba(0,0,0,.6);
+  }
+  .sheet[hidden]{display:none}
+  .sheet h2{margin:0 0 4px;font-size:14px}
+  .sheet .sub{margin:0 0 12px;color:#8d99a7;font-size:11px}
+  .sheet h3{margin:14px 0 6px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#7f8b99}
+  .sheet table{width:100%;border-collapse:collapse;font-size:11.5px}
+  .sheet td{padding:5px 6px;border-bottom:1px solid #1c2229;vertical-align:top;color:#c3cdd8}
+  .sheet td:first-child{width:34%;color:#8fa1b3;white-space:nowrap}
+  .sheet .close{position:absolute;right:12px;top:12px}
+  .sheet .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .sheet .box{padding:9px 10px;border-radius:9px;background:#11161d;border:1px solid #232a33}
+  .sheet .box b{display:block;font-size:11px;margin-bottom:3px;color:#e2eaf3}
+  .sheet .box span{font-size:10.5px;color:#93a0af;line-height:1.4}
+
+  @media (min-width:901px){
+    .sheet{
+      left:50%;right:auto;bottom:28px;width:min(760px,92vw);transform:translateX(-50%);
+      border:1px solid var(--line2);border-radius:16px;
+    }
+    .toast{bottom:96px}
+  }
+
+  /* ================= responsive ================= */
+  @media (max-width:900px){
+    .rail{
+      position:fixed;left:0;top:0;bottom:0;width:min(84vw,308px);
+      padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);
+      transform:translateX(-102%);transition:transform .2s cubic-bezier(.3,.8,.3,1);
+      box-shadow:24px 0 60px rgba(0,0,0,.5);
+    }
+    #app.rail-open .rail{transform:translateX(0)}
+    .scrim{display:block;position:fixed;inset:0;background:rgba(4,6,9,.58);z-index:20;opacity:0;
+      pointer-events:none;transition:opacity .2s}
+    #app.rail-open .scrim{opacity:1;pointer-events:auto}
+    .drawer-only{display:grid!important}
+    .title .meta{font-size:9.5px}
+    .hud{display:none}
+  }
+  @media (max-width:520px){
+    .bar{gap:5px;padding:5px 6px}
+    .icon{width:30px;height:29px}
+    .pill{padding:0 8px}
+    .pill b{display:none}
+    #presetCycle{display:inline-flex!important}
+    .tab{max-width:150px}
+    .urlrow{padding:4px 6px}
+    .keys{padding:5px 6px}
+    .dock{padding:5px 6px;gap:5px;min-height:42px}
+    .dock .hint{display:none}
+    #presetLbl,.title .meta .dsep{display:none}
+    .zoomer button{width:38px;height:36px}
+    .tabcount{display:none}
+  }
+  #presetCycle{display:none}
+</style>
+</head>
+<body>
+<div id="app" class="lens-ctrl">
+
+  <div class="scrim" id="scrim"></div>
+
+  <!-- ============ sessions ============ -->
+  <aside class="rail" id="rail" aria-label="Sessions">
+    <div class="rail-h">
+      <span class="rail-title">Sessions</span>
+      <span class="count" id="sessCount">3</span>
+      <span class="flex"></span>
+      <button class="icon sm" id="railRefresh" title="Refresh sessions">⟳</button>
+    </div>
+    <div class="rail-body" id="railBody"></div>
+    <div class="rail-f">
+      <button class="newwin" id="newwin">+ New window</button>
+      <div class="rail-note">
+        <span class="mini-dot"></span>
+        <span>browser-agent 1.0.20</span>
+        <span class="sep">·</span>
+        <span>:43761</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ main ============ -->
+  <main class="main">
+    <header class="bar">
+      <button class="icon drawer-only" id="menu" title="Sessions">☰</button>
+      <span class="dot" id="stateDot"></span>
+      <div class="title">
+        <strong id="sessName">ai-critic</strong>
+        <span class="meta"><span id="vp">500 × 844</span> · <span id="presetLbl">iPhone</span> · <span id="modeMeta">cast</span></span>
+      </div>
+
+      <div class="seg presets" id="presets">
+        <button data-preset="iphone" class="on">iPhone</button>
+        <button data-preset="ipad">iPad</button>
+        <button data-preset="mac">Mac</button>
+      </div>
+      <button class="pill" id="presetCycle">iPhone</button>
+
+      <button class="pill" id="modeBtn"><span id="modeWord">CAST</span> <b id="fps">12 fps</b></button>
+      <button class="icon" id="refresh" title="Reload page">⟳</button>
+    </header>
+
+    <div class="tabsrow">
+      <div class="tabs" id="tabs"></div>
+      <button class="tabadd" id="tabAdd" title="New tab">+</button>
+    </div>
+
+    <div class="urlrow">
+      <div class="uzone">
+        <span class="lock">⌁</span>
+        <input id="url" spellcheck="false" autocomplete="off" autocapitalize="off" value="lumen.shop/collections/desk">
+      </div>
+      <button class="go" id="go">Go</button>
+    </div>
+
+    <div class="stage" id="stage">
+      <div id="page"></div>
+      <div class="frameline"></div>
+      <div class="hud"><b id="hudZ">1.0×</b><span class="sep">·</span><span id="hudLens">tap = click</span><span class="sep">·</span><span id="hudVp">500×844</span></div>
+      <div class="panhint" id="panhint">drag to pan</div>
+      <div class="zoomer">
+        <span class="zoomlab" id="zoomlab">1.0×</span>
+        <button data-z="in" title="Zoom in">+</button>
+        <button data-z="out" title="Zoom out">−</button>
+        <button class="fit" data-z="fit" title="Fit">⤢</button>
+      </div>
+      <div class="cursor" id="cursor"></div>
+      <div class="empty" id="empty" hidden>
+        <div class="card">
+          <h3>No Chrome window</h3>
+          <p>This session is registered but its window is gone. Reopen it to attach the extension and start casting.</p>
+          <button id="reopen">Reopen window</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="keys" id="keys" hidden>
+      <div class="row">
+        <button class="key" data-key="Enter">Enter</button>
+        <button class="key" data-key="Tab">Tab</button>
+        <button class="key" data-key="Escape">Esc</button>
+        <button class="key" data-key="Backspace">⌫</button>
+        <button class="key ghost" data-key="ArrowLeft">←</button>
+        <button class="key ghost" data-key="ArrowUp">↑</button>
+        <button class="key ghost" data-key="ArrowDown">↓</button>
+        <button class="key ghost" data-key="ArrowRight">→</button>
+        <button class="key ghost" data-key="Meta+a">⌘A</button>
+      </div>
+      <div class="row">
+        <div class="text">
+          <input id="typeBox" placeholder="type into the page…" spellcheck="false">
+          <button class="key" id="typeSend">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="dock">
+      <div class="lens" id="lens">
+        <button data-lens="ctrl" class="on">CTRL</button>
+        <button data-lens="view">VIEW</button>
+      </div>
+      <div class="zread" id="zread">1.0×</div>
+      <button class="mini" id="fitBtn">Fit</button>
+      <span class="flex"></span>
+      <span class="hint">pinch to zoom · double-tap in VIEW</span>
+      <button class="mini" id="keysBtn">⌨ Keys</button>
+      <button class="mini" id="helpBtn">?</button>
+    </footer>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ============ gesture sheet ============ -->
+<div class="sheet" id="sheet" hidden>
+  <button class="icon sm close" id="sheetClose">×</button>
+  <h2>Browser control — session · tabs · lens</h2>
+  <p class="sub">One Chrome window per session. One stream at a time. Every viewer may click — no controller lock.</p>
+
+  <div class="grid">
+    <div class="box"><b>Session rail</b><span>Every attached session and its tabs. Switching moves the stream, keeps your zoom reset.</span></div>
+    <div class="box"><b>Tabs</b><span>Switch, close, add. Closing the last content tab opens a fresh one so the window never dies.</span></div>
+    <div class="box"><b>CTRL lens</b><span>Tap = click, long-press = drag, two fingers = scroll. Pinch still zooms locally.</span></div>
+    <div class="box"><b>VIEW lens</b><span>One finger pans, double-tap zooms. Nothing reaches the page.</span></div>
+  </div>
+
+  <h3>Gestures</h3>
+  <table>
+    <tr><td>Tap</td><td>CTRL: click at that point · VIEW: local only</td></tr>
+    <tr><td>Long-press 350 ms</td><td>Drag, lift to drop (amber frame while latched)</td></tr>
+    <tr><td>Two fingers</td><td>CTRL: scroll page · VIEW: pan</td></tr>
+    <tr><td>Pinch</td><td>Zoom 1×–6×, always local, never forwarded</td></tr>
+    <tr><td>Double-tap</td><td>VIEW: toggle 1× ↔ 2.5× · CTRL: double-click</td></tr>
+    <tr><td>⌘⤨ wheel</td><td>Zoom at cursor (desktop)</td></tr>
+    <tr><td>☰ / drag from edge</td><td>Session rail on phones</td></tr>
+  </table>
+
+  <h3>Zoom</h3>
+  <table>
+    <tr><td>Range</td><td>1.0× – 6.0×, steps of 1.5×, double-tap 2.5×</td></tr>
+    <tr><td>Fit</td><td>Letterboxed frame, centred — same geometry as /screen</td></tr>
+    <tr><td>Mapping</td><td>Tap coords pass through the same transform, so clicks land on the right pixel at any zoom</td></tr>
+  </table>
+</div>
+
+<script>
+/* ------------------------------------------------------------------ *
+ * Mockup state — mirrors what the server will actually own.
+ * Sizes are the measured, achieved viewports (iPhone preset clamps to
+ * 500 px wide because Chrome refuses narrower than its minimum).
+ * ------------------------------------------------------------------ */
+const PRESETS = {
+  iphone: { label: "iPhone", w: 500,  h: 844 },
+  ipad:   { label: "iPad",   w: 834,  h: 945 },
+  mac:    { label: "Mac",    w: 1200, h: 901 }
+};
+
+let seq = 100;
+const sessions = [
+  {
+    id: "ai-critic", attached: true, preset: "iphone", mode: "cast", active: 1,
+    tabs: [
+      { id: 1, title: "Lumen — Desk Lamp", url: "lumen.shop/collections/desk", tpl: "store" },
+      { id: 2, title: "Getting started · API", url: "docs.lumen.shop/start", tpl: "docs" },
+      { id: 3, title: "Inbox (3)", url: "mail.example.com/u/0", tpl: "inbox" }
+    ]
+  },
+  {
+    id: "research", attached: true, preset: "ipad", mode: "shot", active: 11,
+    tabs: [
+      { id: 11, title: "Show HN: Lumen", url: "news.ycombinator.com/item?id=4182", tpl: "hn" },
+      { id: 12, title: "Rate limits · API", url: "docs.lumen.shop/limits", tpl: "docs" }
+    ]
+  },
+  {
+    id: "staging-restore", attached: false, preset: "mac", mode: "cast", active: 0, tabs: []
+  }
+];
+let current = "ai-critic";
+let lens = "ctrl";
+const view = { z: 1, x: 0, y: 0 };
+
+const $ = (s) => document.querySelector(s);
+const app = $("#app"), stage = $("#stage"), page = $("#page"), cursor = $("#cursor");
+const tabsEl = $("#tabs"), railBody = $("#railBody"), urlEl = $("#url");
+
+const cur = () => sessions.find((s) => s.id === current) || sessions[0];
+const tabOf = (s) => s.tabs.find((t) => t.id === s.active) || s.tabs[0];
+
+/* ------------------------------- fake sites ------------------------------- */
+const FAVS = { store: "L", docs: "d", inbox: "M", hn: "Y", blank: "+" };
+const FAVC = { store: "#f0e2c8", docs: "#cfe0ff", inbox: "#c9b6ff", hn: "#ffd3ad", blank: "#37404b" };
+
+const SITES = {
+  store: () => `
+  <div class="site store">
+    <header class="s-nav">
+      <div class="s-brand">LUMEN<sup>®</sup></div>
+      <nav class="s-links"><span>Lamps</span><span>Chairs</span><span>Objects</span><span>Journal</span></nav>
+      <div class="s-acts"><span>Search</span><span class="s-bag">Bag <b>2</b></span></div>
+    </header>
+    <section class="s-hero">
+      <div class="s-copy">
+        <div class="s-eyebrow">New · SS26 collection</div>
+        <h1>Light that<br>stays up late.</h1>
+        <p>Warm, dimmable, and built to be repaired. The Arc series returns in three new finishes.</p>
+        <button class="s-cta">Shop the collection <span>→</span></button>
+        <div class="s-stats"><span><b>4.9</b> 1,208 reviews</span><span><b>2 yr</b> warranty</span><span><b>30 d</b> returns</span></div>
+      </div>
+      <div class="s-art">
+        <div class="s-glow"></div>
+        <div class="s-lamp"><div class="s-shade"></div><div class="s-stem"></div><div class="s-base"></div></div>
+        <div class="s-tag">Arc Desk Lamp · Sand</div>
+      </div>
+    </section>
+    <section class="s-row">
+      <article class="s-card"><div class="s-thumb ta"></div><h3>Arc Desk Lamp</h3><div class="s-price">$189 <s>$229</s></div><div class="s-sw"><i></i><i></i><i></i></div></article>
+      <article class="s-card"><div class="s-thumb tb"></div><h3>Halo Floor Lamp</h3><div class="s-price">$420</div><div class="s-sw"><i></i><i></i></div></article>
+      <article class="s-card"><div class="s-thumb tc"></div><h3>Pebble Table Lamp</h3><div class="s-price">$96</div><div class="s-sw"><i></i><i></i><i></i></div></article>
+    </section>
+    <footer class="s-foot">Free shipping over $120 · 30-day returns · Carbon-neutral delivery</footer>
+  </div>`,
+
+  docs: () => `
+  <div class="site docs">
+    <header class="d-top"><span class="d-logo">lumen</span><span class="d-crumb">Docs / Getting started</span><span class="d-search">Search docs</span></header>
+    <div class="d-body">
+      <aside class="d-side">
+        <div class="d-grp">Introduction</div>
+        <span class="on">Getting started</span><span>Authentication</span><span>Environments</span>
+        <div class="d-grp">API</div>
+        <span>Lights</span><span>Scenes</span><span>Schedules</span><span>Rate limits</span>
+      </aside>
+      <main class="d-main">
+        <div class="d-kicker">5 min read</div>
+        <h1>Getting started</h1>
+        <p>Create a key, then talk to the Lumen API over HTTPS. Every response is JSON, and every request is idempotent unless it changes state.</p>
+        <pre><span class="c"># install the CLI</span>
+brew install lumen/tap/cli
+
+<span class="c"># authenticate once</span>
+lumen auth login
+
+<span class="c"># list your lights</span>
+lumen lights list --json</pre>
+        <h2>First request</h2>
+        <p>Send the key in an <code>Authorization</code> header. Keys are scoped to one environment.</p>
+        <table class="d-table"><tr><th>Field</th><th>Type</th><th>Notes</th></tr>
+          <tr><td>id</td><td>string</td><td><code>lt_…</code></td></tr>
+          <tr><td>brightness</td><td>number</td><td>0–100</td></tr>
+          <tr><td>temperature</td><td>number</td><td>Kelvin, 2200–6500</td></tr>
+        </table>
+      </main>
+    </div>
+  </div>`,
+
+  inbox: () => `
+  <div class="site inbox">
+    <header class="i-top"><span class="i-logo">Mail</span><div class="i-find">Search mail</div><span class="i-me">A</span></header>
+    <div class="i-body">
+      <aside class="i-side"><span class="i-new">Compose</span><span class="on">Inbox <b>3</b></span><span>Starred</span><span>Sent</span><span>Drafts <b>1</b></span><span>Archive</span></aside>
+      <main class="i-list">
+        <div class="i-row unread"><span class="i-from">Mira Chen</span><span class="i-subj">Re: Arc lamp firmware 2.4</span><span class="i-time">09:41</span></div>
+        <div class="i-row unread"><span class="i-from">Lumen Studio</span><span class="i-subj">Your order ships Thursday</span><span class="i-time">08:12</span></div>
+        <div class="i-row unread"><span class="i-from">Buildkite</span><span class="i-subj">Pipeline #4821 passed</span><span class="i-time">07:58</span></div>
+        <div class="i-row"><span class="i-from">Dana Ruiz</span><span class="i-subj">Notes from the Berlin review</span><span class="i-time">Yst</span></div>
+        <div class="i-row"><span class="i-from">GitHub</span><span class="i-subj">[lumen/api] 2 new reviews</span><span class="i-time">Yst</span></div>
+        <div class="i-row"><span class="i-from">Options</span><span class="i-subj">Weekly digest</span><span class="i-time">Mon</span></div>
+        <div class="i-row"><span class="i-from">Aria Patel</span><span class="i-subj">Lamp shade tolerance — drawing v7</span><span class="i-time">Mon</span></div>
+      </main>
+    </div>
+  </div>`,
+
+  hn: () => `
+  <div class="site hn">
+    <header class="h-top"><span class="h-logo">Y</span><b>Hacker News</b><span>new</span><span>past</span><span>comments</span><span>ask</span><span>show</span><span>jobs</span><span class="h-login">login</span></header>
+    <main class="h-main">
+      <div class="h-item"><span class="h-rank">1.</span><div><span class="h-title">Show HN: I built a lamp that runs its own firmware</span><span class="h-url">(lumen.shop)</span><div class="h-meta">412 points by mchen 3 hours ago · 198 comments</div></div></div>
+      <div class="h-item"><span class="h-rank">2.</span><div><span class="h-title">The economics of repair-first hardware</span><span class="h-url">(worksinprogress.co)</span><div class="h-meta">287 points by druiz 4 hours ago · 96 comments</div></div></div>
+      <div class="h-item"><span class="h-rank">3.</span><div><span class="h-title">Show HN: Typed Chrome extension messaging</span><span class="h-url">(github.com)</span><div class="h-meta">203 points by apatel 5 hours ago · 41 comments</div></div></div>
+      <div class="h-item"><span class="h-rank">4.</span><div><span class="h-title">Why your cast stream stalls at 60 °C</span><span class="h-url">(xhd2015.dev)</span><div class="h-meta">155 points by xhd 7 hours ago · 62 comments</div></div></div>
+      <div class="h-item"><span class="h-rank">5.</span><div><span class="h-title">A tiny state machine for long-press drags</span><span class="h-url">(gist.github.com)</span><div class="h-meta">98 points by kpriya 9 hours ago · 12 comments</div></div></div>
+      <div class="h-item"><span class="h-rank">6.</span><div><span class="h-title">Ask HN: How do you test gestures without a device farm?</span><div class="h-meta">71 points by tverhoeven 11 hours ago · 84 comments</div></div></div>
+    </main>
+  </div>`,
+
+  blank: () => `
+  <div class="site blank">
+    <div class="b-card"><div class="b-mark">+</div><b>New tab</b><span>about:blank — nothing loaded yet</span></div>
+  </div>`
+};
+
+/* ------------------------------- rail ------------------------------- */
+function renderRail() {
+  $("#sessCount").textContent = sessions.length;
+  railBody.innerHTML = sessions
+    .map((s) => {
+      const on = s.id === current;
+      const p = PRESETS[s.preset];
+      const cls = !s.attached ? "" : s.mode === "shot" ? "warn" : "ok";
+      const open = s.open !== false;
+      const rows = !s.attached
+        ? `<div class="none">no window · 0 tabs <button data-reopen="${s.id}">Reopen</button></div>`
+        : !open
+          ? ""
+          : s.tabs
+              .map(
+                (t, i) => `<div class="trow ${t.id === s.active ? "on" : ""}" data-session="${s.id}" data-tab="${t.id}">
+              <span class="tdot"></span><span class="ttitle">${esc(t.title)}</span>
+              <span class="tnum">${i + 1}</span></div>`
+              )
+              .join("");
+      const chip = s.attached ? `${p.w}×${p.h}` : "—";
+      return `<div class="srow ${on ? "on" : ""}" data-session="${s.id}">
+          <span class="caret ${s.attached ? (open ? "open" : "") : "dim"}" data-caret="${s.id}">▶</span><span class="sdot ${cls}"></span>
+          <span class="sname">${esc(s.id)}</span><span class="schip">${chip}</span>
+        </div>${rows}`;
+    })
+    .join('<div class="rail-sep"></div>');
+}
+
+/* ------------------------------- tabs ------------------------------- */
+function renderTabs() {
+  const s = cur();
+  const activeTab = tabOf(s);
+  tabsEl.innerHTML = s.attached
+    ? s.tabs
+        .map(
+          (t) => `<div class="tab ${t.id === s.active ? "on" : ""}" data-tab="${t.id}">
+            <span class="fav" style="background:${FAVC[t.tpl] || "#4b5b6d"}">${FAVS[t.tpl] || "•"}</span>
+            <span class="nm">${esc(t.title)}</span>
+            <button class="x" data-close="${t.id}" title="Close tab">×</button>
+          </div>`
+        )
+        .join("")
+    : "";
+  $("#tabAdd").style.display = s.attached ? "" : "none";
+  const onTab = tabsEl.querySelector(".tab.on");
+  if (onTab) onTab.scrollIntoView({ block: "nearest", inline: "nearest" });
+  urlEl.value = activeTab ? activeTab.url : "";
+  $("#url").disabled = !s.attached;
+}
+
+/* ------------------------------- stage ------------------------------- */
+function dims() {
+  const p = PRESETS[cur().preset];
+  return { w: p.w, h: p.h };
+}
+function fitScale() {
+  const { w, h } = dims();
+  return Math.min(stage.clientWidth / w, stage.clientHeight / h);
+}
+function clampZ(z) {
+  return Math.min(6, Math.max(1, Math.round(z * 100) / 100));
+}
+function clampView() {
+  const { w, h } = dims();
+  const sw = stage.clientWidth, sh = stage.clientHeight, s = fitScale() * view.z;
+  const ww = w * s, hh = h * s;
+  view.x = ww <= sw ? (sw - ww) / 2 : Math.min(0, Math.max(sw - ww, view.x));
+  view.y = hh <= sh ? (sh - hh) / 2 : Math.min(0, Math.max(sh - hh, view.y));
+}
+function applyView() {
+  const { w, h } = dims();
+  page.style.width = w + "px";
+  page.style.height = h + "px";
+  page.style.transform = `translate(${view.x}px,${view.y}px) scale(${fitScale() * view.z})`;
+  const z = view.z.toFixed(1) + "×";
+  $("#zread").textContent = z;
+  $("#zoomlab").textContent = z;
+  $("#hudZ").textContent = z;
+  $("#hudVp").textContent = dims().w + "×" + dims().h;
+  $("#panhint").classList.toggle("show", view.z > 1.01);
+  $("#panhint").textContent = lens === "view" ? "drag to pan · double-tap to fit" : "drag to pan";
+}
+function renderPage() {
+  const s = cur();
+  const t = tabOf(s);
+  if (!s.attached || !t) {
+    $("#empty").hidden = false;
+    page.innerHTML = "";
+    return;
+  }
+  $("#empty").hidden = true;
+  page.innerHTML = (SITES[t.tpl] || SITES.blank)();
+  view.z = 1;
+  view.x = 0;
+  view.y = 0;
+  applyView();
+}
+function renderChrome() {
+  const s = cur();
+  const p = PRESETS[s.preset];
+  $("#sessName").textContent = s.id;
+  $("#vp").textContent = `${p.w} × ${p.h}`;
+  $("#presetLbl").textContent = p.label;
+  $("#modeMeta").textContent = s.mode;
+  $("#stateDot").className = "dot" + (s.attached ? "" : " off");
+  $("#modeBtn").className = "pill" + (s.mode === "shot" ? " shot" : "");
+  $("#modeWord").textContent = s.mode.toUpperCase();
+  $("#fps").textContent = s.mode === "cast" ? "12 fps" : "1 fps";
+  $("#hudVp").textContent = p.w + "×" + p.h;
+  document.querySelectorAll("#presets button").forEach((b) => b.classList.toggle("on", b.dataset.preset === s.preset));
+  $("#presetCycle").textContent = p.label;
+  $("#hudLens").textContent = lens === "view" ? "pan · zoom only" : "tap = click";
+}
+function renderAll() {
+  renderChrome();
+  renderRail();
+  renderTabs();
+  renderPage();
+  applyView();
+}
+
+/* ------------------------------- toast ------------------------------- */
+let toastTimer = 0;
+function toast(msg, ms = 1600) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), ms);
+}
+
+/* ------------------------------- zoom/pan ------------------------------- */
+function zoomAt(f, target) {
+  const z1 = clampZ(target);
+  if (z1 === view.z) return;
+  const s0 = fitScale() * view.z, s1 = fitScale() * z1;
+  const px = (f.x - view.x) / s0, py = (f.y - view.y) / s0;
+  view.z = z1;
+  view.x = f.x - px * s1;
+  view.y = f.y - py * s1;
+  clampView();
+  applyView();
+}
+function zoomCentre(target) {
+  zoomAt({ x: stage.clientWidth / 2, y: stage.clientHeight / 2 }, target);
+}
+function resetZoom() {
+  view.z = 1;
+  view.x = 0;
+  view.y = 0;
+  clampView();
+  applyView();
+}
+
+/* ------------------------------- gestures ------------------------------- */
+const pointers = new Map();
+let panFrom = null, pinchFrom = null, moved = false, downAt = 0, lastTap = { t: 0, x: 0, y: 0 };
+
+function stagePoint(e) {
+  const r = stage.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+function mid(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+stage.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  stage.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, stagePoint(e));
+  moved = false;
+  downAt = Date.now();
+  if (pointers.size === 1) {
+    panFrom = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
+    pinchFrom = null;
+  } else if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    pinchFrom = {
+      d: dist(a, b) || 1,
+      m: mid(a, b),
+      z: view.z,
+      x: view.x,
+      y: view.y
+    };
+    panFrom = null;
+    moved = true;
+  }
+});
+
+stage.addEventListener("pointermove", (e) => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, stagePoint(e));
+
+  if (pinchFrom && pointers.size >= 2) {
+    const [a, b] = [...pointers.values()];
+    const d = dist(a, b) || 1;
+    const m = mid(a, b);
+    const target = clampZ(pinchFrom.z * (d / pinchFrom.d));
+    const s0 = fitScale() * pinchFrom.z, s1 = fitScale() * target;
+    const px = (pinchFrom.m.x - pinchFrom.x) / s0, py = (pinchFrom.m.y - pinchFrom.y) / s0;
+    view.z = target;
+    view.x = m.x - px * s1;
+    view.y = m.y - py * s1;
+    clampView();
+    applyView();
+    return;
+  }
+
+  if (panFrom) {
+    const dx = e.clientX - panFrom.x, dy = e.clientY - panFrom.y;
+    if (!moved && Math.hypot(dx, dy) > 4) moved = true;
+    if (moved) {
+      view.x = panFrom.vx + dx;
+      view.y = panFrom.vy + dy;
+      clampView();
+      applyView();
+    }
+  }
+});
+
+function endPointer(e) {
+  if (!pointers.has(e.pointerId)) return;
+  const p = pointers.get(e.pointerId);
+  pointers.delete(e.pointerId);
+  const wasPinch = !!pinchFrom;
+  if (pointers.size < 2) pinchFrom = null;
+  if (pointers.size === 0) panFrom = null;
+  if (pointers.size > 0) return;
+
+  if (!moved && !wasPinch && e.type === "pointerup" && Date.now() - downAt < 500) {
+    handleTap(p.x, p.y);
+  }
+  moved = false;
+}
+stage.addEventListener("pointerup", endPointer);
+stage.addEventListener("pointercancel", endPointer);
+stage.addEventListener("pointerleave", (e) => {
+  if (pointers.size === 0) panFrom = null;
+});
+
+function handleTap(x, y) {
+  const now = Date.now();
+  const isDouble = now - lastTap.t < 340 && Math.hypot(x - lastTap.x, y - lastTap.y) < 28;
+  lastTap = { t: now, x, y };
+  if (isDouble && lens === "view") {
+    zoomAt({ x, y }, view.z > 1.05 ? 1 : 2.5);
+    toast(view.z > 1 ? "zoom 2.5×" : "fit");
+    return;
+  }
+  if (lens === "view") {
+    toast("VIEW · tap stays local");
+    return;
+  }
+  ripple(x, y);
+  showCursor(x, y);
+  toast(isDouble ? "double-click sent" : "click sent");
+}
+
+function ripple(x, y) {
+  const el = document.createElement("div");
+  el.className = "tap";
+  el.style.left = x + "px";
+  el.style.top = y + "px";
+  stage.appendChild(el);
+  setTimeout(() => el.remove(), 560);
+}
+function showCursor(x, y) {
+  cursor.style.opacity = "1";
+  cursor.style.transform = `translate(${x}px,${y}px)`;
+}
+
+stage.addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    const p = stagePoint(e);
+    if (e.ctrlKey || e.metaKey) {
+      zoomAt(p, view.z * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
+      return;
+    }
+    if (view.z > 1.01) {
+      view.x -= e.deltaX;
+      view.y -= e.deltaY;
+      clampView();
+      applyView();
+    }
+  },
+  { passive: false }
+);
+
+/* keep the frame centred when the window resizes */
+const ro = new ResizeObserver(() => {
+  clampView();
+  applyView();
+});
+ro.observe(stage);
+
+/* ------------------------------- wiring ------------------------------- */
+document.querySelectorAll("#presets button").forEach((b) => {
+  b.addEventListener("click", () => {
+    const s = cur();
+    if (s.preset === b.dataset.preset) return;
+    s.preset = b.dataset.preset;
+    renderChrome();
+    renderRail();
+    renderPage();
+    toast("viewport → " + PRESETS[s.preset].w + " × " + PRESETS[s.preset].h);
+  });
+});
+
+$("#presetCycle").addEventListener("click", () => {
+  const order = ["iphone", "ipad", "mac"];
+  const s = cur();
+  s.preset = order[(order.indexOf(s.preset) + 1) % 3];
+  renderChrome();
+  renderRail();
+  renderPage();
+  toast("viewport → " + PRESETS[s.preset].w + " × " + PRESETS[s.preset].h);
+});
+
+$("#modeBtn").addEventListener("click", () => {
+  const s = cur();
+  s.mode = s.mode === "cast" ? "shot" : "cast";
+  renderChrome();
+  renderRail();
+  toast(s.mode === "cast" ? "cast · 12 fps" : "shot · 1 fps + on every interaction");
+});
+
+$("#refresh").addEventListener("click", () => {
+  stage.style.opacity = ".35";
+  setTimeout(() => (stage.style.opacity = "1"), 160);
+  toast("reload sent");
+});
+
+/* rail */
+railBody.addEventListener("click", (e) => {
+  const reopen = e.target.closest("[data-reopen]");
+  if (reopen) {
+    const s = sessions.find((x) => x.id === reopen.dataset.reopen);
+    s.attached = true;
+    s.tabs = [{ id: ++seq, title: "New tab", url: "about:blank", tpl: "blank" }];
+    s.active = s.tabs[0].id;
+    selectSession(s.id);
+    toast("window reopened · extension attached");
+    return;
+  }
+  const caret = e.target.closest("[data-caret]");
+  if (caret) {
+    const s = sessions.find((x) => x.id === caret.dataset.caret);
+    if (s) s.open = s.open === false;
+    renderRail();
+    return;
+  }
+  const tabRow = e.target.closest(".trow");
+  if (tabRow) {
+    selectSession(tabRow.dataset.session, Number(tabRow.dataset.tab));
+    return;
+  }
+  const row = e.target.closest(".srow");
+  if (row) selectSession(row.dataset.session);
+});
+
+function selectSession(id, tabId) {
+  const s = sessions.find((x) => x.id === id);
+  if (!s) return;
+  current = id;
+  if (tabId && s.tabs.some((t) => t.id === tabId)) s.active = tabId;
+  closeRail();
+  renderAll();
+}
+
+/* tabs */
+tabsEl.addEventListener("click", (e) => {
+  const close = e.target.closest("[data-close]");
+  if (close) {
+    e.stopPropagation();
+    closeTab(Number(close.dataset.close));
+    return;
+  }
+  const tab = e.target.closest("[data-tab]");
+  if (!tab) return;
+  cur().active = Number(tab.dataset.tab);
+  renderTabs();
+  renderRail();
+  renderPage();
+});
+
+function closeTab(id) {
+  const s = cur();
+  const idx = s.tabs.findIndex((t) => t.id === id);
+  if (idx < 0) return;
+  s.tabs.splice(idx, 1);
+  if (s.tabs.length === 0) {
+    s.tabs.push({ id: ++seq, title: "New tab", url: "about:blank", tpl: "blank" });
+    s.active = s.tabs[0].id;
+    toast("last tab closed · opened a fresh one");
+  } else if (s.active === id) {
+    s.active = s.tabs[Math.min(idx, s.tabs.length - 1)].id;
+  }
+  renderTabs();
+  renderRail();
+  renderPage();
+}
+
+$("#tabAdd").addEventListener("click", () => {
+  const s = cur();
+  if (!s.attached) return;
+  const t = { id: ++seq, title: "New tab", url: "about:blank", tpl: "blank" };
+  s.tabs.push(t);
+  s.active = t.id;
+  renderTabs();
+  renderRail();
+  renderPage();
+  toast("create_tab · about:blank");
+});
+
+/* url */
+$("#go").addEventListener("click", () => {
+  const t = tabOf(cur());
+  if (!t) return;
+  const v = urlEl.value.trim() || "about:blank";
+  t.url = v;
+  t.title = v === "about:blank" ? "New tab" : v.replace(/^https?:\/\//, "").split("/")[0];
+  t.tpl = t.tpl === "blank" ? "docs" : t.tpl;
+  renderTabs();
+  renderRail();
+  renderPage();
+  toast("navigate → " + v);
+});
+urlEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("#go").click();
+});
+
+/* zoom controls */
+stage.querySelectorAll("[data-z]").forEach((b) => {
+  b.addEventListener("click", () => {
+    const a = b.dataset.z;
+    if (a === "in") zoomCentre(view.z * 1.5);
+    else if (a === "out") zoomCentre(view.z / 1.5);
+    else resetZoom();
+  });
+});
+$("#fitBtn").addEventListener("click", resetZoom);
+
+/* lens */
+function setLens(next) {
+  lens = next;
+  app.classList.toggle("lens-view", next === "view");
+  app.classList.toggle("lens-ctrl", next === "ctrl");
+  document.querySelectorAll("#lens button").forEach((b) => b.classList.toggle("on", b.dataset.lens === next));
+  renderChrome();
+  applyView();
+  toast(next === "view" ? "VIEW · gestures stay on the phone" : "CTRL · input goes to Chrome");
+}
+$("#lens").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-lens]");
+  if (b) setLens(b.dataset.lens);
+});
+
+/* keys */
+$("#keysBtn").addEventListener("click", () => {
+  const k = $("#keys");
+  k.hidden = !k.hidden;
+  $("#keysBtn").classList.toggle("mini-on", !k.hidden);
+});
+document.querySelectorAll(".key[data-key]").forEach((b) => {
+  b.addEventListener("click", () => toast("key → " + b.dataset.key));
+});
+$("#typeSend").addEventListener("click", () => {
+  const v = $("#typeBox").value;
+  toast(v ? "text → " + v : "text: nothing to send");
+  $("#typeBox").value = "";
+});
+$("#typeBox").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("#typeSend").click();
+});
+
+/* drawer */
+function openRail() {
+  app.classList.add("rail-open");
+}
+function closeRail() {
+  app.classList.remove("rail-open");
+}
+$("#menu").addEventListener("click", openRail);
+$("#scrim").addEventListener("click", closeRail);
+$("#railRefresh").addEventListener("click", () => {
+  renderRail();
+  toast("sessions refreshed");
+});
+
+/* new window */
+$("#newwin").addEventListener("click", () => {
+  const id = "workspace-" + (sessions.length - 1);
+  sessions.splice(2, 0, {
+    id,
+    attached: true,
+    preset: "mac",
+    mode: "cast",
+    active: ++seq,
+    tabs: [{ id: seq, title: "New tab", url: "about:blank", tpl: "blank" }]
+  });
+  selectSession(id);
+  toast("new Chrome window · session " + id);
+});
+
+/* sheet */
+$("#helpBtn").addEventListener("click", () => ($("#sheet").hidden = false));
+$("#sheetClose").addEventListener("click", () => ($("#sheet").hidden = true));
+$("#sheet").addEventListener("click", (e) => {
+  if (e.target === $("#sheet")) $("#sheet").hidden = true;
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    $("#sheet").hidden = true;
+    closeRail();
+  }
+  if (e.key === "?") $("#helpBtn").click();
+  if (e.key === "+" || e.key === "=") zoomCentre(view.z * 1.5);
+  if (e.key === "-") zoomCentre(view.z / 1.5);
+  if (e.key === "0") resetZoom();
+});
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+/* ------------------------------- site css ------------------------------- */
+const css = document.createElement("style");
+css.textContent = `
+  .site{font-family:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif;background:#f5f0e7;color:#171310}
+  /* ---------- store ---------- */
+  .store{display:flex;flex-direction:column}
+  .s-nav{flex:none;display:flex;align-items:center;gap:18px;padding:16px 26px;border-bottom:1px solid #e3dac9}
+  .s-brand{font:800 15px/1 inherit;letter-spacing:.22em}
+  .s-brand sup{font-size:7px;letter-spacing:0;vertical-align:super;margin-left:2px}
+  .s-links{display:flex;gap:16px;margin-left:8px;font-size:11px;color:#5d5548}
+  .s-acts{margin-left:auto;display:flex;gap:14px;font-size:11px;color:#5d5548;align-items:center}
+  .s-bag b{display:inline-grid;place-items:center;width:14px;height:14px;border-radius:50%;background:#171310;color:#f5f0e7;font-size:8px;margin-left:3px}
+  .s-hero{flex:none;display:grid;grid-template-columns:1.05fr .95fr;gap:24px;padding:26px}
+  .s-copy{display:flex;flex-direction:column;justify-content:center;gap:10px;min-width:0}
+  .s-eyebrow{font:700 9px/1 inherit;letter-spacing:.16em;text-transform:uppercase;color:#a26a44}
+  .s-copy h1{margin:0;font-size:clamp(26px,6.4cqw,54px);line-height:.98;letter-spacing:-.025em;font-weight:600}
+  .s-copy p{margin:0;max-width:34ch;font-size:clamp(10px,1.7cqw,14px);line-height:1.5;color:#5b5347}
+  .s-cta{
+    align-self:flex-start;margin-top:6px;padding:10px 16px;border:0;border-radius:999px;background:#171310;color:#f8f4ec;
+    font:600 11px/1 inherit;display:inline-flex;gap:8px;align-items:center;cursor:pointer;
+  }
+  .s-stats{display:flex;flex-wrap:wrap;gap:16px;margin-top:8px;font-size:9.5px;color:#7b7263}
+  .s-stats b{display:block;font-size:13px;color:#171310}
+  .s-art{position:relative;border-radius:16px;overflow:hidden;background:linear-gradient(160deg,#efe3cd,#d9c4a3);min-height:clamp(190px,46cqw,340px)}
+  .s-glow{position:absolute;left:-10%;right:-10%;bottom:-34%;height:76%;
+    background:radial-gradient(52% 62% at 50% 0%,rgba(255,241,201,.98),rgba(255,208,120,0) 72%)}
+  .s-lamp{position:absolute;left:50%;top:11%;width:56%;height:78%;transform:translateX(-50%)}
+  .s-shade{position:absolute;left:2%;top:0;width:96%;height:38%;
+    background:linear-gradient(180deg,#3d342b,#221d18);clip-path:polygon(20% 0,80% 0,100% 100%,0 100%);border-radius:5px 5px 0 0}
+  .s-shade:after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:#0f0c0a}
+  .s-stem{position:absolute;left:50%;top:36%;width:4px;height:46%;transform:translateX(-50%);
+    background:linear-gradient(90deg,#a48d6e,#6d5c46,#3f352a);border-radius:2px}
+  .s-base{position:absolute;left:50%;bottom:4%;width:44%;height:8%;transform:translateX(-50%);
+    border-radius:50%;background:linear-gradient(180deg,#332b23,#14100d);box-shadow:0 10px 24px rgba(60,40,20,.35)}
+  .s-tag{position:absolute;left:12px;bottom:12px;padding:5px 9px;border-radius:999px;background:rgba(20,16,12,.82);color:#f2e8d6;font-size:8.5px;letter-spacing:.05em}
+  .s-row{flex:none;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:0 26px 22px}
+  .s-card{background:#fbf7ef;border:1px solid #e7dfd0;border-radius:12px;padding:9px;display:flex;flex-direction:column;gap:5px}
+  .s-thumb{height:clamp(52px,13cqw,92px);border-radius:8px;background:linear-gradient(150deg,#efe4d0,#ddcfb6);position:relative;overflow:hidden}
+  .s-thumb:before{content:"";position:absolute;left:50%;top:16%;width:36%;height:42%;transform:translateX(-50%);
+    background:#2a241d;clip-path:polygon(18% 0,82% 0,100% 100%,0 100%)}
+  .s-thumb:after{content:"";position:absolute;left:50%;top:56%;width:3px;height:30%;transform:translateX(-50%);background:#8d7960}
+  .s-thumb.tb:before{width:30%;height:36%;border-radius:50%;clip-path:none;background:#3a322a}
+  .s-thumb.tc:before{width:44%;height:30%;border-radius:50% 50% 8px 8px;clip-path:none;background:#4a3f34}
+  .s-card h3{margin:0;font-size:10.5px;font-weight:600}
+  .s-price{font-size:10.5px;color:#4d463b}
+  .s-price s{color:#a89c8a;margin-left:3px;font-size:9px}
+  .s-sw{display:flex;gap:4px}
+  .s-sw i{width:9px;height:9px;border-radius:50%;background:#2a241d;border:1px solid #d8cdba}
+  .s-sw i:nth-child(2){background:#b9a486}
+  .s-sw i:nth-child(3){background:#7d8b76}
+  .s-foot{flex:none;border-top:1px solid #e3dac9;padding:9px 26px;color:#8d8272;font-size:9px;letter-spacing:.02em}
+  @container (max-width:640px){
+    .s-nav{padding:11px 14px;gap:10px}
+    .s-links{display:none}
+    .s-hero{grid-template-columns:1fr;gap:12px;padding:14px}
+    .s-copy{gap:7px}
+    .s-copy p{max-width:none}
+    .s-art{min-height:200px;order:-1}
+    .s-row{padding:0 14px 14px;gap:7px}
+    .s-card{padding:6px;border-radius:9px}
+    .s-foot{padding:8px 14px}
+  }
+
+  /* ---------- docs ---------- */
+  .docs{display:flex;flex-direction:column;background:#fbfaf7}
+  .d-top{flex:none;display:flex;align-items:center;gap:10px;padding:11px 18px;border-bottom:1px solid #e6e2d8;background:#fff}
+  .d-logo{font:800 12px/1 inherit;letter-spacing:.14em}
+  .d-crumb{font-size:9.5px;color:#8a8272;padding-left:10px;border-left:1px solid #e2ddd2}
+  .d-search{margin-left:auto;padding:4px 10px;border-radius:999px;background:#f3f0e9;color:#9a9284;font-size:9px}
+  .d-body{flex:1;display:flex;min-height:0}
+  .d-side{flex:none;width:34%;max-width:190px;padding:14px 12px;border-right:1px solid #ebe6db;display:flex;flex-direction:column;gap:3px;background:#f7f4ed}
+  .d-grp{font:700 7.5px/1 inherit;letter-spacing:.14em;text-transform:uppercase;color:#a79d8c;margin:8px 0 3px}
+  .d-side span{font-size:9.5px;color:#6a6355;padding:3px 6px;border-radius:5px}
+  .d-side span.on{background:#171310;color:#f7f3ea}
+  .d-main{flex:1;min-width:0;padding:16px 20px;overflow:hidden}
+  .d-kicker{font-size:7.5px;letter-spacing:.12em;text-transform:uppercase;color:#b0a795}
+  .d-main h1{margin:4px 0 8px;font-size:clamp(18px,3.4cqw,30px);letter-spacing:-.02em}
+  .d-main p{margin:0 0 10px;font-size:clamp(9.5px,1.35cqw,12px);line-height:1.55;color:#5b5446;max-width:52ch}
+  .d-main h2{margin:14px 0 6px;font-size:clamp(12px,2.1cqw,17px)}
+  .d-main pre{
+    margin:0 0 10px;padding:10px 12px;border-radius:8px;background:#1c1a17;color:#e8e2d4;
+    font:500 clamp(8px,1.15cqw,10.5px)/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;
+  }
+  .d-main pre .c{color:#8d8577}
+  .d-main code{background:#efece4;padding:1px 4px;border-radius:3px;font:500 .92em/1 ui-monospace,Menlo,monospace}
+  .d-table{width:100%;border-collapse:collapse;font-size:clamp(8px,1.2cqw,10.5px);margin-top:4px}
+  .d-table th{text-align:left;font-weight:600;color:#7d7565;border-bottom:1px solid #e2ddd2;padding:4px 6px;font-size:8px;letter-spacing:.06em;text-transform:uppercase}
+  .d-table td{padding:4px 6px;border-bottom:1px solid #eeeae0;color:#5b5446}
+  @container (max-width:560px){
+    .d-side{display:none}
+    .d-main{padding:13px 14px}
+    .d-search{display:none}
+    .d-crumb{font-size:8.5px}
+  }
+
+  /* ---------- inbox ---------- */
+  .inbox{display:flex;flex-direction:column;background:#f6f2ec}
+  .i-top{flex:none;display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #e5dcd0;background:#fdfbf8}
+  .i-logo{font:700 12px/1 inherit;letter-spacing:.02em}
+  .i-find{flex:1;max-width:300px;padding:5px 12px;border-radius:999px;background:#f0ebe2;color:#9c9384;font-size:9.5px}
+  .i-me{width:20px;height:20px;border-radius:50%;background:#171310;color:#f7f1e8;display:grid;place-items:center;font:700 9px/1 inherit;margin-left:auto}
+  .i-body{flex:1;display:flex;min-height:0}
+  .i-side{flex:none;width:32%;max-width:170px;padding:12px 10px;display:flex;flex-direction:column;gap:2px}
+  .i-new{margin-bottom:8px;padding:5px 10px;border-radius:7px;background:#171310;color:#fbf7f0;font:600 9px/1 inherit;text-align:center}
+  .i-side span{font-size:9.5px;color:#6f6659;padding:3px 7px;border-radius:5px}
+  .i-side span.on{background:#e8dccb;color:#2a2016;font-weight:600}
+  .i-side b{font-size:8px;color:#a3937c;margin-left:3px}
+  .i-list{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .i-row{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid #ebe2d6;font-size:9.5px;color:#6f6659}
+  .i-row.unread{background:#fdfbf7;color:#2a2016;font-weight:600}
+  .i-from{flex:none;width:26%;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .i-subj{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .i-time{flex:none;font-size:8.5px;color:#a2957f;font-weight:400}
+  @container (max-width:560px){
+    .i-side{width:26%;padding:10px 6px}
+    .i-from{width:34%}
+    .i-time{display:none}
+    .i-find{max-width:none}
+  }
+
+  /* ---------- hn ---------- */
+  .hn{background:#f6f6ef;color:#000;display:flex;flex-direction:column}
+  .h-top{flex:none;display:flex;align-items:center;gap:10px;padding:5px 8px;background:#ff6600;font-size:8.5px;color:#000}
+  .h-top .h-logo{width:14px;height:14px;border:1px solid #fff;color:#fff;display:grid;place-items:center;font:700 9px/1 inherit}
+  .h-login{margin-left:auto}
+  .h-main{flex:1;padding:8px 10px;overflow:hidden}
+  .h-item{display:flex;gap:5px;padding:5px 0;border-bottom:1px solid #e6e6dc;font-size:9.5px;line-height:1.35}
+  .h-rank{color:#828282;flex:none;width:16px;text-align:right}
+  .h-title{color:#000}
+  .h-url{color:#828282;margin-left:5px;font-size:8.5px}
+  .h-meta{color:#828282;font-size:8px;margin-top:2px}
+
+  /* ---------- blank ---------- */
+  .blank{display:grid;place-items:center;background:#f6f4ef}
+  .b-card{display:flex;flex-direction:column;align-items:center;gap:7px;color:#8a8272;font-size:10px}
+  .b-mark{width:38px;height:38px;border-radius:50%;border:1px dashed #c9c2b4;display:grid;place-items:center;font-size:19px;color:#a79d8c}
+  .b-card b{font-size:12px;color:#4a4438}
+`;
+document.head.appendChild(css);
+
+/* ------------------------------- boot ------------------------------- */
+renderAll();
+if (matchMedia("(max-width:900px)").matches) closeRail();
+toast("interactive prototype · pick a session · × and + for tabs · pinch or double-tap to zoom", 6500);
+</script>
+</body>
+</html>

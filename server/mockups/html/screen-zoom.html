@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no,maximum-scale=1">
+<meta name="theme-color" content="#0b0d10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>screen · zoom + mode mockup</title>
+<style>
+  :root{
+    --bg:#0b0d10; --panel:#12151a; --chip:#1c2128; --line:#22262c; --line2:#30363d;
+    --text:#e6e8eb; --dim:#9aa4b2; --green:#2ea043; --amber:#d29922; --blue:#388bfd; --red:#da3633;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{
+    margin:0;height:100%;background:var(--bg);color:var(--text);
+    font:400 14px/1.3 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;
+    overscroll-behavior:none;user-select:none;-webkit-user-select:none;overflow:hidden;
+  }
+  #app{
+    position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* ---------- top bar ---------- */
+  .bar{
+    flex:none;display:flex;align-items:center;gap:8px;padding:6px 8px;
+    background:linear-gradient(180deg,#16211a,#0f1512);border-bottom:1px solid var(--line);
+  }
+  .bar.mode-web{background:linear-gradient(180deg,#141b24,#0f1419)}
+  .icon{
+    flex:none;width:34px;height:34px;display:grid;place-items:center;
+    background:var(--chip);color:var(--text);border:1px solid var(--line2);border-radius:8px;
+    font-size:17px;line-height:1;cursor:pointer;
+  }
+  .icon:active{background:#262d36}
+  .icon.on{background:#1d3a6b;border-color:#2f5da8;color:#cfe3ff}
+  .dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+  .dot.warn{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+  .info{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .info strong{font-size:11.5px;font-weight:600;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .info .meta{font-size:10px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .btn{
+    flex:none;height:34px;padding:0 12px;border-radius:8px;border:1px solid transparent;
+    font:600 12px/1 inherit;cursor:pointer;
+  }
+  .btn.primary{background:var(--green);color:#04140a}
+  .btn.danger{background:#2b1a19;color:#ffb3ae;border-color:#5c2a26}
+  .btn.primary:disabled{background:#23302a;color:#6b7a70;cursor:default}
+
+  /* ---------- stage ---------- */
+  .stage{position:relative;flex:1;min-height:0;display:flex;background:#000;overflow:hidden}
+  #mirror{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+  .frame{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 2px rgba(46,160,67,.7)}
+  .stage.web .frame{box-shadow:inset 0 0 0 2px rgba(56,139,253,.75)}
+  .hud{
+    position:absolute;top:8px;left:8px;display:flex;align-items:center;gap:6px;
+    padding:4px 8px;border-radius:999px;background:rgba(12,15,19,.72);
+    border:1px solid rgba(120,140,165,.28);font-size:10.5px;color:#cfd8e3;
+    backdrop-filter:blur(6px);pointer-events:auto;
+  }
+  .hud b{font-weight:700;color:#fff}
+  .hud .sep{opacity:.35}
+  .hud .q{width:16px;height:16px;border-radius:50%;border:1px solid rgba(150,170,195,.5);
+    display:grid;place-items:center;font-size:10px;color:#cfd8e3;cursor:pointer}
+
+  /* zoom cluster: a view control, available in both modes */
+  .zoom{
+    position:absolute;right:10px;bottom:64px;display:flex;flex-direction:column;gap:8px;align-items:center;
+  }
+  .zoom button{
+    width:42px;height:42px;border-radius:12px;display:grid;place-items:center;
+    background:rgba(20,25,32,.82);color:#e8eef6;border:1px solid rgba(120,140,165,.35);
+    font:600 19px/1 system-ui;backdrop-filter:blur(8px);cursor:pointer;
+  }
+  .zoom button:active{background:rgba(48,58,72,.9)}
+  .zoom .lv{font-size:9px;color:#b9c4d2;background:rgba(12,15,19,.7);padding:2px 5px;border-radius:5px}
+
+  .modebadge{
+    position:absolute;left:50%;transform:translateX(-50%);bottom:10px;
+    display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;
+    background:rgba(12,15,19,.82);border:1px solid rgba(120,140,165,.35);
+    font-size:11.5px;font-weight:600;color:#dbe4ee;backdrop-filter:blur(8px);
+    cursor:pointer;white-space:nowrap;max-width:calc(100% - 24px);
+  }
+  .modebadge .tag{
+    padding:2px 7px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.06em;
+    background:#1d3a6b;color:#cfe3ff;
+  }
+  .modebadge.remote{background:rgba(14,26,18,.86);border-color:rgba(46,160,67,.45)}
+  .modebadge.remote .tag{background:#1c4a2a;color:#a7f0bd}
+
+  /* legend */
+  .legend{
+    position:absolute;inset:auto 8px 8px 8px;max-height:70%;overflow:auto;
+    padding:12px 14px;border-radius:14px;background:rgba(14,17,22,.95);
+    border:1px solid var(--line2);box-shadow:0 -8px 40px rgba(0,0,0,.55);font-size:12px;
+  }
+  .legend[hidden]{display:none}
+  .legend h3{margin:0 0 8px;font-size:12px;color:#fff}
+  .legend table{border-collapse:collapse;width:100%}
+  .legend td{padding:4px 6px;border-bottom:1px solid #1d222a;vertical-align:top}
+  .legend td:first-child{color:#8fa3ba;white-space:nowrap;width:38%}
+  .legend .foot{margin-top:9px;display:flex;justify-content:flex-end}
+  .legend .foot button{height:30px;padding:0 12px;border-radius:8px;background:var(--chip);
+    border:1px solid var(--line2);color:var(--text);font:600 12px/1 inherit;cursor:pointer}
+
+  /* ---------- on-screen keys ---------- */
+  .keys{flex:none;background:var(--panel);border-top:1px solid var(--line);padding:8px;display:flex;flex-direction:column;gap:8px}
+  .row{display:flex;gap:6px;align-items:center}
+  .scroll{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .scroll::-webkit-scrollbar{display:none}
+  .key{
+    flex:none;min-width:40px;height:34px;padding:0 10px;border-radius:8px;
+    background:var(--chip);color:var(--text);border:1px solid var(--line2);
+    font:600 12px/1 inherit;cursor:pointer;white-space:nowrap;
+  }
+  .key:active{background:#2a323d}
+  .key.held{background:#1d3a6b;border-color:#2f5da8;color:#cfe3ff}
+  .key.ghost{background:#14181e;color:#7f8b99}
+  /* the mode chip: first slot of the key bar, visually distinct */
+  .key.mode{
+    min-width:96px;display:inline-flex;align-items:center;gap:6px;justify-content:center;
+    background:#1d3a6b;border-color:#2f5da8;color:#dbe9ff;font-weight:700;
+  }
+  .key.mode.remote{background:#1c4a2a;border-color:#2f7d46;color:#c5f5d4}
+  .key.mode .gl{font-size:14px;line-height:1}
+  .keys.weblocked .key.disp,
+  .keys.weblocked .key.mod,
+  .keys.weblocked .text input,
+  .keys.weblocked .text .key{opacity:.35;pointer-events:none}
+  .hide{margin-left:auto}
+  .text{display:flex;gap:6px;align-items:center}
+  .text input{
+    flex:1;min-width:0;height:34px;padding:0 10px;border-radius:8px;background:#0e1116;
+    border:1px solid var(--line2);color:var(--text);font-size:16px;
+  }
+  .text input::placeholder{color:#6b7684}
+  .note{font-size:10px;color:var(--amber)}
+  .barsplit{display:flex;gap:6px;align-items:center}
+
+  /* ---------- toast ---------- */
+  .toast{
+    position:absolute;left:50%;top:44px;transform:translateX(-50%);
+    padding:7px 12px;border-radius:9px;background:rgba(8,10,13,.92);
+    border:1px solid var(--line2);font-size:11.5px;color:#dbe4ee;
+    pointer-events:none;opacity:0;transition:opacity .16s ease;max-width:92%;
+    text-align:center;z-index:20;
+  }
+  .toast.show{opacity:1}
+
+  /* ---------- immersive (iPhone has no Fullscreen API) ---------- */
+  #app.immersive .bar,#app.immersive .keys{display:none}
+  #minibar{
+    position:absolute;top:8px;right:8px;display:none;gap:6px;align-items:center;z-index:12;
+  }
+  #app.immersive #minibar{display:flex}
+  #minibar .icon{width:36px;height:36px;background:rgba(12,15,19,.8);backdrop-filter:blur(8px)}
+  #app.immersive .zoom{bottom:58px}
+  #app.immersive .modebadge{bottom:10px}
+  #app.immersive .hud{top:8px;left:8px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="bar mode-remote" id="bar">
+    <button class="icon" id="back" title="Back to chat">‹</button>
+    <span class="dot" id="dot"></span>
+    <div class="info">
+      <strong id="ctlLabel">ACTIVE — you are driving this desktop</strong>
+      <span class="meta" id="ctlMeta">1280×826 · 12 fps · 1 viewer</span>
+    </div>
+    <button class="btn danger" id="release">Release</button>
+    <button class="icon on" id="keysToggle" title="On-screen keys">⌨</button>
+    <button class="icon" id="fs" title="Fullscreen">⛶</button>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="mirror"></canvas>
+    <div class="frame"></div>
+
+    <div class="hud">
+      <span><b id="hudMode">REMOTE</b></span>
+      <span class="sep">|</span>
+      <span id="hudZoom">1.0×</span>
+      <span class="sep">|</span>
+      <span id="hudHost">tap → 864,558</span>
+      <span class="q" id="help" title="gesture legend">?</span>
+    </div>
+
+    <div class="zoom">
+      <button id="zin" title="Zoom in">＋</button>
+      <button id="zout" title="Zoom out">−</button>
+      <button id="zfit" title="Fit">⤢</button>
+      <span class="lv" id="zlv">1.0×</span>
+    </div>
+
+    <div class="modebadge remote" id="modebadge">
+      <span class="tag" id="mbTag">REMOTE</span>
+      <span id="mbText">gestures go to the Mac</span>
+    </div>
+
+    <div class="legend" id="legend">
+      <h3>Web mode vs remote mode — gestures</h3>
+      <table>
+        <tr><td>1 finger drag</td><td><b>WEB</b> pan the zoomed image · <b>REMOTE</b> drag the host mouse</td></tr>
+        <tr><td>2 fingers</td><td><b>WEB</b> pinch to zoom · <b>REMOTE</b> scroll the host (as today)</td></tr>
+        <tr><td>double tap</td><td><b>WEB</b> 1× ⇄ 2.5× at the tapped point · <b>REMOTE</b> double click</td></tr>
+        <tr><td>single tap</td><td><b>WEB</b> nothing is sent · <b>REMOTE</b> click at the mapped point</td></tr>
+        <tr><td>＋ − ⤢</td><td>zoom in / out / fit — both modes, always available</td></tr>
+        <tr><td>key bar</td><td><b>WEB</b> disabled (nothing reaches the Mac) · <b>REMOTE</b> sends keys</td></tr>
+        <tr><td>⛶</td><td>native fullscreen where the browser has it, else immersive mode</td></tr>
+      </table>
+      <div class="foot"><button id="legendClose">Got it</button></div>
+    </div>
+
+    <div id="minibar">
+      <button class="icon" id="mbBack">‹</button>
+      <button class="icon" id="mbExit">✕</button>
+    </div>
+
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <div class="keys" id="keys">
+    <div class="row">
+      <button class="key mode remote" id="modeKey"><span class="gl">⌖</span><span id="modeKeyText">WEB</span></button>
+      <button class="key mod" data-key="ControlLeft">⌃</button>
+      <button class="key mod" data-key="AltLeft">⌥</button>
+      <button class="key mod" data-key="MetaLeft">⌘</button>
+      <button class="key mod" data-key="ShiftLeft">⇧</button>
+      <button class="key ghost hide" id="keysHide">hide</button>
+    </div>
+    <div class="scroll">
+      <button class="key disp" data-key="Escape">esc</button>
+      <button class="key disp" data-key="Tab">tab</button>
+      <button class="key disp" data-key="Backspace">⌫</button>
+      <button class="key disp" data-key="Enter">⏎</button>
+      <button class="key disp" data-key="Delete">⌦</button>
+      <button class="key disp" data-key="ArrowLeft">←</button>
+      <button class="key disp" data-key="ArrowUp">↑</button>
+      <button class="key disp" data-key="ArrowDown">↓</button>
+      <button class="key disp" data-key="ArrowRight">→</button>
+      <button class="key disp" data-key="Home">home</button>
+      <button class="key disp" data-key="End">end</button>
+      <button class="key disp" data-key="PageUp">pgup</button>
+      <button class="key disp" data-key="PageDown">pgdn</button>
+    </div>
+    <div class="text">
+      <input id="textInput" placeholder="type text for the Mac…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="key disp" id="textSend">send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ------------------------------------------------------------------ *
+ * Mockup of the /screen page with (a) client-side zoom/pan and
+ * (b) a WEB / REMOTE interaction mode.
+ *
+ * The zoom transform below is the one the real page will use, so the
+ * numbers in the HUD are the numbers the real client must compute:
+ *   fit = min(stageW/SW, stageH/SH)
+ *   k   = fit * zoom                     (stream px -> CSS px)
+ *   tx  = stageW/2 - cx*k,  ty = stageH/2 - cy*k
+ *   stream = ((p - t) / k)               (inverse for taps)
+ * Viewport state is { zoom, cx, cy } with (cx,cy) the stream pixel at
+ * the centre of the stage -- pan/zoom is then a pure clamp problem.
+ * ------------------------------------------------------------------ */
+
+var SW = 1280, SH = 826;     // stream pixels (same size as the real capture)
+var HW = 1728, HH = 1117;    // host points (macOS logical resolution)
+var ZMIN = 1, ZMAX = 6;
+
+var stage = document.getElementById('stage');
+var canvas = document.getElementById('mirror');
+var ctx = canvas.getContext('2d');
+var app = document.getElementById('app');
+var keys = document.getElementById('keys');
+
+var view = { zoom: 1, cx: SW / 2, cy: SH / 2 };
+var mode = 'remote';                 // 'remote' | 'web'
+var immersive = false;
+var hostCursor = null;               // {x,y} in stream px, remote mode only
+var ripple = null;                   // {x,y,t} wave after a click
+var lastTap = 0, lastTapPt = null;
+
+/* ---------------- fake stream buffer: a plausible mac desktop ------------ */
+var stream = document.createElement('canvas');
+stream.width = SW; stream.height = SH;
+paintDesktop(stream.getContext('2d'));
+
+function paintDesktop(c) {
+  var g = c.createLinearGradient(0, 0, SW, SH);
+  g.addColorStop(0, '#16233f'); g.addColorStop(.45, '#2a2350'); g.addColorStop(1, '#4b2340');
+  c.fillStyle = g; c.fillRect(0, 0, SW, SH);
+  var r = c.createRadialGradient(SW * .68, SH * .32, 40, SW * .68, SH * .32, 620);
+  r.addColorStop(0, 'rgba(120,160,255,.28)'); r.addColorStop(1, 'rgba(120,160,255,0)');
+  c.fillStyle = r; c.fillRect(0, 0, SW, SH);
+
+  // menu bar
+  c.fillStyle = 'rgba(14,16,22,.74)'; c.fillRect(0, 0, SW, 26);
+  c.fillStyle = '#e8eaed'; c.font = '13px -apple-system,system-ui,sans-serif';
+  c.fillText('\uF8FF \u00B7 Finder', 12, 18);
+  var menus = ['File', 'Edit', 'View', 'Go', 'Window', 'Help'], mx = 132;
+  c.fillStyle = '#dfe3e8';
+  for (var i = 0; i < menus.length; i++) { c.fillText(menus[i], mx, 18); mx += 16 + c.measureText(menus[i]).width; }
+  c.fillStyle = '#cfd6df'; c.textAlign = 'right';
+  c.fillText('Mon 26 Oct 17:13', SW - 12, 18); c.textAlign = 'left';
+
+  // Finder window
+  win(c, 96, 92, 596, 430, 'Documents');
+  c.fillStyle = '#1b2230'; c.fillRect(96, 118, 150, 404);
+  c.fillStyle = '#9fb0c6'; c.font = '12px -apple-system,system-ui,sans-serif';
+  ['Favourites', 'Recents', 'Projects', 'Screenshots', 'tmp'].forEach(function (t, i) {
+    c.fillStyle = i === 2 ? '#cfe3ff' : '#9fb0c6';
+    c.fillText(t, 108, 146 + i * 26);
+  });
+  c.fillStyle = '#0f141b'; c.fillRect(246, 118, 446, 404);
+  var files = [
+    ['FIX_INPUT_ZOOMING.md', '3 KB', '17:04'],
+    ['screen-zoom.html', '12 KB', '17:12'],
+    ['RemoteScreen.ts', '18 KB', '16:58'],
+    ['MirrorView.tsx', '9 KB', '16:58'],
+    ['KeyBar.tsx', '5 KB', '16:40'],
+    ['screen.css', '14 KB', '16:40'],
+    ['go.mod', '1 KB', '14:02'],
+    ['docs', '--', '13:20']
+  ];
+  c.font = '12px -apple-system,system-ui,sans-serif';
+  files.forEach(function (f, i) {
+    var y = 140 + i * 30;
+    if (i % 2 === 0) { c.fillStyle = 'rgba(255,255,255,.03)'; c.fillRect(246, y - 16, 446, 30); }
+    c.fillStyle = '#8fb4ff'; c.fillText('\u25A0', 258, y);
+    c.fillStyle = '#e6e8eb'; c.fillText(f[0], 276, y);
+    c.fillStyle = '#7d8794'; c.textAlign = 'right';
+    c.fillText(f[2], 684, y); c.textAlign = 'left';
+  });
+
+  // code editor window (small monospace text: unreadable until ~3x, which is the point)
+  win(c, 700, 250, 470, 300, 'RemoteScreen.ts');
+  c.fillStyle = '#0e1116'; c.fillRect(700, 276, 470, 274);
+  c.font = '10px ui-monospace,Menlo,monospace';
+  var code = [
+    ['#5c6b7f', '270  private blit(): void {'],
+    ['#c39ac9', '271    const dpr = window.devicePixelRatio || 1;'],
+    ['#5c6b7f', '272    const fit = Math.min(w / this.imgW, h / this.imgH);'],
+    ['#e6e8eb', '273    const k = fit * this.view.zoom;'],
+    ['#a5d6a7', '274    const tx = w / 2 - this.view.cx * k;'],
+    ['#a5d6a7', '275    const ty = h / 2 - this.view.cy * k;'],
+    ['#5c6b7f', '276    ctx.drawImage(this.buffer, tx, ty, w * k, h * k);'],
+    ['#ffd479', '277  }']
+  ];
+  code.forEach(function (l, i) { c.fillStyle = l[0]; c.fillText(l[1], 712, 296 + i * 15); });
+
+  // dock
+  var dockW = 470, dockX = (SW - dockW) / 2, dockY = SH - 74;
+  c.fillStyle = 'rgba(230,238,248,.16)';
+  roundRect(c, dockX, dockY, dockW, 58, 16); c.fill();
+  var apps = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', '#64748b'];
+  for (var j = 0; j < apps.length; j++) {
+    c.fillStyle = apps[j];
+    roundRect(c, dockX + 16 + j * 62, dockY + 9, 42, 42, 10); c.fill();
+    c.fillStyle = 'rgba(255,255,255,.22)';
+    roundRect(c, dockX + 16 + j * 62 + 6, dockY + 15, 12, 8, 4); c.fill();
+  }
+
+  // desktop icons
+  c.fillStyle = 'rgba(255,255,255,.9)'; c.font = '12px -apple-system,system-ui,sans-serif';
+  c.fillText('Screenshot 2026-10-26.png', 980, 60);
+  c.fillStyle = '#7fb3ff'; roundRect(c, 980, 70, 44, 34, 6); c.fill();
+
+  function win(cc, x, y, w, h, title) {
+    cc.fillStyle = 'rgba(0,0,0,.38)'; roundRect(cc, x + 6, y + 10, w, h, 12); cc.fill();
+    cc.fillStyle = '#1b2027'; roundRect(cc, x, y, w, h, 12); cc.fill();
+    cc.fillStyle = '#232a33'; roundRect(cc, x, y, w, 26, 12); cc.fill();
+    cc.fillStyle = '#232a33'; cc.fillRect(x, y + 14, w, 12);
+    var dots = ['#ff5f57', '#febc2e', '#28c840'];
+    for (var d = 0; d < 3; d++) { cc.fillStyle = dots[d]; cc.beginPath(); cc.arc(x + 16 + d * 18, y + 13, 5.5, 0, 6.3); cc.fill(); }
+    cc.fillStyle = '#c8d2de'; cc.font = '11px -apple-system,system-ui,sans-serif';
+    cc.textAlign = 'center'; cc.fillText(title, x + w / 2, y + 17); cc.textAlign = 'left';
+    cc.strokeStyle = 'rgba(255,255,255,.06)'; cc.lineWidth = 1;
+    cc.strokeRect(x + .5, y + .5, w - 1, h - 1);
+  }
+  function roundRect(cc, x, y, w, h, r) {
+    cc.beginPath();
+    cc.moveTo(x + r, y); cc.arcTo(x + w, y, x + w, y + h, r);
+    cc.arcTo(x + w, y + h, x, y + h, r); cc.arcTo(x, y + h, x, y, r);
+    cc.arcTo(x, y, x + w, y, r); cc.closePath();
+  }
+}
+
+/* ---------------- geometry ---------------- */
+var stageW = 0, stageH = 0, dpr = 1;
+
+function layout() {
+  var r = stage.getBoundingClientRect();
+  stageW = Math.max(1, r.width); stageH = Math.max(1, r.height);
+  dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  canvas.width = Math.round(stageW * dpr);
+  canvas.height = Math.round(stageH * dpr);
+  clampView(); render();
+}
+
+function fitScale() { return Math.min(stageW / SW, stageH / SH); }
+function scale() { return fitScale() * view.zoom; }
+function offset() {
+  var k = scale();
+  return { k: k, tx: stageW / 2 - view.cx * k, ty: stageH / 2 - view.cy * k };
+}
+
+// No black bands: when the zoomed image is larger than the stage the
+// centre must stay far enough in that an edge never crosses the stage edge.
+function clampView() {
+  var k = scale();
+  var halfW = stageW / 2 / k, halfH = stageH / 2 / k;
+  if (halfW * 2 >= SW) view.cx = SW / 2;
+  else view.cx = Math.min(SW - halfW, Math.max(halfW, view.cx));
+  if (halfH * 2 >= SH) view.cy = SH / 2;
+  else view.cy = Math.min(SH - halfH, Math.max(halfH, view.cy));
+}
+
+// Keep the stream point `anchor` under the same screen position while zoom
+// changes: p = centre + (anchor - c) * k, so c' = anchor - (anchor - c) * k/k'.
+function zoomTo(next, anchor) {
+  next = Math.min(ZMAX, Math.max(ZMIN, next));
+  var k0 = scale();
+  view.zoom = next;
+  var k1 = scale();
+  if (anchor && k1 > 0) {
+    view.cx = anchor.x - (anchor.x - view.cx) * (k0 / k1);
+    view.cy = anchor.y - (anchor.y - view.cy) * (k0 / k1);
+  }
+  clampView(); render(); syncHud();
+}
+
+function toStream(clientX, clientY) {
+  var o = offset();
+  var r = canvas.getBoundingClientRect();
+  var sx = (clientX - r.left - o.tx) / o.k;
+  var sy = (clientY - r.top - o.ty) / o.k;
+  return { x: Math.min(SW - .001, Math.max(0, sx)), y: Math.min(SH - .001, Math.max(0, sy)) };
+}
+function toHost(s) {
+  return { x: Math.round(s.x / SW * HW), y: Math.round(s.y / SH * HH) };
+}
+
+/* ---------------- render ---------------- */
+function render() {
+  var o = offset();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, stageW, stageH);
+  // the real page decodes 1280-wide JPEG; smoothing on = same softness at >1x
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(stream, o.tx, o.ty, SW * o.k, SH * o.k);
+
+  if (mode === 'remote' && hostCursor) {
+    var hx = o.tx + hostCursor.x * o.k, hy = o.ty + hostCursor.y * o.k;
+    ctx.beginPath(); ctx.arc(hx, hy, 10, 0, 6.3);
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(hx, hy, 6, 0, 6.3);
+    ctx.fillStyle = 'rgba(20,24,30,.95)'; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx + 10, hy + 14); ctx.lineTo(hx + 5, hy + 13);
+    ctx.lineTo(hx + 2, hy + 19); ctx.closePath();
+    ctx.fillStyle = '#fff'; ctx.fill();
+  }
+  if (ripple) {
+    var age = (performance.now() - ripple.t) / 420;
+    if (age < 1) {
+      var px = o.tx + ripple.x * o.k, py = o.ty + ripple.y * o.k;
+      ctx.beginPath(); ctx.arc(px, py, 8 + 30 * age, 0, 6.3);
+      ctx.strokeStyle = 'rgba(46,160,67,' + (1 - age).toFixed(2) + ')'; ctx.lineWidth = 2.5; ctx.stroke();
+      requestAnimationFrame(render);
+    } else { ripple = null; }
+  }
+}
+
+/* ---------------- hud ---------------- */
+var hud = {
+  mode: document.getElementById('hudMode'),
+  zoom: document.getElementById('hudZoom'),
+  host: document.getElementById('hudHost'),
+  lv: document.getElementById('zlv')
+};
+function syncHud() {
+  hud.mode.textContent = mode === 'remote' ? 'REMOTE' : 'WEB';
+  hud.zoom.textContent = view.zoom.toFixed(1) + '×';
+  hud.lv.textContent = view.zoom.toFixed(1) + '×';
+}
+
+/* ---------------- mode ---------------- */
+function setMode(next) {
+  mode = next;
+  var web = mode === 'web';
+  app.classList.toggle('web', web);
+  stage.classList.toggle('web', web);
+  keys.classList.toggle('weblocked', web);
+  document.getElementById('bar').classList.toggle('mode-web', web);
+  document.getElementById('bar').classList.toggle('mode-remote', !web);
+  var badge = document.getElementById('modebadge');
+  badge.classList.toggle('remote', !web);
+  document.getElementById('mbTag').textContent = web ? 'WEB' : 'REMOTE';
+  document.getElementById('mbText').textContent = web ? 'gestures stay in the page' : 'gestures go to the Mac';
+  var mk = document.getElementById('modeKey');
+  mk.classList.toggle('remote', !web);
+  document.getElementById('modeKeyText').textContent = web ? 'REMOTE' : 'WEB';
+  hostCursor = web ? null : hostCursor;
+  syncHud(); render();
+  toast(web ? 'WEB mode — pinch/drag to look around; nothing is sent to the Mac'
+            : 'REMOTE mode — gestures are injected into the Mac');
+}
+document.getElementById('modeKey').addEventListener('click', function () { setMode(mode === 'web' ? 'remote' : 'web'); });
+document.getElementById('modebadge').addEventListener('click', function () { setMode(mode === 'web' ? 'remote' : 'web'); });
+
+/* ---------------- gestures ---------------- */
+var SLOP = 12;                  // same as TAP_SLOP_PX in MirrorView.tsx
+var pointers = new Map();
+var gesture = null;
+
+function now() { return performance.now(); }
+
+canvas.addEventListener('pointerdown', function (e) {
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* synthetic events have no active pointer */ }
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) {
+    var s = toStream(e.clientX, e.clientY);
+    gesture = { kind: 'one', startX: e.clientX, startY: e.clientY, moved: 0, stream: s, zoom: view.zoom, cx: view.cx, cy: view.cy };
+    if (mode === 'remote') { hostCursor = s; render(); }
+  } else if (pointers.size === 2) {
+    var p = twoPointerState();
+    gesture = { kind: 'two', dist: p.dist, mid: p.mid, zoom: view.zoom, cx: view.cx, cy: view.cy, stream: toStream(p.mid.x, p.mid.y) };
+  }
+}, { passive: true });
+
+canvas.addEventListener('pointermove', function (e) {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (!gesture) return;
+
+  if (gesture.kind === 'one' && pointers.size === 1) {
+    var dx = e.clientX - gesture.startX, dy = e.clientY - gesture.startY;
+    gesture.moved = Math.max(gesture.moved, Math.hypot(dx, dy));
+    if (mode === 'web') {
+      var k = scale();
+      view.cx = gesture.cx - dx / k;
+      view.cy = gesture.cy - dy / k;
+      clampView(); render(); syncHud();
+    } else {
+      hostCursor = toStream(e.clientX, e.clientY);
+      render();
+      if (gesture.moved > SLOP) throttledMove(toHost(hostCursor));
+    }
+  } else if (gesture.kind === 'two' && pointers.size === 2) {
+    var p = twoPointerState();
+    if (mode === 'web') {
+      // Pinch + pan in one exact step: the stream point that sat under the
+      // initial midpoint is pinned to the current midpoint, so repeated move
+      // events never drift.  c = s0 - (mid - stageCentre) / k
+      var next = gesture.zoom * (p.dist / Math.max(1, gesture.dist));
+      var r = canvas.getBoundingClientRect();
+      view.zoom = Math.min(ZMAX, Math.max(ZMIN, next));
+      var k = scale();
+      view.cx = gesture.stream.x - (p.mid.x - (r.left + r.width / 2)) / k;
+      view.cy = gesture.stream.y - (p.mid.y - (r.top + r.height / 2)) / k;
+      clampView(); render(); syncHud();
+    } else {
+      throttledWheel(Math.round((p.mid.y - gesture.mid.y) * -1));
+    }
+  }
+}, { passive: true });
+
+canvas.addEventListener('pointerup', function (e) {
+  var point = { x: e.clientX, y: e.clientY };
+  pointers.delete(e.pointerId);
+  if (pointers.size === 0 && gesture) {
+    var g = gesture; gesture = null;
+    if (g.kind === 'one' && g.moved <= SLOP) tap(point);
+  } else if (pointers.size === 1) {
+    var only = pointers.values().next().value;
+    gesture = { kind: 'one', startX: only.x, startY: only.y, moved: SLOP + 1, stream: toStream(only.x, only.y), zoom: view.zoom, cx: view.cx, cy: view.cy };
+  }
+}, { passive: true });
+
+canvas.addEventListener('pointercancel', function (e) { pointers.delete(e.pointerId); if (!pointers.size) gesture = null; }, { passive: true });
+
+function twoPointerState() {
+  var it = pointers.values();
+  var a = it.next().value, b = it.next().value;
+  return {
+    dist: Math.hypot(a.x - b.x, a.y - b.y),
+    mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+  };
+}
+
+function tap(point) {
+  var s = toStream(point.x, point.y);
+  var h = toHost(s);
+  hud.host.textContent = 'tap → ' + h.x + ',' + h.y;
+  var t = now();
+  var doubleTap = (t - lastTap < 320) && lastTapPt && Math.hypot(point.x - lastTapPt.x, point.y - lastTapPt.y) < 32;
+
+  if (mode === 'web') {
+    if (doubleTap) {
+      var target = view.zoom > 1.05 ? 1 : 2.5;
+      zoomTo(target, s);
+      toast(target === 1 ? 'fit' : '2.5× at ' + h.x + ',' + h.y);
+      lastTap = 0; lastTapPt = null;
+      return;
+    }
+    lastTap = t; lastTapPt = point;
+    return;
+  }
+
+  hostCursor = s;
+  ripple = { x: s.x, y: s.y, t: t };
+  render();
+  toast((doubleTap ? 'double click' : 'click') + ' → host ' + h.x + ',' + h.y);
+  lastTap = doubleTap ? 0 : t; lastTapPt = doubleTap ? null : point;
+}
+
+// wheel: desktop trackpads zoom in web mode, scroll the host in remote mode
+canvas.addEventListener('wheel', function (e) {
+  e.preventDefault();
+  if (mode === 'web') {
+    var s = toStream(e.clientX, e.clientY);
+    zoomTo(view.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), s);
+  } else {
+    throttledWheel(Math.round(e.deltaY));
+  }
+}, { passive: false });
+
+// iOS Safari still fires gesture events for page zoom even with user-scalable=no
+['gesturestart', 'gesturechange', 'gestureend'].forEach(function (t) {
+  document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false });
+});
+document.addEventListener('touchmove', function (e) { if (e.target === canvas) e.preventDefault(); }, { passive: false });
+
+/* ---------------- zoom buttons ---------------- */
+function stageCentreStream() { return { x: view.cx, y: view.cy }; }
+document.getElementById('zin').addEventListener('click', function () { zoomTo(view.zoom * 1.5, stageCentreStream()); });
+document.getElementById('zout').addEventListener('click', function () { zoomTo(view.zoom / 1.5, stageCentreStream()); });
+document.getElementById('zfit').addEventListener('click', function () { zoomTo(1, stageCentreStream()); toast('fit'); });
+
+/* ---------------- host feedback (mock ws traffic) ---------------- */
+var moveSent = 0, wheelSent = 0;
+function throttledMove(h) {
+  var t = now(); if (t - moveSent < 16) return; moveSent = t;
+  hud.host.textContent = 'move → ' + h.x + ',' + h.y;
+}
+function throttledWheel(d) {
+  var t = now(); if (t - wheelSent < 40) return; wheelSent = t;
+  toast('scroll ' + d + ' → host');
+}
+
+/* ---------------- key bar ---------------- */
+var held = {};
+document.querySelectorAll('.key.mod').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var k = b.getAttribute('data-key');
+    held[k] = !held[k];
+    b.classList.toggle('held', held[k]);
+    toast('key ' + k + (held[k] ? ' down' : ' up') + ' → host');
+  });
+});
+document.querySelectorAll('.key.disp').forEach(function (b) {
+  b.addEventListener('click', function () { toast('key ' + b.getAttribute('data-key') + ' → host'); });
+});
+document.getElementById('textInput').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { e.preventDefault(); toast('text "' + this.value + '" → host'); this.value = ''; }
+});
+document.getElementById('textSend').addEventListener('click', function () {
+  var el = document.getElementById('textInput');
+  toast('text "' + el.value + '" → host'); el.value = '';
+});
+document.getElementById('keysHide').addEventListener('click', toggleKeys);
+document.getElementById('keysToggle').addEventListener('click', toggleKeys);
+function toggleKeys() {
+  var hidden = keys.style.display === 'none';
+  keys.style.display = hidden ? '' : 'none';
+  document.getElementById('keysToggle').classList.toggle('on', hidden);
+}
+
+/* ---------------- fullscreen: native or immersive ---------------- */
+var nativeFs = typeof document.documentElement.requestFullscreen === 'function';
+document.getElementById('fs').addEventListener('click', function () {
+  if (nativeFs) {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(function () { setImmersive(true); });
+  } else {
+    setImmersive(!immersive);
+  }
+});
+document.addEventListener('fullscreenchange', function () { syncFsIcon(); layout(); });
+
+function setImmersive(on) {
+  immersive = on;
+  app.classList.toggle('immersive', on);
+  syncFsIcon(); layout();
+  if (on) toast('immersive — iPhone Safari has no Fullscreen API; Add to Home Screen gives the real thing');
+}
+function syncFsIcon() {
+  var on = immersive || !!document.fullscreenElement;
+  var b = document.getElementById('fs');
+  b.textContent = on ? '⤡' : '⛶';
+  b.classList.toggle('on', on);
+}
+document.getElementById('mbExit').addEventListener('click', function () { setImmersive(false); });
+document.getElementById('mbBack').addEventListener('click', function () { toast('‹ back to chat'); });
+
+/* ---------------- legend + toast ---------------- */
+document.getElementById('help').addEventListener('click', function () {
+  document.getElementById('legend').hidden = false;
+});
+document.getElementById('legendClose').addEventListener('click', function () {
+  document.getElementById('legend').hidden = true;
+});
+
+var toastEl = document.getElementById('toast'), toastTimer = 0;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 2200);
+}
+
+/* ---------------- boot ---------------- */
+new ResizeObserver(layout).observe(stage);
+window.addEventListener('orientationchange', function () { setTimeout(layout, 250); });
+layout(); setMode('remote');
+toast('mockup: 1 finger drag / pinch to look around — switch to WEB on the key bar');
+</script>
+</body>
+</html>

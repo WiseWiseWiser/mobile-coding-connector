@@ -32,6 +32,7 @@ import (
 	customagentapi "github.com/xhd2015/ai-critic/server/api"
 	"github.com/xhd2015/ai-critic/server/auth"
 	"github.com/xhd2015/ai-critic/server/bookmarks"
+	"github.com/xhd2015/ai-critic/server/browser"
 	"github.com/xhd2015/ai-critic/server/checkpoint"
 	cloudflareSettings "github.com/xhd2015/ai-critic/server/cloudflare"
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
@@ -63,6 +64,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/logs"
 	servermachineanalyse "github.com/xhd2015/ai-critic/server/machineanalyse"
 	servermachinebackup "github.com/xhd2015/ai-critic/server/machinebackup"
+	"github.com/xhd2015/ai-critic/server/mockups"
 	openclawapi "github.com/xhd2015/ai-critic/server/openclaw"
 	serverprojectpull "github.com/xhd2015/ai-critic/server/projectpull"
 	"github.com/xhd2015/ai-critic/server/projects"
@@ -73,6 +75,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/proxy/wsproxy"
 	serverqemu "github.com/xhd2015/ai-critic/server/qemu"
 	"github.com/xhd2015/ai-critic/server/quicktest"
+	"github.com/xhd2015/ai-critic/server/screen"
 	"github.com/xhd2015/ai-critic/server/services"
 	"github.com/xhd2015/ai-critic/server/settings"
 	"github.com/xhd2015/ai-critic/server/sshservers"
@@ -310,6 +313,9 @@ func Serve(port int, dev bool) error {
 		// Kill agent children immediately so SIGTERM shutdown completes before test/process timeouts.
 		agents.Shutdown()
 		terminal.Shutdown()
+		// Stop screen capture too: an orphaned ffmpeg keeps the screen device
+		// busy and starves every later capture attempt.
+		screen.Shutdown()
 		// SIGTERM from tests expects the process to exit promptly; avoid blocking on extension cleanup.
 		if sig == syscall.SIGTERM {
 			os.Exit(0)
@@ -383,6 +389,8 @@ func runShutdownCleanup(server *http.Server, cleanupTimeout time.Duration) {
 	agents.Shutdown()
 	fmt.Println("Stopping terminal PTY sessions...")
 	terminal.Shutdown()
+	fmt.Println("Stopping screen capture...")
+	screen.Shutdown()
 
 	// Stop all domain health check goroutines
 	fmt.Println("Stopping domain health check goroutines...")
@@ -674,6 +682,9 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Fake LLM API for mockups
 	fakellm.RegisterAPI(mux)
 
+	// Static HTML mockups, served at /mockups/<name>.html for phone review
+	mockups.RegisterAPI(mux)
+
 	// Features API
 	features.RegisterAPI(mux)
 
@@ -709,6 +720,12 @@ func RegisterAPI(mux *http.ServeMux) error {
 	localclipboard.Register(mux, &localclipboard.Handler{})
 	localadhoc.Register(mux, &localadhoc.Handler{})
 	textconvert.Register(mux, &textconvert.Handler{})
+
+	// Screen mirroring + remote control (view the desktop, drive mouse/keyboard)
+	screen.RegisterAPI(mux)
+
+	// Browser cast: view and drive a headed Chrome window through browser-agent
+	browser.RegisterAPI(mux)
 
 	// Server status API
 	RegisterServerStatusAPI(mux)

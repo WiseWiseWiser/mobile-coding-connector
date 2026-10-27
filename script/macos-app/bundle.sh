@@ -17,6 +17,14 @@ REMOTE_ONLY="${REMOTE_ONLY:-0}"
 if [[ "$MODE" == "remote" || "$REMOTE_ONLY" == "1" ]]; then
     SKIP_SERVER=1
 fi
+# CODESIGN_IDENTITY: sign with a stable identity so macOS privacy grants
+# (Screen Recording, Accessibility) survive rebuilds. Ad-hoc signatures key
+# TCC grants to the binary hash, so every rebuild silently revokes the
+# permission and screen capture starts failing with "the user declined TCCs".
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
+if [[ -z "$CODESIGN_IDENTITY" ]]; then
+    CODESIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n '1s/.*"\(.*\)"/\1/p')"
+fi
 BUNDLE_DIR="$MACOS_DIR/$APP_NAME.app"
 CONTENTS="$BUNDLE_DIR/Contents"
 MACOS_BIN="$CONTENTS/MacOS"
@@ -30,6 +38,12 @@ if [[ "$SKIP_SERVER" != "1" ]]; then
     echo "==> Building ai-critic CLI"
     mkdir -p "$MACOS_DIR/.build"
     go run ./script/server/build -o "$MACOS_DIR/.build/ai-critic"
+
+    # macOS 26 no longer feeds the legacy AVFoundation screen input, so the
+    # mirror is driven by this ScreenCaptureKit helper instead of ffmpeg.
+    echo "==> Building ScreenCaptureKit helper (ai-critic-screencap)"
+    xcrun swiftc -O -o "$MACOS_DIR/.build/ai-critic-screencap" \
+        "$PROJECT_DIR/server/screen/screencap/main.swift"
 else
     echo "==> Skipping frontend + server binary embed (remote / SKIP_SERVER)"
 fi
@@ -51,6 +65,8 @@ cp "$BIN_PATH" "$MACOS_BIN/$SWIFT_EXECUTABLE"
 if [[ "$SKIP_SERVER" != "1" ]]; then
     cp "$MACOS_DIR/.build/ai-critic" "$MACOS_BIN/ai-critic"
     chmod +x "$MACOS_BIN/ai-critic"
+    cp "$MACOS_DIR/.build/ai-critic-screencap" "$MACOS_BIN/ai-critic-screencap"
+    chmod +x "$MACOS_BIN/ai-critic-screencap"
 fi
 
 cat > "$CONTENTS/Info.plist" <<PLIST
@@ -80,8 +96,13 @@ cat > "$CONTENTS/Info.plist" <<PLIST
 </plist>
 PLIST
 
-echo "==> Ad-hoc code signing"
-codesign --force --deep -s - "$BUNDLE_DIR" 2>/dev/null || true
+if [[ -n "$CODESIGN_IDENTITY" ]]; then
+    echo "==> Code signing with '$CODESIGN_IDENTITY'"
+    codesign --force --deep --timestamp=none -s "$CODESIGN_IDENTITY" "$BUNDLE_DIR"
+else
+    echo "==> Ad-hoc code signing (privacy grants will not survive rebuilds)"
+    codesign --force --deep -s - "$BUNDLE_DIR" 2>/dev/null || true
+fi
 
 echo ""
 echo "==> App bundle ready: $BUNDLE_DIR"

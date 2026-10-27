@@ -44,6 +44,8 @@ var (
 	DomainsFile                    = DataDir + "/server-domains.json"
 	CloudflareFile                 = DataDir + "/cloudflare.json"
 	TerminalConfFile               = DataDir + "/terminal-config.json"
+	ScreenConfFile                 = DataDir + "/screen-config.json"
+	BrowserDaemonLogFile           = DataDir + "/browser-agent-daemon.log"
 	GitUserConfigsFile             = DataDir + "/git-user-configs.json"
 	UsageItemsFile                 = DataDir + "/usage-items.json"
 	ProjectsFile                   = DataDir + "/projects.json"

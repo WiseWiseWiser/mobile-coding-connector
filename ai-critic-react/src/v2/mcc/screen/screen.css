@@ -1,0 +1,611 @@
+.screen-page {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: #0b0d10;
+    color: #e6e8eb;
+    font-size: 13px;
+    line-height: 1.4;
+    overflow: hidden;
+    z-index: 40;
+}
+
+/* ---------------------------------------------------------------- top bar */
+
+.screen-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #12151a;
+    border-bottom: 1px solid #22262c;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    flex: none;
+}
+
+.screen-bar-active {
+    background: linear-gradient(180deg, #10281a 0%, #12151a 100%);
+    border-bottom-color: #2ea043;
+    box-shadow: 0 1px 0 rgba(46, 160, 67, 0.35);
+}
+
+.screen-bar-locked {
+    border-bottom-color: #d29922;
+}
+
+.screen-bar-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.screen-bar-info strong {
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.screen-bar-active .screen-bar-info strong {
+    color: #56d364;
+}
+
+.screen-bar-locked .screen-bar-info strong {
+    color: #e3b341;
+}
+
+.screen-bar-meta {
+    color: #8b949e;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.screen-bar-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+}
+
+.screen-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #6e7681;
+    flex: none;
+}
+
+.screen-dot-open {
+    background: #3fb950;
+    box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.15);
+}
+
+.screen-dot-connecting {
+    background: #d29922;
+    animation: screen-pulse 1.2s ease-in-out infinite;
+}
+
+.screen-dot-closed {
+    background: #f85149;
+}
+
+@keyframes screen-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+/* --------------------------------------------------------------- controls */
+
+.screen-btn {
+    appearance: none;
+    border: 1px solid #30363d;
+    background: #1c2128;
+    color: #e6e8eb;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.screen-btn:hover:not(:disabled) {
+    background: #262c36;
+    border-color: #444c56;
+}
+
+.screen-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.screen-btn-primary {
+    background: #238636;
+    border-color: #2ea043;
+    color: #ffffff;
+}
+
+.screen-btn-primary:hover:not(:disabled) {
+    background: #2ea043;
+}
+
+.screen-btn-release {
+    background: #4a1c1c;
+    border-color: #8e3232;
+    color: #ffb4b4;
+}
+
+.screen-btn-release:hover:not(:disabled) {
+    background: #612323;
+}
+
+.screen-icon-btn {
+    appearance: none;
+    border: 1px solid #30363d;
+    background: #1c2128;
+    color: #c9d1d9;
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+}
+
+.screen-icon-btn:hover {
+    background: #262c36;
+}
+
+.screen-icon-btn.is-on {
+    background: #1f6feb;
+    border-color: #388bfd;
+    color: #ffffff;
+}
+
+/* ----------------------------------------------------------------- stage */
+
+.screen-stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    background: #000000;
+}
+
+.screen-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    cursor: crosshair;
+    user-select: none;
+    -webkit-user-select: none;
+    /* A 350 ms press must not raise the iOS callout menu and cancel the touch. */
+    -webkit-touch-callout: none;
+}
+
+.screen-page-active .screen-canvas {
+    cursor: none;
+}
+
+/* A thin green frame is the "you are in the driver's seat" signal. */
+.screen-frame {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 2px rgba(46, 160, 67, 0.75);
+}
+
+/* Amber while a long press holds the host pointer, matching the pressed
+   cursor the server streams back, so the two read as one gesture. */
+.screen-frame-drag {
+    box-shadow: inset 0 0 0 2px rgba(210, 153, 34, 0.9);
+}
+
+.screen-drag-badge {
+    position: absolute;
+    left: 50%;
+    top: 8px;
+    transform: translateX(-50%);
+    z-index: 4;
+    background: rgba(64, 44, 8, 0.92);
+    border: 1px solid rgba(210, 153, 34, 0.75);
+    color: #f0c674;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.screen-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #8b949e;
+    font-size: 13px;
+    background: rgba(11, 13, 16, 0.55);
+    pointer-events: none;
+}
+
+/* Floats over the picture, clear of the zoom cluster in the corner. */
+.screen-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 58px;
+    transform: translateX(-50%);
+    z-index: 3;
+    background: rgba(18, 21, 26, 0.9);
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    pointer-events: none;
+    white-space: nowrap;
+    max-width: 90vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.screen-toast {
+    position: absolute;
+    left: 50%;
+    bottom: 100px;
+    transform: translateX(-50%);
+    background: #4a1c1c;
+    border: 1px solid #8e3232;
+    color: #ffd9d9;
+    padding: 7px 14px;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    max-width: 90vw;
+    z-index: 3;
+}
+
+/* --------------------------------------------------------------- banners */
+
+.screen-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    font-size: 12px;
+    border-top: 1px solid #30363d;
+    flex: none;
+}
+
+.screen-banner span {
+    flex: 1;
+    min-width: 0;
+}
+
+.screen-banner-warn {
+    background: #2b2113;
+    color: #f0c674;
+    border-top-color: #5c4415;
+}
+
+.screen-banner-error {
+    background: #2d1418;
+    color: #ff9b9b;
+    border-top-color: #6e2731;
+}
+
+/* ------------------------------------------------------------- key panel */
+
+.screen-keys {
+    flex: none;
+    background: #12151a;
+    border-top: 1px solid #22262c;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 42vh;
+    overflow-y: auto;
+}
+
+.screen-keys-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: nowrap;
+}
+
+.screen-keys-scroll {
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.screen-key {
+    appearance: none;
+    border: 1px solid #30363d;
+    background: #1c2128;
+    color: #e6e8eb;
+    font: inherit;
+    font-size: 12px;
+    min-width: 40px;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+.screen-key:hover {
+    background: #262c36;
+}
+
+.screen-key.is-held {
+    background: #1f6feb;
+    border-color: #388bfd;
+    color: #ffffff;
+}
+
+.screen-key-wide {
+    min-width: 90px;
+}
+
+.screen-text-input {
+    flex: 1;
+    min-width: 0;
+    height: 34px;
+    border-radius: 7px;
+    border: 1px solid #30363d;
+    background: #0d1117;
+    color: #e6e8eb;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 12px;
+}
+
+.screen-text-input:focus {
+    outline: none;
+    border-color: #388bfd;
+}
+
+@media (max-width: 640px) {
+    .screen-bar {
+        padding: 6px 8px;
+        gap: 8px;
+    }
+
+    .screen-bar-info strong {
+        font-size: 11px;
+    }
+
+    .screen-btn {
+        padding: 6px 10px;
+    }
+
+    .screen-icon-btn {
+        width: 30px;
+        height: 30px;
+    }
+
+    .screen-key {
+        min-width: 36px;
+        height: 38px;
+    }
+
+    .screen-hint {
+        bottom: 52px;
+        font-size: 11px;
+    }
+}
+
+/* The narrowest phones: the mode chip has to fit next to take/release. */
+@media (max-width: 380px) {
+    .screen-bar {
+        gap: 6px;
+    }
+
+    .screen-bar-actions {
+        gap: 4px;
+    }
+
+    .screen-bar .screen-mode {
+        padding: 4px 7px;
+        font-size: 10px;
+        min-width: 44px;
+    }
+}
+
+/* A locked host captures as the login window: a dark, static image that looks
+   like a broken mirror, so name the state over the picture itself. */
+.screen-overlay-locked {
+    color: #f0f6fc;
+    background: rgba(11, 13, 16, 0.72);
+    padding: 0 24px;
+    text-align: center;
+    line-height: 1.5;
+}
+
+/* ------------------------------------------------------- zoom, pan and modes */
+
+/* Drag-to-pan owns the pointer, so the cursor has to say so. */
+.screen-page .screen-canvas-browse {
+    cursor: grab;
+}
+
+.screen-page .screen-canvas-browse:active {
+    cursor: grabbing;
+}
+
+.screen-zoom {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 999px;
+    background: rgba(18, 21, 26, 0.82);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.screen-zoom-btn {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: #e6edf3;
+    font: inherit;
+    font-size: 17px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.screen-zoom-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.screen-zoom-btn:disabled {
+    opacity: 0.28;
+    cursor: default;
+}
+
+.screen-zoom-label {
+    min-width: 44px;
+    text-align: center;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: #9aa7b4;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* The chip is the one control that changes what every other control means, so
+   it carries its own colour: green drives the Mac, blue stays in the browser. */
+.screen-mode {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 10px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    line-height: 1.2;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.screen-mode.is-remote {
+    background: #17351f;
+    border-color: #2ea043;
+    color: #7ee787;
+}
+
+.screen-mode.is-web {
+    background: #12263d;
+    border-color: #1f6feb;
+    color: #79c0ff;
+}
+
+.screen-key-mode {
+    min-width: 66px;
+    font-size: 11px;
+}
+
+/* WEB mode: the host keys cannot fire, so they recede instead of lying. The
+   composer is the exception — it stays editable, because a draft written while
+   browsing is kept and sent later. */
+.screen-keys-web .screen-key:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.screen-keys-web .screen-text-input::placeholder {
+    color: #6b7280;
+}
+
+/* One line saying why a draft is still sitting here. Only shown while the
+   composer holds text that cannot be sent, so it never costs a row otherwise. */
+.screen-keys-note {
+    font-size: 11px;
+    line-height: 1.35;
+    color: #d29922;
+    padding: 0 2px;
+}
+
+/* Immersive mode: everything that is chrome gets out of the picture's way.
+   Used when the browser has no element fullscreen (every iOS browser). */
+.screen-page-immersive {
+    height: 100dvh;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    background: #000000;
+}
+
+.screen-immersive-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    background: rgba(11, 13, 16, 0.72);
+    border-bottom: 1px solid rgba(48, 54, 61, 0.6);
+}
+
+.screen-immersive-title {
+    flex: 1;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: #8b949e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.screen-fs-hint {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 8px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 6px 6px 12px;
+    border-radius: 8px;
+    background: rgba(18, 21, 26, 0.92);
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    font-size: 12px;
+}
+
+.screen-fs-hint span {
+    flex: 1;
+}
