@@ -36,24 +36,8 @@ func EnsurePersistedTunnelName() (string, error) {
 	return name, nil
 }
 
-func rotatePersistedTunnelName() (string, error) {
-	persistTunnelMu.Lock()
-	defer persistTunnelMu.Unlock()
-	cfg, err := LoadDomains()
-	if err != nil {
-		return "", err
-	}
-	name := cloudflareSettings.HostPreferredTunnelNameUnique(cloudflareSettings.LocalHostname())
-	cfg.TunnelName = name
-	if err := SaveDomains(cfg); err != nil {
-		return "", err
-	}
-	return name, nil
-}
-
-// StartHostDomainTunnel starts a host Cloudflare tunnel using the persisted
-// ai-critic-* tunnel name. On missing local credentials it allocates a unique
-// name and retries once.
+// StartHostDomainTunnel uses the persisted shared tunnel identity. Missing
+// credentials must be repaired rather than silently rotating sibling routes.
 func StartHostDomainTunnel(domain string, port int, logFn cloudflareSettings.LogFunc) (*cloudflareSettings.DomainTunnelStatus, error) {
 	return startHostDomainTunnel(domain, port, logFn, false)
 }
@@ -61,6 +45,16 @@ func StartHostDomainTunnel(domain string, port int, logFn cloudflareSettings.Log
 // ForceStartHostDomainTunnel is StartHostDomainTunnel that does not keep a
 // tunnel already marked active. Used when switching backends.
 func ForceStartHostDomainTunnel(domain string, port int, logFn cloudflareSettings.LogFunc) (*cloudflareSettings.DomainTunnelStatus, error) {
+	return startHostDomainTunnel(domain, port, logFn, true)
+}
+
+// Both bootstrap and owned port-forward retries share this backend and must
+// preserve the persisted tunnel identity, even if credentials are missing.
+func startBootstrapDomainTunnel(domain string, port int, logFn cloudflareSettings.LogFunc) (*cloudflareSettings.DomainTunnelStatus, error) {
+	return startHostDomainTunnel(domain, port, logFn, false)
+}
+
+func retryBootstrapDomainTunnel(domain string, port int, logFn cloudflareSettings.LogFunc) (*cloudflareSettings.DomainTunnelStatus, error) {
 	return startHostDomainTunnel(domain, port, logFn, true)
 }
 
@@ -84,16 +78,13 @@ func startHostDomainTunnel(domain string, port int, logFn cloudflareSettings.Log
 	if err == nil {
 		return status, nil
 	}
-	if !isMissingTunnelCreds(err) {
-		return nil, err
+	if isMissingTunnelCreds(err) {
+		return nil, fmt.Errorf("%w; restore credentials for the configured tunnel without replacing it", err)
 	}
-	logFn(fmt.Sprintf("tunnel %s has no local credentials; allocating a unique name", name))
-	name, err = rotatePersistedTunnelName()
-	if err != nil {
-		return nil, err
+	if strings.Contains(err.Error(), "could not determine tunnel ID") {
+		return nil, fmt.Errorf("%w; check DNS/network access to Cloudflare and tunnel credentials", err)
 	}
-	logFn("retry with tunnel name " + name)
-	return start(domain, port, name, logFn)
+	return nil, err
 }
 
 // StopHostDomainTunnel tears down the tunnel StartHostDomainTunnel started.
@@ -113,5 +104,16 @@ func StopHostDomainTunnel(domain string, logFn cloudflareSettings.LogFunc) error
 		return cloudflareSettings.StopDomainTunnel(domain, "")
 	}
 	b := serverqemu.CloudflaredBackend()
-	return b.RemoveRoute(context.Background(), "", domain)
+	if serverqemu.Enabled() || serverqemu.IsDomainActive(domain) {
+		return cloudflareSettings.StopDomainTunnel(domain, "")
+	}
+	cfg, err := LoadDomains()
+	if err != nil {
+		return fmt.Errorf("load tunnel name before stopping: %w", err)
+	}
+	name := strings.TrimSpace(cfg.TunnelName)
+	if name == "" {
+		return fmt.Errorf("cannot stop managed tunnel without its persisted name")
+	}
+	return b.RemoveRoute(context.Background(), name, domain)
 }

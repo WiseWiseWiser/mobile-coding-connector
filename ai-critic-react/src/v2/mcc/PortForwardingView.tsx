@@ -110,7 +110,7 @@ export function PortForwardingView({
             </div>
             <div className="mcc-ports-list">
                 {ports.map(port => (
-                    <PortForwardCard key={port.localPort} port={port} onRemove={() => onRemovePort(port.localPort)} onNavigateToView={onNavigateToView} />
+                    <PortForwardCard key={`${port.type || 'forward'}:${port.localPort}:${port.label}`} port={port} onRemove={() => onRemovePort(port.localPort)} onNavigateToView={onNavigateToView} />
                 ))}
                 {!loading && ports.length === 0 && (
                     <div className="mcc-ports-empty">No port forwards active.</div>

@@ -1,10 +1,5 @@
 import type { BrowserMode, BrowserStatus, ConnectionState } from './browserWire';
-
-const PRESET_LABEL: Record<string, string> = {
-    iphone: 'iPhone',
-    ipad: 'iPad',
-    mac: 'Mac',
-};
+import { presetLabel } from './browserView';
 
 const PRESET_TITLE: Record<string, string> = {
     iphone: 'Resize the Chrome window to an iPhone-sized viewport (390×844 requested).',
@@ -78,7 +73,7 @@ export function BrowserToolbar({
                     </span>
                 )}
                 <span className={`bw-pill${clamped(status) ? ' is-clamped' : ''}`} title={presetTitle}>
-                    {PRESET_LABEL[status?.preset ?? ''] ?? 'Mac'}
+                    {presetLabel(status?.preset)}
                     {viewport ? ` · ${viewport}` : ''}
                 </span>
                 <span className="bw-spacer" />
@@ -115,7 +110,7 @@ export function BrowserToolbar({
                         onClick={() => onPreset(preset.name)}
                         title={`${PRESET_TITLE[preset.name] ?? ''} Requested ${preset.width}×${preset.height}.`}
                     >
-                        {PRESET_LABEL[preset.name] ?? preset.name}
+                        {presetLabel(preset.name)}
                     </button>
                 ))}
             </div>

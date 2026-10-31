@@ -34,7 +34,8 @@ func runExtensionWork() {
 
 	go func() {
 		time.Sleep(2 * time.Second)
-		domains.InitDomainTunnels()
+		// Bootstrap domains are reconciled by their selected backend above.
+		// Do not also publish them through a second core tunnel.
 		exposedurls.InitExposedURLTunnels()
 	}()
 }

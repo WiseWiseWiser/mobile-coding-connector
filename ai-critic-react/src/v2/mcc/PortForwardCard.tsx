@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { PortForward } from '../../hooks/usePortForwards';
 import { PortStatuses } from '../../hooks/usePortForwards';
 import { fetchPortLogs as apiFetchPortLogs, fetchDomainHealthLogs } from '../../api/ports';
+import { stopTunnel } from '../../api/domains';
 import { LogViewer } from '../LogViewer';
 
 interface PortForwardCardProps {
@@ -14,6 +15,20 @@ export function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwar
     const [showLogs, setShowLogs] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
     const [copied, setCopied] = useState(false);
+    const [stopping, setStopping] = useState(false);
+    const [stopError, setStopError] = useState<string | null>(null);
+    const stoppingRef = useRef(false);
+
+    async function handleStop() {
+        if (!port.bootstrap) { onRemove(); return; }
+        if (stoppingRef.current) return;
+        stoppingRef.current = true;
+        setStopping(true);
+        setStopError(null);
+        try { await stopTunnel(port.label); }
+        catch (error) { setStopError(error instanceof Error ? error.message : String(error)); }
+        finally { stoppingRef.current = false; setStopping(false); }
+    }
 
     const statusIcon = port.status === PortStatuses.Active ? '🟢' :
                        port.status === PortStatuses.Connecting ? '🟡' : '🔴';
@@ -81,9 +96,9 @@ export function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwar
                 </div>
             ) : port.status === PortStatuses.Connecting ? (
                 <div className="mcc-port-url mcc-port-url-connecting">Establishing tunnel...</div>
-            ) : port.error ? (
-                <div className="mcc-port-url mcc-port-url-error">{port.error}</div>
             ) : null}
+            {port.error && <div className="mcc-port-url mcc-port-url-error">{port.error}</div>}
+            {stopError && <div className="mcc-port-url mcc-port-url-error" role="alert">{stopError}</div>}
             <div className="mcc-port-actions">
                 <button
                     className={`mcc-port-action-btn mcc-port-logs-btn ${showLogs ? 'active' : ''}`}
@@ -97,7 +112,7 @@ export function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwar
                 >
                     Diagnose
                 </button>
-                <button className="mcc-port-action-btn mcc-port-stop" onClick={onRemove}>Stop</button>
+                <button className="mcc-port-action-btn mcc-port-stop" onClick={handleStop} disabled={stopping || (port.bootstrap && port.status === PortStatuses.Stopped)}>{stopping ? 'Stopping…' : 'Stop'}</button>
             </div>
             {showLogs && (
                 <LogViewer

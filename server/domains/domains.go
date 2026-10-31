@@ -1,14 +1,12 @@
 package domains
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/xhd2015/agent-pro/agent/streaming/sse"
 	cloudflareSettings "github.com/xhd2015/ai-critic/server/cloudflare"
@@ -23,10 +21,6 @@ var (
 
 	serverPortMu sync.RWMutex
 	serverPort   int
-
-	// healthCheckCancel tracks cancel functions for domain health check goroutines
-	healthCheckMu     sync.RWMutex
-	healthCheckCancel = map[string]context.CancelFunc{}
 
 	// healthCheckLogs stores log buffers for each domain's health check goroutine
 	healthCheckLogsMu sync.RWMutex
@@ -171,38 +165,11 @@ func SaveDomains(cfg *DomainsConfig) error {
 // Should be called after SetServerPort and SetDomainsFile.
 // Runs in the background and logs any errors to stdout.
 func AutoStartTunnels() {
-	cfg, err := LoadDomains()
-	if err != nil {
-		fmt.Printf("[domains] auto-start: failed to load domains config: %v\n", err)
-		return
-	}
-
 	port := getServerPort()
 	if port == 0 {
 		return
 	}
-
-	for _, d := range cfg.Domains {
-		if d.Provider != ProviderCloudflare {
-			continue
-		}
-		domain := d.Domain
-		go func() {
-			fmt.Printf("[domains] auto-starting tunnel for %s...\n", domain)
-			logFn := func(msg string) {
-				fmt.Printf("[domains] %s: %s\n", domain, msg)
-			}
-			_, err := StartHostDomainTunnel(domain, port, logFn)
-			if err != nil {
-				fmt.Printf("[domains] auto-start failed for %s: %v\n", domain, err)
-			} else {
-				fmt.Printf("[domains] tunnel started for %s\n", domain)
-				// Start health check goroutine for this domain
-				name, _ := EnsurePersistedTunnelName()
-				startDomainHealthCheck(domain, port, name)
-			}
-		}()
-	}
+	bootstrapDomains.startConfigured(port)
 }
 
 // RegisterAPI registers the domains endpoints
@@ -243,7 +210,7 @@ func handleGetDomains(w http.ResponseWriter, _ *http.Request) {
 			Status:      "stopped",
 		}
 		if d.Provider == ProviderCloudflare {
-			ts := cloudflareSettings.GetDomainTunnelStatus(d.Domain)
+			ts := getBootstrapDomainStatus(d.Domain)
 			ds.Status = ts.Status
 			ds.TunnelURL = ts.TunnelURL
 			ds.Error = ts.Error
@@ -259,10 +226,24 @@ func handleSaveDomains(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var cfg DomainsConfig
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	var request struct {
+		Domains    []DomainEntry `json:"domains"`
+		TunnelName *string       `json:"tunnel_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+	persistTunnelMu.Lock()
+	defer persistTunnelMu.Unlock()
+	current, err := LoadDomains()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	cfg := DomainsConfig{Domains: request.Domains, TunnelName: current.TunnelName}
+	if request.TunnelName != nil {
+		cfg.TunnelName = *request.TunnelName
 	}
 	if err := SaveDomains(&cfg); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
@@ -352,15 +333,11 @@ func handleTunnelStart(w http.ResponseWriter, r *http.Request) {
 		sw.SendLog(message)
 	}
 
-	status, err := StartHostDomainTunnel(req.Domain, port, logFn)
+	status, err := bootstrapDomains.startManual(req.Domain, port, logFn)
 	if err != nil {
 		sw.SendError(fmt.Sprintf("Failed to start tunnel: %v", err))
 		return
 	}
-
-	// Start health check for manually started tunnels too
-	name, _ := EnsurePersistedTunnelName()
-	startDomainHealthCheck(req.Domain, port, name)
 
 	sw.SendDone(map[string]string{
 		"message":    "Tunnel started successfully",
@@ -392,12 +369,21 @@ func handleTunnelStop(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to load domains: %v", err))
 		return
 	}
+	configured := false
+	for _, entry := range cfg.Domains {
+		if entry.Domain == req.Domain && entry.Provider == ProviderCloudflare {
+			configured = true
+			break
+		}
+	}
+	if !configured {
+		writeJSONError(w, http.StatusNotFound, "Cloudflare domain not found in config")
+		return
+	}
 
-	// Stop health check for this domain
-	stopDomainHealthCheck(req.Domain)
-
-	if err := cloudflareSettings.StopDomainTunnel(req.Domain, cfg.TunnelName); err != nil {
-		writeJSONError(w, http.StatusNotFound, err.Error())
+	// Cancel pending retries before removing the selected backend route.
+	if err := bootstrapDomains.stopDomain(req.Domain, nil); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -422,6 +408,8 @@ func handleTunnelName(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
+		persistTunnelMu.Lock()
+		defer persistTunnelMu.Unlock()
 		cfg, err := LoadDomains()
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err.Error())
@@ -493,144 +481,9 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
-// startDomainHealthCheck starts a health check goroutine for the given domain.
-// It pings the domain's /ping endpoint every 10 seconds. If 3 consecutive pings
-// fail, it stops the tunnel and restarts it.
-func startDomainHealthCheck(domain string, port int, tunnelName string) {
-	// Cancel any existing health check for this domain
-	stopDomainHealthCheck(domain)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	healthCheckMu.Lock()
-	healthCheckCancel[domain] = cancel
-	healthCheckMu.Unlock()
-
-	// Create or get log buffer for this domain
-	healthCheckLogsMu.Lock()
-	logBuffer := newHealthCheckLogBuffer()
-	healthCheckLogs[domain] = logBuffer
-	healthCheckLogsMu.Unlock()
-
-	go func() {
-		defer func() {
-			healthCheckMu.Lock()
-			delete(healthCheckCancel, domain)
-			healthCheckMu.Unlock()
-		}()
-
-		logBuffer.addLog(fmt.Sprintf("Health check started for %s", domain))
-
-		consecutiveFailures := 0
-		wasPaused := false // Track previous pause state for logging when resuming
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-
-		// Wait a bit before first check to allow tunnel to be ready
-		select {
-		case <-time.After(5 * time.Second):
-		case <-ctx.Done():
-			logBuffer.addLog("Health check stopped")
-			return
-		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				logBuffer.addLog("Health check stopped")
-				return
-			case <-ticker.C:
-				// Check if health checks are paused for this mapping (e.g., after recent restart)
-				mappingID := fmt.Sprintf("domain-%s", domain)
-				tg := unified_tunnel.GetTunnelGroupManager().GetCoreGroup()
-				isPaused := tg.IsHealthCheckPaused(mappingID)
-
-				// Log when coming out of pause
-				if wasPaused && !isPaused {
-					logBuffer.addLog("Health check resumed (pause period expired)")
-					fmt.Printf("[domains] %s: health check resumed, resetting failure counter\n", domain)
-					consecutiveFailures = 0 // Reset counter when resuming from pause
-				}
-				wasPaused = isPaused
-
-				if isPaused {
-					logBuffer.addLog("Health check paused (recent restart)")
-					continue
-				}
-
-				if !checkDomainPing(domain) {
-					consecutiveFailures++
-					logMsg := fmt.Sprintf("Health check failed (%d/3)", consecutiveFailures)
-					logBuffer.addLog(logMsg)
-					fmt.Printf("[domains] %s: %s\n", domain, logMsg)
-					if consecutiveFailures >= 3 {
-						logBuffer.addLog("Health check failed 3 times, restarting mapping...")
-						fmt.Printf("[domains] health check failed 3 times for %s, restarting mapping...\n", domain)
-
-						// Use core tunnel group to restart the mapping
-						if err := tg.RestartMapping(mappingID); err != nil {
-							errMsg := fmt.Sprintf("Failed to restart mapping: %v", err)
-							logBuffer.addLog(errMsg)
-							fmt.Printf("[domains] %s: %s\n", domain, errMsg)
-						} else {
-							successMsg := "Mapping restarted successfully via core tunnel group"
-							logBuffer.addLog(successMsg)
-							fmt.Printf("[domains] %s: %s\n", domain, successMsg)
-							// Reset failure counter after successful restart
-							consecutiveFailures = 0
-						}
-					}
-				} else {
-					if consecutiveFailures > 0 {
-						logBuffer.addLog("Health check recovered")
-						fmt.Printf("[domains] health check recovered for %s\n", domain)
-					}
-					consecutiveFailures = 0
-				}
-			}
-		}
-	}()
-}
-
-// stopDomainHealthCheck stops the health check goroutine for the given domain.
-func stopDomainHealthCheck(domain string) {
-	healthCheckMu.Lock()
-	cancel, ok := healthCheckCancel[domain]
-	if ok {
-		delete(healthCheckCancel, domain)
-	}
-	healthCheckMu.Unlock()
-	if ok {
-		cancel()
-	}
-
-	// Clean up log buffer
-	healthCheckLogsMu.Lock()
-	delete(healthCheckLogs, domain)
-	healthCheckLogsMu.Unlock()
-}
-
-// StopAllDomainHealthChecks stops all domain health check goroutines.
-// This should be called during server shutdown.
+// StopAllDomainHealthChecks stops the bootstrap reconciliation workers.
 func StopAllDomainHealthChecks() {
-	healthCheckMu.Lock()
-	domains := make([]string, 0, len(healthCheckCancel))
-	for domain := range healthCheckCancel {
-		domains = append(domains, domain)
-	}
-	healthCheckMu.Unlock()
-
-	for _, domain := range domains {
-		stopDomainHealthCheck(domain)
-	}
-}
-
-// checkDomainPing checks if the domain's /ping endpoint is reachable.
-// Returns true if ping succeeds, false otherwise.
-func checkDomainPing(domain string) bool {
-	// Cloudflare 530 is "connecting", not a restart trigger: SIGTERM resets
-	// QUIC→HTTP/2 fallback and is what kept mac-agent-aes42 on error 1033.
-	tg := unified_tunnel.GetTunnelGroupManager().GetCoreGroup()
-	return tg.TunnelMgr().ProbeAndRecord(domain)
+	bootstrapDomains.shutdown()
 }
 
 // DomainTunnelInfo represents information about an active domain tunnel
@@ -655,7 +508,7 @@ func GetActiveDomainTunnels() []DomainTunnelInfo {
 		if d.Provider != ProviderCloudflare {
 			continue
 		}
-		status := cloudflareSettings.GetDomainTunnelStatus(d.Domain)
+		status := getBootstrapDomainStatus(d.Domain)
 		result = append(result, DomainTunnelInfo{
 			Domain:    d.Domain,
 			Provider:  d.Provider,

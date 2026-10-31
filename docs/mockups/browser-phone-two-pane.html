@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser 手机面板 — 左右双栏 Mockup</title>
+<style>
+  :root {
+    --bg: #04060c;
+    --sheet: #0a0d16;
+    --card: #101524;
+    --card-hi: #141b30;
+    --line: #1c2336;
+    --line-soft: #161c2c;
+    --accent: #5b6cff;
+    --accent-soft: #232c58;
+    --text: #e9ecf5;
+    --muted: #7f8699;
+    --faint: #565d70;
+    --danger: #ff6b6b;
+    --ok: #38c793;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Noto Sans CJK SC", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 18px 12px 40px;
+  }
+  .hint { color: var(--faint); font-size: 12px; margin-bottom: 14px; text-align: center; line-height: 1.7; }
+  .hint b { color: var(--muted); font-weight: 600; }
+
+  /* ---- phone frame ---- */
+  .phone {
+    width: 100%; max-width: 430px;
+    background: var(--sheet);
+    border: 1px solid var(--line);
+    border-radius: 26px 26px 0 0;
+    box-shadow: 0 18px 60px rgba(0,0,0,.55);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    min-height: 780px;
+  }
+
+  /* ---- sheet header ---- */
+  .sh {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 16px 10px;
+  }
+  .sh-title { font-size: 13px; letter-spacing: .22em; font-weight: 700; color: var(--muted); }
+  .sh-count { color: var(--faint); letter-spacing: .05em; font-weight: 400; margin-left: 8px; }
+  .sh-icons { display: flex; gap: 6px; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 10px; border: none;
+    background: transparent; color: var(--muted); font-size: 16px; cursor: pointer;
+  }
+  .icon-btn:active { background: var(--card); }
+
+  /* ---- two-pane core ---- */
+  .duo { display: flex; flex: 1; min-height: 0; border-top: 1px solid var(--line-soft); }
+
+  /* left rail — collapsed 56px, expanded 46% */
+  .rail {
+    width: 56px; flex: 0 0 auto;
+    border-right: 1px solid var(--line-soft);
+    display: flex; flex-direction: column; align-items: stretch;
+    transition: width .22s ease;
+    background: #080b13;
+  }
+  .rail.expanded { width: 47%; max-width: 230px; }
+  .rail-handle {
+    border: none; background: transparent; color: var(--muted);
+    height: 36px; font-size: 14px; cursor: pointer;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .rail-handle:active { color: var(--text); }
+  .rail-body { flex: 1; overflow-y: auto; padding: 6px 0; }
+
+  /* collapsed chips */
+  .chip {
+    width: 100%; border: none; background: transparent; cursor: pointer;
+    padding: 9px 0 7px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    border-left: 2px solid transparent; color: var(--muted);
+  }
+  .chip .chip-ico {
+    width: 30px; height: 30px; border-radius: 8px; background: var(--card);
+    display: flex; align-items: center; justify-content: center; font-size: 13px;
+    border: 1px solid var(--line);
+  }
+  .chip .chip-n { font-size: 9px; color: var(--faint); }
+  .chip.sel { border-left-color: var(--accent); color: var(--text); }
+  .chip.sel .chip-ico { border-color: var(--accent); background: var(--accent-soft); }
+  .chip .chip-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); align-self: center; }
+
+  /* expanded cards */
+  .wcard {
+    width: 100%; text-align: left; border: none; cursor: pointer;
+    background: transparent; color: var(--text);
+    padding: 10px 10px 9px 12px; border-left: 2px solid transparent;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .wcard .wt { font-size: 12.5px; font-weight: 600; line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .wcard .wm { font-size: 10.5px; color: var(--muted); display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .wcard .wm .sess { color: var(--faint); }
+  .badge-focus {
+    font-size: 9px; padding: 1px 5px; border-radius: 4px; letter-spacing: .06em;
+    background: rgba(91,108,255,.16); color: #97a4ff; border: 1px solid rgba(91,108,255,.35);
+  }
+  .wcard.sel { border-left-color: var(--accent); background: linear-gradient(90deg, rgba(91,108,255,.10), transparent 70%); }
+  .wcard .wrow2 { display: flex; align-items: center; justify-content: flex-end; margin-top: 2px; }
+  .w-close {
+    border: none; background: transparent; color: var(--faint); font-size: 13px; cursor: pointer;
+    padding: 2px 4px;
+  }
+  .rail-new {
+    margin: 6px 10px 10px; height: 34px; border-radius: 10px;
+    border: 1px dashed var(--line); background: transparent; color: var(--muted);
+    font-size: 16px; cursor: pointer;
+  }
+  .rail-new:active { color: var(--text); border-color: var(--muted); }
+  .rail-collapsed-new { display: none; }
+
+  /* right pane — tabs */
+  .tabs { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .tabs-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px 10px; border-bottom: 1px solid var(--line-soft);
+  }
+  .tabs-head .tl { font-size: 12px; letter-spacing: .2em; font-weight: 700; color: var(--muted); }
+  .tabs-head .tn { color: var(--faint); font-size: 12px; }
+  .tabs-head .twin {
+    flex: 1; min-width: 0; font-size: 11px; color: var(--faint);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right;
+  }
+  .tabs-add {
+    width: 30px; height: 30px; flex: 0 0 auto; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+    font-size: 15px; cursor: pointer;
+  }
+  .tab-list { list-style: none; overflow-y: auto; flex: 1; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .tab {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 11px 12px; cursor: pointer; position: relative;
+  }
+  .tab.active { border-color: var(--accent); background: var(--card-hi); }
+  .tab.active::before {
+    content: ""; position: absolute; left: -1px; top: 10px; bottom: 10px;
+    width: 3px; border-radius: 2px; background: var(--accent);
+  }
+  .tab .fav {
+    width: 26px; height: 26px; flex: 0 0 auto; border-radius: 7px;
+    background: #1a2138; color: #aab5ff; font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .tab .tt { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tab .th { font-size: 10px; color: var(--faint); margin-top: 2px; }
+  .tab .x { border: none; background: transparent; color: var(--faint); font-size: 13px; cursor: pointer; padding: 4px; }
+  .tab .live { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
+  .tab-more { text-align: center; color: var(--faint); font-size: 11px; padding: 8px 0 4px; }
+
+  /* ---- foot rows (unchanged) ---- */
+  .foot { border-top: 1px solid var(--line-soft); padding: 12px 16px 18px; display: flex; flex-direction: column; gap: 10px; background: #070a11; }
+  .frow { display: flex; align-items: center; gap: 10px; }
+  .flabel { font-size: 11px; letter-spacing: .18em; color: var(--faint); width: 74px; flex: 0 0 auto; }
+  .seg { display: flex; background: #0d1220; border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; }
+  .seg button {
+    border: none; background: transparent; color: var(--muted); font-size: 13px;
+    padding: 7px 16px; border-radius: 9px; cursor: pointer;
+  }
+  .seg button.on { background: #1a2340; color: var(--text); border: 1px solid #2c3a6b; }
+  .fmeta { margin-left: auto; font-size: 12px; color: var(--faint); }
+</style>
+</head>
+<body>
+  <p class="hint">
+    <b>双栏 Mockup</b> · 点左侧把手 <b>»/«</b> 展开/折叠窗口列表(记住意图) · 左栏点窗口 = 预览其标签 ·
+    <b>点任意标签 = 自然切换</b>(焦点与投屏跟随到该窗口) · <b>FOCUSED</b> 徽标 = 正在投屏的窗口 · 虚线 <b>+</b> = 新建窗口
+  </p>
+
+  <div class="phone">
+    <header class="sh">
+      <div class="sh-title">BROWSER<span class="sh-count" id="winCount">3 windows</span></div>
+      <div class="sh-icons">
+        <button class="icon-btn" aria-label="refresh">⟳</button>
+        <button class="icon-btn" aria-label="bookmark">☆</button>
+        <button class="icon-btn" aria-label="help">?</button>
+        <button class="icon-btn" aria-label="close">×</button>
+      </div>
+    </header>
+
+    <div class="duo">
+      <!-- 左:窗口列表(可展开/折叠) -->
+      <aside class="rail" id="rail">
+        <button class="rail-handle" id="toggle" aria-expanded="false" title="展开/折叠窗口列表">»</button>
+        <div class="rail-body" id="railBody"></div>
+        <button class="rail-new rail-collapsed-new" id="newBtn" title="新建窗口">＋ 新窗口</button>
+      </aside>
+
+      <!-- 右:所选窗口的标签列表 -->
+      <section class="tabs">
+        <div class="tabs-head">
+          <span class="tl">TABS</span><span class="tn" id="tabCount">1</span>
+          <span class="twin" id="winLabel"></span>
+          <button class="tabs-add" aria-label="new tab">＋</button>
+        </div>
+        <ul class="tab-list" id="tabList"></ul>
+      </section>
+    </div>
+
+    <footer class="foot">
+      <div class="frow">
+        <span class="flabel">SIZE</span>
+        <div class="seg">
+          <button>iPhone</button><button>iPad</button><button class="on">Mac</button>
+        </div>
+        <span class="fmeta">1440×900</span>
+      </div>
+      <div class="frow">
+        <span class="flabel">CAPTURE</span>
+        <div class="seg">
+          <button>Cast</button><button class="on">Shot</button>
+        </div>
+        <span class="fmeta">auto · 1 fps</span>
+      </div>
+    </footer>
+  </div>
+
+<script>
+  // 真实会话数据 + 两个合成窗口演示多窗口状态
+  const WINDOWS = [
+    {
+      id: 'w1', short: '可', title: '可观测性 | 凤凰架构',
+      meta: 'focused · 1 tab', session: 'sess-95l2pm', focused: true,
+      tabs: [
+        { title: '可观测性 | 凤凰架构', host: 'phoenix.example', active: true, live: true },
+      ],
+    },
+    {
+      id: 'w2', short: 'M', title: 'Mockup · 建筑计划 /plans',
+      meta: '11 tabs', session: '', focused: false,
+      tabs: [
+        { title: 'Mockup · 建筑计划 /plans', host: '127.0.0.1:8765', active: true },
+        { title: 'Vite — build.dev', host: 'vite.dev' },
+        { title: 'GitHub · pull #128', host: 'github.com' },
+        { title: 'MDN · CSS container queries', host: 'developer.mozilla.org' },
+        { title: 'Tailwind — v4 upgrade', host: 'tailwindcss.com' },
+        { title: 'Can I use · :has()', host: 'caniuse.com' },
+      ],
+      more: 5,
+    },
+    {
+      id: 'w3', short: 'H', title: 'House design',
+      meta: '3 tabs', session: 'sess-7qk2am', focused: false,
+      tabs: [
+        { title: 'House design · 概览', host: 'housedesign.example', active: true },
+        { title: 'CAD · 2F 平面', host: 'cad.example' },
+        { title: 'Blender · 渲染 03', host: 'render.example' },
+      ],
+    },
+  ];
+
+  let expanded = false;          // 用户意图:窗口列表展开?
+  let selected = 'w1';           // 右侧显示哪个窗口的标签
+
+  const $ = (id) => document.getElementById(id);
+
+  function renderRail() {
+    const body = $('railBody');
+    body.innerHTML = '';
+    for (const w of WINDOWS) {
+      const sel = w.id === selected;
+      if (!expanded) {
+        const b = document.createElement('button');
+        b.className = 'chip' + (sel ? ' sel' : '');
+        b.innerHTML =
+          '<span class="chip-ico">' + w.short + '</span>' +
+          '<span class="chip-n">' + w.tabs.length + (w.more ? '+' : '') + '</span>' +
+          (w.focused ? '<span class="chip-dot" title="focused"></span>' : '');
+        b.title = w.title;
+        b.onclick = () => { selected = w.id; renderAll(); };
+        body.appendChild(b);
+      } else {
+        const b = document.createElement('button');
+        b.className = 'wcard' + (sel ? ' sel' : '');
+        b.innerHTML =
+          '<span class="wt">' + w.title + '</span>' +
+          '<span class="wm">' + (w.focused ? '<span class="badge-focus">FOCUSED</span>' : '') +
+            '<span>' + w.meta + '</span>' +
+            (w.session ? '<span class="sess">' + w.session + '</span>' : '<span class="sess">direct</span>') +
+          '</span>' +
+          '<span class="wrow2">' +
+            '<span></span>' +
+            '<span class="w-close" title="关闭窗口">×</span>' +
+          '</span>';
+        b.onclick = () => { selected = w.id; renderAll(); };
+        b.querySelector('.w-close').onclick = (e) => { e.stopPropagation(); alert('关闭窗口(沿用现有 closeTargetFor 拦截):' + w.title); };
+        body.appendChild(b);
+      }
+    }
+    $('newBtn').style.display = expanded ? '' : 'none';
+  }
+
+  function renderTabs() {
+    const w = WINDOWS.find(x => x.id === selected);
+    $('winLabel').textContent = w.title;
+    $('tabCount').textContent = w.tabs.length + (w.more ? '+' + w.more : '');
+    const ul = $('tabList');
+    ul.innerHTML = '';
+    for (const t of w.tabs) {
+      const li = document.createElement('li');
+      li.className = 'tab' + (t.active ? ' active' : '');
+      li.innerHTML =
+        '<span class="fav">' + t.host[0].toUpperCase() + '</span>' +
+        '<span style="flex:1;min-width:0"><span class="tt" style="display:block">' + t.title + '</span>' +
+        '<span class="th">' + t.host + '</span></span>' +
+        (t.live ? '<span class="live" title="live session"></span>' : '') +
+        '<button class="x" aria-label="close tab">×</button>';
+      // 点标签 = 自然的切换:激活该标签 + 焦点(投屏)跟随到该窗口。
+      li.onclick = () => {
+        w.tabs.forEach(x => { x.active = (x === t); });
+        WINDOWS.forEach(x => { x.focused = (x === w); });
+        renderAll();
+      };
+      ul.appendChild(li);
+    }
+    if (w.more) {
+      const li = document.createElement('li');
+      li.className = 'tab-more';
+      li.textContent = '▾ 还有 ' + w.more + ' 个标签';
+      ul.appendChild(li);
+    }
+  }
+
+  function renderAll() {
+    $('winCount').textContent = WINDOWS.length + ' windows';
+    renderRail();
+    renderTabs();
+  }
+
+  $('toggle').onclick = () => {
+    expanded = !expanded;
+    $('rail').classList.toggle('expanded', expanded);
+    $('toggle').textContent = expanded ? '«' : '»';
+    $('toggle').setAttribute('aria-expanded', String(expanded));
+    renderAll();
+  };
+
+  renderAll();
+</script>
+</body>
+</html>

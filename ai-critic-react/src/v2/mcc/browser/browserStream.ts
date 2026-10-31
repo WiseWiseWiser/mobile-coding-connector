@@ -1,12 +1,36 @@
 import { FRAME_HEADER_SIZE, FRAME_MAGIC } from './browserWire';
 import type { BrowserMode, BrowserStatus, ClientMessage, ConnectionState } from './browserWire';
 
+/** How long a connection attempt may stay unanswered before probing REST. */
+export const CONNECT_PROBE_MS = 6000;
+/** Consecutive reconnects without reaching open that count as "blocked". */
+export const PROBE_AFTER_FAILURES = 3;
+/** Silence threshold for "frames stopped but the socket says open". */
+export const STALL_PROBE_MS = 30_000;
+
+export interface ProbeEvidence {
+    /** WebSocket connect attempts since the last success. */
+    attempts: number;
+    /** REST /api/browser/status round trip, when the probe measured one. */
+    restMs: number | null;
+    /** Milliseconds since the last painted frame. */
+    frameAge: number;
+    /** Which trigger fired the probe. */
+    reason: 'connect-timeout' | 'reconnect-failures' | 'stalled';
+}
+
 export interface BrowserStreamHandlers {
     onStatus?: (status: BrowserStatus) => void;
     onConnection?: (state: ConnectionState) => void;
     onError?: (message: string) => void;
     /** Fired after every painted frame, for stall detection. */
     onFrame?: () => void;
+    /**
+     * The transport looks broken while the host may be fine: the page offers
+     * the poll fallback with this evidence. Fires once per episode; the page
+     * calls resetProbe() after switching transports or dismissing the banner.
+     */
+    onProbe?: (evidence: ProbeEvidence) => void;
 }
 
 /**
@@ -30,6 +54,11 @@ export class BrowserStream {
     private reconnectDelay = 1000;
     private lastFrameAt = 0;
     private pendingStatus: BrowserStatus | null = null;
+    // Probe bookkeeping: attempts counts connects since the last open,
+    // probeFired keeps the banner from repeating inside one bad episode.
+    private attempts = 0;
+    private probeFired = false;
+    private connectTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor(handlers: BrowserStreamHandlers = {}) {
         this.handlers = handlers;
@@ -50,21 +79,29 @@ export class BrowserStream {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const url = `${protocol}//${window.location.host}/api/browser/ws`;
         this.handlers.onConnection?.('connecting');
+        this.attempts++;
         const ws = new WebSocket(url);
         ws.binaryType = 'arraybuffer';
         this.ws = ws;
         this.lastMessageAt = Date.now();
         this.startWatchdog();
+        this.armConnectProbe();
 
         ws.onopen = () => {
             if (this.ws !== ws) return;
             this.reconnectDelay = 1000;
+            this.attempts = 0;
+            this.disarmConnectProbe();
             this.handlers.onConnection?.('open');
         };
         ws.onclose = () => {
             if (this.ws !== ws) return;
             this.ws = null;
+            this.disarmConnectProbe();
             this.handlers.onConnection?.('closed');
+            if (this.attempts >= PROBE_AFTER_FAILURES) {
+                this.fireProbe('reconnect-failures');
+            }
             this.scheduleReconnect();
         };
         ws.onerror = () => {
@@ -83,6 +120,7 @@ export class BrowserStream {
         this.paused = true;
         this.clearReconnect();
         this.stopWatchdog();
+        this.disarmConnectProbe();
         const ws = this.ws;
         this.ws = null;
         if (ws) {
@@ -204,8 +242,70 @@ export class BrowserStream {
         this.watchdog = setInterval(() => {
             if (Date.now() - this.lastMessageAt > 20000) {
                 this.dropAndReconnect();
+                return;
+            }
+            // Open but silent on frames: a network that slow deserves the same
+            // offer as a blocked socket.
+            if (this.lastFrameAt > 0 && Date.now() - this.lastFrameAt > STALL_PROBE_MS) {
+                this.fireProbe('stalled');
             }
         }, 5000);
+    }
+
+    // ------------------------------------------------------------- probing
+
+    /** One missed handshake: measure REST and let the page offer poll mode. */
+    private armConnectProbe() {
+        this.disarmConnectProbe();
+        this.connectTimer = setTimeout(() => {
+            this.connectTimer = null;
+            if (this.ws) this.fireProbe('connect-timeout');
+        }, CONNECT_PROBE_MS);
+    }
+
+    private disarmConnectProbe() {
+        if (this.connectTimer) {
+            clearTimeout(this.connectTimer);
+            this.connectTimer = null;
+        }
+    }
+
+    private fireProbe(reason: ProbeEvidence['reason']) {
+        if (this.probeFired || this.disposed || this.paused) return;
+        this.probeFired = true;
+        const started = Date.now();
+        const controller = new AbortController();
+        const bail = setTimeout(() => controller.abort(), 3000);
+        fetch('/api/browser/status', { signal: controller.signal })
+            .then((response) => {
+                clearTimeout(bail);
+                this.handlers.onProbe?.({
+                    attempts: this.attempts,
+                    restMs: response.ok ? Date.now() - started : null,
+                    frameAge: this.frameAge === Number.POSITIVE_INFINITY ? -1 : this.frameAge,
+                    reason,
+                });
+            })
+            .catch(() => {
+                clearTimeout(bail);
+                this.handlers.onProbe?.({
+                    attempts: this.attempts,
+                    restMs: null,
+                    frameAge: this.frameAge === Number.POSITIVE_INFINITY ? -1 : this.frameAge,
+                    reason,
+                });
+            });
+    }
+
+    /** A new episode: the user retried WS or dismissed the banner. */
+    resetProbe() {
+        this.probeFired = false;
+        this.attempts = 0;
+    }
+
+    /** Test hook: whether the probe already fired in this episode. */
+    get probed(): boolean {
+        return this.probeFired;
     }
 
     private stopWatchdog() {

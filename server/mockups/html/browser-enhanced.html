@@ -1,0 +1,2046 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser viewer, enhanced — design specimen</title>
+<style>
+    :root {
+        color-scheme: dark;
+        --page: #05070a;
+        --panel: #0e1116;
+        --panel-2: #0f1216;
+        --surface: #161b22;
+        --surface-2: #1c2128;
+        --line: #22262c;
+        --line-strong: #30363d;
+        --text: #e6e8eb;
+        --text-2: #adbac7;
+        --text-3: #8b949e;
+        --text-4: #6e7681;
+        --blue: #388bfd;
+        --blue-2: #79c0ff;
+        --green: #3fb950;
+        --amber: #d29922;
+        --amber-2: #e3b341;
+        --red: #f85149;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--page); }
+    body {
+        margin: 0;
+        min-width: 320px;
+        background:
+            radial-gradient(1000px 520px at 12% -8%, rgba(56, 139, 253, 0.11), transparent 62%),
+            radial-gradient(760px 420px at 96% 2%, rgba(121, 192, 255, 0.06), transparent 60%),
+            var(--page);
+        color: var(--text);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+    }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    svg { display: block; }
+    .icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-sm { width: 13px; height: 13px; }
+    .mono { font-family: var(--mono); }
+    .sr-only {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+
+    .board {
+        width: min(1560px, 100%);
+        margin: 0 auto;
+        padding: 28px 34px 54px;
+    }
+
+    /* ---------------------------------------------------------------- hero */
+
+    .topline {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-bottom: 22px;
+        border-bottom: 1px solid rgba(48, 54, 61, 0.42);
+        color: var(--text-3);
+        font-size: 10px;
+        font-weight: 650;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+    }
+    .brand { display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); }
+    .brand-dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: var(--blue);
+        box-shadow: 0 0 0 4px rgba(56, 139, 253, 0.13);
+    }
+    .topline .slash { color: #3a4048; }
+    .topline .right { margin-left: auto; color: var(--text-4); letter-spacing: 0.12em; }
+
+    .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+        gap: 56px;
+        align-items: end;
+        padding: 46px 0 30px;
+    }
+    .kicker {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+        color: var(--blue-2);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+    }
+    .kicker::before {
+        content: "";
+        width: 20px; height: 1px; background: var(--blue);
+    }
+    h1 {
+        margin: 0;
+        max-width: 780px;
+        font-size: clamp(38px, 4.3vw, 62px);
+        font-weight: 560;
+        line-height: 0.98;
+        letter-spacing: -0.045em;
+    }
+    h1 em { color: var(--blue-2); font-style: normal; }
+    .lede {
+        margin: 0 0 4px;
+        max-width: 440px;
+        color: var(--text-2);
+        font-size: 14px;
+        line-height: 1.65;
+    }
+    .lede b { color: var(--text); font-weight: 600; }
+    .hero-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0;
+        margin: 4px 0 30px;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        color: var(--text-3);
+        font-size: 10px;
+        letter-spacing: 0.07em;
+    }
+    .hero-meta span {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 8px;
+        padding: 11px 22px 11px 0;
+        margin-right: 22px;
+        border-right: 1px solid var(--line);
+        text-transform: uppercase;
+    }
+    .hero-meta span:last-child { border-right: 0; }
+    .hero-meta b { color: var(--text-4); font-weight: 600; letter-spacing: 0.11em; }
+
+    /* ------------------------------------------------------------- sections */
+
+    .section-head {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin: 26px 0 12px;
+    }
+    .section-no {
+        color: var(--text-4);
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 0.1em;
+    }
+    .section-title {
+        color: var(--text-2);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+    }
+    .section-rule { flex: 1; height: 1px; background: var(--line); }
+    .section-note { color: var(--text-4); font-size: 10px; }
+
+    .scene-switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        margin-left: auto;
+        padding: 3px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #090c10;
+    }
+    .scene-btn {
+        appearance: none;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text-4);
+        padding: 5px 9px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .scene-btn:hover { color: var(--text-2); background: rgba(255, 255, 255, 0.035); }
+    .scene-btn.is-on { background: var(--surface); color: var(--text); box-shadow: 0 1px 0 rgba(255,255,255,.04) inset; }
+    .scene-btn.is-on::before {
+        content: "";
+        display: inline-block;
+        width: 4px; height: 4px;
+        margin-right: 6px;
+        border-radius: 50%;
+        background: var(--blue);
+        vertical-align: 2px;
+    }
+
+    /* --------------------------------------------------------------- shell */
+
+    .desktop-scroll { overflow-x: auto; padding-bottom: 4px; }
+    .desktop {
+        position: relative;
+        display: flex;
+        min-width: 1100px;
+        height: 690px;
+        overflow: hidden;
+        border: 1px solid #2a3038;
+        border-radius: 14px;
+        background: #0b0d10;
+        box-shadow:
+            0 30px 90px rgba(0, 0, 0, 0.52),
+            0 1px 0 rgba(255, 255, 255, 0.04) inset;
+    }
+
+    /* rail */
+    .rail {
+        flex: none;
+        width: 274px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        background: #0c0f14;
+        border-right: 1px solid var(--line);
+    }
+    .rail-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 46px;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--line);
+    }
+    .rail-title { color: var(--text-2); font-size: 10px; font-weight: 700; letter-spacing: 0.14em; }
+    .rail-count {
+        padding: 1px 6px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--text-4);
+        font-size: 9px;
+        line-height: 1.5;
+    }
+    .rail-refresh {
+        appearance: none; border: 0; background: transparent; color: var(--text-4);
+        margin-left: auto; padding: 3px; cursor: pointer;
+    }
+    .rail-body { flex: 1; min-height: 0; overflow: hidden; padding: 5px 0; }
+    .rail-item {
+        position: relative;
+        padding: 8px 10px 9px 8px;
+        border-bottom: 1px solid rgba(34, 38, 44, 0.5);
+    }
+    .rail-item.is-active { background: rgba(56, 139, 253, 0.075); box-shadow: inset 2px 0 0 var(--blue); }
+    .rail-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .caret { width: 12px; color: var(--text-4); font-size: 9px; text-align: center; }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-4); flex: none; }
+    .status-dot.ok { background: var(--green); box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.12); }
+    .status-dot.amber { background: var(--amber); }
+    .rail-name {
+        min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        color: var(--text-2); font-size: 11.5px; font-weight: 650;
+    }
+    .rail-item.is-active .rail-name { color: var(--text); }
+    .rail-badge { margin-left: auto; color: var(--text-4); font-family: var(--mono); font-size: 9px; }
+    .rail-sub {
+        margin: 2px 0 0 24px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        color: var(--text-4); font-size: 9.5px;
+    }
+    .rail-tabs { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 0 24px; }
+    .rail-tab {
+        display: flex; align-items: center; gap: 6px;
+        color: var(--text-3); font-size: 10px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .rail-tab::before { content: ""; width: 3px; height: 3px; border-radius: 50%; background: #3a4048; flex: none; }
+    .rail-tab.is-on { color: var(--text-2); }
+    .rail-tab.is-on::before { background: var(--blue); box-shadow: 0 0 0 2px rgba(56,139,253,.12); }
+    .rail-window {
+        display: flex; align-items: center; gap: 8px;
+        margin: 7px 0 0 24px;
+    }
+    .rail-window .win-icon {
+        display: grid; place-items: center;
+        width: 20px; height: 18px;
+        border: 1px solid #3a3f46;
+        border-radius: 4px;
+        color: var(--text-4);
+        font-size: 8px;
+    }
+    .attach {
+        appearance: none;
+        border: 1px solid #3b424b;
+        border-radius: 5px;
+        background: #171c23;
+        color: var(--amber-2);
+        padding: 2px 7px;
+        font-size: 9px;
+        cursor: pointer;
+    }
+    .attach:hover { border-color: #9e6a03; background: rgba(210,153,34,.1); }
+    .rail-foot {
+        display: flex; align-items: center; gap: 7px;
+        height: 34px; padding: 0 12px;
+        border-top: 1px solid var(--line);
+        color: var(--text-4); font-size: 9px;
+    }
+    .rail-foot .ver { margin-left: auto; font-family: var(--mono); font-size: 8.5px; }
+    .rail-foot .mini-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+
+    /* main */
+    .main {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        background: #0b0d10;
+    }
+    .toolbar {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 46px;
+        padding: 0 10px;
+        background: #111419;
+        border-bottom: 1px solid var(--line);
+    }
+    .tb-icon {
+        appearance: none;
+        display: grid; place-items: center;
+        width: 28px; height: 28px;
+        border: 1px solid transparent;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--text-3);
+        cursor: pointer;
+    }
+    .tb-icon:hover { background: var(--surface); border-color: var(--line); color: var(--text); }
+    .tb-title { margin-left: 3px; color: var(--text-2); font-size: 11px; font-weight: 650; letter-spacing: 0.03em; }
+    .tb-title span { color: var(--text-4); font-weight: 500; }
+    .tb-sep { width: 1px; height: 16px; background: var(--line-strong); margin: 0 3px; }
+    .live { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: 9px; letter-spacing: 0.04em; }
+    .live i { width: 5px; height: 5px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(63,185,80,.1); }
+    .tb-right { margin-left: auto; display: flex; align-items: center; gap: 5px; }
+    .chip {
+        appearance: none;
+        border: 1px solid var(--line-strong);
+        border-radius: 999px;
+        background: #151a21;
+        color: var(--text-4);
+        padding: 3px 9px;
+        font-size: 9px;
+        cursor: pointer;
+    }
+    .chip:hover { color: var(--text-2); }
+    .chip.is-on { color: var(--blue-2); border-color: #2d5f9e; background: rgba(56, 139, 253, 0.12); }
+
+    /* tabs */
+    .tabsrow {
+        position: relative;
+        flex: none;
+        display: flex;
+        height: 38px;
+        background: #0f1216;
+        border-bottom: 1px solid var(--line);
+    }
+    .tabs {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        overflow: hidden;
+    }
+    .tab {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        max-width: 210px;
+        padding: 0 8px 0 11px;
+        border-right: 1px solid #1d2127;
+        color: var(--text-3);
+        font-size: 10px;
+        cursor: pointer;
+    }
+    .tab:hover { background: rgba(255,255,255,.025); }
+    .tab.is-active { background: #161b22; color: var(--text); box-shadow: inset 0 -2px 0 var(--blue); }
+    .favicon {
+        display: grid; place-items: center;
+        width: 14px; height: 14px;
+        border-radius: 3px;
+        color: #fff; font-size: 8px; font-weight: 750; flex: none;
+    }
+    .fav-c { background: #2f6fed; }
+    .fav-g { background: #24292f; border: 1px solid #3a4048; }
+    .fav-f { background: #8b5cf6; }
+    .tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tabx {
+        appearance: none; border: 0; background: transparent; color: var(--text-4);
+        padding: 1px 3px; margin-left: 3px; border-radius: 3px; font-size: 11px; line-height: 1; cursor: pointer;
+    }
+    .tabx:hover { background: rgba(248,81,73,.16); color: var(--red); }
+    .tabadd {
+        flex: none;
+        width: 38px;
+        border: 0;
+        border-left: 1px solid #1d2127;
+        background: transparent;
+        color: var(--text-3);
+        cursor: pointer;
+        display: grid; place-items: center;
+    }
+    .tabadd:hover { color: var(--blue-2); background: rgba(56,139,253,.06); }
+    .tabs-fade {
+        position: absolute; top: 0; bottom: 0; right: 38px; width: 26px;
+        background: linear-gradient(to right, rgba(15,18,22,0), #0f1216);
+        pointer-events: none;
+    }
+
+    /* address */
+    .omnibox-wrap {
+        flex: none;
+        padding: 7px 10px;
+        background: #0e1116;
+        border-bottom: 1px solid var(--line);
+    }
+    .omnibox { display: flex; align-items: center; gap: 7px; }
+    .bookmarkbtn {
+        appearance: none;
+        display: grid; place-items: center;
+        width: 32px; height: 32px;
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        background: #151a21;
+        color: var(--text-3);
+        cursor: pointer;
+        flex: none;
+    }
+    .bookmarkbtn:hover { color: var(--blue-2); border-color: #2d5f9e; background: rgba(56,139,253,.08); }
+    .urlform { flex: 1; min-width: 0; }
+    .urlfield {
+        display: flex; align-items: center; gap: 7px;
+        height: 32px;
+        padding: 0 4px 0 10px;
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        background: var(--surface);
+        transition: border-color .12s ease, box-shadow .12s ease;
+    }
+    .urlfield:focus-within { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(56,139,253,.13); }
+    .urlfield .lock { color: var(--green); flex: none; }
+    .urlfield input {
+        flex: 1; min-width: 0;
+        border: 0; outline: 0; background: transparent;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 11.5px;
+        letter-spacing: -0.01em;
+    }
+    .urlfield input::placeholder { color: var(--text-4); font-family: var(--sans); letter-spacing: 0; }
+    .go {
+        appearance: none;
+        border: 0;
+        border-radius: 5px;
+        background: #1f6feb;
+        color: #fff;
+        padding: 4px 10px;
+        font-size: 10px;
+        font-weight: 650;
+        cursor: pointer;
+        flex: none;
+    }
+    .go:hover { background: #388bfd; }
+    .go:disabled { opacity: .38; cursor: default; }
+    .newbtn {
+        appearance: none;
+        display: inline-flex; align-items: center; gap: 5px;
+        height: 32px;
+        padding: 0 11px;
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        background: #151a21;
+        color: var(--text-2);
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        flex: none;
+    }
+    .newbtn:hover { color: var(--text); border-color: #3d444d; background: var(--surface-2); }
+    .newbtn .icon { color: var(--blue-2); }
+    .urlerror {
+        display: flex; align-items: flex-start; gap: 7px;
+        margin: 7px 0 1px 39px;
+        color: #ffb4ae;
+        font-size: 10.5px;
+        line-height: 1.45;
+    }
+    .urlerror .icon { color: var(--red); flex: none; margin-top: 1px; }
+    .urlerror b { color: #ffd7d4; font-weight: 650; }
+    .urlerror .fixlink {
+        appearance: none; border: 0; background: transparent; color: var(--blue-2);
+        padding: 0; margin-left: 5px; font-size: 10.5px; cursor: pointer; text-decoration: underline;
+    }
+    .urlerror[hidden] { display: none; }
+
+    /* stage */
+    .stage {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        background: #05070a;
+    }
+    .stage-page {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background: #f4f5f7;
+        color: #20242a;
+        font-family: var(--sans);
+    }
+    .stage-blank {
+        position: absolute; inset: 0;
+        display: none; flex-direction: column; align-items: center; justify-content: center;
+        gap: 9px; padding: 28px;
+        background:
+            radial-gradient(circle at 50% 42%, rgba(56,139,253,.07), transparent 42%),
+            #0a0d12;
+        color: var(--text-3);
+        text-align: center;
+    }
+    .stage-blank .sb-glyph {
+        display: grid; place-items: center;
+        width: 38px; height: 38px;
+        border: 1px solid #2b333d; border-radius: 10px;
+        background: #11161d; color: var(--blue-2);
+    }
+    .stage-blank h3 { margin: 1px 0 0; color: var(--text); font-size: 14px; font-weight: 600; }
+    .stage-blank p { max-width: 300px; margin: 0; color: var(--text-4); font-size: 10.5px; line-height: 1.5; }
+    .stage-blank .sb-note {
+        margin-top: 5px; padding-top: 8px;
+        border-top: 1px solid #1d232b;
+        color: #5b6570; font-family: var(--mono); font-size: 8px; letter-spacing: .02em;
+    }
+    .desktop[data-scene="blank"] .stage-page { display: none; }
+    .desktop[data-scene="blank"] .stage-blank { display: flex; }
+    .sp-top {
+        display: flex; align-items: center; gap: 6px;
+        height: 34px;
+        padding: 0 26px;
+        border-bottom: 1px solid #e2e5e9;
+        background: #fbfcfd;
+        color: #7a828d;
+        font-size: 8.5px;
+    }
+    .sp-top b { color: #3c444e; font-weight: 600; }
+    .sp-top .sp-actions { margin-left: auto; display: flex; gap: 5px; }
+    .sp-action { width: 44px; height: 14px; border-radius: 3px; background: #eef1f4; }
+    .sp-action.blue { background: #dbe8ff; width: 58px; }
+    .sp-body { display: grid; grid-template-columns: 1fr 188px; gap: 28px; padding: 26px 34px 30px; }
+    .sp-crumb { color: #7b8490; font-size: 9px; letter-spacing: .02em; }
+    .sp-crumb b { color: #4d5661; font-weight: 600; }
+    .sp-title { margin: 8px 0 4px; color: #1e242b; font-size: 25px; font-weight: 650; letter-spacing: -0.025em; }
+    .sp-sub { color: #737c87; font-size: 10px; }
+    .sp-pills { display: flex; gap: 5px; margin-top: 13px; }
+    .sp-pill {
+        display: inline-flex; align-items: center; gap: 4px;
+        border: 1px solid #dfe4ea; border-radius: 999px; background: #fff;
+        padding: 3px 7px; color: #636d79; font-size: 8px;
+    }
+    .sp-pill i { width: 5px; height: 5px; border-radius: 50%; background: #2ea043; }
+    .sp-pill.amber i { background: #d29922; }
+    .sp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 22px; }
+    .sp-card {
+        border: 1px solid #e1e5ea; border-radius: 7px; background: #fff;
+        padding: 12px 13px 13px;
+        box-shadow: 0 1px 2px rgba(20, 28, 38, .035);
+    }
+    .sp-card.wide { grid-column: span 2; }
+    .sp-card-kicker { color: #8a929c; font-size: 7px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .sp-card h4 { margin: 5px 0 2px; color: #2a313a; font-size: 11px; font-weight: 650; }
+    .sp-card p { margin: 0; color: #76808b; font-size: 8.5px; line-height: 1.45; }
+    .sp-lines { display: flex; flex-direction: column; gap: 5px; margin-top: 9px; }
+    .sp-line { height: 4px; border-radius: 2px; background: #edf0f3; }
+    .sp-line.w80 { width: 80%; } .sp-line.w60 { width: 60%; } .sp-line.w90 { width: 90%; }
+    .sp-table { margin-top: 9px; border-top: 1px solid #edf0f3; }
+    .sp-row { display: flex; align-items: center; gap: 8px; height: 20px; border-bottom: 1px solid #f0f2f5; color: #6f7883; font-size: 8px; }
+    .sp-row b { color: #414a55; font-weight: 600; }
+    .sp-row .sp-ok { margin-left: auto; color: #2f8a43; font-size: 7px; font-weight: 700; }
+    .sp-side { padding-top: 1px; }
+    .sp-side-card { border-left: 2px solid #dbe3ee; padding: 0 0 0 12px; margin-bottom: 19px; }
+    .sp-side-card h5 { margin: 0 0 4px; color: #414a55; font-size: 9px; font-weight: 650; }
+    .sp-side-card p { margin: 0; color: #838c97; font-size: 8px; line-height: 1.5; }
+    .sp-avatar-row { display: flex; align-items: center; gap: 6px; margin-top: 9px; }
+    .sp-avatar { width: 16px; height: 16px; border-radius: 50%; background: #dfe6ef; color: #687381; display: grid; place-items: center; font-size: 6px; font-weight: 700; }
+    .sp-avatar.blue { background: #dbe8ff; color: #2f6fed; }
+    .sp-cursor {
+        position: absolute; left: 57%; top: 47%;
+        width: 12px; height: 12px; border-radius: 50%;
+        border: 2px solid #fff;
+        background: rgba(56,139,253,.92);
+        box-shadow: 0 0 0 1px rgba(0,0,0,.35), 0 1px 5px rgba(0,0,0,.25);
+    }
+    .sp-cursor::after {
+        content: ""; position: absolute; inset: -7px; border-radius: 50%;
+        border: 1px solid rgba(56,139,253,.35);
+    }
+    .stage-hint {
+        position: absolute; left: 12px; bottom: 11px;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 4px 8px;
+        border: 1px solid rgba(48,54,61,.8);
+        border-radius: 5px;
+        background: rgba(5,7,10,.7);
+        color: #8b949e;
+        font-family: var(--mono);
+        font-size: 8px;
+        letter-spacing: .03em;
+        backdrop-filter: blur(4px);
+    }
+    .zoomer {
+        position: absolute; right: 11px; top: 11px;
+        display: flex; flex-direction: column;
+        border: 1px solid rgba(48,54,61,.86);
+        border-radius: 7px;
+        background: rgba(13,16,21,.82);
+        overflow: hidden;
+        backdrop-filter: blur(5px);
+    }
+    .zoomer button {
+        appearance: none; border: 0; border-bottom: 1px solid rgba(48,54,61,.7);
+        width: 25px; height: 24px; background: transparent; color: var(--text-3);
+        font-size: 12px; cursor: pointer;
+    }
+    .zoomer button:last-child { border-bottom: 0; }
+    .zoomer button:hover { background: rgba(255,255,255,.06); color: var(--text); }
+
+    /* attach state */
+    .attach-state {
+        position: absolute; inset: 0;
+        display: none;
+        place-items: center;
+        background:
+            radial-gradient(500px 260px at 50% 45%, rgba(210,153,34,.075), transparent 70%),
+            #090c10;
+    }
+    .attach-card { width: 330px; text-align: center; }
+    .attach-glyph {
+        display: grid; place-items: center;
+        width: 44px; height: 38px; margin: 0 auto 14px;
+        border: 1px solid #3a4048; border-radius: 8px;
+        color: var(--amber-2); background: #12161c;
+    }
+    .attach-card h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    .attach-card p { margin: 0 auto 16px; max-width: 285px; color: var(--text-3); font-size: 10.5px; line-height: 1.55; }
+    .attach-primary {
+        appearance: none; border: 1px solid #9e6a03; border-radius: 7px;
+        background: #2a2111; color: #f0c674; padding: 7px 14px;
+        font-size: 10.5px; font-weight: 650; cursor: pointer;
+    }
+    .attach-primary:hover { background: #352a15; }
+    .attach-meta { margin-top: 12px; color: var(--text-4); font-size: 9px; }
+
+    /* palettes */
+    .palette {
+        position: absolute;
+        top: 129px;
+        right: 14px;
+        z-index: 30;
+        display: none;
+        width: 560px;
+        max-height: 505px;
+        overflow: hidden;
+        border: 1px solid #353c45;
+        border-radius: 12px;
+        background: #11151b;
+        box-shadow:
+            0 26px 70px rgba(0, 0, 0, .62),
+            0 0 0 1px rgba(255, 255, 255, .025) inset;
+        flex-direction: column;
+    }
+    .palette::before {
+        content: "";
+        position: absolute; top: -6px; right: 107px;
+        width: 10px; height: 10px;
+        border-left: 1px solid #353c45; border-top: 1px solid #353c45;
+        background: #11151b;
+        transform: rotate(45deg);
+    }
+    .bookmarks-palette { width: 500px; }
+    .palette-head {
+        display: flex; align-items: flex-start; gap: 10px;
+        padding: 13px 14px 11px;
+        border-bottom: 1px solid var(--line);
+    }
+    .eyebrow { color: var(--text-4); font-size: 8px; font-weight: 700; letter-spacing: .14em; }
+    .palette-head h3 { margin: 2px 0 0; font-size: 16px; font-weight: 600; letter-spacing: -.015em; }
+    .palette-head .head-actions { margin-left: auto; display: flex; gap: 2px; }
+    .iconbtn {
+        appearance: none; border: 0; border-radius: 5px; background: transparent;
+        color: var(--text-4); width: 26px; height: 26px; display: grid; place-items: center; cursor: pointer;
+    }
+    .iconbtn:hover { background: var(--surface-2); color: var(--text); }
+    .iconbtn.is-starred { color: var(--amber-2); }
+
+    .palette-address { display: flex; gap: 7px; padding: 12px 14px 0; }
+    .addrfield {
+        flex: 1; min-width: 0;
+        display: flex; align-items: center; gap: 7px;
+        height: 34px; padding: 0 9px;
+        border: 1px solid var(--line-strong); border-radius: 7px;
+        background: #0c1015;
+    }
+    .addrfield:focus-within { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(56,139,253,.12); }
+    .addrfield .icon { color: var(--text-4); flex: none; }
+    .addrfield input {
+        flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+        color: var(--text); font-family: var(--mono); font-size: 11px;
+    }
+    .addrfield input::placeholder { color: var(--text-4); font-family: var(--sans); }
+    .primary {
+        appearance: none; border: 1px solid #2a63a7; border-radius: 7px;
+        background: #1f6feb; color: #fff; padding: 0 14px;
+        font-size: 10px; font-weight: 650; cursor: pointer; flex: none;
+    }
+    .primary:hover { background: #388bfd; }
+    .palette-hint { padding: 7px 14px 0; color: var(--text-4); font-size: 8.5px; }
+    .palette-hint kbd { margin: 0 1px; }
+    .palette-error {
+        display: flex; align-items: flex-start; gap: 6px;
+        margin: 8px 14px 0; padding: 7px 8px;
+        border: 1px solid rgba(248,81,73,.35); border-radius: 6px;
+        background: rgba(248,81,73,.075); color: #ffb4ae; font-size: 9px; line-height: 1.45;
+    }
+    .palette-error .icon { color: var(--red); flex: none; margin-top: 1px; }
+    .palette-error[hidden] { display: none; }
+
+    .bm-head {
+        display: flex; align-items: center; gap: 6px;
+        padding: 13px 14px 6px;
+    }
+    .bm-head .lbl { color: var(--text-4); font-size: 8px; font-weight: 700; letter-spacing: .13em; }
+    .bm-head .count { color: var(--text-4); font-family: var(--mono); font-size: 8px; }
+    .searchmini {
+        display: flex; align-items: center; gap: 5px;
+        width: 156px; height: 24px; margin-left: auto; padding: 0 7px;
+        border: 1px solid #2b3139; border-radius: 5px; background: #0c1015;
+        color: var(--text-4);
+    }
+    .searchmini input {
+        width: 100%; min-width: 0; border: 0; outline: 0; background: transparent;
+        color: var(--text-2); font-size: 9px;
+    }
+    .searchmini input::placeholder { color: var(--text-4); }
+    .bm-list { max-height: 248px; overflow: auto; padding: 0 5px 4px; scrollbar-width: thin; scrollbar-color: #30363d transparent; }
+    .bm-list::-webkit-scrollbar { width: 7px; }
+    .bm-list::-webkit-scrollbar-thumb { background: #30363d; border-radius: 5px; }
+    .bm-row {
+        appearance: none; border: 0; border-radius: 6px; background: transparent;
+        display: flex; align-items: center; gap: 9px; width: 100%;
+        padding: 6px 9px; text-align: left; cursor: pointer;
+    }
+    .bm-row[hidden] { display: none; }
+    .bm-row:hover { background: rgba(56,139,253,.085); }
+    .bm-icon {
+        display: grid; place-items: center;
+        width: 22px; height: 22px; border-radius: 5px;
+        color: #fff; font-size: 8px; font-weight: 750; flex: none;
+    }
+    .bm-c { background: #2f6fed; }
+    .bm-g { background: #24292f; border: 1px solid #3a4048; }
+    .bm-f { background: #8b5cf6; }
+    .bm-l { background: #1f7a4d; }
+    .bm-r { background: #b3473f; }
+    .bm-copy { min-width: 0; display: flex; flex-direction: column; gap: 1px; flex: 1; }
+    .bm-title { color: var(--text-2); font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bm-path { color: var(--text-4); font-size: 8.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bm-go { color: var(--text-4); opacity: 0; flex: none; }
+    .bm-row:hover .bm-go { opacity: 1; color: var(--blue-2); }
+    .bm-empty { padding: 24px 14px; color: var(--text-4); font-size: 10px; text-align: center; }
+    .bm-empty[hidden] { display: none; }
+    .bm-group { padding: 9px 9px 3px; color: var(--text-4); font-size: 7.5px; font-weight: 700; letter-spacing: .12em; }
+    .palette-foot {
+        display: flex; align-items: center; gap: 13px;
+        margin-top: auto; padding: 8px 14px;
+        border-top: 1px solid var(--line);
+        background: #0d1116;
+        color: var(--text-4); font-size: 8.5px;
+    }
+    .palette-foot .spacer { flex: 1; }
+    .palette-foot .foot-action {
+        appearance: none; border: 0; background: transparent; color: var(--text-4);
+        padding: 0; font-size: 8.5px; cursor: pointer;
+    }
+    .palette-foot .foot-action:hover { color: var(--text-2); }
+    kbd {
+        display: inline-block;
+        min-width: 16px;
+        padding: 0 4px;
+        border: 1px solid #3a414a;
+        border-radius: 3px;
+        background: #1a1f26;
+        color: var(--text-3);
+        font-family: var(--mono);
+        font-size: 8px;
+        line-height: 15px;
+        text-align: center;
+    }
+
+    /* bookmark manager palette */
+    .searchbox {
+        display: flex; align-items: center; gap: 7px;
+        margin: 11px 14px 5px; padding: 0 9px; height: 30px;
+        border: 1px solid #2b3139; border-radius: 6px; background: #0c1015;
+        color: var(--text-4);
+    }
+    .searchbox:focus-within { border-color: #2d5f9e; }
+    .searchbox input {
+        flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+        color: var(--text-2); font-size: 10px;
+    }
+    .searchbox input::placeholder { color: var(--text-4); }
+    .bookmarks-palette .bm-list { max-height: 294px; padding: 0 5px 6px; }
+    .bookmarks-palette .bm-row { padding: 7px 9px; }
+    .bookmarks-palette .bm-title { font-size: 10.5px; }
+    .permalink { color: var(--text-4); font-family: var(--mono); font-size: 8px; }
+
+    /* toast */
+    .toast {
+        position: absolute;
+        left: 50%; bottom: 18px;
+        z-index: 50;
+        display: flex; align-items: center; gap: 7px;
+        max-width: 520px;
+        padding: 8px 12px;
+        border: 1px solid #3a424c;
+        border-radius: 8px;
+        background: rgba(17, 21, 27, .96);
+        color: var(--text-2);
+        box-shadow: 0 12px 34px rgba(0,0,0,.45);
+        font-size: 10px;
+        transform: translate(-50%, 12px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .16s ease, transform .16s ease;
+        backdrop-filter: blur(8px);
+    }
+    .toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+    .toast .icon { color: var(--green); flex: none; }
+
+    /* scene rules */
+    .desktop[data-scene="newtab"] .newtab-palette,
+    .desktop[data-scene="bookmarks"] .bookmarks-palette { display: flex; }
+    .desktop[data-scene="invalid"] .urlerror { display: flex; }
+    .desktop[data-scene="invalid"] .urlfield { border-color: rgba(248,81,73,.75); box-shadow: 0 0 0 2px rgba(248,81,73,.09); }
+    .desktop[data-scene="invalid"] .urlfield .lock { color: var(--red); }
+    .desktop[data-scene="invalid"] .go { background: #5c2b2b; color: #ffb4ae; }
+    .desktop[data-scene="sessionless"] .attach-state { display: grid; }
+    .desktop[data-scene="sessionless"] .stage-page,
+    .desktop[data-scene="sessionless"] .stage-hint,
+    .desktop[data-scene="sessionless"] .zoomer { display: none; }
+    .desktop[data-scene="sessionless"] .urlfield { opacity: .5; }
+    .desktop[data-scene="sessionless"] .go { opacity: .4; }
+    .desktop[data-scene="sessionless"] .bookmarkbtn,
+    .desktop[data-scene="sessionless"] .newbtn,
+    .desktop[data-scene="sessionless"] .tabadd { opacity: .35; pointer-events: none; }
+    .desktop[data-scene="sessionless"] .tab { opacity: .4; pointer-events: none; }
+    .desktop[data-scene="sessionless"] .tabs::after {
+        content: "No tabs until this window is attached";
+        display: flex; align-items: center; padding-left: 12px;
+        color: var(--text-4); font-size: 9px;
+    }
+    .desktop[data-scene="sessionless"] .rail-item[data-row="ai"] { background: transparent; box-shadow: none; }
+    .desktop[data-scene="sessionless"] .rail-item[data-row="ai"] .rail-name { color: var(--text-3); }
+    .desktop[data-scene="sessionless"] .rail-item[data-row="window"] {
+        background: rgba(210,153,34,.07); box-shadow: inset 2px 0 0 var(--amber);
+    }
+
+    /* ----------------------------------------------------------- annotations */
+
+    .notes {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+    }
+    .note {
+        position: relative;
+        min-height: 132px;
+        padding: 13px 14px 12px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: linear-gradient(180deg, rgba(22,27,34,.5), rgba(12,15,20,.45));
+    }
+    .note::before {
+        content: "";
+        position: absolute; left: 14px; right: 14px; top: 0; height: 1px;
+        background: linear-gradient(90deg, rgba(56,139,253,.5), transparent 72%);
+    }
+    .note-no { color: var(--blue-2); font-family: var(--mono); font-size: 8.5px; letter-spacing: .08em; }
+    .note h4 { margin: 6px 0 5px; font-size: 11px; font-weight: 650; letter-spacing: -.005em; }
+    .note p { margin: 0; color: var(--text-3); font-size: 9.5px; line-height: 1.55; }
+    .note code {
+        padding: 1px 4px; border: 1px solid #2c333c; border-radius: 3px;
+        background: #0d1116; color: #9fc3e8; font-family: var(--mono); font-size: 8px;
+    }
+    .note kbd { line-height: 13px; font-size: 7.5px; }
+    .note-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+    .mini-chip {
+        padding: 2px 5px; border: 1px solid #2b323a; border-radius: 4px;
+        color: var(--text-4); font-family: var(--mono); font-size: 7.5px;
+    }
+
+    /* ---------------------------------------------------------------- phone */
+
+    .mobile-section { margin-top: 30px; }
+    .phone-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 28px;
+        padding: 22px 0 8px;
+    }
+    .phone-wrap { width: 340px; max-width: 100%; }
+    .phone {
+        position: relative;
+        width: 100%; max-width: 340px;
+        height: 700px;
+        padding: 7px;
+        border: 1px solid #343a42;
+        border-radius: 42px;
+        background: #080b0e;
+        box-shadow: 0 26px 70px rgba(0,0,0,.46), 0 0 0 1px rgba(255,255,255,.03) inset;
+    }
+    .phone::before {
+        content: "";
+        position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+        width: 74px; height: 19px; border-radius: 999px; background: #020304;
+        z-index: 20;
+    }
+    .phone-screen {
+        position: relative;
+        width: 100%; height: 100%;
+        overflow: hidden;
+        border-radius: 35px;
+        background: #090c10;
+    }
+    .phone-page {
+        position: absolute; inset: 0;
+        background: #f4f5f7;
+        color: #20242a;
+        overflow: hidden;
+    }
+    .phone-page .mini-top {
+        height: 35px;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 18px;
+        background: #fbfcfd;
+        border-bottom: 1px solid #e2e5e9;
+        color: #7a828d; font-size: 7px;
+    }
+    .phone-page .mini-body { padding: 76px 18px 0; }
+    .phone-page .crumb { color: #7b8490; font-size: 7px; }
+    .phone-page h3 { margin: 8px 0 3px; font-size: 18px; line-height: 1.13; letter-spacing: -.025em; }
+    .phone-page .sub { color: #79828d; font-size: 8px; }
+    .phone-page .pills { display: flex; gap: 4px; margin-top: 10px; }
+    .phone-page .pill { border: 1px solid #e0e4e9; border-radius: 999px; background: #fff; padding: 3px 6px; color: #636d79; font-size: 7px; }
+    .phone-page .pill i { display: inline-block; width: 4px; height: 4px; margin-right: 3px; border-radius: 50%; background: #2ea043; vertical-align: 1px; }
+    .phone-page .card {
+        margin-top: 13px; padding: 11px;
+        border: 1px solid #e1e5ea; border-radius: 7px; background: #fff;
+    }
+    .phone-page .card b { display: block; color: #3e4752; font-size: 8.5px; }
+    .phone-page .card span { display: block; margin-top: 3px; color: #7d8691; font-size: 7.5px; line-height: 1.45; }
+    .phone-page .rows { margin-top: 10px; }
+    .phone-page .row {
+        display: flex; align-items: center; gap: 6px;
+        height: 31px; border-bottom: 1px solid #edf0f3;
+        color: #6d7681; font-size: 7.5px;
+    }
+    .phone-page .row b { color: #414a55; }
+    .phone-page .row .ok { margin-left: auto; color: #2f8a43; font-size: 7px; font-weight: 700; }
+
+    .phone-island {
+        position: absolute; left: 11px; right: 11px;
+        border: 1px solid rgba(74,82,93,.7);
+        border-radius: 16px;
+        background: rgba(12,16,21,.92);
+        box-shadow: 0 14px 34px rgba(0,0,0,.42);
+        backdrop-filter: blur(14px);
+        z-index: 12;
+    }
+    .phone-island.top { top: 32px; padding: 9px 10px 10px; }
+    .island-row { display: flex; align-items: center; gap: 6px; }
+    .island-back {
+        appearance: none; border: 0; background: transparent; color: var(--text-2);
+        width: 22px; height: 22px; display: grid; place-items: center; cursor: pointer;
+    }
+    .island-title { color: var(--text); font-size: 10.5px; font-weight: 650; }
+    .island-live { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--text-4); font-size: 7.5px; }
+    .island-live i { width: 4px; height: 4px; border-radius: 50%; background: var(--green); }
+    .island-more {
+        appearance: none; border: 0; background: transparent; color: var(--text-4);
+        width: 20px; height: 22px; cursor: pointer;
+    }
+    .island-sub { margin: 5px 0 8px 28px; color: var(--text-4); font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .phone-url {
+        display: flex; align-items: center; gap: 6px;
+        height: 30px; padding: 0 4px 0 8px;
+        border: 1px solid #313842; border-radius: 7px; background: #0b0f14;
+    }
+    .phone-url .lock { color: var(--green); flex: none; }
+    .phone-url .u {
+        appearance: none; border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer;
+        display: block; align-self: stretch; line-height: 28px;
+        min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-family: var(--mono); font-size: 7.5px;
+    }
+    .phone-url .u:hover { color: var(--blue-2); }
+    .phone-url .pbtn {
+        appearance: none; border: 0; border-radius: 4px; background: transparent;
+        color: var(--text-3); width: 22px; height: 22px; display: grid; place-items: center; cursor: pointer;
+    }
+    .phone-url .pbtn:hover { background: rgba(255,255,255,.06); color: var(--blue-2); }
+    .phone-url .pbtn.plus { background: rgba(56,139,253,.13); color: var(--blue-2); }
+    .phone-island.bottom {
+        bottom: 12px;
+        display: flex; align-items: center; gap: 3px;
+        padding: 5px;
+        border-radius: 14px;
+    }
+    .lensbtn {
+        appearance: none; border: 0; border-radius: 6px; background: rgba(56,139,253,.13);
+        color: var(--blue-2); padding: 5px 9px; font-size: 8px; font-weight: 650; cursor: pointer;
+    }
+    .phone-island.bottom .pbtn {
+        appearance: none; border: 0; border-radius: 6px; background: transparent;
+        color: var(--text-3); width: 26px; height: 25px; display: grid; place-items: center;
+        font-size: 10px; cursor: pointer;
+    }
+    .phone-island.bottom .pbtn:hover { background: rgba(255,255,255,.06); color: var(--text); }
+    .pct { min-width: 28px; text-align: center; color: var(--text-4); font-family: var(--mono); font-size: 7.5px; }
+
+    .phone-caption { margin-top: 11px; padding-left: 4px; }
+    .phone-caption b { display: block; color: var(--text-2); font-size: 10.5px; font-weight: 600; }
+    .phone-caption span { display: block; margin-top: 2px; color: var(--text-4); font-size: 9px; line-height: 1.45; }
+
+    /* phone sheet */
+    .sheet-scrim {
+        position: absolute; inset: 0;
+        background: rgba(2, 4, 7, .55);
+        z-index: 14;
+    }
+    .phone-sheet {
+        position: absolute; left: 7px; right: 7px; bottom: 7px;
+        z-index: 15;
+        height: 410px;
+        padding: 9px 13px 12px;
+        border: 1px solid #3a424c;
+        border-radius: 24px;
+        background: #0e1218;
+        box-shadow: 0 -22px 60px rgba(0,0,0,.55);
+        overflow: hidden;
+    }
+    .grabber { width: 34px; height: 3px; margin: 1px auto 9px; border-radius: 3px; background: #39414b; }
+    .sheet-head { display: flex; align-items: center; gap: 8px; }
+    .sheet-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
+    .sheet-head .close { margin-left: auto; }
+    .sheet-address { display: flex; gap: 6px; margin-top: 11px; }
+    .sheet-address .addrfield { height: 33px; }
+    .sheet-address .primary { padding: 0 10px; font-size: 9px; }
+    .sheet-hint { margin-top: 6px; color: var(--text-4); font-size: 8px; }
+    .sheet-bm-head { display: flex; align-items: center; gap: 5px; margin-top: 14px; color: var(--text-4); font-size: 7.5px; font-weight: 700; letter-spacing: .12em; }
+    .sheet-bm-head .count { font-family: var(--mono); letter-spacing: 0; }
+    .sheet-bm-head .search { margin-left: auto; color: var(--text-4); }
+    .sheet-bm-list { margin-top: 3px; }
+    .sheet-bm-list .bm-row { padding: 5px 4px; }
+    .sheet-bm-list .bm-icon { width: 21px; height: 21px; }
+    .sheet-bm-list .bm-title { font-size: 9.5px; }
+    .sheet-bm-list .bm-path { font-size: 7.5px; }
+    .sheet-foot {
+        position: absolute; left: 13px; right: 13px; bottom: 9px;
+        display: flex; align-items: center; gap: 7px;
+        padding-top: 8px; border-top: 1px solid var(--line);
+        color: var(--text-4); font-size: 8px;
+    }
+    .sheet-foot .grow { flex: 1; }
+    .sheet-foot .primary { height: 25px; font-size: 8.5px; }
+    .sheet-foot .foot-action {
+        appearance: none; border: 0; background: transparent; color: var(--text-4);
+        padding: 0; font-size: 8px; cursor: pointer;
+    }
+    .sheet-foot .foot-action:hover { color: var(--text-2); }
+
+    /* --------------------------------------------------------------- footer */
+
+    .board-foot {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        margin-top: 36px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+        color: var(--text-4);
+        font-size: 9px;
+    }
+    .board-foot b { color: var(--text-3); font-weight: 600; }
+    .board-foot .right { margin-left: auto; font-family: var(--mono); font-size: 8px; }
+
+    @media (max-width: 1180px) {
+        .board { padding: 22px 20px 44px; }
+        .hero { grid-template-columns: 1fr; gap: 22px; }
+        .lede { max-width: 640px; }
+        .notes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .rail { width: 248px; }
+    }
+    @media (max-width: 760px) {
+        .board { padding: 16px 12px 34px; }
+        .topline .right { display: none; }
+        .hero { padding: 28px 0 22px; }
+        h1 { font-size: 38px; }
+        .hero-meta span { padding-right: 12px; margin-right: 12px; }
+        .section-head { flex-wrap: wrap; }
+        .scene-switch { width: 100%; margin-left: 0; overflow-x: auto; }
+        .scene-btn { flex: 1; }
+        .notes { grid-template-columns: 1fr; }
+        .phone-row { gap: 24px; }
+        .desktop { min-width: 1040px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        * { transition: none !important; }
+    }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-arrow-up-right" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 20.9l1.1-6.5L2.6 9.8l6.5-.9L12 3Z"/></symbol>
+    <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M7 7h.01M10 7h.01"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+    <symbol id="i-smartphone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M12 18h.01"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 3h7v7M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+</svg>
+
+<div class="board">
+
+    <div class="topline">
+        <span class="brand"><span class="brand-dot"></span> AI Critic</span>
+        <span class="slash">/</span>
+        <span>Browser viewer</span>
+        <span class="right">Design specimen · 01 · 2026.10.28</span>
+    </div>
+
+    <header class="hero">
+        <div>
+            <div class="kicker">ENHANCED VIEWER CHROME</div>
+            <h1>One address bar.<br><em>Every way</em> to open a page.</h1>
+        </div>
+        <p class="lede">
+            Edit the page you are already watching, open a bookmark in a new tab,
+            or paste an address and choose where it goes. One control replaces the
+            silent <b>+</b> — and the address field finally behaves like an address field.
+        </p>
+    </header>
+
+    <div class="hero-meta">
+        <span><b>Scope</b> viewer chrome only</span>
+        <span><b>New endpoints</b> none for address + tabs</span>
+        <span><b>Bookmarks</b> existing local tree</span>
+        <span><b>Input</b> desktop + phone</span>
+    </div>
+
+    <div class="section-head">
+        <span class="section-no">01</span>
+        <span class="section-title">Desktop cockpit</span>
+        <span class="section-rule"></span>
+        <span class="section-note">Try the +, the bookmark icon, or an invalid address</span>
+        <div class="scene-switch" role="group" aria-label="Preview state">
+            <button type="button" class="scene-btn" data-scene="normal">Viewing</button>
+            <button type="button" class="scene-btn is-on" data-scene="newtab">New tab</button>
+            <button type="button" class="scene-btn" data-scene="bookmarks">Bookmarks</button>
+            <button type="button" class="scene-btn" data-scene="invalid">Invalid URL</button>
+            <button type="button" class="scene-btn" data-scene="sessionless">No session</button>
+        </div>
+    </div>
+
+    <div class="desktop-scroll">
+    <div class="desktop" id="desktop" data-scene="newtab">
+
+        <aside class="rail">
+            <div class="rail-head">
+                <span class="rail-title">SESSIONS</span>
+                <span class="rail-count">3</span>
+                <button type="button" class="rail-refresh" title="Refresh sessions" aria-label="Refresh sessions">
+                    <svg class="icon icon-sm"><use href="#i-refresh"/></svg>
+                </button>
+            </div>
+            <div class="rail-body">
+
+                <div class="rail-item is-active" data-row="ai">
+                    <div class="rail-line">
+                        <span class="caret">▾</span>
+                        <span class="status-dot ok"></span>
+                        <span class="rail-name">ai-critic</span>
+                        <span class="rail-badge">3</span>
+                    </div>
+                    <div class="rail-sub">Confluence — Sprint 42</div>
+                    <div class="rail-tabs">
+                        <span class="rail-tab is-on">Confluence — Sprint 42</span>
+                        <span class="rail-tab">PR #128 — all-windows</span>
+                        <span class="rail-tab">Figma — Browser viewer</span>
+                    </div>
+                </div>
+
+                <div class="rail-item" data-row="design">
+                    <div class="rail-line">
+                        <span class="caret">▸</span>
+                        <span class="status-dot ok"></span>
+                        <span class="rail-name">Design review</span>
+                        <span class="rail-badge">2</span>
+                    </div>
+                    <div class="rail-sub">Figma — Browser viewer v3</div>
+                </div>
+
+                <div class="rail-item" data-row="window">
+                    <div class="rail-line">
+                        <span class="caret">▸</span>
+                        <span class="status-dot amber"></span>
+                        <span class="rail-name">Window · no session</span>
+                    </div>
+                    <div class="rail-sub">Chrome window 216811801</div>
+                    <div class="rail-window">
+                        <span class="win-icon"><svg class="icon icon-sm"><use href="#i-window"/></svg></span>
+                        <button type="button" class="attach" data-attach>Attach to control</button>
+                    </div>
+                </div>
+
+            </div>
+            <div class="rail-foot">
+                <span class="mini-dot"></span>
+                <span>browser-agent</span>
+                <span class="ver">1.0.21</span>
+            </div>
+        </aside>
+
+        <main class="main">
+
+            <div class="toolbar">
+                <button type="button" class="tb-icon" title="Back" aria-label="Back">
+                    <svg class="icon"><use href="#i-arrow-left"/></svg>
+                </button>
+                <span class="tb-title">Browser <span>/ ai-critic</span></span>
+                <span class="tb-sep"></span>
+                <span class="live"><i></i> live</span>
+                <div class="tb-right">
+                    <button type="button" class="chip is-on">Mac</button>
+                    <button type="button" class="chip">iPhone</button>
+                    <button type="button" class="tb-icon" title="Viewer settings" aria-label="Viewer settings">
+                        <svg class="icon"><use href="#i-sliders"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="tabsrow">
+                <div class="tabs">
+                    <div class="tab is-active" data-url="https://confluence.example.com/pages/viewpage.action?pageId=216812068">
+                        <span class="favicon fav-c">C</span>
+                        <span class="tab-title">Confluence — Sprint 42</span>
+                        <button type="button" class="tabx" aria-label="Close Confluence tab">×</button>
+                    </div>
+                    <div class="tab" data-url="https://github.com/xhd2015/ai-critic/pull/128">
+                        <span class="favicon fav-g">GH</span>
+                        <span class="tab-title">PR #128 — all-windows</span>
+                        <button type="button" class="tabx" aria-label="Close GitHub tab">×</button>
+                    </div>
+                    <div class="tab" data-url="https://figma.com/file/browser-viewer-v3">
+                        <span class="favicon fav-f">F</span>
+                        <span class="tab-title">Figma — Browser viewer</span>
+                        <button type="button" class="tabx" aria-label="Close Figma tab">×</button>
+                    </div>
+                </div>
+                <span class="tabs-fade"></span>
+                <button type="button" class="tabadd" data-open="newtab" title="New tab" aria-label="New tab">
+                    <svg class="icon"><use href="#i-plus"/></svg>
+                </button>
+            </div>
+
+            <div class="omnibox-wrap">
+                <div class="omnibox">
+                    <button type="button" class="bookmarkbtn" data-open="bookmarks" title="Bookmarks" aria-label="Bookmarks">
+                        <svg class="icon"><use href="#i-bookmark"/></svg>
+                    </button>
+                    <form class="urlform" id="addressForm">
+                        <div class="urlfield">
+                            <svg class="icon icon-sm lock"><use href="#i-lock"/></svg>
+                            <input id="addressInput" value="https://confluence.example.com/pages/viewpage.action?pageId=216812068"
+                                autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                                inputmode="url" aria-label="Address of the current tab" placeholder="example.com">
+                            <button type="submit" class="go" id="goBtn">Go</button>
+                        </div>
+                    </form>
+                    <button type="button" class="newbtn" data-open="newtab">
+                        <svg class="icon icon-sm"><use href="#i-plus"/></svg>
+                        New
+                    </button>
+                </div>
+                <div class="urlerror" id="urlError" role="alert">
+                    <svg class="icon icon-sm"><use href="#i-alert"/></svg>
+                    <span><b>chrome:// is outside the mirror.</b> Only http(s) pages can be controlled here. Chrome-internal pages stay in Chrome.
+                        <button type="button" class="fixlink" id="useHttps">Use https://example.com</button>
+                    </span>
+                </div>
+            </div>
+
+            <div class="stage">
+                <div class="stage-page">
+                    <div class="sp-top">
+                        <span class="sp-actions"><span class="sp-action"></span><span class="sp-action"></span><span class="sp-action blue"></span></span>
+                        <span><b>Confluence</b> / Engineering / Browser Agent</span>
+                    </div>
+                    <div class="sp-body">
+                        <div>
+                            <div class="sp-crumb">Engineering <span>›</span> <b>Browser Agent</b></div>
+                            <div class="sp-title">Browser viewer — sprint 42</div>
+                            <div class="sp-sub">Last edited 12 minutes ago by Xhd · 6 min read</div>
+                            <div class="sp-pills">
+                                <span class="sp-pill"><i></i> Live</span>
+                                <span class="sp-pill amber"><i></i> In review</span>
+                                <span class="sp-pill">Design</span>
+                            </div>
+
+                            <div class="sp-grid">
+                                <div class="sp-card">
+                                    <div class="sp-card-kicker">Goal</div>
+                                    <h4>A browser view that behaves like a browser</h4>
+                                    <p>Address, tabs and bookmarks should be one continuous surface.</p>
+                                    <div class="sp-lines">
+                                        <div class="sp-line w90"></div>
+                                        <div class="sp-line w80"></div>
+                                        <div class="sp-line w60"></div>
+                                    </div>
+                                </div>
+                                <div class="sp-card">
+                                    <div class="sp-card-kicker">Constraint</div>
+                                    <h4>Mirror only content pages</h4>
+                                    <p>Chrome blocks the debugger on chrome:// pages. Keep the boundary visible.</p>
+                                    <div class="sp-lines">
+                                        <div class="sp-line w80"></div>
+                                        <div class="sp-line w90"></div>
+                                    </div>
+                                </div>
+                                <div class="sp-card wide">
+                                    <div class="sp-card-kicker">Sprint board</div>
+                                    <div class="sp-table">
+                                        <div class="sp-row"><b>Editable address bar</b><span class="sp-ok">SHIPPED</span></div>
+                                        <div class="sp-row"><b>New-tab composer</b><span class="sp-ok">IN REVIEW</span></div>
+                                        <div class="sp-row"><b>Bookmarks in the sheet</b><span class="sp-ok">READY</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <aside class="sp-side">
+                            <div class="sp-side-card">
+                                <h5>Owner</h5>
+                                <div class="sp-avatar-row">
+                                    <span class="sp-avatar blue">XH</span>
+                                    <span style="font-size:8px;color:#6f7883">Xhd</span>
+                                </div>
+                            </div>
+                            <div class="sp-side-card">
+                                <h5>Reviewers</h5>
+                                <div class="sp-avatar-row">
+                                    <span class="sp-avatar">AL</span>
+                                    <span class="sp-avatar blue">MK</span>
+                                    <span style="font-size:8px;color:#6f7883">+2</span>
+                                </div>
+                            </div>
+                            <div class="sp-side-card">
+                                <h5>Decision log</h5>
+                                <p>Reuse <span class="mono">/api/browser/navigate</span> instead of adding a second transport.</p>
+                            </div>
+                        </aside>
+                    </div>
+                </div>
+
+                <div class="stage-blank">
+                    <div class="sb-glyph"><svg class="icon"><use href="#i-plus"/></svg></div>
+                    <h3>New tab</h3>
+                    <p>No address yet. Type one above, or pick a bookmark in the composer.</p>
+                    <span class="sb-note">An explicit blank tab — no placeholder URL created for you.</span>
+                </div>
+
+                <div class="stage-hint"><span>CTRL</span> · tap to click · drag to scroll</div>
+                <div class="zoomer" aria-hidden="true">
+                    <button type="button">+</button>
+                    <button type="button">−</button>
+                    <button type="button">⤢</button>
+                </div>
+
+                <div class="attach-state">
+                    <div class="attach-card">
+                        <div class="attach-glyph"><svg class="icon"><use href="#i-window"/></svg></div>
+                        <h3>This window isn’t attached</h3>
+                        <p>You can see its tabs in the rail, but control stays read-only until you attach. Nothing is created or changed by looking.</p>
+                        <button type="button" class="attach-primary" data-attach>Attach to control</button>
+                        <div class="attach-meta">Window 216811801 · 4 normal tabs discovered</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- new tab composer -->
+            <div class="palette newtab-palette" id="newtabPalette" role="dialog" aria-label="New tab">
+                <div class="palette-head">
+                    <div>
+                        <div class="eyebrow">OPEN</div>
+                        <h3>New tab</h3>
+                    </div>
+                    <div class="head-actions">
+                        <button type="button" class="iconbtn" data-close aria-label="Close new tab composer">
+                            <svg class="icon"><use href="#i-close"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <form class="palette-address" id="newtabForm">
+                    <div class="addrfield">
+                        <svg class="icon icon-sm"><use href="#i-globe"/></svg>
+                        <input id="newtabInput" placeholder="Paste or type an address" autocomplete="off" spellcheck="false" inputmode="url" aria-label="Address for new tab">
+                    </div>
+                    <button type="submit" class="primary">Open</button>
+                </form>
+                <div class="palette-hint"><kbd>↵</kbd> opens in a new tab · <kbd>esc</kbd> closes · http(s) only</div>
+                <div class="palette-error" id="newtabError" role="alert" hidden>
+                    <svg class="icon icon-sm"><use href="#i-alert"/></svg>
+                    <span id="newtabErrorText">That page can’t be mirrored.</span>
+                </div>
+
+                <div class="bm-head">
+                    <span class="lbl">BOOKMARKS</span>
+                    <span class="count">5</span>
+                    <label class="searchmini">
+                        <svg class="icon icon-sm"><use href="#i-search"/></svg>
+                        <span class="sr-only">Filter bookmarks</span>
+                        <input id="newtabSearch" placeholder="Filter" aria-label="Filter bookmarks">
+                    </label>
+                </div>
+                <div class="bm-list" id="newtabList">
+                    <button type="button" class="bm-row" data-url="https://confluence.example.com/pages/viewpage.action?pageId=216812068" data-title="Sprint 42 — Browser viewer">
+                        <span class="bm-icon bm-c">C</span>
+                        <span class="bm-copy"><span class="bm-title">Sprint 42 — Browser viewer</span><span class="bm-path">Engineering / Confluence</span></span>
+                        <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                    </button>
+                    <button type="button" class="bm-row" data-url="https://github.com/xhd2015/ai-critic/pull/128" data-title="PR #128 — all-windows">
+                        <span class="bm-icon bm-g">GH</span>
+                        <span class="bm-copy"><span class="bm-title">PR #128 — all-windows</span><span class="bm-path">ai-critic / GitHub</span></span>
+                        <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                    </button>
+                    <button type="button" class="bm-row" data-url="https://figma.com/file/browser-viewer-v3" data-title="Figma — Browser viewer v3">
+                        <span class="bm-icon bm-f">F</span>
+                        <span class="bm-copy"><span class="bm-title">Figma — Browser viewer v3</span><span class="bm-path">Design / Files</span></span>
+                        <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                    </button>
+                    <button type="button" class="bm-row" data-url="http://localhost:23712/browser" data-title="localhost:23712/browser">
+                        <span class="bm-icon bm-l">L</span>
+                        <span class="bm-copy"><span class="bm-title">localhost:23712/browser</span><span class="bm-path">Local / AI Critic</span></span>
+                        <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                    </button>
+                    <button type="button" class="bm-row" data-url="https://chrome.google.com/webstore/category/extensions" data-title="Chrome Web Store — Extensions">
+                        <span class="bm-icon bm-r">R</span>
+                        <span class="bm-copy"><span class="bm-title">Chrome Web Store — Extensions</span><span class="bm-path">Tools / Browser</span></span>
+                        <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                    </button>
+                </div>
+                <div class="bm-empty" id="newtabEmpty" hidden>No bookmarks match “<span class="query"></span>”.</div>
+                <div class="palette-foot">
+                    <span><kbd>↵</kbd> New tab</span>
+                    <span><kbd>⌘</kbd><kbd>↵</kbd> Open here</span>
+                    <span class="spacer"></span>
+                    <button type="button" class="foot-action" data-blank>Open a blank tab</button>
+                </div>
+            </div>
+
+            <!-- bookmarks -->
+            <div class="palette bookmarks-palette" id="bookmarksPalette" role="dialog" aria-label="Bookmarks">
+                <div class="palette-head">
+                    <div>
+                        <div class="eyebrow">LOCAL BOOKMARKS</div>
+                        <h3>Bookmarks</h3>
+                    </div>
+                    <div class="head-actions">
+                        <button type="button" class="iconbtn" id="starBtn" title="Bookmark this page" aria-label="Bookmark this page">
+                            <svg class="icon"><use href="#i-star"/></svg>
+                        </button>
+                        <button type="button" class="iconbtn" data-close aria-label="Close bookmarks">
+                            <svg class="icon"><use href="#i-close"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="palette-hint">Read from the local bookmark tree — no Chrome permission required.</div>
+                <label class="searchbox">
+                    <svg class="icon icon-sm"><use href="#i-search"/></svg>
+                    <span class="sr-only">Search bookmarks</span>
+                    <input id="bookmarkSearch" placeholder="Search title, URL, or folder" aria-label="Search bookmarks">
+                </label>
+                <div class="bm-list" id="bookmarkList">
+                    <div class="bm-group">ALL BOOKMARKS</div>
+                    <button type="button" class="bm-row" data-url="https://confluence.example.com/pages/viewpage.action?pageId=216812068" data-title="Sprint 42 — Browser viewer">
+                        <span class="bm-icon bm-c">C</span>
+                        <span class="bm-copy"><span class="bm-title">Sprint 42 — Browser viewer</span><span class="bm-path">Engineering / Confluence</span></span>
+                        <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                    </button>
+                    <button type="button" class="bm-row" data-url="https://github.com/xhd2015/ai-critic/pull/128" data-title="PR #128 — all-windows">
+                        <span class="bm-icon bm-g">GH</span>
+                        <span class="bm-copy"><span class="bm-title">PR #128 — all-windows</span><span class="bm-path">ai-critic / GitHub</span></span>
+                        <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                    </button>
+                    <button type="button" class="bm-row" data-url="https://figma.com/file/browser-viewer-v3" data-title="Figma — Browser viewer v3">
+                        <span class="bm-icon bm-f">F</span>
+                        <span class="bm-copy"><span class="bm-title">Figma — Browser viewer v3</span><span class="bm-path">Design / Files</span></span>
+                        <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                    </button>
+                    <button type="button" class="bm-row" data-url="http://localhost:23712/browser" data-title="localhost:23712/browser">
+                        <span class="bm-icon bm-l">L</span>
+                        <span class="bm-copy"><span class="bm-title">localhost:23712/browser</span><span class="bm-path">Local / AI Critic</span></span>
+                        <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                    </button>
+                    <button type="button" class="bm-row" data-url="https://chrome.google.com/webstore/category/extensions" data-title="Chrome Web Store — Extensions">
+                        <span class="bm-icon bm-r">R</span>
+                        <span class="bm-copy"><span class="bm-title">Chrome Web Store — Extensions</span><span class="bm-path">Tools / Browser</span></span>
+                        <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                    </button>
+                </div>
+                <div class="bm-empty" id="bookmarkEmpty" hidden>No bookmarks match “<span class="query"></span>”.</div>
+                <div class="palette-foot">
+                    <span><kbd>↵</kbd> Open in new tab</span>
+                    <span class="spacer"></span>
+                    <span class="permalink">~/.ai-critic/bookmarks.json</span>
+                </div>
+            </div>
+
+            <div class="toast" id="toast" role="status" aria-live="polite">
+                <svg class="icon icon-sm"><use href="#i-check"/></svg>
+                <span id="toastText">Opening page…</span>
+            </div>
+
+        </main>
+    </div>
+    </div>
+
+    <div class="notes">
+        <article class="note">
+            <div class="note-no">01 / ADDRESS</div>
+            <h4>Editable, really.</h4>
+            <p>The draft no longer resets on blur before <kbd>Go</kbd> submits. <kbd>Enter</kbd> navigates this tab through the existing <code>/api/browser/navigate</code>; <kbd>Esc</kbd> reverts.</p>
+        </article>
+        <article class="note">
+            <div class="note-no">02 / PLUS</div>
+            <h4>Ask, then open.</h4>
+            <p>Every <b>+</b> opens one composer. Paste an address or pick a bookmark. A blank tab is an explicit action, never a side effect.</p>
+            <div class="note-chips"><span class="mini-chip">⌘L address</span><span class="mini-chip">⌘K bookmarks</span></div>
+        </article>
+        <article class="note">
+            <div class="note-no">03 / BOOKMARKS</div>
+            <h4>Already on disk.</h4>
+            <p>The app already owns a Chrome-style tree. Flatten it, search title + URL + folder, and open http(s) rows in a new tab. No new permission.</p>
+            <div class="note-chips"><span class="mini-chip">GET /api/bookmarks</span><span class="mini-chip">no chrome.bookmarks</span></div>
+        </article>
+        <article class="note">
+            <div class="note-no">04 / PHONE</div>
+            <h4>Same sheet, same rules.</h4>
+            <p>The phone keeps its two floating islands and one bottom sheet. The address pill and sheet <b>+</b> open the same composer; nothing moves into a second overlay.</p>
+        </article>
+    </div>
+
+    <section class="mobile-section">
+        <div class="section-head">
+            <span class="section-no">02</span>
+            <span class="section-title">Phone</span>
+            <span class="section-rule"></span>
+            <span class="section-note">Existing sheet, new composer view</span>
+        </div>
+
+        <div class="phone-row">
+
+            <div class="phone-wrap">
+                <div class="phone">
+                    <div class="phone-screen">
+                        <div class="phone-page">
+                            <div class="mini-top"><span><b>Confluence</b> / Engineering</span><span>⋯</span></div>
+                            <div class="mini-body">
+                                <div class="crumb">Engineering › Browser Agent</div>
+                                <h3>Browser viewer — sprint 42</h3>
+                                <div class="sub">Xhd · 12 min ago</div>
+                                <div class="pills"><span class="pill"><i></i>Live</span><span class="pill">Design</span></div>
+                                <div class="card"><b>A browser view that behaves like a browser</b><span>Address, tabs and bookmarks should feel like one continuous surface.</span></div>
+                                <div class="rows">
+                                    <div class="row"><b>Editable address bar</b><span class="ok">SHIPPED</span></div>
+                                    <div class="row"><b>New-tab composer</b><span class="ok">READY</span></div>
+                                    <div class="row"><b>Bookmarks in the sheet</b><span class="ok">READY</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="phone-island top">
+                            <div class="island-row">
+                                <button type="button" class="island-back" aria-label="Back"><svg class="icon icon-sm"><use href="#i-arrow-left"/></svg></button>
+                                <span class="island-title">ai-critic</span>
+                                <span class="island-live"><i></i> live</span>
+                                <button type="button" class="island-more" aria-label="More"><svg class="icon icon-sm"><use href="#i-more"/></svg></button>
+                            </div>
+                            <div class="island-sub">Confluence — Sprint 42</div>
+                            <div class="phone-url">
+                                <svg class="icon icon-sm lock"><use href="#i-lock"/></svg>
+                                <button type="button" class="u" data-phone-open aria-label="Edit address">confluence.example.com/pages/…</button>
+                                <button type="button" class="pbtn" aria-label="Bookmarks"><svg class="icon icon-sm"><use href="#i-bookmark"/></svg></button>
+                                <button type="button" class="pbtn plus" data-phone-open aria-label="New tab"><svg class="icon icon-sm"><use href="#i-plus"/></svg></button>
+                            </div>
+                        </div>
+
+                        <div class="phone-island bottom">
+                            <button type="button" class="lensbtn">Lens</button>
+                            <button type="button" class="pbtn" aria-label="Zoom out">−</button>
+                            <span class="pct">100%</span>
+                            <button type="button" class="pbtn" aria-label="Zoom in">+</button>
+                            <button type="button" class="pbtn" aria-label="Fit">⤢</button>
+                            <button type="button" class="pbtn" aria-label="Keyboard">⌨</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="phone-caption">
+                    <b>Viewer</b>
+                    <span>The address is one tap away, underneath the session title. The plus opens the composer instead of creating a tab.</span>
+                </div>
+            </div>
+
+            <div class="phone-wrap">
+                <div class="phone">
+                    <div class="phone-screen">
+                        <div class="phone-page">
+                            <div class="mini-top"><span><b>Confluence</b> / Engineering</span><span>⋯</span></div>
+                            <div class="mini-body">
+                                <div class="crumb">Engineering › Browser Agent</div>
+                                <h3>Browser viewer — sprint 42</h3>
+                                <div class="sub">Xhd · 12 min ago</div>
+                                <div class="pills"><span class="pill"><i></i>Live</span><span class="pill">Design</span></div>
+                                <div class="card"><b>A browser view that behaves like a browser</b><span>Address, tabs and bookmarks should feel like one continuous surface.</span></div>
+                            </div>
+                        </div>
+
+                        <div class="sheet-scrim"></div>
+
+                        <div class="phone-island top">
+                            <div class="island-row">
+                                <button type="button" class="island-back" aria-label="Back"><svg class="icon icon-sm"><use href="#i-arrow-left"/></svg></button>
+                                <span class="island-title">ai-critic</span>
+                                <span class="island-live"><i></i> live</span>
+                                <button type="button" class="island-more" aria-label="More"><svg class="icon icon-sm"><use href="#i-more"/></svg></button>
+                            </div>
+                            <div class="island-sub">Confluence — Sprint 42</div>
+                            <div class="phone-url">
+                                <svg class="icon icon-sm lock"><use href="#i-lock"/></svg>
+                                <button type="button" class="u" data-phone-open aria-label="Edit address">confluence.example.com/pages/…</button>
+                                <button type="button" class="pbtn" aria-label="Bookmarks"><svg class="icon icon-sm"><use href="#i-bookmark"/></svg></button>
+                                <button type="button" class="pbtn plus" data-phone-open aria-label="New tab"><svg class="icon icon-sm"><use href="#i-plus"/></svg></button>
+                            </div>
+                        </div>
+
+                        <div class="phone-sheet">
+                            <div class="grabber"></div>
+                            <div class="sheet-head">
+                                <h3>New tab</h3>
+                                <button type="button" class="iconbtn close" data-phone-close aria-label="Close new tab">
+                                    <svg class="icon"><use href="#i-close"/></svg>
+                                </button>
+                            </div>
+                            <form class="sheet-address" id="phoneNewtabForm">
+                                <div class="addrfield">
+                                    <svg class="icon icon-sm"><use href="#i-globe"/></svg>
+                                    <input id="phoneNewtabInput" placeholder="Paste or type an address" aria-label="Address for new tab">
+                                </div>
+                                <button type="submit" class="primary">Open</button>
+                            </form>
+                            <div class="sheet-hint">http(s) only · opens in this window</div>
+                            <div class="sheet-bm-head">
+                                <span>BOOKMARKS</span><span class="count">5</span>
+                                <svg class="icon icon-sm search"><use href="#i-search"/></svg>
+                            </div>
+                            <div class="sheet-bm-list">
+                                <button type="button" class="bm-row" data-url="https://confluence.example.com/pages/viewpage.action?pageId=216812068" data-title="Sprint 42 — Browser viewer">
+                                    <span class="bm-icon bm-c">C</span>
+                                    <span class="bm-copy"><span class="bm-title">Sprint 42 — Browser viewer</span><span class="bm-path">Engineering / Confluence</span></span>
+                                    <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                                </button>
+                                <button type="button" class="bm-row" data-url="https://github.com/xhd2015/ai-critic/pull/128" data-title="PR #128 — all-windows">
+                                    <span class="bm-icon bm-g">GH</span>
+                                    <span class="bm-copy"><span class="bm-title">PR #128 — all-windows</span><span class="bm-path">ai-critic / GitHub</span></span>
+                                    <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                                </button>
+                                <button type="button" class="bm-row" data-url="https://figma.com/file/browser-viewer-v3" data-title="Figma — Browser viewer v3">
+                                    <span class="bm-icon bm-f">F</span>
+                                    <span class="bm-copy"><span class="bm-title">Figma — Browser viewer v3</span><span class="bm-path">Design / Files</span></span>
+                                    <svg class="icon icon-sm bm-go"><use href="#i-arrow-up-right"/></svg>
+                                </button>
+                            </div>
+                            <div class="sheet-foot">
+                                <span><kbd>↵</kbd> Open in new tab</span>
+                                <span class="grow"></span>
+                                <button type="button" class="foot-action" data-blank>Blank tab</button>
+                                <button type="button" class="primary" data-phone-sheet-submit>Open</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="phone-caption">
+                    <b>New tab</b>
+                    <span>The composer is a view inside the existing bottom sheet: address, search, bookmarks, one Open action.</span>
+                </div>
+            </div>
+
+            <div class="phone-wrap phone-notes">
+                <div class="note" style="min-height:0">
+                    <div class="note-no">SAME CONTRACT</div>
+                    <h4>No second overlay.</h4>
+                    <p>The sheet already owns tabs and URL entry. Adding a composer view keeps the top island for context and the bottom island for zoom — the same split as today.</p>
+                </div>
+                <div class="note" style="min-height:0;margin-top:10px">
+                    <div class="note-no">SESSIONLESS</div>
+                    <h4>Attach before compose.</h4>
+                    <p>On a window with no session, the address pill and <b>+</b> are disabled with “Attach this window to control it” — never a silent placeholder.</p>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <footer class="board-foot">
+        <span><b>Mockup only.</b> No app code changed. Defaults are proposed for review.</span>
+        <span class="right">ai-critic · browser-enhanced.html</span>
+    </footer>
+
+</div>
+
+<script>
+(() => {
+    const desktop = document.getElementById('desktop');
+    const address = document.getElementById('addressInput');
+    const urlError = document.getElementById('urlError');
+    const toast = document.getElementById('toast');
+    const toastText = document.getElementById('toastText');
+    const newtabInput = document.getElementById('newtabInput');
+    const newtabError = document.getElementById('newtabError');
+    const newtabErrorText = document.getElementById('newtabErrorText');
+    const sceneButtons = Array.from(document.querySelectorAll('.scene-btn'));
+    const defaultAddress = address.value;
+    let currentAddress = defaultAddress;
+    let toastTimer = null;
+
+    function flash(message) {
+        toastText.textContent = message;
+        toast.classList.add('is-on');
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => toast.classList.remove('is-on'), 2400);
+    }
+
+    function scene(name, options = {}) {
+        const keepAddress = options.keepAddress === true;
+        desktop.dataset.scene = name;
+        for (const button of sceneButtons) {
+            button.classList.toggle('is-on', button.dataset.scene === name);
+            button.setAttribute('aria-pressed', String(button.dataset.scene === name));
+        }
+        urlError.hidden = name !== 'invalid';
+        address.classList.toggle('is-bad', name === 'invalid');
+        if (name === 'invalid') {
+            address.value = 'chrome://settings';
+            address.placeholder = 'example.com';
+        } else if (name === 'sessionless') {
+            address.value = '';
+            address.placeholder = 'Attach this window to control it';
+        } else if (name === 'blank') {
+            address.value = '';
+            address.placeholder = 'Paste or type an address';
+        } else if (!keepAddress) {
+            address.value = currentAddress;
+            address.placeholder = 'example.com';
+        }
+        newtabError.hidden = true;
+        if (name !== 'newtab') newtabInput.value = '';
+    }
+
+    for (const button of sceneButtons) {
+        button.addEventListener('click', () => scene(button.dataset.scene));
+    }
+
+    document.querySelectorAll('[data-open]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (desktop.dataset.scene === 'sessionless') {
+                flash('Attach this window before opening a tab.');
+                return;
+            }
+            scene(button.dataset.open);
+            if (button.dataset.open === 'newtab') {
+                window.setTimeout(() => newtabInput.focus(), 30);
+            }
+        });
+    });
+
+    document.querySelectorAll('[data-close]').forEach((button) => {
+        button.addEventListener('click', () => scene('normal'));
+    });
+
+    document.querySelectorAll('[data-attach]').forEach((button) => {
+        button.addEventListener('click', () => {
+            flash('Attaching window 216811801…');
+            window.setTimeout(() => scene('normal'), 700);
+        });
+    });
+
+    function normalizedAddress(raw) {
+        const value = raw.trim().replace(/^\/\//, '');
+        if (/^https?:\/\//i.test(value)) return value;
+        if (/^[a-z0-9.-]+:\d+(?:[/?#]|$)/i.test(value)) return `http://${value}`;
+        return `https://${value}`;
+    }
+
+    function validAddress(raw) {
+        const value = raw.trim();
+        if (!value) return { ok: false, reason: 'Enter an address first.' };
+        const hostPort = /^[a-z0-9.-]+:\d+(?:[/?#]|$)/i.test(value);
+        const explicit = hostPort ? null : /^([a-z][a-z0-9+.-]*):\/\//i.exec(value);
+        const bare = hostPort || explicit ? null : /^([a-z][a-z0-9+.-]*):/i.exec(value);
+        const scheme = explicit?.[1] ?? bare?.[1];
+        if (scheme && !/^https?$/i.test(scheme)) {
+            return {
+                ok: false,
+                reason: `${scheme}:// pages can’t be mirrored. Only http(s) pages can be controlled here.`,
+            };
+        }
+        let host = value;
+        try {
+            const target = explicit
+                ? value
+                : bare
+                  ? `${bare[1]}://${value.slice(bare[0].length).replace(/^\/\//, '')}`
+                  : `https://${value.replace(/^\/\//, '')}`;
+            host = new URL(target).host || target;
+        } catch {
+            host = value;
+        }
+        return { ok: true, host };
+    }
+
+    function setInvalid(value) {
+        address.value = value;
+        desktop.dataset.scene = 'invalid';
+        for (const button of sceneButtons) {
+            button.classList.toggle('is-on', button.dataset.scene === 'invalid');
+            button.setAttribute('aria-pressed', String(button.dataset.scene === 'invalid'));
+        }
+        urlError.hidden = false;
+    }
+
+    document.getElementById('addressForm').addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (desktop.dataset.scene === 'sessionless') {
+            flash('Attach this window before changing its address.');
+            return;
+        }
+        const typed = address.value.trim();
+        const result = validAddress(typed);
+        if (!result.ok) {
+            setInvalid(typed);
+            return;
+        }
+        currentAddress = normalizedAddress(typed);
+        scene('normal', { keepAddress: true });
+        address.value = currentAddress;
+        flash(`Opening ${result.host} in this tab…`);
+    });
+
+    document.getElementById('useHttps').addEventListener('click', () => {
+        currentAddress = 'https://example.com';
+        scene('normal', { keepAddress: true });
+        address.value = currentAddress;
+        address.focus();
+        address.select();
+    });
+
+    address.addEventListener('input', () => {
+        if (desktop.dataset.scene === 'invalid') {
+            desktop.dataset.scene = 'normal';
+            urlError.hidden = true;
+            for (const button of sceneButtons) {
+                button.classList.toggle('is-on', button.dataset.scene === 'normal');
+                button.setAttribute('aria-pressed', String(button.dataset.scene === 'normal'));
+            }
+        }
+    });
+    address.addEventListener('focus', () => address.select());
+
+    document.getElementById('newtabForm').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const result = validAddress(newtabInput.value);
+        if (!result.ok) {
+            newtabErrorText.textContent = result.reason || 'That page can’t be mirrored.';
+            newtabError.hidden = false;
+            newtabInput.focus();
+            return;
+        }
+        const target = newtabInput.value.trim();
+        newtabInput.value = '';
+        currentAddress = normalizedAddress(target);
+        scene('normal', { keepAddress: true });
+        address.value = currentAddress;
+        flash(`Opening ${result.host} in a new tab…`);
+    });
+
+    newtabInput.addEventListener('input', () => { newtabError.hidden = true; });
+
+    function wireFilter(input, list, empty) {
+        if (!input || !list || !empty) return;
+        input.addEventListener('input', () => {
+            const query = input.value.trim().toLowerCase();
+            let visible = 0;
+            list.querySelectorAll('.bm-row').forEach((row) => {
+                const hit = !query || row.textContent.toLowerCase().includes(query);
+                row.hidden = !hit;
+                if (hit) visible += 1;
+            });
+            empty.hidden = visible > 0;
+            empty.querySelectorAll('.query').forEach((node) => { node.textContent = input.value.trim(); });
+        });
+    }
+
+    wireFilter(document.getElementById('newtabSearch'), document.getElementById('newtabList'), document.getElementById('newtabEmpty'));
+    wireFilter(document.getElementById('bookmarkSearch'), document.getElementById('bookmarkList'), document.getElementById('bookmarkEmpty'));
+
+    document.addEventListener('click', (event) => {
+        const row = event.target.closest('.bm-row');
+        if (!row) return;
+        const title = row.dataset.title || 'bookmark';
+        currentAddress = row.dataset.url;
+        scene('normal', { keepAddress: true });
+        address.value = currentAddress;
+        flash(`Opening “${title}” in a new tab…`);
+    });
+
+    document.getElementById('starBtn').addEventListener('click', () => {
+        const button = document.getElementById('starBtn');
+        button.classList.toggle('is-starred');
+        const on = button.classList.contains('is-starred');
+        flash(on ? 'Bookmarked this page.' : 'Bookmark removed.');
+    });
+
+    document.querySelectorAll('.tab').forEach((tab) => {
+        tab.addEventListener('click', (event) => {
+            if (event.target.closest('.tabx')) {
+                flash('Close is unchanged; at least one content tab stays open.');
+                return;
+            }
+            document.querySelectorAll('.tab').forEach((node) => node.classList.remove('is-active'));
+            tab.classList.add('is-active');
+            if (tab.dataset.url) {
+                currentAddress = tab.dataset.url;
+                scene('normal', { keepAddress: true });
+                address.value = currentAddress;
+            }
+            flash('Switched tab without reloading the viewer.');
+        });
+    });
+
+    document.querySelectorAll('[data-phone-open]').forEach((button) => {
+        button.addEventListener('click', () => {
+            flash('On a phone this opens the existing sheet in its New tab view.');
+        });
+    });
+    document.querySelectorAll('[data-phone-close]').forEach((button) => {
+        button.addEventListener('click', () => flash('Sheet closes; the viewer stays exactly where it was.'));
+    });
+    document.getElementById('phoneNewtabForm').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const result = validAddress(document.getElementById('phoneNewtabInput').value);
+        flash(result.ok ? `Opening ${result.host} in this window…` : (result.reason || 'Enter an address first.'));
+    });
+    document.querySelector('[data-phone-sheet-submit]').addEventListener('click', () => {
+        flash('Same Open action as the keyboard — one path on phone.');
+    });
+
+    document.querySelectorAll('[data-blank]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (desktop.dataset.scene === 'sessionless') {
+                flash('Attach this window before opening a tab.');
+                return;
+            }
+            currentAddress = defaultAddress;
+            scene('blank');
+            flash('Opening a blank tab — no placeholder URL.');
+        });
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            if (desktop.dataset.scene !== 'normal') {
+                scene('normal');
+                event.preventDefault();
+            }
+            return;
+        }
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'l') {
+            event.preventDefault();
+            address.focus();
+            address.select();
+        }
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+            event.preventDefault();
+            scene('bookmarks');
+        }
+    });
+
+    scene('newtab');
+    window.setTimeout(() => newtabInput.focus(), 60);
+})();
+</script>
+</body>
+</html>

@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test:terminal": "node --experimental-strip-types --test tests/terminal-connection.test.mjs",
     "test:screen": "node --experimental-strip-types --test tests/screen-viewport.test.mjs tests/screen-input.test.mjs tests/screen-drag.test.mjs tests/screen-pause.test.mjs",
-    "test:browser": "node --experimental-strip-types --test tests/browser-view.test.mjs"
+    "test:browser": "node --experimental-strip-types --test tests/browser-*.test.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

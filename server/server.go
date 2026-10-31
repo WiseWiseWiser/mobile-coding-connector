@@ -667,7 +667,7 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Settings export/import API
 	settings.RegisterAPI(mux)
 
-	// Bookmarks API (local Chrome-style tree)
+	// Bookmarks API (app-local tree, plus read-only Chrome via ?source=chrome)
 	bookmarks.RegisterAPI(mux)
 
 	// Exposed URLs API

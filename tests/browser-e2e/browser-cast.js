@@ -164,13 +164,28 @@ try {
   }, 20000);
   check(pageState.title === 'spike', 'target page loaded', pageState.title);
 
+  // The page opens in VIEW, where nothing reaches the remote tab. Tapping is a
+  // CTRL gesture, exactly as a person would do it.
+  await viewer.click('.bw-lensbtn[data-lens="ctrl"]');
+  await waitFor('ctrl lens', async () => (await viewer.getAttribute('.bw-lensbtn[data-lens="ctrl"]', 'aria-pressed')) === 'true', 5000);
+  check(true, 'switched to the CTRL lens');
+
   // Tap the button through the mirror. Normalized coordinates mean the CSS size
   // of the cast image does not matter.
-  const box = await viewer.locator('img.bw-frame').boundingBox();
+  // The mirror letterboxes the 2400x1802 frame inside its element, so map the
+  // click against the painted content, not the element box.
+  const painted = await viewer.evaluate(() => {
+    const img = document.querySelector('img.bw-frame');
+    const r = img.getBoundingClientRect();
+    const scale = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight);
+    const width = img.naturalWidth * scale;
+    const height = img.naturalHeight * scale;
+    return { x: r.x + (r.width - width) / 2, y: r.y + (r.height - height) / 2, width, height };
+  });
   const [vw, vh] = pageState.vp;
   const nx = pageState.btn.x / vw;
   const ny = pageState.btn.y / vh;
-  await viewer.mouse.click(box.x + nx * box.width, box.y + ny * box.height);
+  await viewer.mouse.click(painted.x + nx * painted.width, painted.y + ny * painted.height);
   const tapped = await waitFor('button click landed', async () => {
     const bg = await contentPage.evaluate(() => getComputedStyle(document.getElementById('box')).backgroundColor);
     return bg !== pageState.box.bg ? bg : null;

@@ -3,7 +3,6 @@ package browser
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 )
 
@@ -14,6 +13,9 @@ type tabFake struct {
 	*fakeClient
 	tabs   []TabInfo
 	window int64
+	// gone mirrors Chrome: with no tab left the window closed and the
+	// extension answers info jobs with an error.
+	gone bool
 }
 
 func newTabFake(session string, tabs ...TabInfo) *tabFake {
@@ -25,6 +27,9 @@ func newTabFake(session string, tabs ...TabInfo) *tabFake {
 	tf.handle = func(call fakeCall) (json.RawMessage, bool) {
 		switch call.Type {
 		case "info":
+			if tf.gone {
+				return nil, false
+			}
 			return json.RawMessage(tf.infoJSON()), true
 		case "create_tab":
 			id := int64(950)
@@ -60,6 +65,7 @@ func newTabFake(session string, tabs ...TabInfo) *tabFake {
 					}
 				}
 				tf.tabs = kept
+				tf.gone = len(tf.tabs) == 0
 				if len(tf.tabs) > 0 {
 					tf.tabs[0].Active = true
 				}
@@ -193,28 +199,40 @@ func TestTabOpMapping(t *testing.T) {
 	}
 }
 
-func TestCloseLastTabRejected(t *testing.T) {
+// Window-id rail: every tab closes like any tab. The /go anchor goes over a
+// CDP close (the daemon's session-aware close job would refuse it), and
+// closing the last content tab re-aims the mirror at the anchor instead of
+// refusing.
+func TestCloseAnchorAndLastTabAllowed(t *testing.T) {
 	f := newTabFake("ai-critic", sessionPageTab(901), userTab(902, "https://example.com", true))
 	m := newTestManager(t, f.fakeClient)
 	m.connected = true
-	// Pretend the user tab is the only closable one by faking a single-tab window:
-	// closing the session page must be refused too.
-	if _, err := m.TabOp(context.Background(), "ai-critic", TabClose, 901, ""); err == nil || !strings.Contains(err.Error(), "session page") {
-		t.Fatalf("closing the session page: err = %v, want session page refusal", err)
+	m.contentTabID = 902
+
+	// Closing the /go anchor goes over CDP, not the daemon close job.
+	if _, err := m.TabOp(context.Background(), "ai-critic", TabClose, 901, ""); err != nil {
+		t.Fatalf("closing the anchor: %v", err)
 	}
-	if calls := f.all("cdp"); len(calls) != 0 {
-		t.Fatalf("cdp jobs = %d, want 0 (no job for a refused close)", len(calls))
+	call, _ := f.last("cdp")
+	if call.Params["method"] != "Target.closeTarget" {
+		t.Fatalf("method = %v, want Target.closeTarget", call.Params["method"])
+	}
+	if len(f.all("close_tab")) != 0 {
+		t.Fatal("anchor close must not use the daemon close job")
+	}
+	// The anchor was active; the close re-aims at the remaining content tab.
+	if got := m.contentTab(); got != 902 {
+		t.Fatalf("mirror tab = %d, want the remaining content tab 902", got)
 	}
 
-	// One tab only: closing it is refused as the last tab.
-	f2 := newTabFake("ai-critic", userTab(902, "https://example.com", true))
-	m2 := newTestManager(t, f2.fakeClient)
-	m2.connected = true
-	if _, err := m2.TabOp(context.Background(), "ai-critic", TabClose, 902, ""); err == nil || !strings.Contains(err.Error(), "last tab") {
-		t.Fatalf("closing the last tab: err = %v, want last-tab refusal", err)
+	// Closing the last content tab closes the whole window in Chrome (the fake
+	// mirrors that): the close must still succeed, with the reconnect owning
+	// the recovery (failover to a free window) instead of an error.
+	if _, err := m.TabOp(context.Background(), "ai-critic", TabClose, 902, ""); err != nil {
+		t.Fatalf("closing the last tab: %v", err)
 	}
-	if calls := f2.all("cdp"); len(calls) != 0 {
-		t.Fatalf("cdp jobs = %d, want 0", len(calls))
+	if m.contentTab() != 0 || m.windowIDValue() != 0 {
+		t.Fatalf("mirror state = tab %d window %d, want cleared for the gone window", m.contentTab(), m.windowIDValue())
 	}
 }
 
@@ -277,9 +295,11 @@ func TestSessionsAggregatesTabs(t *testing.T) {
 		{SessionID: "ai-critic-1", Extension: extensionInfo{Connected: false}, SessionPageCount: 0},
 	}
 	m := newTestManager(t, f.fakeClient)
+	m.sessionID = "ai-critic-2"
 	m.connected = true
 	m.windowID = 900
 	m.contentTabID = 902
+	m.tabs = []TabInfo{sessionPageTab(901), userTab(902, "https://example.com", true)}
 
 	resp := m.Sessions(context.Background())
 	if !resp.OK {
@@ -288,14 +308,28 @@ func TestSessionsAggregatesTabs(t *testing.T) {
 	if len(resp.Sessions) != 2 {
 		t.Fatalf("sessions = %d, want 2 (dead registry rows hidden): %+v", len(resp.Sessions), resp.Sessions)
 	}
-	if !resp.Sessions[0].Current || resp.Sessions[0].ID != "ai-critic" {
-		t.Fatalf("first row = %+v, want current ai-critic", resp.Sessions[0])
+	// The current row is second, not first: selection must not reorder the rail.
+	if resp.Sessions[0].ID != "ai-critic" || resp.Sessions[0].Current {
+		t.Fatalf("first row = %+v, want non-current ai-critic", resp.Sessions[0])
 	}
 	if len(resp.Sessions[0].Tabs) != 2 {
-		t.Fatalf("current tabs = %+v", resp.Sessions[0].Tabs)
+		t.Fatalf("first row tabs = %+v", resp.Sessions[0].Tabs)
 	}
-	if !resp.Sessions[1].Attachable || resp.Sessions[1].ID != "ai-critic-2" {
-		t.Fatalf("second row = %+v", resp.Sessions[1])
+	if !resp.Sessions[1].Current || !resp.Sessions[1].Attachable || resp.Sessions[1].ID != "ai-critic-2" {
+		t.Fatalf("second row = %+v, want current ai-critic-2", resp.Sessions[1])
+	}
+	if len(resp.Sessions[1].Tabs) != 2 {
+		t.Fatalf("current tabs = %+v", resp.Sessions[1].Tabs)
+	}
+
+	// Switching turns the flags over but leaves the order exactly as it was.
+	m.sessionID = "ai-critic"
+	resp = m.Sessions(context.Background())
+	if len(resp.Sessions) != 2 || resp.Sessions[0].ID != "ai-critic" || resp.Sessions[1].ID != "ai-critic-2" {
+		t.Fatalf("order changed after switch: %+v", resp.Sessions)
+	}
+	if !resp.Sessions[0].Current || resp.Sessions[1].Current {
+		t.Fatalf("current flags = %+v, want only ai-critic current", resp.Sessions)
 	}
 }
 

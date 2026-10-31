@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchSessions, openNewSession, switchSession, tabOp } from './browserApi';
+import { closeWindow as closeWindowRequest, fetchSessions, openNewSession, resolveTabClose as resolveTabCloseRequest, switchSession, tabOp } from './browserApi';
 import type { TabOp } from './browserApi';
 import type { BrowserTab, DaemonStatus, SessionInfo } from './browserWire';
 
@@ -9,25 +9,40 @@ const POLL_MS = 8000;
 export interface TabResult {
     tabs: BrowserTab[];
     error?: string;
+    closeConfirmation?: { operation_id: string; tab_id: number };
+    closeOutcome?: 'closed' | 'kept';
     /** Present when the operation targeted the session this page is driving. */
     status?: unknown;
+}
+
+export interface WindowCloseResult {
+    ok: boolean;
+    error?: string;
+    /** The session the server made current after closing the current window. */
+    current?: string;
 }
 
 export interface BrowserSessions {
     sessions: SessionInfo[];
     current: string;
     daemon: DaemonStatus | null;
+    windowsSupported: boolean;
+    /** Safe to offer whole-window close in this build of the extension. */
+    windowCloseSupported: boolean;
     readOnly: boolean;
     loading: boolean;
     busy: boolean;
     error: string | null;
+    newWindowError: string | null;
     clearError: () => void;
     refresh: () => Promise<void>;
     switchTo: (id: string) => Promise<void>;
-    addSession: () => Promise<void>;
+    addSession: () => Promise<boolean>;
+    closeWindow: (target: { window_id: number } | { session_id: string }) => Promise<WindowCloseResult>;
     activate: (session: string, tabId: number) => Promise<TabResult>;
     close: (session: string, tabId: number) => Promise<TabResult>;
-    create: (session: string) => Promise<TabResult>;
+    resolveTabClose: (session: string, operationId: string, accept: boolean) => Promise<TabResult>;
+    create: (session: string, url?: string) => Promise<TabResult>;
 }
 
 function message(err: unknown): string {
@@ -47,10 +62,13 @@ export function useBrowserSessions(active: boolean): BrowserSessions {
     const [sessions, setSessions] = useState<SessionInfo[]>([]);
     const [current, setCurrent] = useState('');
     const [daemon, setDaemon] = useState<DaemonStatus | null>(null);
+    const [windowsSupported, setWindowsSupported] = useState(false);
+    const [windowCloseSupported, setWindowCloseSupported] = useState(false);
     const [readOnly, setReadOnly] = useState(false);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [newWindowError, setNewWindowError] = useState<string | null>(null);
     const inFlight = useRef(false);
 
     const load = async () => {
@@ -65,6 +83,8 @@ export function useBrowserSessions(active: boolean): BrowserSessions {
             setSessions(response.sessions ?? []);
             setCurrent(response.current ?? '');
             setDaemon(response.daemon);
+            setWindowsSupported(Boolean(response.windows_supported));
+            setWindowCloseSupported(Boolean(response.window_close_supported));
             setReadOnly(Boolean(response.read_only));
             setError(null);
         } catch (err) {
@@ -90,11 +110,13 @@ export function useBrowserSessions(active: boolean): BrowserSessions {
             document.removeEventListener('visibilitychange', onVisible);
         };
         // load() only reads refs and setState; the first closure stays valid.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [active]);
 
     const switchTo = async (id: string) => {
-        if (id === current) return;
+        // A live current session is already selected; a stale one is not. The
+        // Reopen action on a dropped session must still reach the server.
+        const row = sessions.find((session) => session.id === id);
+        if (id === current && row?.attached) return;
         setBusy(true);
         try {
             const response = await switchSession(id);
@@ -111,27 +133,51 @@ export function useBrowserSessions(active: boolean): BrowserSessions {
         }
     };
 
-    const addSession = async () => {
+    const addSession = async (): Promise<boolean> => {
+        setNewWindowError(null);
         setBusy(true);
         try {
             const response = await openNewSession();
             if (!response.ok) {
-                setError(response.error ?? 'cannot open a new window');
-                return;
+                const detail = response.error ?? 'cannot open a new window';
+                setNewWindowError(detail);
+                setError(detail);
+                return false;
             }
             setCurrent(response.session.id);
             await load();
+            return true;
         } catch (err) {
+            setNewWindowError(message(err));
             setError(message(err));
+            return false;
         } finally {
             setBusy(false);
         }
     };
 
-    const runTab = async (session: string, op: TabOp, tabId = 0): Promise<TabResult> => {
+    /** Closing the current window is a server-side switch; refresh, never guess. */
+    const closeWindow = async (
+        target: { window_id: number } | { session_id: string },
+    ): Promise<WindowCloseResult> => {
         setBusy(true);
         try {
-            const response = await tabOp(session, op, tabId);
+            const response = await closeWindowRequest(target);
+            if (!response.ok) return { ok: false, error: response.error ?? 'cannot close that window' };
+            if (response.current) setCurrent(response.current);
+            await load();
+            return { ok: true, current: response.current };
+        } catch (err) {
+            return { ok: false, error: message(err) };
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const runTab = async (session: string, op: TabOp, tabId = 0, url = ''): Promise<TabResult> => {
+        setBusy(true);
+        try {
+            const response = await tabOp(session, op, tabId, url);
             if (!response.ok) return { tabs: [], error: response.error ?? 'tab operation failed' };
             setSessions((previous) =>
                 previous.map((row) =>
@@ -144,8 +190,26 @@ export function useBrowserSessions(active: boolean): BrowserSessions {
                         : row,
                 ),
             );
-            return { tabs: response.tabs ?? [] };
+            return { tabs: response.tabs ?? [], closeConfirmation: response.close_confirmation, closeOutcome: response.close_outcome };
         } catch (err) {
+            if (op === 'close') void load();
+            return { tabs: [], error: message(err) };
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const resolveTabClose = async (session: string, operationId: string, accept: boolean): Promise<TabResult> => {
+        setBusy(true);
+        try {
+            const response = await resolveTabCloseRequest(session, operationId, accept);
+            if (!response.ok) return { tabs: [], error: response.error ?? 'cannot resolve tab close' };
+            setSessions((previous) => previous.map((row) => row.id === session
+                ? { ...row, tabs: response.tabs, active_tab_id: response.active_tab_id ?? row.active_tab_id }
+                : row));
+            return { tabs: response.tabs ?? [], closeOutcome: response.close_outcome };
+        } catch (err) {
+            void load();
             return { tabs: [], error: message(err) };
         } finally {
             setBusy(false);
@@ -156,16 +220,21 @@ export function useBrowserSessions(active: boolean): BrowserSessions {
         sessions,
         current,
         daemon,
+        windowsSupported,
+        windowCloseSupported,
         readOnly,
         loading,
         busy,
         error,
+        newWindowError,
         clearError: () => setError(null),
         refresh: load,
         switchTo,
         addSession,
+        closeWindow,
         activate: (session, tabId) => runTab(session, 'activate', tabId),
         close: (session, tabId) => runTab(session, 'close', tabId),
-        create: (session) => runTab(session, 'create'),
+        resolveTabClose,
+        create: (session, url = '') => runTab(session, 'create', 0, url),
     };
 }

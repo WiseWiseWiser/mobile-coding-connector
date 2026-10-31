@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser 左栏把手 — 图标区分 + 按钮修复 Mockup</title>
+<style>
+  :root {
+    --bg: #04060c; --sheet: #0a0d16; --card: #101524; --card-hi: #141b30;
+    --line: #1c2336; --line-soft: #161c2c; --accent: #4d8dff;
+    --text: #e9ecf5; --muted: #8b98aa; --faint: #5c697b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Noto Sans CJK SC", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 18px 12px 40px;
+  }
+  .hint { color: var(--faint); font-size: 12px; line-height: 1.8; text-align: center; margin-bottom: 16px; }
+  .hint b { color: var(--muted); }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+  .case { text-align: center; }
+  .case > p { color: var(--faint); font-size: 11px; margin-bottom: 8px; letter-spacing: .08em; }
+
+  .phone {
+    width: 320px; background: var(--sheet);
+    border: 1px solid var(--line); border-radius: 22px 22px 0 0;
+    box-shadow: 0 18px 60px rgba(0,0,0,.55);
+    overflow: hidden; display: flex; flex-direction: column; height: 560px;
+  }
+  .sh { display: flex; align-items: center; padding: 14px 14px 8px; }
+  .sh-title { font-size: 12px; letter-spacing: .2em; font-weight: 700; color: var(--muted); }
+  .sh-count { color: var(--faint); letter-spacing: .04em; font-weight: 400; margin-left: 8px; }
+  .duo { display: flex; flex: 1; min-height: 0; border-top: 1px solid var(--line-soft); }
+
+  /* rail */
+  .rail { width: 56px; flex: 0 0 auto; border-right: 1px solid var(--line-soft); background: rgba(255,255,255,.015); display: flex; flex-direction: column; }
+  .rail.is-open { width: 47%; }
+  .railhead { flex: none; display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px; min-height: 42px; }
+  .railtoggle {
+    position: relative; flex: none; width: 40px; height: 38px;
+    display: grid; place-items: center; border: 0; border-radius: 9px;
+    background: rgba(255,255,255,.06); color: #b6c2d1; cursor: pointer;
+  }
+  .railtoggle svg { width: 16px; height: 16px; }
+  .railtoggle .pane { fill: transparent; transition: fill .15s ease; }
+  .rail.is-open .railtoggle .pane { fill: rgba(77,141,255,.4); }
+  .railcount { position: absolute; right: 3px; bottom: 2px; font-family: ui-monospace, Menlo, monospace; font-size: 8.5px; color: #7f8d9f; }
+  .kicker { font-size: 9.5px; font-weight: 700; letter-spacing: .17em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .gap { flex: 1; }
+  .mini {
+    position: relative; flex: none; width: 34px; height: 34px;
+    display: grid; place-items: center; border: 0; border-radius: 9px;
+    background: rgba(255,255,255,.06); color: #b6c2d1; font-size: 18px; line-height: 1; cursor: pointer;
+  }
+  .mini::after { content: ''; position: absolute; inset: -5px; }
+  .railbody { flex: 1; overflow-y: auto; padding: 2px 0 8px; display: flex; flex-direction: column; }
+
+  .chip {
+    width: 100%; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 8px 0 7px; border: 0; border-left: 2px solid transparent; background: none; color: #9aa8ba; cursor: pointer;
+  }
+  .chipmark, .wmark { --glyph-bg: #1a2230; }
+  .chip.is-sel .chipmark { --glyph-bg: #1e2c5e; }
+  .cico { --glyph-bg: #10131a; }
+  .chipmark { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; background: #1a2230; color: #9aa8ba; }
+  .chipmark svg { width: 15px; height: 15px; }
+  .chipn { font-family: ui-monospace, Menlo, monospace; font-size: 9px; color: #77879b; }
+  .chipdot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px rgba(77,141,255,.8); }
+  .chip.is-sel { border-left-color: var(--accent); }
+  .chip.is-sel .chipmark { border-color: rgba(77,141,255,.55); background: rgba(77,141,255,.14); color: #cfe4ff; }
+
+  .wrow { display: flex; align-items: center; min-height: 50px; border-radius: 9px; padding-right: 2px; }
+  .wrow.is-current { background: rgba(77,141,255,.12); }
+  .wrowgroup.is-sel .wrow { background: rgba(77,141,255,.08); box-shadow: inset 2px 0 0 var(--accent); }
+  .wrowmain { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 8px; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
+  .wmark { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.08); border-radius: 7px; background: #1a2230; color: #9aa8ba; }
+  .wmark svg { width: 14px; height: 14px; }
+  .wcopy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .wtitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 600; color: #e6edf7; }
+  .wmeta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, Menlo, monospace; font-size: 8.5px; color: #7b8a9c; }
+  .wtabs { flex: none; font-family: ui-monospace, Menlo, monospace; font-size: 9px; color: #8492a5; }
+  .wclose { flex: none; width: 30px; height: 38px; border: 0; background: none; color: #697789; font-size: 13px; cursor: pointer; }
+
+  /* right pane */
+  .tabs { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .thead { flex: none; display: flex; align-items: center; gap: 7px; padding: 8px 10px 3px 14px; border-top: 1px solid var(--line-soft); }
+  .live { font-family: ui-monospace, Menlo, monospace; font-size: 9.5px; color: var(--faint); white-space: nowrap; }
+  .panetitle { min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: #77879b; }
+  .tablist { list-style: none; flex: 1; overflow-y: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .tab { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .tab.on { border-color: var(--accent); background: var(--card-hi); }
+  .fav { width: 24px; height: 24px; flex: none; border-radius: 7px; background: #1a2138; color: #82b4ff; font-size: 11px; display: grid; place-items: center; }
+  .tt { flex: 1; min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* icon compare strip */
+  .compare { margin-top: 18px; display: flex; gap: 26px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  .ccell { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--faint); font-size: 10.5px; }
+  .cico { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; background: rgba(255,255,255,.06); color: #b6c2d1; }
+  .cico svg { width: 20px; height: 20px; }
+  .cico.old { outline: 1px dashed rgba(255,123,114,.55); }
+  .cico.old .win { color: #ff8d84; }
+  .cico.new { outline: 1px solid rgba(77,141,255,.5); }
+</style>
+</head>
+<body>
+  <p class="hint">
+    <b>修复 1</b>:把手不再复用窗口图标 — 换成「侧栏」图标(左分栏),展开时左分格填充蓝色,与下方窗口 chip 拉开区分 ·
+    <b>修复 2</b>:展开态去掉「n open」占位文字 + <b>flex:none</b>,「+」不再被压扁 · <b>修复 3</b>:窗口 chip/卡片图标换成「叠窗」字形,与把手侧栏图标拉开
+  </p>
+
+  <div class="row">
+    <!-- 折叠态 -->
+    <div class="case">
+      <p>折叠(默认)</p>
+      <div class="phone">
+        <div class="sh"><span class="sh-title">BROWSER<span class="sh-count">3 windows</span></span></div>
+        <div class="duo">
+          <aside class="rail">
+            <div class="railhead">
+              <button class="railtoggle" title="Show windows" aria-label="Show the window list">
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect class="pane" x="2.6" y="3.2" width="10.8" height="9.6" rx="1.8" />
+                  <rect x="2.6" y="3.2" width="10.8" height="9.6" rx="1.8" stroke="currentColor" stroke-width="1.25"/>
+                  <path d="M6.4 3.4v9.2" stroke="currentColor" stroke-width="1.25"/>
+                </svg>
+                <span class="railcount">3</span>
+              </button>
+            </div>
+            <div class="railbody">
+              <button class="chip is-sel">
+                <span class="chipmark"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.4" y="2.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="2.6" y="6.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="var(--glyph-bg, #1a2230)"/></svg></span>
+                <span class="chipn">1</span><span class="chipdot"></span>
+              </button>
+              <button class="chip">
+                <span class="chipmark"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.4" y="2.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="2.6" y="6.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="var(--glyph-bg, #1a2230)"/></svg></span>
+                <span class="chipn">11</span>
+              </button>
+              <button class="chip">
+                <span class="chipmark"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.4" y="2.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="2.6" y="6.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="var(--glyph-bg, #1a2230)"/></svg></span>
+                <span class="chipn">3</span>
+              </button>
+            </div>
+          </aside>
+          <section class="tabs">
+            <div class="thead"><span class="kicker">Tabs</span><span class="live">1</span><span class="gap"></span><span class="panetitle">可观测性 | 凤凰架构</span><button class="mini">+</button></div>
+            <ul class="tablist">
+              <li class="tab on"><span class="fav">可</span><span class="tt">可观测性 | 凤凰架构</span></li>
+            </ul>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- 展开态 -->
+    <div class="case">
+      <p>展开(点把手后)</p>
+      <div class="phone">
+        <div class="sh"><span class="sh-title">BROWSER<span class="sh-count">3 windows</span></span></div>
+        <div class="duo">
+          <aside class="rail is-open">
+            <div class="railhead">
+              <button class="railtoggle" title="Collapse windows" aria-expanded="true" aria-label="Collapse the window list">
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect class="pane" x="2.6" y="3.2" width="10.8" height="9.6" rx="1.8" />
+                  <rect x="2.6" y="3.2" width="10.8" height="9.6" rx="1.8" stroke="currentColor" stroke-width="1.25"/>
+                  <path d="M6.4 3.4v9.2" stroke="currentColor" stroke-width="1.25"/>
+                </svg>
+              </button>
+              <span class="kicker">Windows</span>
+              <span class="gap"></span>
+              <button class="mini" title="New window">+</button>
+            </div>
+            <div class="railbody">
+              <div class="wrowgroup is-sel">
+                <div class="wrow is-current">
+                  <button class="wrowmain">
+                    <span class="wmark"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.4" y="2.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="2.6" y="6.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="var(--glyph-bg, #1a2230)"/></svg></span>
+                    <span class="wcopy"><span class="wtitle">可观测性 | 凤凰架构</span><span class="wmeta">sess-95l2pm · focused</span></span>
+                    <span class="wtabs">1 tab</span>
+                  </button>
+                  <button class="wclose">×</button>
+                </div>
+              </div>
+              <div class="wrowgroup">
+                <div class="wrow">
+                  <button class="wrowmain">
+                    <span class="wmark"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.4" y="2.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="2.6" y="6.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="var(--glyph-bg, #1a2230)"/></svg></span>
+                    <span class="wcopy"><span class="wtitle">Mockup · 建筑计划</span><span class="wmeta">direct · background</span></span>
+                    <span class="wtabs">11</span>
+                  </button>
+                  <button class="wclose">×</button>
+                </div>
+              </div>
+              <div class="wrowgroup">
+                <div class="wrow">
+                  <button class="wrowmain">
+                    <span class="wmark"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.4" y="2.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="2.6" y="6.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="var(--glyph-bg, #1a2230)"/></svg></span>
+                    <span class="wcopy"><span class="wtitle">House design</span><span class="wmeta">sess-7qk2am · background</span></span>
+                    <span class="wtabs">3</span>
+                  </button>
+                  <button class="wclose">×</button>
+                </div>
+              </div>
+            </div>
+          </aside>
+          <section class="tabs">
+            <div class="thead"><span class="kicker">Tabs</span><span class="live">1</span><span class="gap"></span><span class="panetitle">可观测性 | 凤凰架构</span><button class="mini">+</button></div>
+            <ul class="tablist">
+              <li class="tab on"><span class="fav">可</span><span class="tt">可观测性 | 凤凰架构</span></li>
+            </ul>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="compare">
+    <div class="ccell"><span class="cico old"><svg class="win" viewBox="0 0 16 16" fill="none"><rect x="2" y="2.8" width="12" height="10.4" rx="1.6" stroke="currentColor" stroke-width="1.2"/><path d="M2.3 5.7h11.4" stroke="currentColor" stroke-width="1.2"/></svg></span><span>旧把手(与 chip 同图标)</span></div>
+    <div class="ccell"><span class="cico new"><svg viewBox="0 0 16 16" fill="none"><rect x="2.6" y="3.2" width="10.8" height="9.6" rx="1.8" stroke="currentColor" stroke-width="1.25"/><path d="M6.4 3.4v9.2" stroke="currentColor" stroke-width="1.25"/></svg></span><span>把手(侧栏图标)</span></div>
+    <div class="ccell"><span class="cico old"><svg viewBox="0 0 16 16" fill="none"><rect x="2" y="2.8" width="12" height="10.4" rx="1.6" stroke="currentColor" stroke-width="1.2"/><path d="M2.3 5.7h11.4" stroke="currentColor" stroke-width="1.2"/></svg></span><span>旧窗口 chip(与把手同形)</span></div>
+    <div class="ccell"><span class="cico new"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.4" y="2.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="2.6" y="6.6" width="8" height="6.8" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="var(--glyph-bg, #1a2230)"/></svg></span><span>新窗口 chip(叠窗)</span></div>
+  </div>
+</body>
+</html>

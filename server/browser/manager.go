@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,6 +40,12 @@ var presets = map[string]Viewport{
 	"mac":    {Width: 1440, Height: 900},
 }
 
+// minMacWindowWidth is the narrowest window that may be remembered as the Mac
+// preset's restore target. Phone and tablet presets are narrower than this, so
+// an already-shrunk window can never be mistaken for the desktop size and
+// restored later as 500x844.
+const minMacWindowWidth = 900
+
 // Preset names shown in the UI, in the order the switcher draws them.
 var presetOrder = []string{"iphone", "ipad", "mac"}
 
@@ -60,10 +67,13 @@ type Viewport struct {
 // Config is the persisted browser settings (browser-config.json). Mode and
 // preset are remembered so a reload comes back in the state the user chose, and
 // the session is remembered so the page reopens on the window they were using.
+// MacBounds keeps the last Mac-sized window's frame so the Mac preset can
+// restore it across restarts.
 type Config struct {
-	Mode      string `json:"mode"`
-	Preset    string `json:"preset"`
-	SessionID string `json:"session_id,omitempty"`
+	Mode      string  `json:"mode"`
+	Preset    string  `json:"preset"`
+	SessionID string  `json:"session_id,omitempty"`
+	MacBounds *Bounds `json:"mac_bounds,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -99,6 +109,20 @@ func (c *Config) normalize() {
 	}
 }
 
+// saveSettings persists a preset/mode choice without letting a transient
+// discovered-window id overwrite the session the next launch should reopen,
+// or dropping the remembered Mac window bounds.
+func saveSettings(mode, preset, sessionID string) {
+	cfg := loadConfig()
+	if isSessionlessSessionID(sessionID) {
+		sessionID = cfg.SessionID
+	}
+	cfg.Mode = mode
+	cfg.Preset = preset
+	cfg.SessionID = sessionID
+	_ = saveConfig(cfg)
+}
+
 func saveConfig(cfg Config) error {
 	cfg.normalize()
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -119,7 +143,13 @@ type jobClient interface {
 	sessions(ctx context.Context) ([]sessionRow, error)
 	session(ctx context.Context, id string) (*sessionRow, error)
 	createSession(ctx context.Context, id string) error
+	createFreshSession(ctx context.Context, id string) error
 	job(ctx context.Context, sessionID string, tabID int64, typ string, params any, timeout time.Duration) (json.RawMessage, error)
+	// Direct rail (browser-agent 1.0.24+): jobs addressed by window id and a
+	// sessionless window list. Implementations without direct support return
+	// errors, and the manager falls back to the session track.
+	jobDirect(ctx context.Context, windowID, tabID int64, typ string, params any, timeout time.Duration) (json.RawMessage, error)
+	windowsDirect(ctx context.Context) (*windowsPayload, error)
 }
 
 // Manager owns the browser session: it makes sure the daemon, extension, and
@@ -127,6 +157,11 @@ type jobClient interface {
 type Manager struct {
 	mu       sync.Mutex
 	ensureMu sync.Mutex
+	startMu  sync.Mutex
+	startup  string
+	// attachMu serializes adoption of a discovered window. An attach is a
+	// multi-step daemon conversation; two clicks must not create two /go pages.
+	attachMu sync.Mutex
 
 	d      jobClient
 	port   int
@@ -150,6 +185,11 @@ type Manager struct {
 	mode          string
 	macBounds     Bounds
 	macKnown      bool
+	// presetApplied is false until the saved preset has been applied to the
+	// current window. A restart or session switch starts a new window that may
+	// still carry another preset's size, so the selector and the page must be
+	// brought back in sync once.
+	presetApplied bool
 	lastErr       string
 	ensuredAt     time.Time
 	lastOpenAt    time.Time
@@ -158,10 +198,17 @@ type Manager struct {
 	// newWindowFor marks the session whose page must open in a fresh Chrome
 	// window (the + New window path); every other session page reuses the
 	// window it already has.
-	newWindowFor string
+	newWindowFor        string
+	freshWindowRequired bool
+	previousWindowIDs   map[int64]bool
 	// readOnly is set when the daemon is too old for tab multiplexing, so the
 	// rail can say why instead of firing jobs the extension would reject.
 	readOnly bool
+	// directSupported is true when the daemon accepts window_id addressing
+	// without a session (direct-window-v1). Sessionless window ids
+	// (sess-window-<id>) then route through the direct rail; everything else
+	// keeps using sessions.
+	directSupported bool
 
 	hub *hub
 }
@@ -206,6 +253,14 @@ func New(port int) *Manager {
 		mode:      cfg.Mode,
 		sessionID: cfg.SessionID,
 	}
+	// The remembered Mac window survives restarts: the saved preset is often
+	// a phone size, so the first ensure would otherwise shrink the window
+	// before any Mac-sized bounds could be measured, leaving nothing to
+	// restore the next time the person picks Mac.
+	if cfg.MacBounds != nil {
+		m.macBounds = *cfg.MacBounds
+		m.macKnown = true
+	}
 	m.opener = openInChrome
 	m.windowOpener = openNewChromeWindow
 	m.hub = newHub(m)
@@ -239,6 +294,19 @@ func (m *Manager) setError(err error) {
 	m.lastErr = err.Error()
 }
 
+// clearErrorIf retires the status error when it is still exactly match — the
+// failure a recovering caller is responsible for. Errors set since by other
+// paths (preset apply, window ops) stay visible.
+func (m *Manager) clearErrorIf(match string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.lastErr == "" || m.lastErr != match {
+		return false
+	}
+	m.lastErr = ""
+	return true
+}
+
 func (m *Manager) contentTab() int64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -256,14 +324,24 @@ func (m *Manager) sessionIDValue() string {
 
 // job runs a job in the current session's Chrome window.
 func (m *Manager) job(ctx context.Context, tabID int64, typ string, params any, timeout time.Duration) (json.RawMessage, error) {
-	return m.d.job(ctx, m.sessionIDValue(), tabID, typ, params, timeout)
+	// Route through jobIn so the current session's id decides the rail: a
+	// sessionless window id (direct mode) rides window addressing here too.
+	return m.jobIn(ctx, "", tabID, typ, params, timeout)
 }
 
 // jobIn runs a job in an explicit session (the rail reads tabs of sessions the
 // user is not currently watching).
+//
+// Sessionless window ids (sess-window-<id>) ride the direct rail when the
+// daemon supports it: one hook here makes every existing caller — info,
+// create_tab, eval, screenshot, tab ops — work against a plain Chrome window
+// with no /go page. Any direct failure surfaces as a normal job error.
 func (m *Manager) jobIn(ctx context.Context, sessionID string, tabID int64, typ string, params any, timeout time.Duration) (json.RawMessage, error) {
 	if sessionID == "" {
 		sessionID = m.sessionIDValue()
+	}
+	if windowID, ok := windowIDFromSessionlessID(sessionID); ok && m.directSupportedValue() {
+		return m.d.jobDirect(ctx, windowID, tabID, typ, params, timeout)
 	}
 	return m.d.job(ctx, sessionID, tabID, typ, params, timeout)
 }
@@ -274,17 +352,41 @@ func (m *Manager) jobIn(ctx context.Context, sessionID string, tabID int64, typ 
 func (m *Manager) Ensure(ctx context.Context) error {
 	m.ensureMu.Lock()
 	defer m.ensureMu.Unlock()
-	return m.ensureLocked(ctx)
+	return m.ensureLocked(ctx, false)
 }
 
-// ensureLocked is Ensure with ensureMu already held; a session switch runs it
-// inline so two switches cannot register their windows at the same time.
-func (m *Manager) ensureLocked(ctx context.Context) error {
+// ensureLocked only launches Chrome when the caller represents an explicit user action.
+func (m *Manager) ensureLocked(ctx context.Context, allowOpen bool) error {
 	if err := m.ensureDaemon(ctx); err != nil {
 		m.setError(err)
 		return err
 	}
-	if err := m.ensureSession(ctx); err != nil {
+	// Direct rail: a sessionless window id (or a dead current session on a
+	// direct-capable daemon) can drive a plain Chrome window with no /go page.
+	if m.directSupportedValue() {
+		err := m.ensureDirectWindow(ctx, allowOpen)
+		if err == nil {
+			presetErr := m.ensurePreset(ctx)
+			viewportErr := m.refreshViewport(ctx)
+			m.mu.Lock()
+			m.ensuredAt = time.Now()
+			m.mu.Unlock()
+			if presetErr != nil {
+				m.setError(presetErr)
+			} else {
+				m.setError(viewportErr)
+			}
+			return nil
+		}
+		// A sessionless id has no session track to fall back to: the chain
+		// below would open a /go anchor for a window id. Surface the direct
+		// error instead.
+		if _, sessionless := windowIDFromSessionlessID(m.sessionIDValue()); sessionless {
+			m.setError(err)
+			return err
+		}
+	}
+	if err := m.ensureSession(ctx, allowOpen); err != nil {
 		m.setError(err)
 		return err
 	}
@@ -292,16 +394,40 @@ func (m *Manager) ensureLocked(ctx context.Context) error {
 		m.setError(err)
 		return err
 	}
-	if err := m.refreshViewport(ctx); err != nil {
-		// A page that cannot be measured is still usable; keep the error for the
-		// status line but do not fail the whole ensure.
-		m.setError(err)
-	}
+	// A saved preset outlives the window it was applied to. Re-apply it once
+	// per window so the size shown in the switcher is the size being mirrored.
+	presetErr := m.ensurePreset(ctx)
+	viewportErr := m.refreshViewport(ctx)
 	m.mu.Lock()
 	m.ensuredAt = time.Now()
 	m.mu.Unlock()
-	m.setError(nil)
+	// A failed resize does not make the session unusable; keep the error on the
+	// status line but leave Ensure successful so the person can pick another
+	// preset instead of being stuck behind the saved one. A measurement failure
+	// is still useful to show when the resize itself worked.
+	if presetErr != nil {
+		m.setError(presetErr)
+	} else {
+		m.setError(viewportErr)
+	}
 	return nil
+}
+
+// ensurePreset applies the saved preset to a window that has not received it
+// yet. It is best-effort: a resize failure is reported, and the next Ensure
+// retries.
+func (m *Manager) ensurePreset(ctx context.Context) error {
+	m.mu.Lock()
+	pending := !m.presetApplied
+	preset := m.preset
+	m.mu.Unlock()
+	if !pending {
+		return nil
+	}
+	if preset == "" {
+		preset = "mac"
+	}
+	return m.applyPreset(ctx, preset)
 }
 
 func (m *Manager) ensureDaemon(ctx context.Context) error {
@@ -394,10 +520,24 @@ func (m *Manager) recordDaemon(h *daemonHealth) {
 	m.mu.Lock()
 	m.daemonVersion = h.Version
 	m.readOnly = versionLess(h.Version, minTabDaemonVersion)
+	m.directSupported = h.DirectSupported
 	m.mu.Unlock()
 }
 
-func (m *Manager) ensureSession(ctx context.Context) error {
+// directSupportedValue reports whether the daemon advertised the direct rail.
+func (m *Manager) directSupportedValue() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.directSupported
+}
+
+// DirectSupported exposes the daemon's direct-window capability to the API
+// layer, which routes sessionless window switches accordingly.
+func (m *Manager) DirectSupported() bool {
+	return m.directSupportedValue()
+}
+
+func (m *Manager) ensureSession(ctx context.Context, allowOpen bool) error {
 	sessionID := m.sessionIDValue()
 	if err := m.d.createSession(ctx, sessionID); err != nil {
 		return err
@@ -408,19 +548,30 @@ func (m *Manager) ensureSession(ctx context.Context) error {
 	}
 	if row.Extension.Connected {
 		m.mu.Lock()
+		if m.freshWindowRequired {
+			m.mu.Unlock()
+			return fmt.Errorf("new session %q is already connected to an existing window", sessionID)
+		}
 		m.connected = true
 		m.extPath = row.ExtensionInstallPath
 		m.mu.Unlock()
 		return nil
 	}
-	// No extension yet: if the session page never loaded, open it once. Chrome
-	// reuses the existing tab when the URL matches, so this does not spam tabs.
+	// A disconnected extension cannot vouch for its last page count. Passive
+	// viewers never launch Chrome; an explicit action may open one anchor page.
+	m.markDisconnected(sessionID)
+	if !allowOpen {
+		return errBrowserOffline
+	}
 	m.mu.Lock()
-	shouldOpen := row.SessionPageCount == 0 && time.Since(m.lastOpenAt) > 10*time.Second
+	shouldOpen := time.Since(m.lastOpenAt) > 10*time.Second
 	if shouldOpen {
 		m.lastOpenAt = time.Now()
 	}
 	m.mu.Unlock()
+	if !shouldOpen {
+		return fmt.Errorf("Chrome was just requested; wait before trying again")
+	}
 	if shouldOpen {
 		url := m.sessionPageURL(sessionID)
 		opener := m.opener
@@ -430,6 +581,7 @@ func (m *Manager) ensureSession(ctx context.Context) error {
 		if err := opener(ctx, url); err != nil {
 			return fmt.Errorf("open the browser-agent session page: %w", err)
 		}
+		m.setStartupWaiting()
 	}
 	deadline := time.Now().Add(25 * time.Second)
 	for {
@@ -449,12 +601,7 @@ func (m *Manager) ensureSession(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("waiting for the browser-agent extension: %v", err)
 			}
-			// The session page calls chrome.runtime.connect() with the id derived
-			// from this directory, so it is the one directory that works.
-			if path := row.ExtensionInstallPath; path != "" {
-				return fmt.Errorf("load the browser-agent extension in Chrome: Load unpacked from %s", path)
-			}
-			return fmt.Errorf("load the browser-agent extension in Chrome (1.0.20+), then open the session page")
+			return fmt.Errorf("Chrome was requested, but its browser-agent extension did not connect; check Chrome and the installed extension before retrying")
 		}
 		select {
 		case <-ctx.Done():
@@ -466,6 +613,152 @@ func (m *Manager) ensureSession(ctx context.Context) error {
 
 // ensureWindow finds the Chrome window that holds the session page, picks the
 // page tab to drive, and records the current bounds for the Mac preset.
+// ensureDirectWindow drives a plain Chrome window through the direct rail, so
+// ai-critic can mirror a window that has no /go page at all. It picks:
+//  1. the window named by a sessionless id (sess-window-<id>),
+//  2. the previously driven window,
+//  3. the focused window,
+//  4. the first normal window with a capturable tab.
+//
+// The picked window is recorded under its sessionless id, so the rest of the
+// manager keeps its session-based shape (applyInfo, tabs, viewport, presets).
+// A nil return means the direct rail took over; any error falls back to the
+// session chain silently.
+func (m *Manager) ensureDirectWindow(ctx context.Context, allowOpen bool) error {
+	m.mu.Lock()
+	sessionID := m.sessionIDValueLocked()
+	freshWindowRequired := m.freshWindowRequired
+	previousWindow := m.windowID
+	m.mu.Unlock()
+	if freshWindowRequired {
+		// "+ New window" must produce a real new session; do not hijack it.
+		return fmt.Errorf("direct rail skips new-window requests")
+	}
+
+	payload, err := m.d.windowsDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("direct window list: %w", err)
+	}
+	if len(payload.Windows) == 0 {
+		return fmt.Errorf("direct rail: no Chrome windows found")
+	}
+
+	var target *windowSnapshot
+	if want, ok := windowIDFromSessionlessID(sessionID); ok {
+		target = payload.windowByID(want)
+		if target == nil {
+			// The window this direct session was pinned to is closed (closed
+			// by hand in Chrome). Fail over to another free window instead of
+			// staying dead on the gone id; with no free window, keep the
+			// "window gone" error and let the rail pick a window.
+			target = pickFreeDirectWindow(payload)
+			if target == nil {
+				return fmt.Errorf("%w; the remaining Chrome windows are driven by other sessions", errWindowGone)
+			}
+		}
+	} else {
+		// A live session keeps its own track; do not steal it.
+		if row, rowErr := m.d.session(ctx, sessionID); rowErr == nil && row.Extension.Connected {
+			return fmt.Errorf("session %s is live; keeping the session track", sessionID)
+		}
+		target = pickDirectWindow(payload, previousWindow)
+	}
+	if target == nil {
+		return fmt.Errorf("direct rail: no usable Chrome window")
+	}
+	directID := sessionlessSessionID(target.WindowID)
+
+	m.mu.Lock()
+	m.sessionID = directID
+	m.connected = true
+	m.windowID = target.WindowID
+	m.lastErr = ""
+	m.mu.Unlock()
+
+	if err := m.ensureWindow(ctx); err != nil {
+		m.mu.Lock()
+		m.connected = false
+		m.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
+// pickDirectWindow chooses a window to drive when the caller did not name one:
+// the previous window if it still exists, else the focused window, else the
+// first normal window that has a capturable tab, else the first normal window.
+// pickFreeDirectWindow is the failover picker for a direct session whose window
+// was closed by hand: the focused free window, else the first normal free
+// window that has a capturable tab. "Free" means it hosts no session page —
+// a window with a /go anchor belongs to a live session track and failover must
+// not hijack it. With no free window it returns nil so the caller keeps the
+// "window gone" error and the rail stays the way to pick.
+func pickFreeDirectWindow(payload *windowsPayload) *windowSnapshot {
+	var fallback *windowSnapshot
+	for i := range payload.Windows {
+		w := &payload.Windows[i]
+		if w.Type != "normal" || hostsSessionPage(w) {
+			continue
+		}
+		if w.Focused {
+			return w
+		}
+		if fallback == nil {
+			for _, t := range w.Tabs {
+				if t.Capturable {
+					fallback = w
+					break
+				}
+			}
+		}
+	}
+	return fallback
+}
+
+func hostsSessionPage(w *windowSnapshot) bool {
+	for _, t := range w.Tabs {
+		if t.Role == "session_page" || isSessionPageURL(t.URL) {
+			return true
+		}
+	}
+	return false
+}
+
+func pickDirectWindow(payload *windowsPayload, previousWindow int64) *windowSnapshot {
+	if previousWindow != 0 {
+		if w := payload.windowByID(previousWindow); w != nil && w.Type == "normal" {
+			return w
+		}
+	}
+	var fallback *windowSnapshot
+	for i := range payload.Windows {
+		w := &payload.Windows[i]
+		if w.Type != "normal" {
+			continue
+		}
+		if w.Focused {
+			return w
+		}
+		if fallback == nil {
+			for _, t := range w.Tabs {
+				if t.Capturable {
+					fallback = w
+					break
+				}
+			}
+		}
+	}
+	if fallback != nil {
+		return fallback
+	}
+	for i := range payload.Windows {
+		if payload.Windows[i].Type == "normal" {
+			return &payload.Windows[i]
+		}
+	}
+	return nil
+}
+
 func (m *Manager) ensureWindow(ctx context.Context) error {
 	windowID, tabID, url, err := m.resolveTargets(ctx)
 	if err != nil {
@@ -474,20 +767,38 @@ func (m *Manager) ensureWindow(ctx context.Context) error {
 	m.mu.Lock()
 	m.windowID = windowID
 	m.contentTabID = tabID
-	if url != "" {
-		m.url = url
-	}
+	m.url = url
 	m.mu.Unlock()
 
-	if !m.macKnown {
-		if bounds, err := m.windowBounds(ctx); err == nil {
-			m.mu.Lock()
-			m.macBounds = bounds
-			m.macKnown = true
-			m.mu.Unlock()
-		}
-	}
+	m.rememberMacBounds(ctx)
 	return nil
+}
+
+// rememberMacBounds records the current window as the target the Mac preset
+// restores. Only a genuinely desktop-wide window qualifies: after a restart the
+// saved preset can be "iphone" while the window is still phone-sized, and a
+// poisoned target would make every later Mac request restore the phone width.
+// The frame is re-recorded whenever a Mac-sized window is seen, so the memory
+// tracks the window the user actually keeps (and survives restarts on disk).
+func (m *Manager) rememberMacBounds(ctx context.Context) {
+	bounds, err := m.windowBounds(ctx)
+	if err != nil || bounds.Width < minMacWindowWidth {
+		return
+	}
+	persist := false
+	m.mu.Lock()
+	if !m.macKnown || m.macBounds != bounds {
+		m.macBounds = bounds
+		m.macKnown = true
+		persist = true
+	}
+	m.mu.Unlock()
+	if !persist {
+		return
+	}
+	cfg := loadConfig()
+	cfg.MacBounds = &bounds
+	_ = saveConfig(cfg)
 }
 
 // resolveTargets asks the extension for the session window and its tabs. The
@@ -503,13 +814,61 @@ func (m *Manager) resolveTargets(ctx context.Context) (windowID, tabID int64, ur
 	if windowID == 0 {
 		return 0, 0, "", fmt.Errorf("the browser-agent extension reported no window for this session")
 	}
+	m.mu.Lock()
+	sameWindow := m.freshWindowRequired && m.previousWindowIDs[windowID]
+	m.mu.Unlock()
+	if sameWindow {
+		return 0, 0, "", fmt.Errorf("Chrome attached the new session to the existing window instead of opening a new one")
+	}
 	tabID, url = chooseContentTab(info)
+	if tabID == 0 {
+		if _, sessionless := windowIDFromSessionlessID(sessionID); sessionless {
+			// A just-opened direct window can still report its opener tab as
+			// about:blank: the data: URL has not committed yet, while the
+			// windows enumeration that adopted this window already saw the
+			// committed page. Re-read briefly before creating a placeholder,
+			// or the placeholder lands NEXT TO the opener tab.
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				select {
+				case <-ctx.Done():
+					return 0, 0, "", ctx.Err()
+				case <-time.After(300 * time.Millisecond):
+				}
+				retried, err := m.fetchInfo(ctx, sessionID)
+				if err != nil {
+					break // keep the first snapshot; the placeholder flow below handles it
+				}
+				if retried.WindowID == 0 {
+					return 0, 0, "", fmt.Errorf("the browser-agent extension reported no window for this session")
+				}
+				info = retried
+				if tabID, url = chooseContentTab(info); tabID != 0 {
+					break
+				}
+				if time.Now().After(deadline) {
+					break
+				}
+			}
+		}
+	}
 	if tabID == 0 {
 		created, err := m.createContentTab(ctx, windowID)
 		if err != nil {
 			return 0, 0, "", err
 		}
 		tabID = created
+		// create_tab has already opened and activated this placeholder. Do not
+		// publish the earlier, pre-creation info snapshot as if it were current.
+		index := 0
+		for i := range info.Tabs {
+			info.Tabs[i].Active = false
+			if info.Tabs[i].Index >= index {
+				index = info.Tabs[i].Index + 1
+			}
+		}
+		info.Tabs = append(info.Tabs, TabInfo{TabID: created, Index: index, Title: "ai-critic", URL: contentPlaceholderURL(), Active: true, Role: "user"})
+		info.Active = created
 	}
 	m.applyInfo(sessionID, info)
 	return windowID, tabID, url, nil
@@ -563,6 +922,14 @@ func isContentURL(raw string) bool {
 	}
 }
 
+// isWebURL reports whether the driven tab may navigate there. The viewer only
+// offers http(s); keeping the same line on the server means a stale client or a
+// hand-written call cannot point the page at file:// or a browser-internal URL.
+func isWebURL(raw string) bool {
+	lower := strings.ToLower(raw)
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+}
+
 // reportableURL keeps internal placeholder documents out of the URL bar.
 func reportableURL(raw string) string {
 	if strings.HasPrefix(raw, "data:") {
@@ -609,6 +976,9 @@ func (m *Manager) Navigate(ctx context.Context, rawURL string) error {
 	if url == "" {
 		return fmt.Errorf("empty url")
 	}
+	if !isWebURL(url) {
+		return fmt.Errorf("unsupported url scheme: only http and https can be opened")
+	}
 	if err := m.Ensure(ctx); err != nil {
 		return err
 	}
@@ -636,6 +1006,123 @@ func (m *Manager) Navigate(ctx context.Context, rawURL string) error {
 	return nil
 }
 
+var addressScheme = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*:`)
+var addressHostPort = regexp.MustCompile(`(?i)^[a-z0-9.-]+:\d+(?:[/?#]|$)`)
+
+// NavigateTab targets an explicit session and content tab. It does not open,
+// switch, or resize another window if the viewer's selection has gone stale.
+func (m *Manager) NavigateTab(ctx context.Context, sessionID string, tabID int64, rawURL string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || tabID <= 0 {
+		return fmt.Errorf("session id and tab id are required")
+	}
+	raw := strings.TrimSpace(rawURL)
+	if addressScheme.MatchString(raw) && !addressHostPort.MatchString(raw) && !isWebURL(raw) {
+		return fmt.Errorf("unsupported url scheme: only http and https can be opened")
+	}
+	target := normalizeURL(raw)
+	if target == "" {
+		return fmt.Errorf("empty url")
+	}
+	if !isWebURL(target) {
+		return fmt.Errorf("unsupported url scheme: only http and https can be opened")
+	}
+	parsed, parseErr := url.Parse(target)
+	if parseErr != nil || parsed.Hostname() == "" {
+		return fmt.Errorf("invalid address")
+	}
+	m.ensureMu.Lock()
+	defer m.ensureMu.Unlock()
+	if m.isReadOnly() {
+		return errReadOnly
+	}
+	health, err := m.d.health(ctx)
+	if err != nil {
+		return fmt.Errorf("check browser-agent version: %w", err)
+	}
+	if !health.OK {
+		return fmt.Errorf("browser-agent is not healthy")
+	}
+	m.recordDaemon(health)
+	if m.isReadOnly() {
+		return errReadOnly
+	}
+	if m.sessionIDValue() != sessionID {
+		return fmt.Errorf("the current window changed; reopen the address editor")
+	}
+	// Direct rail: a sessionless window id has no registry row; the windows
+	// list stands in for the extension's registration check below.
+	if _, isSessionless := windowIDFromSessionlessID(sessionID); isSessionless && m.directSupportedValue() {
+		info, err := m.fetchInfo(ctx, sessionID)
+		if err != nil {
+			return fmt.Errorf("check target window: %w", err)
+		}
+		tab := tabOf(info, tabID)
+		if tab.TabID == 0 {
+			return fmt.Errorf("the selected tab is no longer in that window")
+		}
+		if tab.Role == "session_page" || isSessionPageURL(tab.URL) || !isContentURL(tab.URL) {
+			return fmt.Errorf("the selected tab cannot be navigated")
+		}
+		result, err := m.jobIn(ctx, sessionID, tabID, "cdp", map[string]any{"method": "Page.navigate", "params": map[string]any{"url": target}}, 20*time.Second)
+		if err != nil {
+			return err
+		}
+		return m.applyNavigation(ctx, sessionID, tabID, target, info, result)
+	}
+	row, err := m.d.session(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("check target session: %w", err)
+	}
+	if !row.Extension.Connected {
+		return fmt.Errorf("target browser session is disconnected")
+	}
+	info, err := m.fetchInfo(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("check target tab: %w", err)
+	}
+	tab := tabOf(info, tabID)
+	if tab.TabID == 0 {
+		return fmt.Errorf("the selected tab is no longer in that window")
+	}
+	if tab.Role == "session_page" || isSessionPageURL(tab.URL) || !isContentURL(tab.URL) {
+		return fmt.Errorf("the selected tab cannot be navigated")
+	}
+	result, err := m.jobIn(ctx, sessionID, tabID, "cdp", map[string]any{"method": "Page.navigate", "params": map[string]any{"url": target}}, 20*time.Second)
+	if err != nil {
+		return err
+	}
+	return m.applyNavigation(ctx, sessionID, tabID, target, info, result)
+}
+
+// applyNavigation decodes a Page.navigate job outcome and refreshes the URL
+// bar when the navigation hit the window the viewer is watching.
+func (m *Manager) applyNavigation(ctx context.Context, sessionID string, tabID int64, target string, info *sessionInfo, result json.RawMessage) error {
+	var outcome struct {
+		Result struct {
+			ErrorText string `json:"errorText"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(result, &outcome); err != nil {
+		return fmt.Errorf("decode navigation result: %w", err)
+	}
+	if outcome.Result.ErrorText != "" {
+		return fmt.Errorf("navigation failed: %s", outcome.Result.ErrorText)
+	}
+	m.mu.Lock()
+	current := m.sessionIDValueLocked() == sessionID && m.contentTabID == tabID
+	if current {
+		m.url = target
+		m.viewportAt = time.Time{}
+	}
+	m.mu.Unlock()
+	if current {
+		m.hub.kick()
+		m.broadcastStatus()
+	}
+	return nil
+}
+
 // CurrentURL reports the driven page URL.
 func (m *Manager) CurrentURL() string {
 	m.mu.Lock()
@@ -658,42 +1145,47 @@ func normalizeURL(raw string) string {
 	if strings.Contains(strings.SplitN(s, "/", 2)[0], ".") {
 		return "https://" + s
 	}
-	return "https://www.google.com/search?q=" + strings.ReplaceAll(s, " ", "+")
+	return "https://www.google.com/search?q=" + url.QueryEscape(s)
 }
 
 // SetPreset resizes the window so its viewport is as close to the preset as the
 // OS allows, then reports the achieved size. macOS clamps Chrome to a minimum
 // width and to the display work area, so this never lies about the result.
 func (m *Manager) SetPreset(ctx context.Context, name string) error {
-	preset, ok := presets[name]
-	if !ok {
+	if _, ok := presets[name]; !ok {
 		return fmt.Errorf("unknown preset %q", name)
 	}
 	if err := m.Ensure(ctx); err != nil {
 		return err
 	}
+	return m.applyPreset(ctx, name)
+}
+
+// applyPreset resizes the current window and records the choice. It does not
+// call Ensure, so Ensure can use it to apply a saved preset without recursing.
+func (m *Manager) applyPreset(ctx context.Context, name string) error {
+	preset, ok := presets[name]
+	if !ok {
+		return fmt.Errorf("unknown preset %q", name)
+	}
 	// Remember the Mac-sized window before the first shrink so the Mac preset
 	// can restore it exactly instead of guessing 1440x900.
-	if name != "mac" && !m.macKnown {
-		if bounds, err := m.windowBounds(ctx); err == nil && bounds.Width > 0 {
-			m.mu.Lock()
-			m.macBounds = bounds
-			m.macKnown = true
-			m.mu.Unlock()
-		}
+	if name != "mac" {
+		m.rememberMacBounds(ctx)
 	}
-	if name == "mac" && m.macKnown {
-		m.mu.Lock()
-		bounds := m.macBounds
-		windowID := m.windowID
-		m.mu.Unlock()
+	m.mu.Lock()
+	macKnown := m.macKnown
+	macBounds := m.macBounds
+	windowID := m.windowID
+	m.mu.Unlock()
+	if name == "mac" && macKnown {
 		if _, err := m.job(ctx, m.contentTab(), "window", map[string]any{
 			"op":        "update",
 			"window_id": windowID,
-			"left":      bounds.Left,
-			"top":       bounds.Top,
-			"width":     bounds.Width,
-			"height":    bounds.Height,
+			"left":      macBounds.Left,
+			"top":       macBounds.Top,
+			"width":     macBounds.Width,
+			"height":    macBounds.Height,
 			"state":     "normal",
 		}, 20*time.Second); err != nil {
 			m.setError(err)
@@ -728,9 +1220,14 @@ func (m *Manager) SetPreset(ctx context.Context, name string) error {
 	}
 	m.mu.Lock()
 	m.preset = name
+	m.presetApplied = true
 	mode := m.mode
+	sessionID := m.sessionIDValueLocked()
 	m.mu.Unlock()
-	_ = saveConfig(Config{Mode: mode, Preset: name})
+	// Keep the chosen session: a preset click must not make the next launch
+	// reopen a different window. A discovered window's synthetic id is
+	// ephemeral, so it must never replace the saved normal session.
+	saveSettings(mode, name, sessionID)
 	if err := m.refreshViewport(ctx); err != nil {
 		m.setError(err)
 	}
@@ -744,6 +1241,12 @@ func (m *Manager) windowIDValue() int64 {
 	return m.windowID
 }
 
+func (m *Manager) contentTabIDValue() int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.contentTabID
+}
+
 // SetMode switches the stream between cast and shot and remembers the choice.
 func (m *Manager) SetMode(mode string) error {
 	if mode != ModeCast && mode != ModeShot {
@@ -753,9 +1256,10 @@ func (m *Manager) SetMode(mode string) error {
 	prev := m.mode
 	m.mode = mode
 	preset := m.preset
+	sessionID := m.sessionIDValueLocked()
 	m.mu.Unlock()
 	if prev != mode {
-		_ = saveConfig(Config{Mode: mode, Preset: preset})
+		saveSettings(mode, preset, sessionID)
 	}
 	m.hub.kick()
 	return nil
@@ -981,6 +1485,7 @@ type Status struct {
 	// ReadOnly is set when the daemon predates tab multiplexing, so the UI can
 	// explain instead of failing each click.
 	ReadOnly bool   `json:"read_only,omitempty"`
+	Startup  string `json:"startup,omitempty"`
 	Error    string `json:"error,omitempty"`
 }
 
@@ -1044,6 +1549,7 @@ func (m *Manager) Snapshot() Status {
 		Tabs:        cloneTabs(m.tabs),
 		ActiveTabID: m.drivenTabLocked(),
 		ReadOnly:    m.readOnly,
+		Startup:     m.startup,
 		Error:       m.lastErr,
 	}
 	m.mu.Unlock()

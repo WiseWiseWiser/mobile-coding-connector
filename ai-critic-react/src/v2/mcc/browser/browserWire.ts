@@ -12,6 +12,8 @@ export type ConnectionState = 'connecting' | 'open' | 'closed';
 /** One Chrome tab in the current session's window. */
 export interface BrowserTab {
     tab_id: number;
+    /** Chrome's left-to-right tab position; the first page titles a window. */
+    index?: number;
     title?: string;
     url?: string;
     /** Chrome is showing this tab right now. */
@@ -35,6 +37,13 @@ export interface SessionInfo {
     current: boolean;
     attached: boolean;
     attachable: boolean;
+    /** The title of the window's first content page, when one can be named. */
+    title?: string;
+    title_tab_id?: number;
+    /** A normal Chrome window with no live agent session yet. */
+    sessionless?: boolean;
+    /** A sessionless window can be adopted by opening a /go page in it. */
+    adoptable?: boolean;
     window_id?: number;
     url?: string;
     preset?: string;
@@ -50,7 +59,29 @@ export interface SessionsResponse {
     daemon: DaemonStatus;
     current: string;
     sessions: SessionInfo[];
+    /** The extension can list every normal window, not just session windows. */
+    windows_supported?: boolean;
+    /** The extension can remove a whole Chrome window (window-close). */
+    window_close_supported?: boolean;
     read_only?: boolean;
+    error?: string;
+}
+
+/** POST /api/browser/window/attach adopts one discovered Chrome window. */
+export interface AttachWindowResponse {
+    ok: boolean;
+    session_id: string;
+    window_id: number;
+    status?: BrowserStatus;
+    error?: string;
+}
+
+/** POST /api/browser/window/close removes one whole Chrome window. */
+export interface CloseWindowResponse {
+    ok: boolean;
+    closed_window_id?: number;
+    closed_session_id?: string;
+    current?: string;
     error?: string;
 }
 
@@ -59,6 +90,8 @@ export interface TabOpResponse {
     session_id: string;
     tabs: BrowserTab[];
     active_tab_id?: number;
+    close_confirmation?: { operation_id: string; tab_id: number };
+    close_outcome?: 'closed' | 'kept';
     status?: BrowserStatus;
     error?: string;
 }
@@ -84,6 +117,7 @@ export interface BrowserStatus {
     active_tab_id?: number;
     /** Daemon is older than 1.0.20: streaming works, tab controls do not. */
     read_only?: boolean;
+    startup?: 'starting' | 'waiting_extension' | 'ready' | 'failed';
     error?: string;
 }
 

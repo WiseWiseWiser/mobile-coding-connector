@@ -4,6 +4,10 @@ package bookmarks
 type Document struct {
 	Version int     `json:"version"`
 	Roots   []*Node `json:"roots"`
+	// Source and Profile are present only for a browser-profile read. The
+	// app-local tree omits both, keeping its wire shape unchanged.
+	Source  string `json:"source,omitempty"`
+	Profile string `json:"profile,omitempty"`
 }
 
 // Node is a folder or url entry in the tree.

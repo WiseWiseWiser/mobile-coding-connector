@@ -104,11 +104,39 @@ export function settleView(g: ViewGeometry, view: Viewport): Viewport {
 }
 
 /**
- * The tabs a person opened in the session window.
- *
- * The /go page is how the extension learns which session it belongs to; it is
- * infrastructure, not a tab, so it never reaches the strip or the rail.
+ * Every tab of a window, the /go page included. The rail is window-based: the
+ * /go page is one of the window's tabs like any other, so lists and counts
+ * must agree whether a window is previewed or currently driven.
  */
-export function contentTabs(tabs: BrowserTab[] | null | undefined): BrowserTab[] {
-    return (tabs ?? []).filter((tab) => tab.role !== 'session_page');
+export function windowTabs(tabs: BrowserTab[] | null | undefined): BrowserTab[] {
+    return tabs ?? [];
+}
+
+const PRESET_NAMES: Record<string, string> = {
+    iphone: 'iPhone',
+    ipad: 'iPad',
+    mac: 'Mac',
+};
+
+/** Human name for a window preset, e.g. "iphone" -> "iPhone". */
+export function presetLabel(name: string | null | undefined): string {
+    if (!name) return 'Mac';
+    return PRESET_NAMES[name] ?? name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** The host part of a tab URL, without the scheme or path. */
+export function tabHost(tab: BrowserTab): string {
+    return (tab.url ?? '').replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split('/')[0] ?? '';
+}
+
+/** What a person calls this tab: its title, else its host, else a placeholder. */
+export function tabLabel(tab: BrowserTab): string {
+    const title = (tab.title ?? '').trim();
+    if (title) return title;
+    return tabHost(tab) || 'New tab';
+}
+
+/** One-character mark for a tab row. */
+export function tabMark(tab: BrowserTab): string {
+    return tabLabel(tab).charAt(0).toUpperCase();
 }

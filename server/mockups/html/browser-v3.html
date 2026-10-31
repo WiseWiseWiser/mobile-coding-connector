@@ -1,0 +1,1533 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#05070a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="data:,">
+<title>browser · phone chrome v3</title>
+<style>
+  /* ==========================================================================
+     browser v3 — phone-first chrome
+     Two floating islands. One sheet. The page gets the rest.
+     ========================================================================== */
+
+  :root {
+    --bg: #05070a;
+    --island: rgba(10, 14, 20, .78);
+    --panel: #0c1118;
+    --panel2: #121821;
+    --line: rgba(255, 255, 255, .075);
+    --line2: rgba(255, 255, 255, .145);
+    --text: #e9eef7;
+    --dim: #96a2b3;
+    --dim2: #626e7f;
+    --blue: #4d8dff;
+    --blue-deep: #3d7bf0;
+    --green: #35c46f;
+    --amber: #f0a93c;
+    --red: #ff6159;
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  html { background: var(--bg); }
+  body {
+    min-height: 100dvh;
+    background:
+      radial-gradient(1000px 700px at 26% 12%, #0e1622 0%, rgba(8, 11, 16, 0) 62%),
+      radial-gradient(900px 600px at 82% 96%, #0a1018 0%, rgba(5, 7, 10, 0) 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  button { font-family: inherit; color: inherit; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  /* ---- desktop canvas ------------------------------------------------------ */
+  .v3-layout {
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 58px;
+    padding: 36px 32px;
+  }
+
+  .v3-notes { width: 322px; flex: none; }
+  .v3-notes .kicker {
+    margin: 0 0 14px;
+    font: 700 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .19em;
+    color: var(--blue);
+  }
+  .v3-notes h1 {
+    margin: 0 0 10px;
+    font-size: 27px;
+    line-height: 1.16;
+    font-weight: 650;
+    letter-spacing: -.025em;
+    color: #f4f8ff;
+  }
+  .v3-notes .sub {
+    margin: 0 0 24px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--dim);
+  }
+  .v3-notes ul {
+    margin: 0 0 24px;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 13px;
+  }
+  .v3-notes li {
+    position: relative;
+    padding-left: 16px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--dim);
+  }
+  .v3-notes li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 6px;
+    width: 5px;
+    height: 5px;
+    border-radius: 2px;
+    background: #2b3a4d;
+  }
+  .v3-notes li b { color: #dde6f2; font-weight: 600; }
+  .v3-notes .hint {
+    margin: 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    font: 500 10.5px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--dim2);
+  }
+  .v3-notes .hint em { color: #8fa1b8; font-style: normal; }
+  .v3-notes .scope {
+    margin: 18px 0 0;
+    font: 500 9.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #465366;
+  }
+
+  .v3-stagewrap {
+    --frame-h: min(844px, calc(100dvh - 108px));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 13px;
+    flex: none;
+  }
+
+  .v3-phone {
+    position: relative;
+    width: calc(var(--frame-h) * .4621);
+    height: var(--frame-h);
+    border-radius: calc(var(--frame-h) * .054);
+    background: #000;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .13);
+    box-shadow:
+      0 50px 130px -20px rgba(0, 0, 0, .85),
+      0 0 0 7px #0a0d12,
+      0 0 0 8px rgba(255, 255, 255, .06);
+  }
+  .v3-caption {
+    margin: 0;
+    font: 500 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .08em;
+    color: #4e5c6f;
+  }
+
+  /* ---- app ----------------------------------------------------------------- */
+  .v3-app {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: var(--bg);
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  .v3-app button,
+  .v3-app [role="button"] { cursor: pointer; border: 0; background: none; padding: 0; }
+  .v3-app button:disabled { cursor: default; }
+
+  /* ---- stage --------------------------------------------------------------- */
+  .v3-stage {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background:
+      radial-gradient(120% 90% at 50% 42%, #0d1520 0%, #070a0f 58%, #04060a 100%);
+  }
+  .v3-stage::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px);
+    background-size: 17px 17px;
+    -webkit-mask-image: radial-gradient(78% 62% at 50% 48%, #000 8%, transparent 76%);
+    mask-image: radial-gradient(78% 62% at 50% 48%, #000 8%, transparent 76%);
+    pointer-events: none;
+  }
+  .v3-page {
+    position: relative;
+    z-index: 1;
+    width: min(100%, calc(100dvh * var(--par, 1.839)));
+    aspect-ratio: var(--pw, 1512) / var(--ph, 822);
+    background: #fff;
+    border-radius: 4px;
+    overflow: hidden;
+    transform: scale(var(--z, 1));
+    transform-origin: center center;
+    container-type: inline-size;
+    box-shadow:
+      0 34px 90px -24px rgba(0, 0, 0, .9),
+      0 0 0 1px rgba(255, 255, 255, .09);
+    transition: transform .16s ease-out;
+  }
+
+  /* ---- synthetic page ------------------------------------------------------ */
+  .v3-doc {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 2cqw 2.4cqw 2cqw;
+    background: #fff;
+    color: #26303d;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    font-size: 1.02cqw;
+    line-height: 1.55;
+    letter-spacing: 0;
+  }
+  .v3-doc-top {
+    display: flex;
+    align-items: center;
+    gap: 1.5cqw;
+    padding-bottom: 1.1cqw;
+    border-bottom: .08cqw solid #e8ecf2;
+    flex: none;
+  }
+  .v3-doc-brand { display: flex; align-items: center; gap: .6cqw; font-weight: 700; font-size: .95cqw; color: #141b24; }
+  .v3-doc-mark {
+    width: 1.5cqw; height: 1.5cqw; border-radius: .32cqw;
+    background: linear-gradient(135deg, #1d2733, #0d1319);
+    display: grid; place-items: center;
+    color: #fff; font-size: .78cqw; font-weight: 800;
+  }
+  .v3-doc-tabs { display: flex; align-items: center; gap: 1.2cqw; margin-left: 1.2cqw; font-size: .92cqw; color: #7b8798; }
+  .v3-doc-tabs .on { color: #111a24; font-weight: 700; box-shadow: inset 0 -.18cqw 0 #4d8dff; padding-bottom: .5cqw; }
+  .v3-doc-pills { margin-left: auto; display: flex; gap: .55cqw; }
+  .v3-doc-pills span {
+    border: .07cqw solid #dfe5ed; border-radius: 99px;
+    padding: .2cqw .62cqw; font-size: .74cqw; color: #6d7887; white-space: nowrap;
+  }
+  .v3-doc h1 {
+    margin: 1.5cqw 0 .4cqw;
+    font-size: 2.75cqw;
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: -.03em;
+    color: #0d1520;
+    flex: none;
+  }
+  .v3-doc .v3-meta { margin: 0 0 1.2cqw; font-size: .86cqw; color: #8590a0; flex: none; }
+  .v3-doc-grid {
+    display: grid;
+    grid-template-columns: 1.52fr .82fr;
+    gap: 2.1cqw;
+    flex: 1;
+    min-height: 0;
+  }
+  .v3-doc-figure {
+    margin: 0;
+    border: .07cqw solid #e3e9f0;
+    border-radius: .55cqw;
+    background: #fbfcfe;
+    padding: 1cqw;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: .6cqw;
+    min-height: 0;
+  }
+  .v3-doc-figure svg { width: 100%; height: auto; display: block; }
+  .v3-doc-cap { font-size: .76cqw; color: #8b95a3; text-align: center; }
+  .v3-doc-side { display: flex; flex-direction: column; gap: 1cqw; min-width: 0; }
+  .v3-doc-side h2 { margin: 0; font-size: 1.02cqw; color: #111a24; }
+  .v3-doc-side p { margin: 0; font-size: .9cqw; color: #566273; }
+  .v3-doc-side ul { margin: .2cqw 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: .55cqw; }
+  .v3-doc-side li { display: flex; gap: .55cqw; font-size: .87cqw; line-height: 1.45; color: #4d5969; }
+  .v3-doc-side li b { color: #1a2533; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .v3-doc-note {
+    margin-top: auto;
+    border-left: .16cqw solid #eab27c;
+    background: #fdf8f2;
+    border-radius: .2cqw;
+    padding: .65cqw .8cqw;
+    font-size: .78cqw;
+    line-height: 1.5;
+    color: #8a6a4b;
+  }
+  .v3-doc-composer {
+    position: absolute;
+    left: 2.4cqw; right: 2.4cqw; bottom: 1.7cqw;
+    height: 4.1cqw;
+    border: .08cqw solid #dde4ec;
+    border-radius: 1.05cqw;
+    background: #fff;
+    box-shadow: 0 .6cqw 1.8cqw rgba(17, 26, 36, .06);
+    display: flex;
+    align-items: center;
+    gap: 1cqw;
+    padding: 0 1.1cqw;
+    font-size: .9cqw;
+    color: #9aa4b2;
+  }
+  .v3-doc-send {
+    margin-left: auto;
+    width: 2.55cqw; height: 2.55cqw; border-radius: 50%;
+    background: #4d8dff;
+    display: grid; place-items: center;
+    flex: none;
+  }
+  .v3-doc-send::after {
+    content: "";
+    width: .75cqw; height: .75cqw;
+    border-top: .16cqw solid #fff;
+    border-right: .16cqw solid #fff;
+    transform: translateY(.16cqw) rotate(-45deg);
+  }
+
+  /* ---- synthetic page: phone-window variant -------------------------------- */
+  .v3-mobile { display: none; }
+  .v3-page[data-device="iPhone"] .v3-doc { display: none; }
+  .v3-page[data-device="iPhone"] .v3-mobile { display: flex; }
+
+  .v3-mobile {
+    position: absolute; inset: 0;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+    color: #1b2532;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .v3-m-top {
+    height: 47px; flex: none;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 14px;
+    border-bottom: 1px solid #edf0f4;
+  }
+  .v3-m-mark {
+    width: 22px; height: 22px; flex: none;
+    border-radius: 7px;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, #1d2733, #0d1319);
+    color: #fff; font-size: 11px; font-weight: 700;
+  }
+  .v3-m-name { font-size: 13px; font-weight: 700; color: #101922; letter-spacing: -.01em; }
+  .v3-m-live {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 5px;
+    font-size: 10px; color: #7d8896;
+  }
+  .v3-m-live i { width: 6px; height: 6px; border-radius: 50%; background: #2fbf6a; }
+  .v3-m-thread {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 12px 14px 0;
+  }
+  .v3-m-day { text-align: center; font-size: 10px; color: #9aa4b0; letter-spacing: .02em; }
+  .v3-m-bubble {
+    max-width: 80%;
+    padding: 8px 11px;
+    border-radius: 13px 13px 4px 13px;
+    background: #eef3ff;
+    color: #22303f;
+    font-size: 12.5px; line-height: 1.5;
+    align-self: flex-end;
+  }
+  .v3-m-card {
+    flex: none;
+    border: 1px solid #e6ebf2;
+    border-radius: 13px;
+    padding: 11px 11px 12px;
+    box-shadow: 0 6px 18px rgba(17, 26, 36, .05);
+  }
+  .v3-m-card h1 { margin: 0; font-size: 15px; line-height: 1.35; letter-spacing: -.01em; color: #101922; }
+  .v3-m-meta { margin: 1px 0 0; font-size: 10px; color: #98a2af; }
+  .v3-m-plan { width: 100%; height: 128px; display: block; margin: 9px 0 8px; border-radius: 8px; background: #f8fafc; }
+  .v3-m-card p { margin: 0 0 7px; font-size: 11.5px; line-height: 1.5; color: #4c5867; }
+  .v3-m-card p b { color: #111a24; font-weight: 700; }
+  .v3-m-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .v3-m-list li { display: flex; align-items: flex-start; gap: 6px; font-size: 10.5px; line-height: 1.45; color: #55616f; }
+  .v3-m-list b {
+    flex: none;
+    width: 16px; height: 16px; margin-top: 1px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    background: #eef3ff; color: #3668d8;
+    font-size: 9px; font-weight: 700;
+  }
+  .v3-m-typing { display: flex; align-items: center; gap: 5px; padding: 1px 2px 4px; font-size: 10px; color: #9aa4b0; }
+  .v3-m-typing i { width: 4px; height: 4px; border-radius: 50%; background: #c3ccd8; }
+  .v3-m-compose {
+    flex: none;
+    height: 54px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 12px;
+    border-top: 1px solid #edf0f4;
+  }
+  .v3-m-input {
+    flex: 1;
+    height: 34px;
+    display: flex; align-items: center;
+    padding: 0 11px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 11.5px;
+    color: #97a1ae;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .v3-m-send {
+    width: 26px; height: 26px; flex: none;
+    border-radius: 50%;
+    background: #3b78f6;
+    display: grid; place-items: center;
+  }
+  .v3-m-send::after {
+    content: "";
+    width: 7px; height: 7px;
+    border-top: 1.6px solid #fff;
+    border-right: 1.6px solid #fff;
+    transform: translateY(1px) rotate(-45deg);
+  }
+
+  /* ---- top island ---------------------------------------------------------- */
+  .v3-top {
+    position: absolute;
+    z-index: 20;
+    top: calc(var(--safe-t) + 7px);
+    left: 8px; right: 8px;
+    height: 47px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 6px 0 4px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--island);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    backdrop-filter: blur(20px) saturate(150%);
+    box-shadow: 0 10px 34px -12px rgba(0, 0, 0, .7);
+    transition: opacity .18s ease, transform .18s ease;
+  }
+
+  .v3-icon {
+    width: 33px; height: 33px;
+    display: grid; place-items: center;
+    border-radius: 9px;
+    color: #cfd9e6;
+    flex: none;
+  }
+  .v3-icon:active { background: rgba(255, 255, 255, .09); }
+  .v3-back { width: 31px; height: 33px; }
+  .v3-back svg { display: block; }
+
+  .v3-title {
+    flex: 1;
+    min-width: 0;
+    height: 39px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0;
+    padding: 0 5px;
+    border-radius: 8px;
+    text-align: left;
+  }
+  .v3-title:active { background: rgba(255, 255, 255, .07); }
+  .v3-sess {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    font: 500 9.5px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .02em;
+    color: #7f8d9f;
+  }
+  .v3-sess span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .v3-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 7px rgba(53, 196, 111, .8);
+    flex: none;
+  }
+  .v3-tabline {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: -.01em;
+    color: #f2f6fc;
+  }
+  .v3-tabline .v3-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .v3-caret { flex: none; display: grid; place-items: center; color: #6f7c8d; transform: translateY(1px); }
+
+  /* ---- bottom island ------------------------------------------------------- */
+  .v3-bottom {
+    position: absolute;
+    z-index: 20;
+    left: 8px; right: 8px;
+    bottom: calc(var(--safe-b) + 8px);
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 7px;
+    border: 1px solid var(--line);
+    border-radius: 15px;
+    background: var(--island);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    backdrop-filter: blur(20px) saturate(150%);
+    box-shadow: 0 14px 40px -14px rgba(0, 0, 0, .75);
+    transition: opacity .18s ease, transform .18s ease;
+  }
+
+  .v3-seg {
+    display: flex;
+    align-items: stretch;
+    padding: 2px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .055);
+    border: 1px solid rgba(255, 255, 255, .05);
+    flex: none;
+  }
+  .v3-seg button {
+    border: 0;
+    background: transparent;
+    color: #94a1b2;
+    border-radius: 8px;
+    height: 30px;
+    padding: 0 10px;
+    font: 800 10px/1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    letter-spacing: .07em;
+    transition: background .12s ease, color .12s ease;
+  }
+  .v3-seg button.on {
+    background: var(--blue-deep);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(35, 92, 200, .45), inset 0 1px 0 rgba(255, 255, 255, .16);
+  }
+
+  .v3-lens { flex: none; }
+  .v3-lens button { width: 48px; padding: 0; }
+
+  .v3-zoom { margin-left: auto; }
+  .v3-zoom button {
+    width: 30px;
+    padding: 0;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: #dbe4f0;
+  }
+  .v3-zoom button[disabled] { opacity: .35; pointer-events: none; }
+  .v3-zoom .v3-pct {
+    width: 52px;
+    font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: -.01em;
+    font-variant-numeric: tabular-nums;
+    color: #aab7c8;
+  }
+  .v3-kb {
+    width: 34px; height: 34px;
+    display: none;
+    place-items: center;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, .055);
+    border: 1px solid rgba(255, 255, 255, .05);
+    color: #cfdae7;
+    flex: none;
+  }
+  .v3-app[data-lens="ctrl"] .v3-kb { display: grid; }
+  .v3-kb:active { background: rgba(255, 255, 255, .1); }
+
+  .v3-app[data-mode="shot"] .v3-dot {
+    background: var(--amber);
+    box-shadow: 0 0 7px rgba(240, 169, 60, .75);
+  }
+
+  /* ---- scrim + sheet ------------------------------------------------------- */
+  .v3-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    background: rgba(2, 4, 8, .58);
+    -webkit-backdrop-filter: blur(1.5px);
+    backdrop-filter: blur(1.5px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease;
+  }
+  .v3-app[data-sheet="1"] .v3-scrim { opacity: 1; pointer-events: auto; }
+  .v3-app[data-sheet="1"] .v3-top { opacity: 0; pointer-events: none; transform: translateY(-6px); }
+  .v3-app[data-sheet="1"] .v3-bottom { opacity: 0; pointer-events: none; transform: translateY(8px); }
+
+  .v3-sheet {
+    position: absolute;
+    z-index: 50;
+    left: 0; right: 0; bottom: 0;
+    max-height: 79%;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, #0f151d 0%, #0b0f15 100%);
+    border-top: 1px solid var(--line2);
+    border-radius: 22px 22px 0 0;
+    box-shadow: 0 -28px 80px rgba(0, 0, 0, .7);
+    padding-bottom: var(--safe-b);
+    transform: translateY(102%);
+    transition: transform .24s cubic-bezier(.22, .8, .24, 1);
+    overflow: hidden;
+  }
+  .v3-app[data-sheet="1"] .v3-sheet { transform: none; }
+
+  .v3-grab {
+    width: 34px; height: 4px;
+    margin: 7px auto 8px;
+    border-radius: 99px;
+    background: #303b4a;
+    flex: none;
+  }
+
+  .v3-main { display: flex; flex-direction: column; min-height: 0; }
+  .v3-app[data-sheet="1"] .v3-main { flex: 1; }
+
+  .v3-shead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px 6px 16px;
+    flex: none;
+  }
+  .v3-kicker {
+    font: 700 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .17em;
+    text-transform: uppercase;
+    color: #8b98aa;
+  }
+  .v3-live {
+    font: 500 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #5c697b;
+  }
+  .v3-x {
+    margin-left: auto;
+    width: 30px; height: 30px;
+    font-size: 14px;
+    color: #7e8b9d;
+    border-radius: 8px;
+  }
+  .v3-x:active { background: rgba(255, 255, 255, .08); }
+
+  .v3-chips {
+    display: flex;
+    gap: 7px;
+    padding: 2px 16px 11px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex: none;
+    -webkit-mask-image: linear-gradient(90deg, #000 94%, transparent 100%);
+    mask-image: linear-gradient(90deg, #000 94%, transparent 100%);
+  }
+  .v3-chips::-webkit-scrollbar { display: none; }
+  .v3-chip {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 9px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: #10161e;
+    color: #8d9aab;
+    font: 500 11.5px/1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    transition: border-color .12s ease, background .12s ease, color .12s ease;
+  }
+  .v3-chip .v3-cname {
+    max-width: 100px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .v3-chip.on {
+    border-color: rgba(77, 141, 255, .55);
+    background: rgba(77, 141, 255, .13);
+    color: #eaf2ff;
+  }
+
+  .v3-thead {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 10px 3px 16px;
+    border-top: 1px solid var(--line);
+    flex: none;
+  }
+  .v3-gap { flex: 1; }
+  .v3-mini {
+    width: 27px; height: 26px;
+    display: grid; place-items: center;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, .05);
+    border: 1px solid rgba(255, 255, 255, .045);
+    color: #93a0b2;
+    flex: none;
+  }
+  .v3-mini:active { background: rgba(255, 255, 255, .11); }
+  .v3-mini svg { display: block; }
+
+  .v3-tabs {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1px 8px 7px;
+    min-height: 0;
+    flex: 1;
+  }
+  .v3-trow {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    height: 45px;
+    padding: 0 5px 0 8px;
+    border-radius: 9px;
+    color: #c6d1df;
+  }
+  .v3-trow + .v3-trow { margin-top: 1px; }
+  .v3-trow.on { background: rgba(77, 141, 255, .1); }
+  .v3-trow.on::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 10px; bottom: 10px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--blue);
+  }
+  .v3-mono {
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    background: #1a2230;
+    display: grid; place-items: center;
+    font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8391a4;
+    flex: none;
+  }
+  .v3-trow.on .v3-mono { background: rgba(77, 141, 255, .25); color: #cfe2ff; }
+  .v3-tname {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 12px;
+    letter-spacing: -.005em;
+  }
+  .v3-trow.on .v3-tname { color: #f1f6ff; font-weight: 500; }
+  .v3-cur {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--blue);
+    box-shadow: 0 0 6px rgba(77, 141, 255, .7);
+    flex: none;
+  }
+  .v3-tclose {
+    width: 27px; height: 27px;
+    display: grid; place-items: center;
+    border-radius: 7px;
+    color: #5f6c7e;
+    font-size: 15px;
+    flex: none;
+  }
+  .v3-tclose:hover { color: #ff8b84; }
+  .v3-tclose:disabled { opacity: .22; }
+
+  .v3-foot {
+    flex: none;
+    padding: 9px 14px 11px;
+    border-top: 1px solid var(--line);
+    background: #0a0e14;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .v3-row { display: flex; align-items: center; gap: 8px; }
+  .v3-lbl {
+    width: 44px;
+    flex: none;
+    font: 600 8.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: #5b687a;
+  }
+  .v3-seg3 { width: 172px; }
+  .v3-seg3 button { flex: 1; padding: 0; font-size: 10px; letter-spacing: .03em; font-weight: 600; }
+  .v3-seg2 { width: 106px; }
+  .v3-seg2 button { flex: 1; padding: 0; font-size: 10px; letter-spacing: .03em; font-weight: 600; }
+  .v3-foot .v3-seg { height: 30px; border-radius: 8px; background: #070b10; }
+  .v3-foot .v3-seg button { height: 24px; border-radius: 6px; color: #7f8c9e; }
+  .v3-foot .v3-seg button.on {
+    background: #1d2836;
+    color: #eaf1fb;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .06);
+  }
+  .v3-actual {
+    margin-left: auto;
+    font: 500 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: -.01em;
+    color: #5c697b;
+    white-space: nowrap;
+  }
+
+  .v3-actions { display: flex; gap: 8px; margin-top: 3px; }
+  .v3-btn1, .v3-btn2 {
+    height: 34px;
+    border-radius: 9px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .005em;
+    flex: 1;
+    display: grid;
+    place-items: center;
+    transition: background .12s ease;
+  }
+  .v3-btn1 {
+    background: #1b2c47;
+    border: 1px solid #2b4a75;
+    color: #d8e8ff;
+  }
+  .v3-btn1:active { background: #223655; }
+  .v3-btn2 {
+    background: transparent;
+    border: 1px solid var(--line2);
+    color: #b8c4d3;
+  }
+  .v3-btn2:active { background: rgba(255, 255, 255, .06); }
+
+  /* ---- url subview --------------------------------------------------------- */
+  .v3-url { display: none; flex-direction: column; gap: 10px; padding: 0 14px 14px; }
+  .v3-sheet[data-view="url"] .v3-main { display: none; }
+  .v3-sheet[data-view="url"] .v3-url { display: flex; }
+  .v3-url .v3-shead { padding: 0 0 2px; }
+  .v3-form { display: flex; gap: 8px; }
+  .v3-form input {
+    flex: 1;
+    min-width: 0;
+    height: 40px;
+    border-radius: 9px;
+    border: 1px solid var(--line2);
+    background: #060a0f;
+    color: var(--text);
+    padding: 0 10px;
+    font: 500 11.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: -.01em;
+    outline: none;
+    user-select: text;
+  }
+  .v3-form input::placeholder { color: #4f5b6d; }
+  .v3-form input:focus { border-color: rgba(77, 141, 255, .75); box-shadow: 0 0 0 3px rgba(77, 141, 255, .14); }
+  .v3-go { flex: none; width: 54px; height: 40px; }
+  .v3-hint {
+    margin: 0;
+    font-size: 9.5px;
+    line-height: 1.55;
+    color: #627084;
+  }
+
+  /* ---- toast --------------------------------------------------------------- */
+  .v3-toast {
+    position: absolute;
+    z-index: 60;
+    top: calc(var(--safe-t) + 64px);
+    left: 50%;
+    transform: translate(-50%, -7px);
+    width: max-content;
+    max-width: calc(100% - 36px);
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, .11);
+    background: rgba(25, 33, 44, .97);
+    box-shadow: 0 14px 38px rgba(0, 0, 0, .55);
+    color: #e3ebf6;
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .16s ease, transform .16s ease;
+  }
+  .v3-toast.on { opacity: 1; transform: translate(-50%, 0); }
+  .v3-toast.warn { border-left: 2px solid var(--amber); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .v3-page, .v3-sheet, .v3-scrim, .v3-toast, .v3-top, .v3-bottom { transition: none; }
+  }
+
+  /* ---- phone = real app ---------------------------------------------------- */
+  @media (max-width: 899px) {
+    body { overflow: hidden; overscroll-behavior: none; }
+    .v3-layout { display: block; min-height: 0; padding: 0; }
+    .v3-notes, .v3-caption { display: none; }
+    .v3-stagewrap { display: block; }
+    .v3-phone {
+      width: 100vw;
+      height: 100dvh;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    .v3-sheet { border-radius: 22px 22px 0 0; }
+  }
+  @supports not (height: 100dvh) {
+    @media (max-width: 899px) {
+      .v3-phone { height: 100vh; }
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="v3-layout">
+
+  <aside class="v3-notes">
+    <p class="kicker">BROWSER · PHONE CHROME</p>
+    <h1>Seven controls became three.</h1>
+    <p class="sub">The phone view should keep the page, not the dashboard. Everything you touched once an hour moves into one sheet.</p>
+    <ul>
+      <li><b>98 px of chrome.</b> One title island, one thumb island. The mirrored page owns everything between.</li>
+      <li><b>Sessions are chips, tabs are rows.</b> No rail, no nested tree, no badge shouting over the page.</li>
+      <li><b>The sheet is the remote.</b> Tabs, size, capture, URL and reload all live there. It closes when you land.</li>
+      <li><b>Size is a preset, not a scale.</b> iPhone 500×844 fills the portrait stage; Mac 1512×883 letterboxes on the matte.</li>
+      <li><b>Zoom sits under the thumb.</b> − 100% +, tap the number to fit. The floating pad is gone.</li>
+      <li><b>Status is a 5 px dot.</b> Green = cast, amber = shot. Failures become a short toast, not a banner.</li>
+    </ul>
+    <p class="hint">
+      Tap the title → sheet · tap <em>100%</em> → fit<br>
+      Tap <em>CTRL</em> → keyboard appears · Size: iPhone fills, Mac letterboxes
+    </p>
+    <p class="scope">Phone &lt; 900 px · desktop rail unchanged this round</p>
+  </aside>
+
+  <div class="v3-stagewrap">
+    <div class="v3-phone">
+      <div class="v3-app" id="app" data-lens="view" data-mode="cast" data-sheet="0">
+
+        <div class="v3-stage" id="stage">
+          <div class="v3-page" id="page">
+            <div class="v3-doc">
+              <div class="v3-doc-top">
+                <div class="v3-doc-brand"><span class="v3-doc-mark">a</span> ai-workshop</div>
+                <div class="v3-doc-tabs"><span class="on">Chat</span><span>Trajectory</span></div>
+                <div class="v3-doc-pills"><span>Standard (No Subagent)</span><span>1 background job</span></div>
+              </div>
+
+              <h1>自建房 G 方案 · 二层平面复核</h1>
+              <p class="v3-meta">plan review · 3 分钟 · 已生成 2 张修订图</p>
+
+              <div class="v3-doc-grid">
+                <figure class="v3-doc-figure">
+                  <svg viewBox="0 0 720 300" role="img" aria-label="二层平面草图">
+                    <rect x="0" y="0" width="720" height="300" fill="#fbfcfe"/>
+                    <g fill="#f4f7fa">
+                      <rect x="300" y="8" width="220" height="182"/>
+                      <rect x="520" y="8" width="192" height="284"/>
+                    </g>
+                    <g stroke="#1f2b39" stroke-width="4" fill="none" stroke-linejoin="miter">
+                      <rect x="8" y="8" width="704" height="284"/>
+                      <path d="M300 8v92M300 150v40"/>
+                      <path d="M520 8v72M520 130v162"/>
+                      <path d="M8 190h72M130 190h390"/>
+                      <path d="M180 190v50M180 280v12"/>
+                    </g>
+                    <g stroke="#c6d1dd" stroke-width="2" fill="#fff">
+                      <rect x="545" y="38" width="112" height="152" rx="6"/>
+                      <path d="M545 78h112" fill="none"/>
+                      <ellipse cx="150" cy="102" rx="56" ry="33"/>
+                      <rect x="318" y="26" width="184" height="34" rx="4"/>
+                    </g>
+                    <g stroke="#cdd8e3" stroke-width="2" fill="none">
+                      <path d="M202 210h82M202 226h82M202 242h82M202 258h82M202 274h82"/>
+                    </g>
+                    <g stroke="#9fb0c2" stroke-width="2" fill="none">
+                      <path d="M300 100a50 50 0 0 1 50 50"/>
+                      <path d="M520 80a50 50 0 0 1 50 50"/>
+                      <path d="M80 190a50 50 0 0 1 50 50"/>
+                      <path d="M180 240a40 40 0 0 1 40 40"/>
+                    </g>
+                    <g font-family="-apple-system, system-ui, sans-serif" font-size="17" fill="#6b798b" letter-spacing="1.5">
+                      <text x="38" y="46">餐厅</text>
+                      <text x="338" y="46">厨房</text>
+                      <text x="590" y="214">主卧</text>
+                      <text x="38" y="228">客厅</text>
+                      <text x="300" y="286">楼梯</text>
+                    </g>
+                  </svg>
+                  <figcaption class="v3-doc-cap">二层平面 · 11.8 × 10.3 m · 1:100</figcaption>
+                </figure>
+
+                <aside class="v3-doc-side">
+                  <h2>复核结论</h2>
+                  <p>楼梯间西移 0.35 m，餐厅净宽回到 3.16 m；阳台门改为推拉，保留 1.5 m 开口。</p>
+                  <ul>
+                    <li><b>01</b><span>餐厅与楼梯间之间加 0.9 m 矮墙，遮挡视线不挡光。</span></li>
+                    <li><b>02</b><span>厨房门洞从 0.8 m 扩到 1.1 m，动线更顺。</span></li>
+                    <li><b>03</b><span>主卧衣柜退 0.15 m，避免与窗台冲突。</span></li>
+                  </ul>
+                  <div class="v3-doc-note">平面图已按 1:100 重绘，尺寸标注以结构图为准。</div>
+                </aside>
+              </div>
+
+              <div class="v3-doc-composer">
+                <span>问点什么，或拖入一张平面图…</span>
+                <span class="v3-doc-send"></span>
+              </div>
+            </div>
+
+            <div class="v3-mobile" aria-hidden="true">
+              <div class="v3-m-top">
+                <span class="v3-m-mark">自</span>
+                <span class="v3-m-name">自建房工作室</span>
+                <span class="v3-m-live"><i></i>在线</span>
+              </div>
+
+              <div class="v3-m-thread">
+                <div class="v3-m-day">今天 14:26</div>
+                <div class="v3-m-bubble">二层平面帮我复核一下，楼梯是不是太挤了？</div>
+
+                <article class="v3-m-card">
+                  <h1>二层平面复核</h1>
+                  <p class="v3-m-meta">11.8 × 10.3 m · 1:100</p>
+                  <svg class="v3-m-plan" viewBox="0 0 336 150" role="img" aria-label="二层平面草图">
+                    <rect width="336" height="150" fill="#f8fafc"/>
+                    <g fill="#f1f5f9">
+                      <rect x="150" y="10" width="88" height="72"/>
+                      <rect x="238" y="10" width="78" height="118"/>
+                    </g>
+                    <g stroke="#22303f" stroke-width="2.2" fill="none">
+                      <rect x="14" y="10" width="302" height="118"/>
+                      <path d="M150 10v38M150 66v18"/>
+                      <path d="M238 10v30M238 56v72"/>
+                      <path d="M14 92h34M62 92h176"/>
+                      <path d="M96 92v20M96 128v10"/>
+                    </g>
+                    <g stroke="#c8d3df" stroke-width="1.4" fill="#fff">
+                      <rect x="247" y="18" width="60" height="56" rx="4"/>
+                      <ellipse cx="72" cy="52" rx="30" ry="17"/>
+                      <rect x="160" y="20" width="70" height="16" rx="3"/>
+                    </g>
+                    <g font-family="-apple-system, system-ui, sans-serif" font-size="9" fill="#7b8798">
+                      <text x="22" y="31">餐厅</text>
+                      <text x="160" y="101">客厅</text>
+                      <text x="248" y="31">厨房</text>
+                      <text x="250" y="120">主卧</text>
+                      <text x="152" y="55">楼梯</text>
+                    </g>
+                  </svg>
+                  <p>楼梯间西移 0.35 m，餐厅净宽回到 <b>3.16 m</b>；阳台门改为推拉，保留 1.5 m 开口。</p>
+                  <ul class="v3-m-list">
+                    <li><b>1</b><span>餐厅与楼梯间加 0.9 m 矮墙，遮视线不挡光。</span></li>
+                    <li><b>2</b><span>厨房门洞扩到 1.1 m，动线更顺。</span></li>
+                    <li><b>3</b><span>主卧衣柜退 0.15 m，避开窗台。</span></li>
+                  </ul>
+                </article>
+
+                <div class="v3-m-bubble">好，就按这个改。修订图多久出来？</div>
+                <div class="v3-m-typing"><i></i>正在生成修订图…</div>
+              </div>
+
+              <div class="v3-m-compose">
+                <span class="v3-m-input">问点什么…</span>
+                <span class="v3-m-send"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <header class="v3-top">
+          <button class="v3-icon v3-back" id="back" aria-label="Back">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5 8 12l6.5 7"/></svg>
+          </button>
+          <button class="v3-title" id="titleBtn" aria-label="Sessions and tabs" aria-expanded="false" aria-controls="sheet">
+            <span class="v3-sess"><i class="v3-dot"></i><span id="sessName">ai-critic</span></span>
+            <span class="v3-tabline">
+              <span class="v3-name" id="tabName">自建房G方案交换楼梯卫生间</span>
+              <span class="v3-caret" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5 12 15l6-5.5"/></svg>
+              </span>
+            </span>
+          </button>
+        </header>
+
+        <footer class="v3-bottom">
+          <div class="v3-seg v3-lens" id="lens" role="group" aria-label="Lens">
+            <button type="button" data-lens="view" class="on">VIEW</button>
+            <button type="button" data-lens="ctrl">CTRL</button>
+          </div>
+          <div class="v3-seg v3-zoom" role="group" aria-label="Zoom">
+            <button type="button" id="zOut" aria-label="Zoom out">−</button>
+            <button type="button" class="v3-pct" id="zPct" aria-label="Fit to screen">100%</button>
+            <button type="button" id="zIn" aria-label="Zoom in">+</button>
+          </div>
+          <button type="button" class="v3-kb" id="kb" aria-label="Keyboard">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2.5" y="6" width="19" height="12" rx="2.6"/>
+              <path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M6 13.5h.01M9.5 13.5h.01M13 13.5h.01M16.5 13.5h.01M8 17h8"/>
+            </svg>
+          </button>
+        </footer>
+
+        <div class="v3-scrim" id="scrim"></div>
+
+        <section class="v3-sheet" id="sheet" data-view="main" role="dialog" aria-modal="true" aria-label="Sessions and tabs" aria-hidden="true">
+          <div class="v3-grab"></div>
+
+          <div class="v3-main" id="sheetMain">
+            <div class="v3-shead">
+              <span class="v3-kicker">Sessions</span>
+              <span class="v3-live" id="liveCount">4 live</span>
+              <button type="button" class="v3-icon v3-x" id="sheetClose" aria-label="Close sheet">✕</button>
+            </div>
+
+            <div class="v3-chips" id="chips" aria-label="Sessions"></div>
+
+            <div class="v3-thead">
+              <span class="v3-kicker">Tabs</span>
+              <span class="v3-gap"></span>
+              <button type="button" class="v3-mini" id="newTab" aria-label="New tab">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="v3-tabs" id="tabs" aria-label="Tabs"></div>
+
+            <div class="v3-foot">
+              <div class="v3-row">
+                <span class="v3-lbl">Size</span>
+                <div class="v3-seg v3-seg3" id="devices" role="group" aria-label="Window size">
+                  <button type="button" data-device="iPhone" class="on">iPhone</button>
+                  <button type="button" data-device="iPad">iPad</button>
+                  <button type="button" data-device="Mac">Mac</button>
+                </div>
+                <span class="v3-actual" id="actual">500×844</span>
+              </div>
+              <div class="v3-row">
+                <span class="v3-lbl">Capture</span>
+                <div class="v3-seg v3-seg2" id="modes" role="group" aria-label="Capture mode">
+                  <button type="button" data-mode="cast" class="on">Cast</button>
+                  <button type="button" data-mode="shot">Shot</button>
+                </div>
+                <span class="v3-actual" id="modeNote">auto · 12 fps</span>
+              </div>
+              <div class="v3-actions">
+                <button type="button" class="v3-btn1" id="openUrl">Open URL…</button>
+                <button type="button" class="v3-btn2" id="reload">Reload</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="v3-url" id="sheetUrl">
+            <div class="v3-shead">
+              <button type="button" class="v3-icon v3-back" id="urlBack" aria-label="Back to sessions">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5 8 12l6.5 7"/></svg>
+              </button>
+              <span class="v3-kicker">Open URL</span>
+              <span class="v3-gap"></span>
+              <button type="button" class="v3-icon v3-x" id="urlClose" aria-label="Close sheet">✕</button>
+            </div>
+            <form class="v3-form" id="urlForm">
+              <input id="urlInput" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="http:// or https://" aria-label="URL">
+              <button type="submit" class="v3-btn1 v3-go">Go</button>
+            </form>
+            <p class="v3-hint">Opens in the current tab. http(s) only.</p>
+          </div>
+        </section>
+
+        <div class="v3-toast" id="toast" role="status" aria-live="polite"></div>
+      </div>
+    </div>
+    <p class="v3-caption">iPhone 15 · 390 × 844 · Safari</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var $ = function (sel, root) { return (root || document).querySelector(sel); };
+
+  var DEVICES = {
+    iPhone: { w: 500, h: 844 },
+    iPad: { w: 834, h: 945 },
+    Mac: { w: 1512, h: 883 }
+  };
+
+  var sessions = [
+    {
+      id: "ai-critic",
+      tabs: [
+        { id: "t1", mono: "自", title: "自建房G方案交换楼梯卫生间" },
+        { id: "t2", mono: "O", title: "Orchestrator · elucidation" },
+        { id: "t3", mono: "B", title: "ai-critic — Browser Agent" }
+      ]
+    },
+    {
+      id: "sess-7lm3dk",
+      tabs: [
+        { id: "a1", mono: "B", title: "Browser Agent" },
+        { id: "a2", mono: "S", title: "Session · 7lm3dk" },
+        { id: "a3", mono: "T", title: "Tabs proxy check" }
+      ]
+    },
+    {
+      id: "sess-vthbxs",
+      tabs: [
+        { id: "b1", mono: "B", title: "Browser Agent · vthbxs" },
+        { id: "b2", mono: "P", title: "Playwright · phone chrome" },
+        { id: "b3", mono: "D", title: "DSH · browser view" },
+        { id: "b4", mono: "S", title: "Screen · mirror test" },
+        { id: "b5", mono: "A", title: "ai-critic — Browser Agent" }
+      ]
+    },
+    {
+      id: "sess-wx1o6o",
+      tabs: [
+        { id: "c1", mono: "H", title: "Home · ai-critic" },
+        { id: "c2", mono: "B", title: "Browser Agent · wx1o6o" }
+      ]
+    }
+  ];
+
+  var ZOOMS = [1, 1.25, 1.5, 2, 2.5, 3, 4, 6];
+
+  var state = {
+    cur: 0,
+    lens: "view",
+    mode: "cast",
+    device: "iPhone",
+    zoom: 0
+  };
+
+  var activeBySession = {};
+  sessions.forEach(function (s) { activeBySession[s.id] = s.tabs[0].id; });
+
+  var app = $("#app");
+  var sheetEl = $("#sheet");
+  var toastEl = $("#toast");
+  var toastTimer = 0;
+
+  function session() { return sessions[state.cur]; }
+
+  function activeTab() {
+    var s = session();
+    var id = activeBySession[s.id];
+    for (var i = 0; i < s.tabs.length; i++) {
+      if (s.tabs[i].id === id) return s.tabs[i];
+    }
+    activeBySession[s.id] = s.tabs[0].id;
+    return s.tabs[0];
+  }
+
+  function esc(v) {
+    return String(v).replace(/[&<>"']/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+    });
+  }
+
+  function toast(msg, warn) {
+    window.clearTimeout(toastTimer);
+    toastEl.textContent = msg;
+    toastEl.className = "v3-toast on" + (warn ? " warn" : "");
+    toastTimer = window.setTimeout(function () {
+      toastEl.className = "v3-toast" + (warn ? " warn" : "");
+    }, 2200);
+  }
+
+  function render() {
+    var s = session();
+    var t = activeTab();
+    var dev = DEVICES[state.device];
+    var zoom = ZOOMS[state.zoom];
+
+    $("#sessName").textContent = s.id;
+    $("#tabName").textContent = t.title;
+    $("#liveCount").textContent = sessions.length + " live";
+    $("#actual").textContent = dev.w + "×" + dev.h;
+    $("#modeNote").textContent = state.mode === "cast" ? "auto · 6–12 fps" : "auto · 1 fps";
+    $("#zPct").textContent = Math.round(zoom * 100) + "%";
+    $("#zOut").disabled = state.zoom === 0;
+    $("#zIn").disabled = state.zoom === ZOOMS.length - 1;
+
+    var page = $("#page");
+    page.style.setProperty("--z", zoom);
+    page.style.setProperty("--pw", dev.w);
+    page.style.setProperty("--ph", dev.h);
+    page.style.setProperty("--par", (dev.w / dev.h).toFixed(4));
+    page.dataset.device = state.device;
+
+    app.dataset.lens = state.lens;
+    app.dataset.mode = state.mode;
+
+    document.querySelectorAll("#devices button").forEach(function (b) {
+      b.classList.toggle("on", b.dataset.device === state.device);
+    });
+    document.querySelectorAll("#modes button").forEach(function (b) {
+      b.classList.toggle("on", b.dataset.mode === state.mode);
+    });
+    document.querySelectorAll("#lens button").forEach(function (b) {
+      b.classList.toggle("on", b.dataset.lens === state.lens);
+    });
+
+    $("#chips").innerHTML = sessions.map(function (x, i) {
+      return '<button type="button" class="v3-chip' + (i === state.cur ? " on" : "") + '" data-sess="' + i + '">' +
+        '<span class="v3-cname">' + esc(x.id) + "</span>" +
+        "</button>";
+    }).join("");
+
+    $("#tabs").innerHTML = s.tabs.map(function (x) {
+      var on = x.id === t.id;
+      return '<div class="v3-trow' + (on ? " on" : "") + '" data-tab="' + esc(x.id) + '" role="button" tabindex="0">' +
+        '<span class="v3-mono">' + esc(x.mono) + "</span>" +
+        '<span class="v3-tname">' + esc(x.title) + "</span>" +
+        (on ? '<span class="v3-cur"></span>' : "") +
+        '<button type="button" class="v3-tclose" data-close="' + esc(x.id) + '" aria-label="Close tab"' +
+          (s.tabs.length < 2 ? " disabled" : "") + ">×</button>" +
+        "</div>";
+    }).join("");
+  }
+
+  function openSheet(view) {
+    app.dataset.sheet = "1";
+    sheetEl.setAttribute("aria-hidden", "false");
+    sheetEl.dataset.view = view || "main";
+    $("#titleBtn").setAttribute("aria-expanded", "true");
+    if (!view || view === "main") render();
+  }
+
+  function closeSheet() {
+    app.dataset.sheet = "0";
+    sheetEl.setAttribute("aria-hidden", "true");
+    $("#titleBtn").setAttribute("aria-expanded", "false");
+    sheetEl.dataset.view = "main";
+  }
+
+  function pickSession(i) {
+    if (i === state.cur) return;
+    state.cur = i;
+    state.zoom = 0;
+    render();
+  }
+
+  function pickTab(id) {
+    var s = session();
+    for (var i = 0; i < s.tabs.length; i++) {
+      if (s.tabs[i].id === id) {
+        activeBySession[s.id] = id;
+        state.zoom = 0;
+        render();
+        closeSheet();
+        return;
+      }
+    }
+  }
+
+  function closeTab(id) {
+    var s = session();
+    if (s.tabs.length < 2) {
+      toast("Keep one tab open — add another first.", true);
+      return;
+    }
+    var idx = -1;
+    for (var i = 0; i < s.tabs.length; i++) if (s.tabs[i].id === id) idx = i;
+    if (idx < 0) return;
+    s.tabs.splice(idx, 1);
+    if (activeBySession[s.id] === id) {
+      var next = s.tabs[Math.min(idx, s.tabs.length - 1)];
+      activeBySession[s.id] = next.id;
+      state.zoom = 0;
+    }
+    render();
+    toast("Tab closed.");
+  }
+
+  function openNewTab() {
+    var s = session();
+    var id = "n" + Date.now();
+    s.tabs.push({ id: id, mono: "＋", title: "New tab" });
+    activeBySession[s.id] = id;
+    state.zoom = 0;
+    render();
+    toast("New tab opened.");
+  }
+
+  function setLens(lens) {
+    if (lens === state.lens) return;
+    state.lens = lens;
+    render();
+    toast(lens === "ctrl"
+      ? "CTRL — taps, typing and drags go to Chrome."
+      : "VIEW — one finger pans; double-tap zooms.");
+  }
+
+  function stepZoom(dir) {
+    var next = state.zoom + dir;
+    if (next < 0) next = 0;
+    if (next > ZOOMS.length - 1) next = ZOOMS.length - 1;
+    if (next === state.zoom) return;
+    state.zoom = next;
+    render();
+  }
+
+  function fit() {
+    state.zoom = 0;
+    render();
+    toast("Fit to screen.");
+  }
+
+  function setDevice(name) {
+    if (!DEVICES[name]) return;
+    if (name === state.device) return;
+    state.device = name;
+    render();
+    var d = DEVICES[name];
+    toast("Requested " + name + " · " + d.w + "×" + d.h + ".");
+  }
+
+  function setMode(mode) {
+    if (mode === state.mode) return;
+    state.mode = mode;
+    render();
+    toast(mode === "cast" ? "Cast — live while a viewer is attached." : "Shot — 1 fps, plus a frame per tap.");
+  }
+
+  function goUrl(raw) {
+    var value = String(raw || "").trim();
+    if (!value) {
+      toast("Enter an address first.", true);
+      $("#urlInput").focus();
+      return;
+    }
+    if (!/^https?:\/\//i.test(value)) value = "https://" + value;
+    var u;
+    try { u = new URL(value); } catch (e) { toast("That does not look like a URL.", true); return; }
+    if (u.protocol !== "http:" && u.protocol !== "https:") {
+      toast("Only http(s) URLs are allowed.", true);
+      return;
+    }
+    var s = session();
+    var t = activeTab();
+    t.title = u.host + (u.pathname && u.pathname !== "/" ? u.pathname : "");
+    t.mono = u.host.charAt(0).toUpperCase();
+    activeBySession[s.id] = t.id;
+    render();
+    closeSheet();
+    $("#urlInput").value = "";
+    toast("Opening " + u.host + "…");
+  }
+
+  /* ---- wire ---------------------------------------------------------------- */
+
+  $("#titleBtn").addEventListener("click", function () { openSheet("main"); });
+  $("#sheetClose").addEventListener("click", closeSheet);
+  $("#urlClose").addEventListener("click", closeSheet);
+  $("#urlBack").addEventListener("click", function () {
+    sheetEl.dataset.view = "main";
+    render();
+  });
+  $("#scrim").addEventListener("click", closeSheet);
+  $("#openUrl").addEventListener("click", function () {
+    sheetEl.dataset.view = "url";
+    window.setTimeout(function () { $("#urlInput").focus(); }, 40);
+  });
+  $("#urlForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    goUrl($("#urlInput").value);
+  });
+
+  $("#chips").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-sess]");
+    if (b) pickSession(Number(b.dataset.sess));
+  });
+
+  $("#tabs").addEventListener("click", function (e) {
+    var c = e.target.closest("[data-close]");
+    if (c) { closeTab(c.dataset.close); return; }
+    var row = e.target.closest("[data-tab]");
+    if (row) pickTab(row.dataset.tab);
+  });
+
+  $("#tabs").addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    var row = e.target.closest("[data-tab]");
+    if (!row) return;
+    e.preventDefault();
+    pickTab(row.dataset.tab);
+  });
+
+  $("#newTab").addEventListener("click", openNewTab);
+  $("#reload").addEventListener("click", function () {
+    toast("Reloading the tab…");
+  });
+
+  $("#devices").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-device]");
+    if (b) setDevice(b.dataset.device);
+  });
+  $("#modes").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-mode]");
+    if (b) setMode(b.dataset.mode);
+  });
+  $("#lens").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-lens]");
+    if (b) setLens(b.dataset.lens);
+  });
+
+  $("#zIn").addEventListener("click", function () { stepZoom(1); });
+  $("#zOut").addEventListener("click", function () { stepZoom(-1); });
+  $("#zPct").addEventListener("click", fit);
+  $("#kb").addEventListener("click", function () {
+    toast("On-screen keys — they type into the remote page.");
+  });
+  $("#back").addEventListener("click", function () {
+    toast("Back to Home.");
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && app.dataset.sheet === "1") closeSheet();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

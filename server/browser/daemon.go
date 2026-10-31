@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -52,6 +53,9 @@ type daemonHealth struct {
 	Version string `json:"daemon_version"`
 	BaseDir string `json:"base_dir"`
 	Product string `json:"product"`
+	// DirectSupported is true when the daemon accepts window_id/tab_id
+	// addressing without a session (direct-window-v1).
+	DirectSupported bool `json:"direct_supported"`
 }
 
 type extensionInfo struct {
@@ -93,9 +97,12 @@ func (d *daemon) health(ctx context.Context) (*daemonHealth, error) {
 }
 
 func (d *daemon) sessions(ctx context.Context) ([]sessionRow, error) {
-	body, err := d.do(ctx, http.MethodGet, "/v1/sessions", nil)
+	resp, body, err := d.request(ctx, http.MethodGet, "/v1/sessions", nil)
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("list sessions: status %d: %s", resp.StatusCode, truncate(body, 200))
 	}
 	// The daemon returns a bare array; accept a wrapped object too so a future
 	// protocol change does not break the page.
@@ -108,6 +115,9 @@ func (d *daemon) sessions(ctx context.Context) ([]sessionRow, error) {
 	}
 	if err := json.Unmarshal(body, &wrapped); err != nil {
 		return nil, fmt.Errorf("decode sessions: %w", err)
+	}
+	if wrapped.Sessions == nil {
+		return nil, fmt.Errorf("decode sessions: missing sessions list")
 	}
 	return wrapped.Sessions, nil
 }
@@ -141,6 +151,28 @@ func (d *daemon) createSession(ctx context.Context, id string) error {
 	return fmt.Errorf("create session: status %d: %s", resp.StatusCode, truncate(raw, 200))
 }
 
+var errSessionAlreadyExists = errors.New("browser-agent session already exists")
+
+// createFreshSession differs from createSession: conflicts must never silently
+// attach a New Window request to an existing session.
+func (d *daemon) createFreshSession(ctx context.Context, id string) error {
+	body, err := json.Marshal(map[string]any{"session_id": id})
+	if err != nil {
+		return err
+	}
+	resp, raw, err := d.request(ctx, http.MethodPost, "/v1/sessions", body)
+	if resp != nil && (resp.StatusCode == http.StatusConflict || (resp.StatusCode >= 400 && strings.Contains(strings.ToLower(string(raw)), "already"))) {
+		return errSessionAlreadyExists
+	}
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("create fresh session: status %d: %s", resp.StatusCode, truncate(raw, 200))
+	}
+	return nil
+}
+
 // job runs one extension job and returns its data payload. Browser-agent
 // answers synchronously; a non-ok body is an error.
 //
@@ -165,6 +197,34 @@ func (d *daemon) job(ctx context.Context, sessionID string, tabID int64, typ str
 	if params != nil {
 		payload["params"] = params
 	}
+	return d.postJob(ctx, typ, payload, timeout)
+}
+
+// jobDirect runs one job addressed by window/tab id with no session. It needs
+// browser-agent 1.0.24+ (direct_supported) and an extension whose direct rail
+// is enabled; the manager falls back to session jobs otherwise.
+func (d *daemon) jobDirect(ctx context.Context, windowID, tabID int64, typ string, params any, timeout time.Duration) (json.RawMessage, error) {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	if windowID <= 0 {
+		return nil, fmt.Errorf("direct job %s needs a window_id", typ)
+	}
+	payload := map[string]any{
+		"type":       typ,
+		"window_id":  windowID,
+		"timeout_ms": int(timeout / time.Millisecond),
+	}
+	if tabID != 0 {
+		payload["tab_id"] = tabID
+	}
+	if params != nil {
+		payload["params"] = params
+	}
+	return d.postJob(ctx, typ, payload, timeout)
+}
+
+func (d *daemon) postJob(ctx context.Context, typ string, payload map[string]any, timeout time.Duration) (json.RawMessage, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
@@ -187,6 +247,25 @@ func (d *daemon) job(ctx context.Context, sessionID string, tabID int64, typ str
 		return nil, fmt.Errorf("%s", msg)
 	}
 	return out.Data, nil
+}
+
+// windowsDirect lists Chrome windows through the daemon's direct rail (no
+// session). Data shape matches the windows job payload.
+func (d *daemon) windowsDirect(ctx context.Context) (*windowsPayload, error) {
+	jobCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	resp, raw, err := d.request(jobCtx, http.MethodGet, "/v1/windows", nil)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("list windows: status %d: %s", resp.StatusCode, truncate(raw, 200))
+	}
+	var payload windowsPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, fmt.Errorf("decode windows: %w", err)
+	}
+	return &payload, nil
 }
 
 func (d *daemon) getJSON(ctx context.Context, path string, v any) error {

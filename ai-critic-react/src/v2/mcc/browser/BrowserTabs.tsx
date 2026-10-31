@@ -54,7 +54,7 @@ export function BrowserTabs(props: BrowserTabsProps) {
                         <button
                             type="button"
                             className="bw-tabx"
-                            onClick={() => props.onClose(tab.tab_id)}
+                            onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); props.onClose(tab.tab_id); }}
                             disabled={disabled}
                             title="Close tab"
                             aria-label={`Close ${label(tab)}`}

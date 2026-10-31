@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { centreView, panBy, scaleOf, zoomAt } from '../src/v2/mcc/screen/viewport.ts';
 import {
-    contentTabs,
+    windowTabs,
     emptyGeometry,
     geometryOf,
     hasGeometry,
@@ -127,23 +127,34 @@ test('resetView is 1× on the picture centre even for odd sizes', () => {
     assert.deepEqual(resetView(emptyGeometry()), { zoom: 1, cx: 0, cy: 0 });
 });
 
-test('contentTabs drops the /go session page and keeps the rest in order', () => {
+test('windowTabs keeps every tab, the /go session page included, in order', () => {
     const tabs = [
         { tab_id: 1, index: 0, url: 'http://127.0.0.1:43761/go?session=ai-critic', title: 'ai-critic', active: true, role: 'session_page' },
         { tab_id: 2, index: 1, url: 'http://127.0.0.1:3080/', title: 'DSH', active: false, role: 'user' },
         { tab_id: 3, index: 2, url: 'http://127.0.0.1:8422/', title: 'Orchestrator', active: false, role: 'user' },
     ];
-    assert.deepEqual(contentTabs(tabs).map((tab) => tab.tab_id), [2, 3]);
+    assert.deepEqual(windowTabs(tabs).map((tab) => tab.tab_id), [1, 2, 3]);
 });
 
-test('contentTabs tolerates no list and an all-plumbing list', () => {
-    assert.deepEqual(contentTabs(null), []);
-    assert.deepEqual(contentTabs(undefined), []);
+test('windowTabs tolerates no list', () => {
+    assert.deepEqual(windowTabs(null), []);
+    assert.deepEqual(windowTabs(undefined), []);
     const page = { tab_id: 9, index: 0, url: 'http://127.0.0.1:43761/go?session=x', title: '', active: true, role: 'session_page' };
-    assert.deepEqual(contentTabs([page]), []);
+    assert.deepEqual(windowTabs([page]), [page]);
 });
 
-test('contentTabs keeps tabs from a daemon that does not send a role', () => {
+test('windowTabs keeps tabs from a daemon that does not send a role', () => {
     const tab = { tab_id: 4, index: 0, url: 'https://example.com/', title: 'Example', active: true };
-    assert.deepEqual(contentTabs([tab]), [tab]);
+    assert.deepEqual(windowTabs([tab]), [tab]);
+});
+
+test('windowTabs counts are the window totals, /go page included', () => {
+    const tabs = [
+        { tab_id: 1, role: 'user' },
+        { tab_id: 2, role: 'session_page' },
+        { tab_id: 3, role: 'user' },
+    ];
+    assert.equal(windowTabs(tabs).length, 3);
+    assert.equal(windowTabs([{ tab_id: 2, role: 'session_page' }]).length, 1);
+    assert.equal(windowTabs(null).length, 0);
 });

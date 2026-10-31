@@ -29,6 +29,11 @@ const (
 
 	captureTimeout = 20 * time.Second
 	writeTimeout   = 15 * time.Second
+
+	// pollHeartbeat is how long a poll client's last frame request counts as
+	// "somebody watching". Clients poll at 1-5 s; a stalled client ages out
+	// well inside the capture-stop grace.
+	pollHeartbeat = 15 * time.Second
 )
 
 // viewer is one connected browser page.
@@ -60,6 +65,21 @@ type hub struct {
 	lastMS    int
 	lastSize  int
 	lastErr   string
+
+	// lastFrame serves HTTP poll clients (GET /api/browser/frame): the newest
+	// published JPEG plus the seq it went out under. One frame, a few hundred
+	// KB, replaced on every publish.
+	lastFrame []byte
+
+	// lastPollAt is the newest /api/browser/frame touch. Poll clients are not
+	// websocket viewers, so the capture loop needs their heartbeat to know
+	// somebody is still watching.
+	lastPollAt time.Time
+
+	// failErr is the error the stream last surfaced, so a later success can
+	// retire exactly that error (transient navigation failures must not
+	// outlive the recovery they describe).
+	failErr string
 }
 
 func newHub(m *Manager) *hub {
@@ -124,6 +144,38 @@ func (h *hub) kick() {
 	select {
 	case h.kickCh <- struct{}{}:
 	default:
+	}
+}
+
+// seqValue reads the newest published frame's sequence number.
+func (h *hub) seqValue() uint32 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.seq
+}
+
+// recordFailure surfaces err as the stream error and remembers it as the one
+// the stream is responsible for retiring.
+func (h *hub) recordFailure(err error) {
+	h.mu.Lock()
+	h.failErr = err.Error()
+	h.mu.Unlock()
+	h.m.setError(err)
+}
+
+// recordSuccess retires the remembered failure when the status error is still
+// exactly it — a transient navigation error clears itself as soon as frames
+// (or input) flow again. Errors meanwhile set by other paths stay untouched.
+func (h *hub) recordSuccess() {
+	h.mu.Lock()
+	failed := h.failErr
+	h.failErr = ""
+	h.mu.Unlock()
+	if failed == "" {
+		return
+	}
+	if h.m.clearErrorIf(failed) {
+		h.m.broadcastStatus()
 	}
 }
 
@@ -200,7 +252,7 @@ func (h *hub) loop(gen int) {
 				continue
 			}
 			failures++
-			h.m.setError(err)
+			h.recordFailure(err)
 			if failures == 1 {
 				h.broadcastJSON(map[string]any{"type": "error", "message": err.Error()})
 			}
@@ -215,6 +267,7 @@ func (h *hub) loop(gen int) {
 			continue
 		}
 		failures = 0
+		h.recordSuccess()
 		h.publish(gen, frame, time.Since(start))
 	}
 }
@@ -242,8 +295,56 @@ func (h *hub) publish(gen int, jpeg []byte, took time.Duration) {
 	h.lastSent = time.Now()
 	h.seq++
 	seq := h.seq
+	h.lastFrame = append(h.lastFrame[:0], jpeg...)
 	h.mu.Unlock()
 	h.broadcast(encodeFrame(seq, time.Now().UnixMilli(), jpeg))
+}
+
+// touchPoll records a poll client's heartbeat and starts capture if it is not
+// running. Poll clients never enter the viewer set, so their requests are the
+// only signal that somebody is still watching over HTTP.
+func (h *hub) touchPoll() {
+	h.mu.Lock()
+	h.lastPollAt = time.Now()
+	start := !h.running
+	if start {
+		h.running = true
+		h.gen++
+		go h.loop(h.gen)
+	}
+	if h.stopTimer != nil {
+		h.stopTimer.Stop()
+		h.stopTimer = nil
+	}
+	h.mu.Unlock()
+	if start {
+		h.kick()
+	}
+}
+
+// pollIdle schedules the capture stop when the last poll heartbeat ages out.
+// Called after each frame response: if both viewers and poll clients are gone,
+// the loop winds down on the same grace period a dropped socket gets.
+func (h *hub) pollIdle() {
+	h.mu.Lock()
+	empty := len(h.viewers) == 0
+	recent := time.Since(h.lastPollAt) < pollHeartbeat
+	if empty && !recent && h.stopTimer == nil && h.running {
+		gen := h.gen
+		h.stopTimer = time.AfterFunc(stopGrace, func() { h.stop(gen) })
+	}
+	h.mu.Unlock()
+}
+
+// frameFor answers a poll client: the newest JPEG and its seq, or a nil frame
+// when the client is already up to date (HTTP 304).
+func (h *hub) frameFor(after uint32) ([]byte, uint32) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.lastFrame) == 0 || h.seq == after {
+		return nil, h.seq
+	}
+	return h.lastFrame, h.seq
 }
 
 func hashBytes(b []byte) uint64 {
@@ -359,8 +460,12 @@ func (h *hub) inputLoop() {
 		cancel()
 		h.markInput()
 		if err != nil && !errors.Is(err, errNoPageTab) {
-			h.m.setError(err)
+			h.recordFailure(err)
 			h.broadcastJSON(map[string]any{"type": "error", "message": err.Error()})
+		} else if err == nil {
+			// A delivered input means the target is live again; retire a
+			// transient failure recorded earlier (e.g. mid-navigation tap).
+			h.recordSuccess()
 		}
 		// Discrete actions change the page; ask for a frame now instead of
 		// waiting out the cast interval.

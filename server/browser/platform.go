@@ -4,7 +4,6 @@ package browser
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,16 +84,7 @@ func openInChrome(ctx context.Context, url string) error {
 	if os.Getenv("BROWSER_AGENT_NO_OPEN") == "1" {
 		return nil
 	}
-	cmd := exec.CommandContext(ctx, "open", "-a", "Google Chrome", url)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if msg == "" {
-			return err
-		}
-		return fmt.Errorf("%w: %s", err, msg)
-	}
-	return nil
+	return openChromeProfile(ctx, url, false)
 }
 
 // chromeBundledBinary is where Chrome lives on macOS; Linux distributions put
@@ -109,25 +99,5 @@ func openNewChromeWindow(ctx context.Context, url string) error {
 	if os.Getenv("BROWSER_AGENT_NO_OPEN") == "1" {
 		return nil
 	}
-	candidates := []string{chromeBundledBinary, "google-chrome", "google-chrome-stable", "chromium"}
-	for _, bin := range candidates {
-		if bin != chromeBundledBinary {
-			if _, err := exec.LookPath(bin); err != nil {
-				continue
-			}
-		} else if !isExecutable(bin) {
-			continue
-		}
-		// Detached: we only need Chrome to open the window, not to babysit it.
-		// Output goes nowhere so a Chrome that dares to log cannot block Start.
-		cmd := exec.Command(bin, "--new-window", url)
-		if err := cmd.Start(); err != nil {
-			return fmt.Errorf("open a new Chrome window: %w", err)
-		}
-		go func() { _ = cmd.Wait() }()
-		return nil
-	}
-	// No Chrome binary found: the best we can do is the OS handler, which reuses
-	// the existing window if that is how the user's setup behaves.
-	return openInChrome(ctx, url)
+	return openChromeProfile(ctx, url, true)
 }

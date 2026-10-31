@@ -34,7 +34,26 @@ func RegisterAPI(mux *http.ServeMux) {
 
 // RegisterAPIWithManager mounts bookmarks HTTP handlers using the given manager.
 func RegisterAPIWithManager(mux *http.ServeMux, m *Manager) {
+	registerAPI(mux, m, nil)
+}
+
+// RegisterAPIWithChrome mounts the app-local API plus the read-only Chrome
+// source. A nil reader resolves Chrome's default profile per request.
+func RegisterAPIWithChrome(mux *http.ServeMux, m *Manager, chrome *ChromeReader) {
+	registerAPI(mux, m, chrome)
+}
+
+func registerAPI(mux *http.ServeMux, m *Manager, chrome *ChromeReader) {
 	mux.HandleFunc("/api/bookmarks", func(w http.ResponseWriter, r *http.Request) {
+		source := requestedBookmarkSource(r)
+		if source == "chrome" {
+			handleChromeBookmarks(w, r, chrome)
+			return
+		}
+		if source != "" {
+			writeJSONError(w, http.StatusBadRequest, "source must be empty or chrome")
+			return
+		}
 		if m == nil {
 			if defaultManagerErr != nil {
 				writeJSONError(w, http.StatusInternalServerError, defaultManagerErr.Error())
@@ -46,6 +65,15 @@ func RegisterAPIWithManager(mux *http.ServeMux, m *Manager) {
 		handleBookmarks(w, r, m)
 	})
 	mux.HandleFunc("/api/bookmarks/move", func(w http.ResponseWriter, r *http.Request) {
+		source := requestedBookmarkSource(r)
+		if source == "chrome" {
+			writeJSONError(w, http.StatusBadRequest, "Chrome bookmarks are read-only")
+			return
+		}
+		if source != "" {
+			writeJSONError(w, http.StatusBadRequest, "source must be empty or chrome")
+			return
+		}
 		if m == nil {
 			writeJSONError(w, http.StatusInternalServerError, "bookmarks manager not available")
 			return
@@ -56,6 +84,39 @@ func RegisterAPIWithManager(mux *http.ServeMux, m *Manager) {
 		}
 		handleMove(w, r, m)
 	})
+}
+
+func requestedBookmarkSource(r *http.Request) string {
+	return strings.ToLower(strings.TrimSpace(r.URL.Query().Get("source")))
+}
+
+func handleChromeBookmarks(w http.ResponseWriter, r *http.Request, chrome *ChromeReader) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusBadRequest, "Chrome bookmarks are read-only")
+		return
+	}
+	reader := chrome
+	if reader == nil {
+		var err error
+		reader, err = DefaultChromeReader()
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "Chrome profile is not available")
+			return
+		}
+	}
+	doc, err := reader.Document()
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrChromeInvalid):
+			writeJSONError(w, http.StatusInternalServerError, "Chrome bookmarks could not be parsed")
+		case errors.Is(err, ErrChromeUnreadable):
+			writeJSONError(w, http.StatusInternalServerError, "Chrome bookmarks are not readable")
+		default:
+			writeJSONError(w, http.StatusInternalServerError, "Chrome bookmarks are not available")
+		}
+		return
+	}
+	writeJSON(w, doc)
 }
 
 type addRequest struct {

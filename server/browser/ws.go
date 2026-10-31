@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -60,6 +61,10 @@ func (m *Manager) handleWS(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		if err := m.Ensure(ctx); err != nil {
+			if errors.Is(err, errBrowserOffline) {
+				_ = v.writeJSON(map[string]any{"type": "status", "status": m.Snapshot()})
+				return
+			}
 			_ = v.writeJSON(map[string]any{"type": "error", "message": err.Error()})
 			return
 		}

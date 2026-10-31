@@ -15,7 +15,8 @@ func TestCheckDomainPingTreats530AsHealthy(t *testing.T) {
 	t.Cleanup(srv.Close)
 	t.Cleanup(unified_tunnel.SetHealthCheckBaseURLForTest(srv.URL))
 
-	if !checkDomainPing("mac-agent-aes42.example.com") {
+	code, err := unified_tunnel.ProbeHostname("mac-agent-aes42.example.com")
+	if err != nil || !unified_tunnel.IsHealthCheckHealthy(code) {
 		t.Fatal("Cloudflare 530 must not fail domain health checks")
 	}
 }
@@ -27,7 +28,8 @@ func TestCheckDomainPing502Unhealthy(t *testing.T) {
 	t.Cleanup(srv.Close)
 	t.Cleanup(unified_tunnel.SetHealthCheckBaseURLForTest(srv.URL))
 
-	if checkDomainPing("bad.example.com") {
+	code, err := unified_tunnel.ProbeHostname("bad.example.com")
+	if err != nil || unified_tunnel.IsHealthCheckHealthy(code) {
 		t.Fatal("502 should fail health checks")
 	}
 }

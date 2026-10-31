@@ -274,7 +274,13 @@ func (m *Manager) List() []PortForward {
 	result = append(result, m.getExtraMappings()...)
 
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].LocalPort < result[j].LocalPort
+		if result[i].LocalPort != result[j].LocalPort {
+			return result[i].LocalPort < result[j].LocalPort
+		}
+		if result[i].Type != result[j].Type {
+			return result[i].Type < result[j].Type
+		}
+		return result[i].Label < result[j].Label
 	})
 	return result
 }
@@ -822,23 +828,42 @@ func handlePortEvents(w http.ResponseWriter, r *http.Request) {
 	subID, ch := defaultManager.Subscribe()
 	defer defaultManager.Unsubscribe(subID)
 
-	// Send initial state
-	data, _ := json.Marshal(defaultManager.List())
-	fmt.Fprintf(w, "data: %s\n\n", data)
-	flusher.Flush()
-
-	// Stream updates until client disconnects
+	// The notification channel only contains locally managed forwards; always
+	// rebuild the full view so bootstrap domains are not dropped. Bootstrap
+	// recovery happens outside this manager, so poll for those changes too.
+	var previous string
+	send := func() bool {
+		data, err := json.Marshal(defaultManager.List())
+		if err != nil || string(data) == previous {
+			return err == nil
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+			return false
+		}
+		previous = string(data)
+		flusher.Flush()
+		return true
+	}
+	if !send() {
+		return
+	}
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
 			return
-		case ports, ok := <-ch:
+		case _, ok := <-ch:
 			if !ok {
 				return
 			}
-			data, _ := json.Marshal(ports)
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
+			if !send() {
+				return
+			}
+		case <-ticker.C:
+			if !send() {
+				return
+			}
 		}
 	}
 }
