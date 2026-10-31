@@ -251,4 +251,5 @@ func (m *Manager) StopRestoreWatchdog() {
 func AutoRestoreDesiredMappings() {
 	defaultManager.RestoreDesired()
 	defaultManager.StartRestoreWatchdog()
+	StartConnectorWatchdog()
 }
