@@ -17,6 +17,8 @@ type watchdogHarness struct {
 	dir        string
 	probed     []string
 	prober     func(host string) (time.Duration, error)
+	stallPids  []int
+	stallBytes int
 	stopped    []int
 	attached   []string
 	now        time.Time
@@ -39,12 +41,16 @@ func newWatchdogHarness(t *testing.T) *watchdogHarness {
 	prevStop := watchdogStopPID
 	prevAttach := watchdogAttach
 	prevNow := watchdogNow
+	prevStall := watchdogEdgeStallBytes
+	prevAlive := watchdogAlivePID
 	t.Cleanup(func() {
 		watchdogConfigDir = prevConfigDir
 		watchdogProbeHost = prevProbe
 		watchdogStopPID = prevStop
 		watchdogAttach = prevAttach
 		watchdogNow = prevNow
+		watchdogEdgeStallBytes = prevStall
+		watchdogAlivePID = prevAlive
 		resetWatchdogForTest()
 	})
 
@@ -52,6 +58,13 @@ func newWatchdogHarness(t *testing.T) *watchdogHarness {
 	watchdogProbeHost = func(_ *http.Client, host string) (time.Duration, error) {
 		return h.probe(host)
 	}
+	// Default: no stall signal (tests opt in via h.stallBytes).
+	watchdogEdgeStallBytes = func(pid int) int {
+		h.stallPids = append(h.stallPids, pid)
+		return h.stallBytes
+	}
+	// Recorded connector pids are treated as alive so the stall probe runs.
+	watchdogAlivePID = func(int) bool { return true }
 	watchdogNow = func() time.Time { return h.now }
 	resetWatchdogForTest()
 	return h
@@ -212,6 +225,95 @@ func TestPreferredWatchdogHostSortedDeterministic(t *testing.T) {
 	host, service, ok := preferredWatchdogHost(st)
 	if !ok || host != "alpha.example" || service != "http://127.0.0.1:1" {
 		t.Fatalf("got host=%q service=%q ok=%v", host, service, ok)
+	}
+}
+
+func TestConnectorWatchdogRecyclesOnSustainedStall(t *testing.T) {
+	h := newWatchdogHarness(t)
+	h.installTunnel(t, "tunnel-a", &pkgcf.TunnelState{
+		TunnelName:   "tunnel-a",
+		ConnectorPID: 4242,
+		Hosts: map[string]*pkgcf.HostEntry{
+			"eluc-on-mac.example.xyz": {Service: "http://127.0.0.1:8422"},
+		},
+	})
+	// Probes stay fast — the partial stall hides from sparse TTFB sampling —
+	// but the connector's edge socket has a sustained unacked queue.
+	h.prober = func(string) (time.Duration, error) { return 80 * time.Millisecond, nil }
+	h.stallBytes = 128 * 1024
+
+	var attachCalls int
+	prevAttach := watchdogAttach
+	prevStop := watchdogStopPID
+	watchdogAttach = func(*pkgcf.TunnelState, string, string, string) error { attachCalls++; return nil }
+	watchdogStopPID = func(pid int) { h.stopped = append(h.stopped, pid) }
+	t.Cleanup(func() { watchdogAttach = prevAttach; watchdogStopPID = prevStop })
+
+	connectorWatchdogSweep()
+	if attachCalls != 0 {
+		t.Fatalf("recycled after one stalled sweep, want 2")
+	}
+	connectorWatchdogSweep()
+	if attachCalls != 1 {
+		t.Fatalf("attach calls after two stalled sweeps = %d, want 1", attachCalls)
+	}
+	if len(h.stopped) != 1 || h.stopped[0] != 4242 {
+		t.Fatalf("stopped = %v, want [4242]", h.stopped)
+	}
+	// The stall probe targeted the connector pid from state.json.
+	if len(h.stallPids) == 0 || h.stallPids[0] != 4242 {
+		t.Fatalf("stall probes = %v, want [4242 ...]", h.stallPids)
+	}
+
+	// Cooldown applies to stall recycles too.
+	h.now = h.now.Add(connectorRecycleCooldown / 2)
+	connectorWatchdogSweep()
+	connectorWatchdogSweep()
+	if attachCalls != 1 {
+		t.Fatalf("recycled during cooldown: attach calls = %d", attachCalls)
+	}
+}
+
+func TestConnectorWatchdogStallResetsWhenQueueDrains(t *testing.T) {
+	h := newWatchdogHarness(t)
+	h.installTunnel(t, "tunnel-a", &pkgcf.TunnelState{
+		TunnelName: "tunnel-a",
+		Hosts: map[string]*pkgcf.HostEntry{
+			"eluc-on-mac.example.xyz": {Service: "http://127.0.0.1:8422"},
+		},
+	})
+	h.prober = func(string) (time.Duration, error) { return 80 * time.Millisecond, nil }
+
+	var attachCalls int
+	prevAttach := watchdogAttach
+	watchdogAttach = func(*pkgcf.TunnelState, string, string, string) error { attachCalls++; return nil }
+	t.Cleanup(func() { watchdogAttach = prevAttach })
+
+	// One stalled sweep, then the queue drains: no recycle.
+	h.stallBytes = 64 * 1024
+	connectorWatchdogSweep()
+	h.stallBytes = 0
+	connectorWatchdogSweep()
+	h.stallBytes = 64 * 1024
+	connectorWatchdogSweep()
+	h.stallBytes = 0
+	connectorWatchdogSweep()
+	if attachCalls != 0 {
+		t.Fatalf("recycled on non-sustained stall: attach calls = %d", attachCalls)
+	}
+}
+
+func TestConnectorEdgeStallBytesParsesNetstat(t *testing.T) {
+	if _, err := exec.LookPath("lsof"); err != nil {
+		t.Skip("lsof unavailable")
+	}
+	if _, err := exec.LookPath("netstat"); err != nil {
+		t.Skip("netstat unavailable")
+	}
+	// This test process has no :7844 connections; the plumbing must read as 0
+	// without error. A live connector would return its real queue depth.
+	if got := connectorEdgeStallBytes(os.Getpid()); got != 0 {
+		t.Fatalf("stall bytes for test pid = %d, want 0 (no :7844 sockets)", got)
 	}
 }
 

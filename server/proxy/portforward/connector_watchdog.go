@@ -3,10 +3,13 @@ package portforward
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -31,12 +34,21 @@ const (
 	connectorRecycleCooldown = 5 * time.Minute
 	connectorProbeTimeout    = 5 * time.Second
 	connectorStopWait        = 6 * time.Second
+	// connectorStallBytes is the unacked send-queue size at which an edge
+	// connection counts as stalled. Control-plane traffic is tiny, so a
+	// sustained queue means the TCP path is blackholing while the connection
+	// stays registered and keeps receiving requests.
+	connectorStallBytes = 32 * 1024
+	// connectorStallStrikes: stalled sweeps required before recycling. One
+	// sweep can catch a transient upload; a real stall persists for minutes.
+	connectorStallStrikes = 2
 )
 
 // watchdogTunnelState is the per-tunnel bookkeeping (test-visible via reset).
 type watchdogTunnelState struct {
-	strikes     int
-	lastRecycle time.Time
+	strikes      int
+	stallStrikes int
+	lastRecycle  time.Time
 }
 
 type watchdogBook struct {
@@ -66,6 +78,9 @@ var (
 	watchdogAttach   = attachManagedTunnel
 	watchdogNow      = time.Now
 	watchdogAlivePID = pidAlive
+	// watchdogEdgeStallBytes reports the largest unacked send queue (bytes)
+	// across the connector's edge (:7844) sockets, 0 when none are stalled.
+	watchdogEdgeStallBytes = connectorEdgeStallBytes
 )
 
 // attachManagedTunnel re-runs the host attach flow for one host. Attach loads
@@ -100,6 +115,65 @@ func stopConnectorPID(pid int) {
 	}
 	_ = syscall.Kill(-pid, syscall.SIGKILL)
 	_ = syscall.Kill(pid, syscall.SIGKILL)
+}
+
+// connectorEdgeStallBytes returns the largest unacked send queue across the
+// given pid's established edge sockets, or 0. macOS-only tooling (lsof +
+// netstat), matching the product's darwin target; errors read as "no signal"
+// so a missing tool cannot cause recycles. Note lsof's -a: -p and -i are OR'd
+// without it, which would attribute every TCP socket's queue to this pid.
+func connectorEdgeStallBytes(pid int) int {
+	if pid <= 0 {
+		return 0
+	}
+	out, err := exec.Command("lsof", "-nP", "-a", "-p", strconv.Itoa(pid), "-i", "TCP").Output()
+	if err != nil {
+		return 0
+	}
+	localPorts := map[string]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		for _, f := range fields {
+			if !strings.Contains(f, "->") {
+				continue
+			}
+			parts := strings.SplitN(f, "->", 2)
+			if !strings.HasSuffix(parts[1], ":7844") {
+				continue
+			}
+			if _, port, err := net.SplitHostPort(parts[0]); err == nil {
+				localPorts[port] = true
+			}
+		}
+	}
+	if len(localPorts) == 0 {
+		return 0
+	}
+	nsOut, err := exec.Command("netstat", "-p", "tcp", "-n").Output()
+	if err != nil {
+		return 0
+	}
+	maxSendQ := 0
+	for _, line := range strings.Split(string(nsOut), "\n") {
+		fields := strings.Fields(line)
+		// tcp4 <recv-q> <send-q> <local> <remote> <state>
+		if len(fields) < 5 || !strings.HasPrefix(fields[0], "tcp") {
+			continue
+		}
+		local := fields[3]
+		dot := strings.LastIndex(local, ".")
+		if dot < 0 || !localPorts[local[dot+1:]] {
+			continue
+		}
+		sendQ, err := strconv.Atoi(fields[2])
+		if err != nil {
+			continue
+		}
+		if sendQ > maxSendQ {
+			maxSendQ = sendQ
+		}
+	}
+	return maxSendQ
 }
 
 // recycleConnector stops the stalled connector and re-attaches. If a live
@@ -160,6 +234,15 @@ func connectorWatchdogSweep() {
 			continue
 		}
 		key := dir
+		// Signal 1 (deterministic): a sustained unacked send queue on the
+		// connector's edge sockets — the zombie signature. Catches partial
+		// stalls that a sparse TTFB probe usually misses (the edge keeps most
+		// requests on the healthy connections).
+		stallBytes := 0
+		if st.ConnectorPID > 0 && watchdogAlivePID(st.ConnectorPID) {
+			stallBytes = watchdogEdgeStallBytes(st.ConnectorPID)
+		}
+		// Signal 2 (end-to-end): probe TTFB through the tunnel.
 		ttfb, probeErr := watchdogProbeHost(watchdog.probeCli, host)
 		watchdog.mu.Lock()
 		book := watchdog.tunnels[key]
@@ -169,22 +252,37 @@ func connectorWatchdogSweep() {
 		}
 		if probeErr != nil || ttfb <= connectorSlowThreshold {
 			book.strikes = 0
-			watchdog.mu.Unlock()
-			continue
+		} else {
+			book.strikes++
 		}
-		book.strikes++
+		if stallBytes > connectorStallBytes {
+			book.stallStrikes++
+		} else {
+			book.stallStrikes = 0
+		}
+		slowed := book.strikes >= connectorSlowStrikes
+		stalled := book.stallStrikes >= connectorStallStrikes
 		strikes := book.strikes
 		inCooldown := !book.lastRecycle.IsZero() && now.Sub(book.lastRecycle) < connectorRecycleCooldown
 		watchdog.mu.Unlock()
 
-		if strikes < connectorSlowStrikes {
-			fmt.Printf("[port mapping] connector slow: %s ttfb=%s strike %d/%d\n", host, ttfb.Round(time.Millisecond), strikes, connectorSlowStrikes)
+		if !slowed && !stalled {
+			if strikes > 0 {
+				fmt.Printf("[port mapping] connector slow: %s ttfb=%s strike %d/%d\n", host, ttfb.Round(time.Millisecond), strikes, connectorSlowStrikes)
+			}
+			if stallBytes > 0 {
+				fmt.Printf("[port mapping] connector edge queue: pid=%d sendq=%d strike %d/%d\n", st.ConnectorPID, stallBytes, book.stallStrikes, connectorStallStrikes)
+			}
 			continue
 		}
 		if inCooldown {
 			continue
 		}
-		fmt.Printf("[port mapping] recycling stalled connector: tunnel=%s host=%s pid=%d (ttfb=%s, %d strikes)\n", st.TunnelName, host, st.ConnectorPID, ttfb.Round(time.Millisecond), strikes)
+		reason := fmt.Sprintf("ttfb=%s strikes=%d", ttfb.Round(time.Millisecond), strikes)
+		if stalled {
+			reason = fmt.Sprintf("edge sendq=%d stallStrikes=%d", stallBytes, book.stallStrikes)
+		}
+		fmt.Printf("[port mapping] recycling stalled connector: tunnel=%s host=%s pid=%d (%s)\n", st.TunnelName, host, st.ConnectorPID, reason)
 		if err := recycleConnector(st, cfgDir); err != nil {
 			fmt.Printf("[port mapping] connector recycle failed: %v\n", err)
 			continue
@@ -192,6 +290,7 @@ func connectorWatchdogSweep() {
 		watchdog.mu.Lock()
 		book.lastRecycle = now
 		book.strikes = 0
+		book.stallStrikes = 0
 		watchdog.mu.Unlock()
 		fmt.Printf("[port mapping] connector recycled: tunnel=%s\n", st.TunnelName)
 	}
