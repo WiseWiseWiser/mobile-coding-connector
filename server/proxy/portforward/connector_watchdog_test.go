@@ -228,7 +228,7 @@ func TestPreferredWatchdogHostSortedDeterministic(t *testing.T) {
 	}
 }
 
-func TestConnectorWatchdogRecyclesOnSustainedStall(t *testing.T) {
+func TestConnectorWatchdogRecyclesOnPinnedBlackhole(t *testing.T) {
 	h := newWatchdogHarness(t)
 	h.installTunnel(t, "tunnel-a", &pkgcf.TunnelState{
 		TunnelName:   "tunnel-a",
@@ -237,11 +237,11 @@ func TestConnectorWatchdogRecyclesOnSustainedStall(t *testing.T) {
 			"eluc-on-mac.example.xyz": {Service: "http://127.0.0.1:8422"},
 		},
 	})
-	// Probes stay fast — the partial stall hides from sparse TTFB sampling —
-	// but the connector's edge socket has a sustained unacked queue (below the
-	// severe threshold, so the two-strike rule governs).
+	// Probes stay fast — the blackhole hides from sparse TTFB sampling — but
+	// the connector's edge socket sits pinned at exactly the base send-buffer
+	// cap, the kernel-side signature of a peer that never drains.
 	h.prober = func(string) (time.Duration, error) { return 80 * time.Millisecond, nil }
-	h.stallBytes = 64 * 1024
+	h.stallBytes = connectorBlackholeQueueBytes
 
 	var attachCalls int
 	prevAttach := watchdogAttach
@@ -251,12 +251,13 @@ func TestConnectorWatchdogRecyclesOnSustainedStall(t *testing.T) {
 	t.Cleanup(func() { watchdogAttach = prevAttach; watchdogStopPID = prevStop })
 
 	connectorWatchdogSweep()
+	connectorWatchdogSweep()
 	if attachCalls != 0 {
-		t.Fatalf("recycled after one stalled sweep, want 2")
+		t.Fatalf("recycled after %d sweeps, want none until %d", attachCalls, connectorBlackholeStrikes)
 	}
 	connectorWatchdogSweep()
 	if attachCalls != 1 {
-		t.Fatalf("attach calls after two stalled sweeps = %d, want 1", attachCalls)
+		t.Fatalf("attach calls after %d sweeps = %d, want 1", connectorBlackholeStrikes, attachCalls)
 	}
 	if len(h.stopped) != 1 || h.stopped[0] != 4242 {
 		t.Fatalf("stopped = %v, want [4242]", h.stopped)
@@ -266,16 +267,27 @@ func TestConnectorWatchdogRecyclesOnSustainedStall(t *testing.T) {
 		t.Fatalf("stall probes = %v, want [4242 ...]", h.stallPids)
 	}
 
-	// Cooldown applies to non-severe stall recycles too.
+	// A second pinned blackhole recycles again despite the cooldown.
 	h.now = h.now.Add(connectorRecycleCooldown / 2)
-	connectorWatchdogSweep()
-	connectorWatchdogSweep()
-	if attachCalls != 1 {
-		t.Fatalf("recycled during cooldown: attach calls = %d", attachCalls)
+	h.installTunnel(t, "tunnel-a", &pkgcf.TunnelState{
+		TunnelName:   "tunnel-a",
+		ConnectorPID: 5151,
+		Hosts: map[string]*pkgcf.HostEntry{
+			"eluc-on-mac.example.xyz": {Service: "http://127.0.0.1:8422"},
+		},
+	})
+	for i := 0; i < connectorBlackholeStrikes; i++ {
+		connectorWatchdogSweep()
+	}
+	if attachCalls != 2 {
+		t.Fatalf("attach calls after second blackhole = %d, want 2", attachCalls)
+	}
+	if len(h.stopped) < 2 || h.stopped[len(h.stopped)-1] != 5151 {
+		t.Fatalf("stopped = %v, want last stop 5151", h.stopped)
 	}
 }
 
-func TestConnectorWatchdogSevereStallBypassesCooldown(t *testing.T) {
+func TestConnectorWatchdogIgnoresDrainingQueues(t *testing.T) {
 	h := newWatchdogHarness(t)
 	h.installTunnel(t, "tunnel-a", &pkgcf.TunnelState{
 		TunnelName:   "tunnel-a",
@@ -293,76 +305,21 @@ func TestConnectorWatchdogSevereStallBypassesCooldown(t *testing.T) {
 	watchdogStopPID = func(pid int) { h.stopped = append(h.stopped, pid) }
 	t.Cleanup(func() { watchdogAttach = prevAttach; watchdogStopPID = prevStop })
 
-	// First recycle through the normal two-strike path (installs cooldown).
-	h.stallBytes = 64 * 1024
-	connectorWatchdogSweep()
-	connectorWatchdogSweep()
-	if attachCalls != 1 {
-		t.Fatalf("attach calls after sustained stall = %d, want 1", attachCalls)
+	// A busy tunnel (streaming responses, client retry floods) pushes queues
+	// far past the base cap — measured 130KB-1.6MB — that drain within a tick
+	// or two. None of those readings is the exact-cap pin, so none may recycle,
+	// no matter how long the busy pattern lasts.
+	for _, size := range []int{
+		686 * 1024, 131072, 1617 * 1024, 1072507, 130072, 64 * 1024, 131072, 177565,
+	} {
+		h.stallBytes = size
+		connectorWatchdogSweep()
 	}
-
-	// During the cooldown: a severe reading is a burst until proven pinned —
-	// a drain between readings resets the counter, and only three consecutive
-	// at-or-above-cap readings recycle despite the cooldown.
-	h.now = h.now.Add(connectorRecycleCooldown / 2)
-	h.stallBytes = 128 * 1024
-	h.installTunnel(t, "tunnel-a", &pkgcf.TunnelState{
-		TunnelName:   "tunnel-a",
-		ConnectorPID: 5151,
-		Hosts: map[string]*pkgcf.HostEntry{
-			"eluc-on-mac.example.xyz": {Service: "http://127.0.0.1:8422"},
-		},
-	})
-	connectorWatchdogSweep() // severe 1/3 — no recycle yet
-	if attachCalls != 1 {
-		t.Fatalf("single severe reading recycled during cooldown: attach calls = %d", attachCalls)
-	}
-	h.stallBytes = 0
-	connectorWatchdogSweep() // queue drained — severe counter resets
-	h.stallBytes = 128 * 1024
-	connectorWatchdogSweep() // severe 1/3 again
-	if attachCalls != 1 {
-		t.Fatalf("recycled on non-consecutive severe readings: attach calls = %d", attachCalls)
-	}
-	connectorWatchdogSweep() // severe 2/3
-	if attachCalls != 1 {
-		t.Fatalf("recycled after two severe readings: attach calls = %d", attachCalls)
-	}
-	connectorWatchdogSweep() // severe 3/3 — confirmed blackhole, bypass cooldown
-	if attachCalls != 2 {
-		t.Fatalf("severe stall confirmed thrice: attach calls = %d, want 2", attachCalls)
-	}
-	if len(h.stopped) < 2 || h.stopped[len(h.stopped)-1] != 5151 {
-		t.Fatalf("stopped = %v, want last stop 5151", h.stopped)
-	}
-}
-
-func TestConnectorWatchdogStallResetsWhenQueueDrains(t *testing.T) {
-	h := newWatchdogHarness(t)
-	h.installTunnel(t, "tunnel-a", &pkgcf.TunnelState{
-		TunnelName: "tunnel-a",
-		Hosts: map[string]*pkgcf.HostEntry{
-			"eluc-on-mac.example.xyz": {Service: "http://127.0.0.1:8422"},
-		},
-	})
-	h.prober = func(string) (time.Duration, error) { return 80 * time.Millisecond, nil }
-
-	var attachCalls int
-	prevAttach := watchdogAttach
-	watchdogAttach = func(*pkgcf.TunnelState, string, string, string) error { attachCalls++; return nil }
-	t.Cleanup(func() { watchdogAttach = prevAttach })
-
-	// One stalled sweep, then the queue drains: no recycle.
-	h.stallBytes = 64 * 1024
-	connectorWatchdogSweep()
-	h.stallBytes = 0
-	connectorWatchdogSweep()
-	h.stallBytes = 64 * 1024
-	connectorWatchdogSweep()
-	h.stallBytes = 0
-	connectorWatchdogSweep()
 	if attachCalls != 0 {
-		t.Fatalf("recycled on non-sustained stall: attach calls = %d", attachCalls)
+		t.Fatalf("recycled on draining/live queues: attach calls = %d", attachCalls)
+	}
+	if len(h.stopped) != 0 {
+		t.Fatalf("stopped = %v, want none", h.stopped)
 	}
 }
 
