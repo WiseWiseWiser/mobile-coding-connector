@@ -42,15 +42,17 @@ const (
 	// connectorStallStrikes: stalled sweeps required before recycling. One
 	// sweep can catch a transient upload; a real stall persists for minutes.
 	connectorStallStrikes = 2
-	// connectorSevereStallBytes: a queue pinned at the socket send-buffer cap
-	// (observed 128KB = full blackhole). One reading is ambiguous — a fresh
-	// connector buffers a client retry flood past the base cap and drains it
-	// within a tick — so severe needs two consecutive pinned readings, but
-	// then bypasses the cooldown (a cooldown must not extend a confirmed
-	// outage; overnight it stalled recycles for minutes: strike 5 at the same
-	// full queue).
+	// connectorSevereStallBytes: a queue at-or-above the socket send-buffer
+	// cap (observed 128KB = full blackhole). A SINGLE reading is not evidence:
+	// a fresh connector hit by a client retry flood — or any streaming
+	// response (the live-activity feed) on a cold connection — buffers past
+	// the base cap and drains within a tick or two (measured 130KB-1.1MB
+	// bursts). Only a blackhole stays at-or-above the cap sweep after sweep,
+	// so severe needs three consecutive readings, but then bypasses the
+	// cooldown (a cooldown must not extend a confirmed outage; overnight it
+	// stalled recycles for minutes: strike 5 at the same full queue).
 	connectorSevereStallBytes = 120 * 1024
-	connectorSevereStrikes    = 2
+	connectorSevereStrikes    = 3
 )
 
 // watchdogTunnelState is the per-tunnel bookkeeping (test-visible via reset).

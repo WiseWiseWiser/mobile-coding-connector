@@ -301,9 +301,9 @@ func TestConnectorWatchdogSevereStallBypassesCooldown(t *testing.T) {
 		t.Fatalf("attach calls after sustained stall = %d, want 1", attachCalls)
 	}
 
-	// During the cooldown: one severe reading is a burst until proven pinned —
-	// a drain between readings resets the severe counter, and only two
-	// consecutive pinned readings recycle despite the cooldown.
+	// During the cooldown: a severe reading is a burst until proven pinned —
+	// a drain between readings resets the counter, and only three consecutive
+	// at-or-above-cap readings recycle despite the cooldown.
 	h.now = h.now.Add(connectorRecycleCooldown / 2)
 	h.stallBytes = 128 * 1024
 	h.installTunnel(t, "tunnel-a", &pkgcf.TunnelState{
@@ -313,20 +313,24 @@ func TestConnectorWatchdogSevereStallBypassesCooldown(t *testing.T) {
 			"eluc-on-mac.example.xyz": {Service: "http://127.0.0.1:8422"},
 		},
 	})
-	connectorWatchdogSweep() // severe 1/2 — no recycle yet
+	connectorWatchdogSweep() // severe 1/3 — no recycle yet
 	if attachCalls != 1 {
 		t.Fatalf("single severe reading recycled during cooldown: attach calls = %d", attachCalls)
 	}
 	h.stallBytes = 0
 	connectorWatchdogSweep() // queue drained — severe counter resets
 	h.stallBytes = 128 * 1024
-	connectorWatchdogSweep() // severe 1/2 again
+	connectorWatchdogSweep() // severe 1/3 again
 	if attachCalls != 1 {
 		t.Fatalf("recycled on non-consecutive severe readings: attach calls = %d", attachCalls)
 	}
-	connectorWatchdogSweep() // severe 2/2 — confirmed blackhole, bypass cooldown
+	connectorWatchdogSweep() // severe 2/3
+	if attachCalls != 1 {
+		t.Fatalf("recycled after two severe readings: attach calls = %d", attachCalls)
+	}
+	connectorWatchdogSweep() // severe 3/3 — confirmed blackhole, bypass cooldown
 	if attachCalls != 2 {
-		t.Fatalf("severe stall confirmed twice: attach calls = %d, want 2", attachCalls)
+		t.Fatalf("severe stall confirmed thrice: attach calls = %d, want 2", attachCalls)
 	}
 	if len(h.stopped) < 2 || h.stopped[len(h.stopped)-1] != 5151 {
 		t.Fatalf("stopped = %v, want last stop 5151", h.stopped)
