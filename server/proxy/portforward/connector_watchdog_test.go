@@ -238,9 +238,10 @@ func TestConnectorWatchdogRecyclesOnSustainedStall(t *testing.T) {
 		},
 	})
 	// Probes stay fast — the partial stall hides from sparse TTFB sampling —
-	// but the connector's edge socket has a sustained unacked queue.
+	// but the connector's edge socket has a sustained unacked queue (below the
+	// severe threshold, so the two-strike rule governs).
 	h.prober = func(string) (time.Duration, error) { return 80 * time.Millisecond, nil }
-	h.stallBytes = 128 * 1024
+	h.stallBytes = 64 * 1024
 
 	var attachCalls int
 	prevAttach := watchdogAttach
@@ -265,12 +266,60 @@ func TestConnectorWatchdogRecyclesOnSustainedStall(t *testing.T) {
 		t.Fatalf("stall probes = %v, want [4242 ...]", h.stallPids)
 	}
 
-	// Cooldown applies to stall recycles too.
+	// Cooldown applies to non-severe stall recycles too.
 	h.now = h.now.Add(connectorRecycleCooldown / 2)
 	connectorWatchdogSweep()
 	connectorWatchdogSweep()
 	if attachCalls != 1 {
 		t.Fatalf("recycled during cooldown: attach calls = %d", attachCalls)
+	}
+}
+
+func TestConnectorWatchdogSevereStallBypassesCooldown(t *testing.T) {
+	h := newWatchdogHarness(t)
+	h.installTunnel(t, "tunnel-a", &pkgcf.TunnelState{
+		TunnelName:   "tunnel-a",
+		ConnectorPID: 4242,
+		Hosts: map[string]*pkgcf.HostEntry{
+			"eluc-on-mac.example.xyz": {Service: "http://127.0.0.1:8422"},
+		},
+	})
+	h.prober = func(string) (time.Duration, error) { return 80 * time.Millisecond, nil }
+
+	var attachCalls int
+	prevAttach := watchdogAttach
+	prevStop := watchdogStopPID
+	watchdogAttach = func(*pkgcf.TunnelState, string, string, string) error { attachCalls++; return nil }
+	watchdogStopPID = func(pid int) { h.stopped = append(h.stopped, pid) }
+	t.Cleanup(func() { watchdogAttach = prevAttach; watchdogStopPID = prevStop })
+
+	// First recycle through the normal two-strike path (installs cooldown).
+	h.stallBytes = 64 * 1024
+	connectorWatchdogSweep()
+	connectorWatchdogSweep()
+	if attachCalls != 1 {
+		t.Fatalf("attach calls after sustained stall = %d, want 1", attachCalls)
+	}
+
+	// The replacement connector blackholes immediately (queue pinned at the
+	// socket send-buffer cap) while the cooldown is still active: a full
+	// buffer is an unambiguous outage, so the watchdog must recycle on sight
+	// instead of extending the stall for the rest of the cooldown.
+	h.now = h.now.Add(connectorRecycleCooldown / 2)
+	h.stallBytes = 128 * 1024
+	h.installTunnel(t, "tunnel-a", &pkgcf.TunnelState{
+		TunnelName:   "tunnel-a",
+		ConnectorPID: 5151,
+		Hosts: map[string]*pkgcf.HostEntry{
+			"eluc-on-mac.example.xyz": {Service: "http://127.0.0.1:8422"},
+		},
+	})
+	connectorWatchdogSweep()
+	if attachCalls != 2 {
+		t.Fatalf("severe stall during cooldown: attach calls = %d, want 2", attachCalls)
+	}
+	if len(h.stopped) < 2 || h.stopped[len(h.stopped)-1] != 5151 {
+		t.Fatalf("stopped = %v, want last stop 5151", h.stopped)
 	}
 }
 

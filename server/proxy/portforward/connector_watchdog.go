@@ -28,7 +28,7 @@ import (
 // recycling cannot fix an offline machine.
 
 const (
-	connectorWatchdogTick    = time.Minute
+	connectorWatchdogTick    = 30 * time.Second
 	connectorSlowThreshold   = 3 * time.Second
 	connectorSlowStrikes     = 3
 	connectorRecycleCooldown = 5 * time.Minute
@@ -42,6 +42,13 @@ const (
 	// connectorStallStrikes: stalled sweeps required before recycling. One
 	// sweep can catch a transient upload; a real stall persists for minutes.
 	connectorStallStrikes = 2
+	// connectorSevereStallBytes: a queue pinned at the socket send-buffer cap
+	// (observed 128KB = full blackhole). This is unambiguous — no legitimate
+	// control-plane flow parks a full buffer for a whole sweep — so it
+	// recycles immediately, bypassing both the strike count and the cooldown
+	// (a cooldown must not extend an active blackhole; overnight it stalled
+	// recycles for minutes: strike 5 at the same full queue).
+	connectorSevereStallBytes = 120 * 1024
 )
 
 // watchdogTunnelState is the per-tunnel bookkeeping (test-visible via reset).
@@ -262,11 +269,15 @@ func connectorWatchdogSweep() {
 		}
 		slowed := book.strikes >= connectorSlowStrikes
 		stalled := book.stallStrikes >= connectorStallStrikes
+		// A queue pinned at the send-buffer cap is an active blackhole; recycle
+		// on sight even during the cooldown — the cooldown exists to prevent
+		// recycle loops over ambiguous signals, not to extend an outage.
+		severe := stallBytes >= connectorSevereStallBytes
 		strikes := book.strikes
 		inCooldown := !book.lastRecycle.IsZero() && now.Sub(book.lastRecycle) < connectorRecycleCooldown
 		watchdog.mu.Unlock()
 
-		if !slowed && !stalled {
+		if !slowed && !stalled && !severe {
 			if strikes > 0 {
 				fmt.Printf("[port mapping] connector slow: %s ttfb=%s strike %d/%d\n", host, ttfb.Round(time.Millisecond), strikes, connectorSlowStrikes)
 			}
@@ -275,12 +286,15 @@ func connectorWatchdogSweep() {
 			}
 			continue
 		}
-		if inCooldown {
+		if inCooldown && !severe {
 			continue
 		}
 		reason := fmt.Sprintf("ttfb=%s strikes=%d", ttfb.Round(time.Millisecond), strikes)
 		if stalled {
 			reason = fmt.Sprintf("edge sendq=%d stallStrikes=%d", stallBytes, book.stallStrikes)
+		}
+		if severe {
+			reason = fmt.Sprintf("edge sendq=%d severe blackhole", stallBytes)
 		}
 		fmt.Printf("[port mapping] recycling stalled connector: tunnel=%s host=%s pid=%d (%s)\n", st.TunnelName, host, st.ConnectorPID, reason)
 		if err := recycleConnector(st, cfgDir); err != nil {
