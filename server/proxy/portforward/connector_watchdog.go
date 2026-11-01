@@ -43,19 +43,22 @@ const (
 	// sweep can catch a transient upload; a real stall persists for minutes.
 	connectorStallStrikes = 2
 	// connectorSevereStallBytes: a queue pinned at the socket send-buffer cap
-	// (observed 128KB = full blackhole). This is unambiguous — no legitimate
-	// control-plane flow parks a full buffer for a whole sweep — so it
-	// recycles immediately, bypassing both the strike count and the cooldown
-	// (a cooldown must not extend an active blackhole; overnight it stalled
-	// recycles for minutes: strike 5 at the same full queue).
+	// (observed 128KB = full blackhole). One reading is ambiguous — a fresh
+	// connector buffers a client retry flood past the base cap and drains it
+	// within a tick — so severe needs two consecutive pinned readings, but
+	// then bypasses the cooldown (a cooldown must not extend a confirmed
+	// outage; overnight it stalled recycles for minutes: strike 5 at the same
+	// full queue).
 	connectorSevereStallBytes = 120 * 1024
+	connectorSevereStrikes    = 2
 )
 
 // watchdogTunnelState is the per-tunnel bookkeeping (test-visible via reset).
 type watchdogTunnelState struct {
-	strikes      int
-	stallStrikes int
-	lastRecycle  time.Time
+	strikes       int
+	stallStrikes  int
+	severeStrikes int
+	lastRecycle   time.Time
 }
 
 type watchdogBook struct {
@@ -267,12 +270,21 @@ func connectorWatchdogSweep() {
 		} else {
 			book.stallStrikes = 0
 		}
+		// A queue pinned at the send-buffer cap across consecutive sweeps is an
+		// active blackhole. A SINGLE reading is not: a fresh connector hit by a
+		// client retry flood legitimately buffers past the base cap while its
+		// slow-start window opens, and the queue drains within a tick (that
+		// single-shot rule recycle-looped the connector every tick). Severe
+		// therefore needs two consecutive pinned readings, but bypasses the
+		// cooldown — the cooldown must not extend a confirmed outage.
+		if stallBytes >= connectorSevereStallBytes {
+			book.severeStrikes++
+		} else {
+			book.severeStrikes = 0
+		}
 		slowed := book.strikes >= connectorSlowStrikes
 		stalled := book.stallStrikes >= connectorStallStrikes
-		// A queue pinned at the send-buffer cap is an active blackhole; recycle
-		// on sight even during the cooldown — the cooldown exists to prevent
-		// recycle loops over ambiguous signals, not to extend an outage.
-		severe := stallBytes >= connectorSevereStallBytes
+		severe := book.severeStrikes >= connectorSevereStrikes
 		strikes := book.strikes
 		inCooldown := !book.lastRecycle.IsZero() && now.Sub(book.lastRecycle) < connectorRecycleCooldown
 		watchdog.mu.Unlock()
@@ -294,7 +306,7 @@ func connectorWatchdogSweep() {
 			reason = fmt.Sprintf("edge sendq=%d stallStrikes=%d", stallBytes, book.stallStrikes)
 		}
 		if severe {
-			reason = fmt.Sprintf("edge sendq=%d severe blackhole", stallBytes)
+			reason = fmt.Sprintf("edge sendq=%d severe blackhole %d/%d", stallBytes, book.severeStrikes, connectorSevereStrikes)
 		}
 		fmt.Printf("[port mapping] recycling stalled connector: tunnel=%s host=%s pid=%d (%s)\n", st.TunnelName, host, st.ConnectorPID, reason)
 		if err := recycleConnector(st, cfgDir); err != nil {
@@ -305,6 +317,7 @@ func connectorWatchdogSweep() {
 		book.lastRecycle = now
 		book.strikes = 0
 		book.stallStrikes = 0
+		book.severeStrikes = 0
 		watchdog.mu.Unlock()
 		fmt.Printf("[port mapping] connector recycled: tunnel=%s\n", st.TunnelName)
 	}

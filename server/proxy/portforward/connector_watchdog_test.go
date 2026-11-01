@@ -301,10 +301,9 @@ func TestConnectorWatchdogSevereStallBypassesCooldown(t *testing.T) {
 		t.Fatalf("attach calls after sustained stall = %d, want 1", attachCalls)
 	}
 
-	// The replacement connector blackholes immediately (queue pinned at the
-	// socket send-buffer cap) while the cooldown is still active: a full
-	// buffer is an unambiguous outage, so the watchdog must recycle on sight
-	// instead of extending the stall for the rest of the cooldown.
+	// During the cooldown: one severe reading is a burst until proven pinned —
+	// a drain between readings resets the severe counter, and only two
+	// consecutive pinned readings recycle despite the cooldown.
 	h.now = h.now.Add(connectorRecycleCooldown / 2)
 	h.stallBytes = 128 * 1024
 	h.installTunnel(t, "tunnel-a", &pkgcf.TunnelState{
@@ -314,9 +313,20 @@ func TestConnectorWatchdogSevereStallBypassesCooldown(t *testing.T) {
 			"eluc-on-mac.example.xyz": {Service: "http://127.0.0.1:8422"},
 		},
 	})
-	connectorWatchdogSweep()
+	connectorWatchdogSweep() // severe 1/2 — no recycle yet
+	if attachCalls != 1 {
+		t.Fatalf("single severe reading recycled during cooldown: attach calls = %d", attachCalls)
+	}
+	h.stallBytes = 0
+	connectorWatchdogSweep() // queue drained — severe counter resets
+	h.stallBytes = 128 * 1024
+	connectorWatchdogSweep() // severe 1/2 again
+	if attachCalls != 1 {
+		t.Fatalf("recycled on non-consecutive severe readings: attach calls = %d", attachCalls)
+	}
+	connectorWatchdogSweep() // severe 2/2 — confirmed blackhole, bypass cooldown
 	if attachCalls != 2 {
-		t.Fatalf("severe stall during cooldown: attach calls = %d, want 2", attachCalls)
+		t.Fatalf("severe stall confirmed twice: attach calls = %d, want 2", attachCalls)
 	}
 	if len(h.stopped) < 2 || h.stopped[len(h.stopped)-1] != 5151 {
 		t.Fatalf("stopped = %v, want last stop 5151", h.stopped)
