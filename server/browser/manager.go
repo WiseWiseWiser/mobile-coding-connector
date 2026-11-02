@@ -65,10 +65,10 @@ type Viewport struct {
 }
 
 // Config is the persisted browser settings (browser-config.json). Mode and
-// preset are remembered so a reload comes back in the state the user chose, and
-// the session is remembered so the page reopens on the window they were using.
-// MacBounds keeps the last Mac-sized window's frame so the Mac preset can
-// restore it across restarts.
+// preset are remembered so a reload comes back in the state the user chose.
+// SessionID remembers the session — or the direct-rail window id — the user
+// last drove, so a restart reopens on that window. MacBounds keeps the last
+// Mac-sized window's frame so the Mac preset can restore it across restarts.
 type Config struct {
 	Mode      string  `json:"mode"`
 	Preset    string  `json:"preset"`
@@ -119,6 +119,23 @@ func saveSettings(mode, preset, sessionID string) {
 	}
 	cfg.Mode = mode
 	cfg.Preset = preset
+	cfg.SessionID = sessionID
+	_ = saveConfig(cfg)
+}
+
+// rememberSession persists the session (or direct window id) the user last
+// drove, so the next launch reopens on it. Direct window ids are persisted
+// too: they are exactly what an app restart loses today. Call it only after
+// the session actually attached — a failed switch rolls the manager back, and
+// a choice that never worked is not worth remembering.
+func rememberSession(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	cfg := loadConfig()
+	if cfg.SessionID == sessionID {
+		return
+	}
 	cfg.SessionID = sessionID
 	_ = saveConfig(cfg)
 }
@@ -681,6 +698,7 @@ func (m *Manager) ensureDirectWindow(ctx context.Context, allowOpen bool) error 
 		m.mu.Unlock()
 		return err
 	}
+	rememberSession(directID)
 	return nil
 }
 
@@ -908,12 +926,17 @@ func contentPlaceholderURL() string {
 	return "data:text/html;charset=utf-8," + url.PathEscape(contentPlaceholderHTML)
 }
 
-// isContentURL reports whether a tab can be the page ai-critic drives.
+// isContentURL reports whether a tab can be the page ai-critic drives. Local
+// file:// pages count: the worktree mockups are driven daily, and leaving them
+// out made every re-resolve (each viewer attach) drop them for the only
+// remaining "content" tab — the data: placeholder.
 func isContentURL(raw string) bool {
 	switch {
 	case raw == "" || raw == "about:blank":
 		return false
 	case strings.HasPrefix(raw, "http://"), strings.HasPrefix(raw, "https://"):
+		return true
+	case strings.HasPrefix(raw, "file://"):
 		return true
 	case strings.HasPrefix(raw, "data:"):
 		return true

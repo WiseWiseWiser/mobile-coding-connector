@@ -965,7 +965,13 @@ func (m *Manager) SwitchSession(ctx context.Context, sessionID string, newWindow
 	}
 	m.ensureMu.Lock()
 	defer m.ensureMu.Unlock()
-	return m.switchSessionLocked(ctx, sessionID, newWindow)
+	if err := m.switchSessionLocked(ctx, sessionID, newWindow); err != nil {
+		return err
+	}
+	// Only a switch that actually attached is worth remembering: a failure
+	// rolls the manager back to the session the person was watching.
+	rememberSession(sessionID)
+	return nil
 }
 
 // switchSessionLocked is SwitchSession with ensureMu already held. It is also
