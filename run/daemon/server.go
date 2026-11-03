@@ -245,11 +245,8 @@ func (s *HTTPServer) fixStaleTunnels(serverPort int) map[string]interface{} {
 		return result
 	}
 
-	// Add auth cookie
-	req.AddCookie(&http.Cookie{
-		Name:  "ai-critic-token",
-		Value: token,
-	})
+	// Management HTTP clients use Bearer authentication, independent of browser cookie names.
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
@@ -345,10 +342,7 @@ func (s *HTTPServer) fixDomainTunnel(domain string, serverPort int, token string
 		return false
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{
-		Name:  "ai-critic-token",
-		Value: token,
-	})
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
@@ -367,10 +361,7 @@ func (s *HTTPServer) fixDomainTunnel(domain string, serverPort int, token string
 		return false
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{
-		Name:  "ai-critic-token",
-		Value: token,
-	})
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err = client.Do(req)
 	if err != nil {

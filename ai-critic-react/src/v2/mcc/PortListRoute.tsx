@@ -8,6 +8,8 @@ export function PortListRoute() {
     const { localPorts: { ports: localPorts, loading: localPortsLoading, error: localPortsError } } = useV2Context();
 
     const handleForwardLocalPort = (port: number) => {
+        ctx.onTargetHostChange('127.0.0.1');
+        ctx.onTargetSchemeChange('http');
         ctx.onPortNumberChange(port.toString());
         ctx.onPortLabelChange(`Port ${port}`);
         if (!ctx.showNewForm) {
@@ -24,6 +26,11 @@ export function PortListRoute() {
             actionError={ctx.actionError}
             showNewForm={ctx.showNewForm}
             onToggleNewForm={ctx.onToggleNewForm}
+            newTargetHost={ctx.newTargetHost}
+            newTargetScheme={ctx.newTargetScheme}
+            onTargetHostChange={ctx.onTargetHostChange}
+            onTargetSchemeChange={ctx.onTargetSchemeChange}
+            onRemoveMapping={ctx.onRemovePort}
             newPortNumber={ctx.newPortNumber}
             newPortLabel={ctx.newPortLabel}
             newPortProvider={ctx.newPortProvider}

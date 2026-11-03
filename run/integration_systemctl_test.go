@@ -2,9 +2,11 @@ package run
 
 import (
 	"bytes"
+	"github.com/xhd2015/ai-critic/server/auth"
 	"os"
 	"path/filepath"
 	"strings"
+
 	"testing"
 )
 
@@ -28,7 +30,7 @@ func resetIntegrationHooks() {
 }
 
 func TestGenerateSystemdUnit(t *testing.T) {
-	got := generateSystemdUnit("/root/servers/ai-critic/ai-critic-server", "/root/servers/ai-critic", "/root", 23712)
+	got := generateSystemdUnit("/root/servers/ai-critic/ai-critic-server", "/root/servers/ai-critic", "/root", 23712, auth.DefaultCookieName)
 	for _, want := range []string{
 		"[Unit]",
 		"Description=ai-critic-server",
@@ -49,7 +51,7 @@ func TestGenerateSystemdUnit(t *testing.T) {
 }
 
 func TestUnitsMatchNormalizesWhitespace(t *testing.T) {
-	a := generateSystemdUnit("/bin/x", "/bin", "/root", 23712)
+	a := generateSystemdUnit("/bin/x", "/bin", "/root", 23712, auth.DefaultCookieName)
 	b := a + "\n\n"
 	if !unitsMatch(a, b) {
 		t.Fatal("trailing newlines should match")
@@ -136,7 +138,7 @@ func TestIntegrationSystemctlStartDryRunMatchSkipsWrite(t *testing.T) {
 	integrationUnitPath = filepath.Join(dir, "ai-critic-server.service")
 	bin := "/root/servers/ai-critic/ai-critic-server"
 	integrationExecutable = func() (string, error) { return bin, nil }
-	unit := generateSystemdUnit(bin, filepath.Dir(bin), "/root", 23712)
+	unit := generateSystemdUnit(bin, filepath.Dir(bin), "/root", 23712, auth.DefaultCookieName)
 	if err := os.WriteFile(integrationUnitPath, []byte(unit), 0o644); err != nil {
 		t.Fatal(err)
 	}

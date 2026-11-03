@@ -14,6 +14,7 @@ import (
 
 	"github.com/xhd2015/ai-critic/cmd/agentcli/gomodrelay"
 	"github.com/xhd2015/ai-critic/run/daemon"
+	"github.com/xhd2015/ai-critic/server/auth"
 	"github.com/xhd2015/ai-critic/server/cloudflareproxy"
 	"github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/ai-critic/server/domains"
@@ -31,6 +32,7 @@ Keep the ai-critic server running with automatic restart and health checking.
 
 Options:
   --port PORT         Port to run the server on (default: %d)
+  --auth-cookie-name NAME  Managed server login cookie name (default: ai-critic-token)
   --startup-timeout D Startup wait for TCP listen (default: 60s, min: 10s)
   --forever           Skip port-in-use check and start anyway
   --kill-existing     Kill processes on keep-alive and server ports before starting
@@ -62,6 +64,7 @@ func runKeepAlive(args []string) error {
 	var detachFlag bool
 	var logFlag string
 	var startupTimeoutFlag string
+	var authCookieNameFlag *string
 	var eventBusPublishPortFlag int
 	var eventBusPublishTokenFlag string
 	var noEventBusPublishFlag bool
@@ -70,6 +73,7 @@ func runKeepAlive(args []string) error {
 		Bool("--script", &scriptFlag).
 		Int("--port", &portFlag).
 		String("--startup-timeout", &startupTimeoutFlag).
+		String("--auth-cookie-name", &authCookieNameFlag).
 		Bool("--forever", &foreverFlag).
 		Bool("--kill-existing", &killExistingFlag).
 		Bool("--detach", &detachFlag).
@@ -81,6 +85,14 @@ func runKeepAlive(args []string) error {
 		Parse(args)
 	if err != nil {
 		return err
+	}
+
+	name, err := resolveAuthCookieName(authCookieNameFlag)
+	if err != nil {
+		return err
+	}
+	if authCookieNameFlag != nil {
+		args = append(args, "--auth-cookie-name", name)
 	}
 
 	port := config.DefaultServerPort
@@ -124,6 +136,12 @@ func runKeepAlive(args []string) error {
 
 	startupTimeout, err := daemon.ResolveStartupTimeout(startupTimeoutFlag)
 	if err != nil {
+		return err
+	}
+
+	// The supervisor can host auxiliary origin hops too. Its filtering namespace
+	// must match the child, not just the argv used to spawn that child.
+	if err := auth.SetCookieName(name); err != nil {
 		return err
 	}
 

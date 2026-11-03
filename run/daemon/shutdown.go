@@ -35,10 +35,7 @@ func CallShutdownEndpoint() bool {
 	}
 
 	if token != "" {
-		req.AddCookie(&http.Cookie{
-			Name:  "ai-critic-token",
-			Value: token,
-		})
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}

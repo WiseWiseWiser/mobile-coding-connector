@@ -2,7 +2,6 @@ package portforward
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -54,7 +53,7 @@ func (m *Manager) forwardStatus(port int) (string, bool) {
 func (m *Manager) forwardHealth(port int) (status string, ok bool, hopDead bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	t, ok := m.tunnels[port]
+	t, ok := m.tunnels[config.LocalMappingID(port)]
 	if !ok {
 		return "", false, false
 	}
@@ -64,11 +63,11 @@ func (m *Manager) forwardHealth(port int) (status string, ok bool, hopDead bool)
 	return t.status, true, false
 }
 
-func (m *Manager) restoreState(port int) *restoreAttempt {
+func (m *Manager) restoreState(port string) *restoreAttempt {
 	m.restoreMu.Lock()
 	defer m.restoreMu.Unlock()
 	if m.restore == nil {
-		m.restore = map[int]*restoreAttempt{}
+		m.restore = map[string]*restoreAttempt{}
 	}
 	st := m.restore[port]
 	if st == nil {
@@ -78,7 +77,7 @@ func (m *Manager) restoreState(port int) *restoreAttempt {
 	return st
 }
 
-func (m *Manager) dropRestoreState(keep map[int]struct{}) {
+func (m *Manager) dropRestoreState(keep map[string]struct{}) {
 	m.restoreMu.Lock()
 	defer m.restoreMu.Unlock()
 	for port := range m.restore {
@@ -88,14 +87,14 @@ func (m *Manager) dropRestoreState(keep map[int]struct{}) {
 	}
 }
 
-func (m *Manager) markRestoreFail(port int) {
+func (m *Manager) markRestoreFail(port string) {
 	st := m.restoreState(port)
 	st.failures++
 	st.stableSince = time.Time{}
 	st.nextRetry = m.nowTime().Add(restoreBackoffDelay(st.failures))
 }
 
-func (m *Manager) markRestoreOK(port int) {
+func (m *Manager) markRestoreOK(port string) {
 	st := m.restoreState(port)
 	now := m.nowTime()
 	if st.stableSince.IsZero() {
@@ -110,103 +109,69 @@ func (m *Manager) markRestoreOK(port int) {
 // ensureDesired publishes one desired mapping. An already-active forward is
 // left alone (including a service that owns the port). Error/missing entries
 // are rebuilt, reusing saved auth tokens.
+// ensureDesired remains the legacy port entry point used by services/tests.
 func (m *Manager) ensureDesired(port int, spec config.PortMappingDesiredSpec) error {
-	hostname := strings.TrimSpace(spec.Hostname)
-	if hostname == "" {
-		return fmt.Errorf("desired mapping for port %d has no hostname", port)
-	}
-	status, ok, hopDead := m.forwardHealth(port)
-	if ok && status == StatusActive && !hopDead {
-		m.markRestoreOK(port)
-		return nil
-	}
-	if ok {
-		if err := m.Remove(port); err != nil && !strings.Contains(err.Error(), "not being forwarded") {
-			return err
-		}
-	}
-
 	var auth config.PortAuth
 	if saved, err := config.GetPortMappingAuth(port); err != nil {
 		return err
-	} else if saved != nil && saved.Required {
-		resolved, err := resolveForwardAuth(port, saved)
-		if err != nil {
-			return err
-		}
-		auth = resolved
+	} else if saved != nil {
+		auth = *saved
 	}
-	provider := strings.TrimSpace(spec.Provider)
-	if provider == "" {
-		provider = ProviderCloudflareOwned
+	return m.ensureRecord(config.MappingRecord{ID: config.LocalMappingID(port), Target: config.OriginTarget{Host: "127.0.0.1", Scheme: "http", Port: port}, Hostname: spec.Hostname, Provider: spec.Provider, Auth: auth, Desired: true})
+}
+func (m *Manager) ensureRecord(rec config.MappingRecord) error {
+	m.mu.Lock()
+	t, ok := m.tunnels[rec.ID]
+	active := ok && t.status == StatusActive && (t.hopAlive == nil || t.hopAlive())
+	m.mu.Unlock()
+	if active {
+		m.markRestoreOK(rec.ID)
+		return nil
 	}
-	pf, err := m.AddForward(ForwardRequest{
-		Port:     port,
-		Label:    hostname,
-		Provider: provider,
-		Auth:     auth,
-	})
+	if ok {
+		_ = m.RemoveSelector(rec.ID)
+	}
+	if strings.TrimSpace(rec.Hostname) == "" {
+		return fmt.Errorf("desired mapping %s has no hostname", rec.ID)
+	}
+	if rec.Provider == "" {
+		rec.Provider = ProviderCloudflareOwned
+	}
+	pf, err := m.AddForward(recordForward(rec))
 	if err != nil {
-		if strings.Contains(err.Error(), "already being forwarded") {
-			fmt.Printf("warning: port %d desired mapping skipped: already forwarded\n", port)
-			m.markRestoreOK(port)
-			return nil
-		}
-		m.markRestoreFail(port)
+		m.markRestoreFail(rec.ID)
 		return err
 	}
 	if pf != nil && pf.Status == StatusError {
-		m.markRestoreFail(port)
-		errMsg := pf.Error
-		if errMsg == "" {
-			errMsg = "forward status error"
-		}
-		return fmt.Errorf("%s", errMsg)
+		m.markRestoreFail(rec.ID)
+		return fmt.Errorf("%s", pf.Error)
 	}
-	m.markRestoreOK(port)
+	m.markRestoreOK(rec.ID)
 	return nil
 }
-
-// RestoreDesired publishes every desired-live mapping once (boot).
-func (m *Manager) RestoreDesired() {
-	reconcileOwnedConnectors()
-	desired, err := config.LoadPortMappingDesired()
-	if err != nil {
-		fmt.Printf("[port mapping] load desired: %v\n", err)
-		return
-	}
-	for portStr, spec := range desired {
-		port, err := strconv.Atoi(portStr)
-		if err != nil || port <= 0 {
-			continue
-		}
-		if err := m.ensureDesired(port, spec); err != nil {
-			fmt.Printf("[port mapping] restore port %d: %v\n", port, err)
-		}
-	}
-}
-
+func (m *Manager) RestoreDesired() { m.restoreTick() }
 func (m *Manager) restoreTick() {
+	mappingMutationMu.Lock()
+	defer mappingMutationMu.Unlock()
 	reconcileOwnedConnectors()
-	desired, err := config.LoadPortMappingDesired()
+	store, err := config.LoadMappings()
 	if err != nil {
-		fmt.Printf("[port mapping] watchdog load desired: %v\n", err)
+		fmt.Printf("[port mapping] load mappings: %v\n", err)
 		return
 	}
-	keep := map[int]struct{}{}
+	keep := map[string]struct{}{}
 	now := m.nowTime()
-	for portStr, spec := range desired {
-		port, convErr := strconv.Atoi(portStr)
-		if convErr != nil || port <= 0 {
+	for id, rec := range store.Mappings {
+		if !rec.Desired {
 			continue
 		}
-		keep[port] = struct{}{}
-		st := m.restoreState(port)
+		keep[id] = struct{}{}
+		st := m.restoreState(id)
 		if !st.nextRetry.IsZero() && now.Before(st.nextRetry) {
 			continue
 		}
-		if err := m.ensureDesired(port, spec); err != nil {
-			fmt.Printf("[port mapping] watchdog port %d: %v (retry in %s)\n", port, err, restoreBackoffDelay(st.failures))
+		if err := m.ensureRecord(rec); err != nil {
+			fmt.Printf("[port mapping] restore %s: %v\n", id, err)
 		}
 	}
 	m.dropRestoreState(keep)

@@ -18,11 +18,14 @@ const (
 	TokenModeShared = "shared"
 	TokenModeCustom = "custom"
 
-	defaultCookieName = "svc-auth-token"
+	defaultCookieName = auth.ServiceCookieName
 	defaultTTL        = 7 * 24 * time.Hour
 )
 
 type Config struct {
+	// DisableAuth uses the same origin hop for an unguarded mapping.
+	DisableAuth  bool
+	Transport    http.RoundTripper
 	BackendPort  int
 	BackendURL   string
 	AuthUser     string
@@ -46,7 +49,10 @@ type Server struct {
 
 func Start(cfg Config) (*Server, error) {
 	cfg = normalizeConfig(cfg)
-	if len(cfg.Secret) < 32 {
+	if cfg.CookieName == auth.CookieName() {
+		return nil, fmt.Errorf("service auth cookie %q conflicts with the management auth cookie", cfg.CookieName)
+	}
+	if !cfg.DisableAuth && len(cfg.Secret) < 32 {
 		if strings.TrimSpace(cfg.SecretPath) == "" {
 			return nil, fmt.Errorf("auth proxy secret is required")
 		}
@@ -55,7 +61,7 @@ func Start(cfg Config) (*Server, error) {
 			return nil, err
 		}
 		cfg.Secret = secret
-	} else {
+	} else if len(cfg.Secret) >= 32 {
 		cfg.Secret = cfg.Secret[:32]
 	}
 
@@ -114,6 +120,9 @@ func (s *Server) Close() error {
 		return nil
 	}
 	s.closed.Store(true)
+	if closer, ok := s.cfg.Transport.(interface{ Close() error }); ok {
+		_ = closer.Close()
+	}
 	if s.srv == nil {
 		if s.ln != nil {
 			return s.ln.Close()

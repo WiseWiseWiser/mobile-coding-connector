@@ -17,8 +17,6 @@ import (
 	"github.com/xhd2015/ai-critic/server/quicktest"
 )
 
-const cookieName = "ai-critic-token"
-
 var (
 	credentialsFileMu   sync.RWMutex
 	credentialsFilePath = config.CredentialsFile
@@ -99,7 +97,7 @@ func Middleware(next http.Handler, skipPaths []string) http.Handler {
 
 		// Get token from cookie
 		var cookieToken string
-		if cookie, err := r.Cookie(cookieName); err == nil {
+		if cookie, err := r.Cookie(CookieName()); err == nil {
 			cookieToken = cookie.Value
 		}
 
@@ -252,7 +250,7 @@ func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 
 	// Check initialization and token validity in one read
 	var token string
-	if cookie, err := r.Cookie(cookieName); err == nil {
+	if cookie, err := r.Cookie(CookieName()); err == nil {
 		token = cookie.Value
 	}
 
@@ -302,7 +300,7 @@ func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var token string
-	if cookie, err := r.Cookie(cookieName); err == nil {
+	if cookie, err := r.Cookie(CookieName()); err == nil {
 		token = cookie.Value
 	}
 
@@ -489,9 +487,12 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set cookie with the password as the token
+	// Only write this instance's configured namespace. The former default may
+	// belong to another application on the same host (cookies are not port-scoped).
+	name := CookieName()
+	// Set cookie with the password as the token.
 	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
+		Name:     name,
 		Value:    req.Password,
 		Path:     "/",
 		HttpOnly: true,

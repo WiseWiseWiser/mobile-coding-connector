@@ -3,6 +3,7 @@ import type { PortForward } from '../../hooks/usePortForwards';
 import { PortStatuses } from '../../hooks/usePortForwards';
 import { fetchPortLogs as apiFetchPortLogs, fetchDomainHealthLogs } from '../../api/ports';
 import { stopTunnel } from '../../api/domains';
+import { PortTargetEditor } from './PortTargetEditor';
 import { LogViewer } from '../LogViewer';
 
 interface PortForwardCardProps {
@@ -12,6 +13,7 @@ interface PortForwardCardProps {
 }
 
 export function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwardCardProps) {
+    const [editing, setEditing] = useState(false);
     const [showLogs, setShowLogs] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
     const [copied, setCopied] = useState(false);
@@ -50,7 +52,7 @@ export function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwar
                 if (port.bootstrap) {
                     data = await fetchDomainHealthLogs(port.label);
                 } else {
-                    data = await apiFetchPortLogs(port.localPort);
+                    data = await apiFetchPortLogs(port.id || port.localPort);
                 }
                 setLogs(data);
             } catch { /* ignore */ }
@@ -59,7 +61,7 @@ export function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwar
         fetchLogs();
         const timer = setInterval(fetchLogs, 2000);
         return () => clearInterval(timer);
-    }, [showLogs, port.localPort, port.bootstrap, port.label]);
+    }, [showLogs, port.id, port.localPort, port.bootstrap, port.label]);
 
     return (
         <div className="mcc-port-card">
@@ -99,7 +101,10 @@ export function PortForwardCard({ port, onRemove, onNavigateToView }: PortForwar
             ) : null}
             {port.error && <div className="mcc-port-url mcc-port-url-error">{port.error}</div>}
             {stopError && <div className="mcc-port-url mcc-port-url-error" role="alert">{stopError}</div>}
+            {port.target && <div className="mcc-target-preview"><code>{port.id} → {port.target.scheme}://{port.target.host.includes(':') ? `[${port.target.host.replace(/%/g, '%25')}]` : port.target.host}:{port.target.port}</code><p>HTTP pool · WS / SSE passthrough. Tunnel status is not origin health.</p></div>}
+            {editing && <PortTargetEditor port={port} onClose={() => setEditing(false)} />}
             <div className="mcc-port-actions">
+                {port.id && !port.bootstrap && <button className="mcc-port-action-btn" onClick={() => setEditing(!editing)}>Edit target / check</button>}
                 <button
                     className={`mcc-port-action-btn mcc-port-logs-btn ${showLogs ? 'active' : ''}`}
                     onClick={() => setShowLogs(!showLogs)}

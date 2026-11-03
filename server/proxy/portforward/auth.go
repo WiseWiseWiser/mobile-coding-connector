@@ -5,12 +5,15 @@ import (
 	"strings"
 
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/proxy/origin"
 	"github.com/xhd2015/ai-critic/server/quicktest"
 	"github.com/xhd2015/ai-critic/server/services/authproxy"
 )
 
 // ForwardRequest is the input to AddForward.
 type ForwardRequest struct {
+	ID       string
+	Target   *config.OriginTarget
 	Port     int
 	Label    string
 	Provider string
@@ -31,6 +34,8 @@ func (m *Manager) secretPath() string {
 
 func (t *tunnel) asPortForward(includeToken bool) PortForward {
 	pf := PortForward{
+		ID:        t.id,
+		Target:    &t.target,
 		LocalPort: t.port,
 		Label:     t.label,
 		PublicURL: t.publicURL,
@@ -115,32 +120,57 @@ func resolveForwardAuth(port int, req *config.PortAuth) (config.PortAuth, error)
 
 // AddForward publishes a port. When Auth.Required is set, Cloudflare (or the
 // chosen provider) is aimed at an in-process login hop, not the backend port.
-// The mapping stays keyed by the backend port so list/delete keep using 8422.
+// Mappings use stable IDs; legacy port selectors must be unambiguous.
 func (m *Manager) AddForward(req ForwardRequest) (*PortForward, error) {
-	port := req.Port
+	target := config.OriginTarget{}
+	if req.Target != nil {
+		target = *req.Target
+	}
+	target, err := target.Normalize(req.Port)
+	if err != nil {
+		return nil, err
+	}
+	port := target.Port
+	id := req.ID
+	if id == "" {
+		if target.Host == "127.0.0.1" && target.Scheme == "http" {
+			id = config.LocalMappingID(port)
+		} else {
+			id, err = config.NewMappingID()
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	label := req.Label
 	providerName := req.Provider
 
 	var proxy *authproxy.Server
 	originPort := port
-	if req.Auth.Required {
+	if req.Auth.Required || req.Target != nil {
 		mode, custom := hopTokenMode(req.Auth)
+		transport := origin.NewTransport()
 		started, err := authproxy.Start(authproxy.Config{
 			BackendPort: port,
+			BackendURL:  target.URL(),
+			DisableAuth: !req.Auth.Required,
+			Transport:   transport,
 			AuthUser:    req.Auth.User,
 			TokenMode:   mode,
 			CustomToken: custom,
 			SecretPath:  m.secretPath(),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("start auth proxy: %w", err)
+			_ = transport.Close()
+			return nil, fmt.Errorf("start origin proxy: %w", err)
 		}
+		transport.Forbid(fmt.Sprintf("127.0.0.1:%d", started.Port()))
 		proxy = started
 		originPort = started.Port()
 	}
 
 	m.mu.Lock()
-	if _, exists := m.tunnels[port]; exists {
+	if _, exists := m.tunnels[id]; exists {
 		m.mu.Unlock()
 		if proxy != nil {
 			_ = proxy.Close()
@@ -163,11 +193,11 @@ func (m *Manager) AddForward(req ForwardRequest) (*PortForward, error) {
 	var staleSameHost []*tunnel
 	if isCloudflareHostnameProvider(providerName) {
 		for existingPort, existing := range m.tunnels {
-			if existingPort == port || !isCloudflareHostnameProvider(existing.provider) {
+			if existingPort == id || !isCloudflareHostnameProvider(existing.provider) {
 				continue
 			}
 			if sameForwardHostname(existing.label, label) {
-				fmt.Printf("[Manager.Add] Replacing stale Cloudflare hostname mapping: port=%d label=%q -> port=%d\n",
+				fmt.Printf("[Manager.Add] Replacing stale Cloudflare hostname mapping: mapping=%s label=%q -> port=%d\n",
 					existingPort, existing.label, port)
 				delete(m.tunnels, existingPort)
 				staleSameHost = append(staleSameHost, existing)
@@ -176,17 +206,20 @@ func (m *Manager) AddForward(req ForwardRequest) (*PortForward, error) {
 	}
 
 	t := &tunnel{
-		port:     port,
-		label:    label,
-		provider: providerName,
-		status:   StatusConnecting,
-		auth:     req.Auth,
+		id:         id,
+		target:     target,
+		port:       port,
+		originPort: originPort,
+		label:      label,
+		provider:   providerName,
+		status:     StatusConnecting,
+		auth:       req.Auth,
 	}
 	if proxy != nil {
 		t.closeAuth = func() { _ = proxy.Close() }
 		t.hopAlive = proxy.Alive
 	}
-	m.tunnels[port] = t
+	m.tunnels[id] = t
 	m.notifySubscribers()
 	m.mu.Unlock()
 
@@ -204,17 +237,26 @@ func (m *Manager) AddForward(req ForwardRequest) (*PortForward, error) {
 		t.errMsg = err.Error()
 		m.notifySubscribers()
 		m.mu.Unlock()
-		pf := t.asPortForward(false)
+		pf := m.snapshot(t)
 		return &pf, nil
 	}
 
+	m.mu.Lock()
+	if m.tunnels[id] != t {
+		m.mu.Unlock()
+		if handle.Stop != nil {
+			handle.Stop()
+		}
+		return nil, fmt.Errorf("mapping stopped during tunnel startup")
+	}
 	t.stop = handle.Stop
 	t.logs = handle.Logs
+	m.mu.Unlock()
 
 	applyResult := func(result TunnelResult) {
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		if _, exists := m.tunnels[port]; !exists {
+		if current := m.tunnels[id]; current != t {
 			return
 		}
 		if result.Err != nil {
@@ -232,7 +274,7 @@ func (m *Manager) AddForward(req ForwardRequest) (*PortForward, error) {
 	select {
 	case result := <-handle.Result:
 		applyResult(result)
-		pf := t.asPortForward(false)
+		pf := m.snapshot(t)
 		return &pf, nil
 	default:
 	}
@@ -241,7 +283,7 @@ func (m *Manager) AddForward(req ForwardRequest) (*PortForward, error) {
 		applyResult(<-handle.Result)
 	}()
 
-	pf := t.asPortForward(false)
+	pf := m.snapshot(t)
 	return &pf, nil
 }
 
@@ -255,4 +297,10 @@ func stopTunnel(t *tunnel) {
 	if t.closeAuth != nil {
 		t.closeAuth()
 	}
+}
+
+func (m *Manager) snapshot(t *tunnel) PortForward {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return t.asPortForward(false)
 }

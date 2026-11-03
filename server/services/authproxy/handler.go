@@ -3,6 +3,7 @@ package authproxy
 import (
 	_ "embed"
 	"encoding/json"
+	"github.com/xhd2015/ai-critic/server/proxy/origin"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -28,8 +29,10 @@ type handler struct {
 }
 
 func newHandler(cfg Config, backend *url.URL) (http.Handler, error) {
-	proxy := httputil.NewSingleHostReverseProxy(backend)
-	proxy.FlushInterval = -1
+	proxy := origin.NewReverseProxy(backend, cfg.Transport, cfg.CookieName)
+	if cfg.DisableAuth {
+		return proxy, nil
+	}
 	mux := http.NewServeMux()
 	h := &handler{cfg: cfg, proxy: proxy}
 	mux.HandleFunc(loginPath, h.handleLogin)
@@ -96,6 +99,10 @@ func (h *handler) handleProxy(w http.ResponseWriter, r *http.Request) {
 		_ = h.refreshCookie(w, r, *sess)
 	}
 
+	// A bearer token consumed by the mapping gate is not an application credential.
+	if bearerToken(r) != "" {
+		r.Header.Del("Authorization")
+	}
 	stripAuthCookie(r, h.cfg.CookieName)
 	h.proxy.ServeHTTP(w, r)
 }

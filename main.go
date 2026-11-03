@@ -19,7 +19,7 @@ func main() {
 	server.Init(distFS, templateHTML)
 	err := run.Run(os.Args[1:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }

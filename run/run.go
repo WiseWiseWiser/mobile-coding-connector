@@ -52,6 +52,7 @@ Options:
   --dir DIR               Set the initial directory for code review (defaults to current working directory)
   --port PORT             Port to listen on (defaults to auto-find starting from %d)
   --config-file FILE      Path to configuration file (JSON)
+  --auth-cookie-name NAME  Management login cookie name (default: ai-critic-token)
   --credentials-file FILE Path to credentials file (defaults to "%s")
   --enc-key-file FILE     Path to encryption key file (defaults to "%s")
   --domains-file FILE     Path to domains JSON file (defaults to "%s")
@@ -119,6 +120,7 @@ func Run(args []string) error {
 	var dirFlag string
 	var configFile string
 	var credentialsFileFlag string
+	var authCookieNameFlag *string
 	var encKeyFileFlag string
 	var domainsFileFlag string
 	var rulesDir string
@@ -138,6 +140,7 @@ func Run(args []string) error {
 		Int("--port", &portFlag).
 		String("--config-file", &configFile).
 		String("--credentials-file", &credentialsFileFlag).
+		String("--auth-cookie-name", &authCookieNameFlag).
 		String("--enc-key-file", &encKeyFileFlag).
 		String("--domains-file", &domainsFileFlag).
 		String("--rules-dir", &rulesDir).
@@ -151,15 +154,22 @@ func Run(args []string) error {
 		return err
 	}
 
+	if len(args) > 0 {
+		return fmt.Errorf("unrecognized extra args: %s", strings.Join(args, " "))
+	}
+	name, err := resolveAuthCookieName(authCookieNameFlag)
+	if err != nil {
+		return err
+	}
+	if err := auth.SetCookieName(name); err != nil {
+		return err
+	}
+
 	eventbus.SetPublishConfig(eventbus.ResolvePublishConfig(
 		eventBusPublishPortFlag,
 		eventBusPublishTokenFlag,
 		noEventBusPublishFlag,
 	))
-
-	if len(args) > 0 {
-		return fmt.Errorf("unrecognized extra args: %s", strings.Join(args, " "))
-	}
 
 	if frontendPortFlag > 0 {
 		server.SetFrontendPort(frontendPortFlag)
@@ -240,6 +250,10 @@ func Run(args []string) error {
 			return fmt.Errorf("port %d is already in use by process %s", port, pid)
 		}
 		return fmt.Errorf("port %d is already in use", port)
+	}
+
+	if authCookieNameFlag != nil {
+		reportAuthCookieName(os.Stdout, os.Stderr, name)
 	}
 
 	// Set server port for domains tunnel management

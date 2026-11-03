@@ -17,12 +17,12 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	"github.com/xhd2015/ai-critic/server/auth/cookiename"
 	"github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/less-gen/flags"
 )
 
 const debugPort = "9222"
-const cookieName = "ai-critic-token"
 
 var credentialsFile = config.CredentialsFile
 
@@ -46,7 +46,9 @@ func loadAuthToken() string {
 var defaultPort = 3580
 
 const help = `
-Usage: go run ./script/browser-debug [OPTIONS] <URL>
+Usage: go run . [OPTIONS] <URL>
+
+Run from the standalone script/browser-debug module.
 
 Arguments:
   URL                The URL to navigate to (required)
@@ -55,6 +57,7 @@ Options:
   --headless         Run browser in headless mode (no visible window)
   --new              Force start a new browser instance (ignore existing)
   --header <header>  Add custom HTTP header in "Key: Value" format (can be used multiple times)
+  --auth-cookie-name NAME  Target's management cookie name (default: ai-critic-token)
   --port <port>      Backend port for API requests (default: 3580)
 
 The tool reuses an existing Chrome instance on port ` + debugPort + ` if available.
@@ -64,10 +67,10 @@ Auto-injects ai-critic auth token from ~/.ai-critic/server-credentials if availa
 
 Examples:
 
-  go run ./script/browser-debug http://localhost:3580
-  go run ./script/browser-debug --headless http://localhost:3580
-  go run ./script/browser-debug --header "Authorization: Bearer token123" http://localhost:3580
-  go run ./script/browser-debug --header "X-Custom: value" --header "Cookie: session=abc" http://localhost:3580
+  go run . http://localhost:3580
+  go run . --headless http://localhost:3580
+  go run . --header "Authorization: Bearer token123" http://localhost:3580
+  go run . --header "X-Custom: value" --header "Cookie: session=abc" http://localhost:3580
 `
 
 var customHeaders map[string]string
@@ -132,7 +135,7 @@ func main() {
 }
 
 func runCheck() error {
-	fmt.Println("=== Browser Debug Tool - Dependency Check ===\n")
+	fmt.Print("=== Browser Debug Tool - Dependency Check ===\n\n")
 
 	hasErrors := false
 
@@ -202,7 +205,7 @@ func runCheck() error {
 	}
 	fmt.Println("✓ All dependencies are installed and ready to use!")
 	fmt.Println()
-	fmt.Println("Usage: go run ./script/browser-debug <URL>")
+	fmt.Println("Usage: go run . <URL>")
 
 	return nil
 }
@@ -324,6 +327,7 @@ func parseHeader(header string) (string, string, error) {
 func Handle(args []string) error {
 	headless := false
 	forceNew := false
+	cookieName := cookiename.DefaultName
 	url := ""
 	var headerList []string
 
@@ -339,6 +343,7 @@ func Handle(args []string) error {
 		String("--url", &url).
 		StringSlice("--header", &headerList).
 		Int("--port", &apiPort).
+		String("--auth-cookie-name", &cookieName).
 		Help("-h,--help", help).
 		Parse(args)
 
@@ -353,6 +358,10 @@ func Handle(args []string) error {
 
 	if err != nil {
 		return err
+	}
+
+	if err := cookiename.Validate(cookieName); err != nil {
+		return fmt.Errorf("invalid --auth-cookie-name: %w", err)
 	}
 
 	// Auto-inject auth token if not already set

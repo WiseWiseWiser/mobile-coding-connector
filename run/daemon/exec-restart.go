@@ -35,10 +35,7 @@ func callExecRestartEndpoint() bool {
 	}
 
 	if token != "" {
-		req.AddCookie(&http.Cookie{
-			Name:  "ai-critic-token",
-			Value: token,
-		})
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	client := &http.Client{Timeout: 5 * time.Second}

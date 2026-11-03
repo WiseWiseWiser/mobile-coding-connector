@@ -15,8 +15,8 @@ export async function fetchDiagnostics(): Promise<DiagnosticsData> {
     return resp.json();
 }
 
-export async function fetchPortLogs(port: number): Promise<string[]> {
-    const resp = await fetch(`/api/ports/logs?port=${port}`);
+export async function fetchPortLogs(port: number | string): Promise<string[]> {
+    const resp = await fetch(`/api/ports/logs?${typeof port === 'string' ? 'id' : 'port'}=${encodeURIComponent(port)}`);
     const data = await resp.json();
     return data ?? [];
 }
@@ -48,7 +48,13 @@ export interface PortAuth {
     token?: string;
 }
 
+export interface OriginTarget { scheme: 'http' | 'https'; host: string; port: number }
+export interface PortTargetCheck { target: OriginTarget; tcpReachable: boolean; error?: string }
+
 export interface PortForwardData {
+    id?: string;
+    target?: OriginTarget;
+    origin?: PortTargetCheck;
     localPort: number;
     label: string;
     publicUrl: string;
@@ -68,6 +74,7 @@ export async function fetchPorts(): Promise<PortForwardData[]> {
 }
 
 export interface AddPortRequest {
+    target?: OriginTarget;
     port: number;
     label: string;
     provider: string;
@@ -76,7 +83,7 @@ export interface AddPortRequest {
     auth?: PortAuth;
 }
 
-export async function addPort(req: AddPortRequest): Promise<void> {
+export async function addPort(req: AddPortRequest): Promise<PortForwardData> {
     const resp = await fetch('/api/ports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -86,10 +93,11 @@ export async function addPort(req: AddPortRequest): Promise<void> {
         const text = await resp.text();
         throw new Error(text);
     }
+    return resp.json();
 }
 
-export async function removePort(port: number): Promise<void> {
-    const resp = await fetch(`/api/ports?port=${port}`, {
+export async function removePort(port: number | string): Promise<void> {
+    const resp = await fetch(`/api/ports?${typeof port === 'string' ? 'id' : 'port'}=${encodeURIComponent(port)}`, {
         method: 'DELETE',
     });
     if (!resp.ok) {
@@ -267,4 +275,15 @@ export async function restartDNS(hostname: string, group?: string): Promise<{ st
         throw new Error(data.error || `HTTP ${resp.status}`);
     }
     return data;
+}
+
+export async function updatePort(id: string, req: Partial<AddPortRequest>): Promise<PortForwardData> {
+    const resp = await fetch(`/api/ports?id=${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
+    if (!resp.ok) throw new Error(await resp.text());
+    return resp.json();
+}
+export async function checkPortTarget(target: OriginTarget): Promise<PortTargetCheck> {
+    const resp = await fetch('/api/ports/target-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target }) });
+    if (!resp.ok) throw new Error(await resp.text());
+    return resp.json();
 }

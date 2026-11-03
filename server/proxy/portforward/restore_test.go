@@ -18,11 +18,14 @@ func useTempMappingFiles(t *testing.T) {
 	oldData := config.DataDir
 	oldDesired := config.PortMappingDesiredFile
 	oldAuth := config.PortMappingAuthFile
+	oldNames := config.PortMappingNamesFile
 	config.DataDir = dir
+	config.PortMappingNamesFile = filepath.Join(dir, "port-mapping-names.json")
 	config.PortMappingDesiredFile = filepath.Join(dir, "port-mapping-desired.json")
 	config.PortMappingAuthFile = filepath.Join(dir, "port-mapping-auth.json")
 	t.Cleanup(func() {
 		config.DataDir = oldData
+		config.PortMappingNamesFile = oldNames
 		config.PortMappingDesiredFile = oldDesired
 		config.PortMappingAuthFile = oldAuth
 	})
@@ -104,7 +107,7 @@ func TestEnsureDesiredRebuildsDeadHop(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = m.Remove(9476) })
 	m.mu.Lock()
-	m.tunnels[9476].hopAlive = func() bool { return false }
+	m.tunnels[config.LocalMappingID(9476)].hopAlive = func() bool { return false }
 	m.mu.Unlock()
 	if err := m.ensureDesired(9476, config.PortMappingDesiredSpec{
 		Hostname: "eluc-on-mac.xhd2015.xyz",

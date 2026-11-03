@@ -30,7 +30,7 @@ Subcommands:
       Persistent public mapping for a port (survives restarts).
 
   visit <port> [--provider auto|owned|quick] [--idle 10m] [--json] [--detach]
-      Open an ad-hoc public URL for a local port (idle reverse-proxy hop).
+      Open an ad-hoc public URL (supports --target-host / --target-scheme).
 
   visit list
       List active ad-hoc visits.
@@ -57,12 +57,17 @@ func portMappingHelpText() string {
 
 Publish a port at a hostname that survives restarts, unlike 'port visit'.
 
-  %[1]s port mapping add <port> --hostname H [--provider owned|quick] [--require-auth] [--json]
+  %[1]s port mapping add <port> --hostname H [--target-host HOST] [--target-scheme http|https] [--provider owned|quick] [--require-auth] [--json]
   %[1]s port mapping list [--json] [--show-token]
-  %[1]s port mapping update <port> --hostname H [--provider owned|quick] [--require-auth|--clear-auth] [--json]
-  %[1]s port mapping delete <port> [--forget] [--json]
+  %[1]s port mapping update <id|port> [--hostname H] [--target-host HOST] [--target-scheme http|https] [--provider owned|quick] [--require-auth|--clear-auth] [--json]
+  %[1]s port mapping delete <id|port> [--forget] [--json]
 
 Options:
+  --target-host H  IPv4, DNS or IPv6 origin host; defaults to 127.0.0.1.
+                   Scoped IPv6 uses the server interface, e.g. fe80::1%%eth0.
+  --target-scheme S http (default) | https. Target is resolved on the server.
+                   update/delete accept <id|port>; a port must be unambiguous.
+                   update preserves omitted target/hostname/auth settings.
   --hostname H     Public hostname, e.g. house-design-aes821.xhd2015.xyz.
   --provider P     owned (default) | quick | localtunnel, or a canonical server
                    name (cloudflare_owned, cloudflare_quick).
@@ -74,7 +79,7 @@ Options:
   --shared-token   Use the server credential instead of a mapping token.
   --clear-auth     Do not gate the public URL (update, or add).
   --show-token     list: print login user and token for auth-gated mappings.
-  --forget         delete: also clear the name and auth flags saved for this port.
+  --forget         delete: atomically remove saved target/name/auth for this mapping.
   --json           Machine-readable JSON on stdout (no ANSI).
 
 Notes:
@@ -106,6 +111,8 @@ Open a short-lived public mapping for a port via Cloudflare
 an idle reverse-proxy hop that shuts down after inactivity.
 
 Options:
+  --target-host HOST           Origin IPv4, DNS or IPv6 (default: 127.0.0.1).
+  --target-scheme http|https    Origin scheme (default: http; TLS verified).
   --provider auto|owned|quick   Provider selection (default: auto).
   --idle DURATION               Idle timeout (default: 10m). Accepts 100ms, 30s, 10m.
   --json                        Machine-readable JSON on stdout (no ANSI).
@@ -188,6 +195,10 @@ func runPortMapping(resolve func() (*client.Client, error), args []string) error
 // mapped: the server refuses a second mapping on the same port, so the old one
 // is removed first and restored if the new one fails.
 func runPortMappingAdd(resolve func() (*client.Client, error), args []string, update bool) error {
+	originalArgs := append([]string(nil), args...)
+	if hasOriginFlags(args) {
+		return runTargetMappingAdd(resolve, args, update)
+	}
 	var hostname, provider, authUser, authToken string
 	var jsonOut, requireAuth, clearAuth, sharedToken bool
 	args, err := flags.
@@ -226,7 +237,7 @@ func runPortMappingAdd(resolve func() (*client.Client, error), args []string, up
 		return fmt.Errorf("invalid port: %d", port)
 	}
 	hostname = strings.TrimSpace(hostname)
-	if hostname == "" {
+	if hostname == "" && !update {
 		return fmt.Errorf("port mapping %s requires --hostname", verb)
 	}
 	if strings.ContainsAny(hostname, " \t/") {
@@ -250,8 +261,10 @@ func runPortMappingAdd(resolve func() (*client.Client, error), args []string, up
 		}
 		for i := range forwards {
 			if forwards[i].LocalPort == port {
+				if previous != nil {
+					return fmt.Errorf("port %d matches multiple mappings; specify a mapping ID", port)
+				}
 				previous = &forwards[i]
-				break
 			}
 		}
 		if previous == nil {
@@ -259,6 +272,12 @@ func runPortMappingAdd(resolve func() (*client.Client, error), args []string, up
 		}
 	}
 
+	if update && previous != nil && previous.ID != "" {
+		return runTargetMappingAdd(resolve, originalArgs, true)
+	}
+	if hostname == "" {
+		return fmt.Errorf("port mapping update requires --hostname")
+	}
 	auth, err := resolvePortMappingAuth(update, previous, requireAuth, clearAuth, sharedToken, authUser, authToken)
 	if err != nil {
 		return err
@@ -302,9 +321,15 @@ func runPortMappingAdd(resolve func() (*client.Client, error), args []string, up
 	if err != nil {
 		return err
 	}
+	if created != nil && created.ID != "" {
+		forward = created
+	}
 	printAuth := auth
 	if created != nil && created.Auth != nil && created.Auth.Required {
 		printAuth = *created.Auth
+	}
+	if created != nil && created.ID != "" {
+		printAuth.Token = ""
 	}
 	if !portIsListening(cli, port) {
 		fmt.Fprintf(os.Stderr, "warning: port %d is not listening; the mapping is published but will not serve until something binds it\n", port)
@@ -324,12 +349,24 @@ func runPortMappingAdd(resolve func() (*client.Client, error), args []string, up
 		if previous != nil {
 			out["previous_hostname"] = previous.Label
 		}
+		if created != nil && created.ID != "" {
+			out["id"] = created.ID
+			out["target"] = created.Target
+			out["origin"] = created.Origin
+		}
+
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetEscapeHTML(false)
 		return enc.Encode(out)
 	}
 
 	fmt.Printf("mapping %s\n", map[bool]string{false: "added", true: "updated"}[update])
+	if created != nil && created.ID != "" {
+		fmt.Printf("  ID:        %s\n", created.ID)
+		if created.Target != nil {
+			fmt.Printf("  Target:    %s\n", created.Target.URL())
+		}
+	}
 	fmt.Printf("  Port:      %d\n", port)
 	if previous != nil {
 		fmt.Printf("  Hostname:  %s   (was %s)\n", hostname, previous.Label)
@@ -527,6 +564,16 @@ func runPortMappingList(resolve func() (*client.Client, error), args []string) e
 		return err
 	}
 
+	for _, f := range forwards {
+		if f.ID != "" {
+			return listTargetMappings(cli, forwards, savedAuth, jsonOut, showToken)
+		}
+	}
+	for key := range names {
+		if strings.HasPrefix(key, "map_") {
+			return listTargetMappings(cli, forwards, savedAuth, jsonOut, showToken)
+		}
+	}
 	type row struct {
 		Port      int              `json:"port"`
 		Source    string           `json:"source,omitempty"`
@@ -639,6 +686,9 @@ func mergeMappingAuth(live *client.PortAuth, saved client.PortAuth, includeToken
 }
 
 func runPortMappingDelete(resolve func() (*client.Client, error), args []string) error {
+	if hasOriginFlags(args) || hasForgetFlag(args) {
+		return runTargetMappingDelete(resolve, args)
+	}
 	var forget, jsonOut bool
 	args, err := flags.
 		Bool("--forget", &forget).
@@ -816,11 +866,13 @@ func runPortVisit(resolve func() (*client.Client, error), args []string) error {
 	}
 
 	var provider string
+	var targetHost, targetScheme string
 	var idleStr string
 	var jsonOut bool
 	var detach bool
 	args, err := flags.
 		String("--provider", &provider).
+		String("--target-host", &targetHost).String("--target-scheme", &targetScheme).
 		String("--idle", &idleStr).
 		Bool("--json", &jsonOut).
 		Bool("--detach", &detach).
@@ -864,17 +916,26 @@ func runPortVisit(resolve func() (*client.Client, error), args []string) error {
 		return err
 	}
 
-	visit, err := cli.StartPortVisit(port, provider, idle)
+	var target *client.OriginTarget
+	if targetHost != "" || targetScheme != "" {
+		target = &client.OriginTarget{Host: targetHost, Scheme: targetScheme, Port: port}
+	}
+	visit, err := cli.StartPortVisitTarget(port, provider, idle, target)
 	if err != nil {
 		return err
 	}
 
 	if !visit.Listening {
-		fmt.Fprintf(os.Stderr, "warning: port %d is not listening\n", port)
+		if visit.Target != nil {
+			fmt.Fprintf(os.Stderr, "warning: target %s is unreachable from the server\n", visit.Target.URL())
+		} else {
+			fmt.Fprintf(os.Stderr, "warning: port %d is not listening\n", port)
+		}
 	}
 
 	if jsonOut {
 		out := map[string]interface{}{
+			"target":       visit.Target,
 			"id":           visit.ID,
 			"port":         visit.Port,
 			"public_url":   visit.PublicURL,
@@ -898,6 +959,9 @@ func runPortVisit(resolve func() (*client.Client, error), args []string) error {
 		fmt.Printf("  Provider: %s\n", visit.Provider)
 		fmt.Printf("  URL:      %s\n", visit.PublicURL)
 		fmt.Printf("  Port:     %d\n", visit.Port)
+		if visit.Target != nil {
+			fmt.Printf("  Target:   %s\n", visit.Target.URL())
+		}
 		fmt.Printf("  Idle:     %s\n", formatIdle(visit.IdleSeconds))
 		fmt.Printf("  ID:       %s\n", visit.ID)
 	}

@@ -82,6 +82,13 @@ func (s *portStub) handler() http.Handler {
 			_ = json.NewEncoder(w).Encode(fwd)
 		case r.URL.Path == "/api/ports" && r.Method == http.MethodDelete:
 			port := r.URL.Query().Get("port")
+			if port == "" {
+				port = r.URL.Query().Get("id")
+			}
+			if r.URL.Query().Get("forget") == "true" {
+				delete(s.names, port)
+				delete(s.auth, port)
+			}
 			s.forwards = nil
 			_ = port
 			io.WriteString(w, `{"success":true}`)
@@ -321,7 +328,7 @@ func TestPortMappingDeleteForgetClearsSavedName(t *testing.T) {
 	}
 	var forgot bool
 	for _, c := range stub.callsCopy() {
-		if c == "DELETE /api/ports/mapping-names?port=9999" {
+		if c == "DELETE /api/ports?forget=true&id=9999" {
 			forgot = true
 		}
 	}
@@ -610,7 +617,7 @@ func TestPortMappingDeleteForgetClearsAuth(t *testing.T) {
 	}
 	var forgotAuth bool
 	for _, c := range stub.callsCopy() {
-		if c == "DELETE /api/ports/mapping-auth?port=8422" {
+		if c == "DELETE /api/ports?forget=true&id=8422" {
 			forgotAuth = true
 		}
 	}

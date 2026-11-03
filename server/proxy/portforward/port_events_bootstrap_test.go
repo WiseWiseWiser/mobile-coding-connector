@@ -76,7 +76,7 @@ func TestPortEventsRetainAndRefreshBootstrapDomains(t *testing.T) {
 		t.Fatalf("bootstrap poll: %+v", rows)
 	}
 	defaultManager.mu.Lock()
-	defaultManager.tunnels[8080] = &tunnel{port: 8080, label: "local", status: StatusActive}
+	defaultManager.tunnels[config.LocalMappingID(8080)] = &tunnel{port: 8080, label: "local", status: StatusActive}
 	defaultManager.notifySubscribers()
 	defaultManager.mu.Unlock()
 	if rows := readEvent(); !has(rows, "first.example") || !has(rows, "second.example") || !has(rows, "local") {

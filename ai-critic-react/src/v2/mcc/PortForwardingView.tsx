@@ -8,6 +8,7 @@ import type { LocalPortInfo } from '../../api/ports';
 import type { PortForward } from '../../hooks/usePortForwards';
 import { CloudflareInlineDiagnostics } from './CloudflareInlineDiagnostics';
 import { TunnelGroupsSection } from './TunnelGroupsSection';
+import { PortTargetFields } from './PortTargetFields';
 import { PortForwardCard } from './PortForwardCard';
 import { ServicesSection } from './ServicesSection';
 import { ServiceAuthFields, type AuthTokenMode, type AuthUserMode } from './ServiceAuthFields';
@@ -22,6 +23,11 @@ export interface PortForwardingViewProps {
     actionError: string | null;
     showNewForm: boolean;
     onToggleNewForm: () => void;
+    newTargetHost?: string;
+    newTargetScheme?: 'http' | 'https';
+    onTargetHostChange?: (host: string) => void;
+    onTargetSchemeChange?: (scheme: 'http' | 'https') => void;
+    onRemoveMapping?: (id: string) => void;
     newPortNumber: string;
     newPortLabel: string;
     newPortProvider: TunnelProvider;
@@ -60,6 +66,11 @@ export function PortForwardingView({
     actionError,
     showNewForm,
     onToggleNewForm,
+    newTargetHost = '127.0.0.1',
+    newTargetScheme = 'http',
+    onTargetHostChange,
+    onTargetSchemeChange,
+    onRemoveMapping,
     newPortNumber,
     newPortLabel,
     newPortProvider,
@@ -110,7 +121,7 @@ export function PortForwardingView({
             </div>
             <div className="mcc-ports-list">
                 {ports.map(port => (
-                    <PortForwardCard key={`${port.type || 'forward'}:${port.localPort}:${port.label}`} port={port} onRemove={() => onRemovePort(port.localPort)} onNavigateToView={onNavigateToView} />
+                    <PortForwardCard key={port.id || `${port.type || 'forward'}:${port.localPort}:${port.label}`} port={port} onRemove={() => port.id && onRemoveMapping ? onRemoveMapping(port.id) : onRemovePort(port.localPort)} onNavigateToView={onNavigateToView} />
                 ))}
                 {!loading && ports.length === 0 && (
                     <div className="mcc-ports-empty">No port forwards active.</div>
@@ -123,6 +134,7 @@ export function PortForwardingView({
                             <span>Add Port Forward</span>
                             <button className="mcc-close-btn" onClick={onToggleNewForm}>×</button>
                         </div>
+                        {onTargetHostChange && onTargetSchemeChange && <PortTargetFields host={newTargetHost} scheme={newTargetScheme} port={newPortNumber} onHostChange={onTargetHostChange} onSchemeChange={onTargetSchemeChange} />}
                         <div className="mcc-add-port-fields">
                             <div className="mcc-form-field">
                                 <label>Port</label>

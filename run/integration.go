@@ -32,6 +32,7 @@ Commands:
 
 Options:
   --port N     server port baked into ExecStart (default 23712)
+  --auth-cookie-name NAME  login cookie baked into ExecStart (default ai-critic-token)
   --lines N    logs: journal lines (default 100)
   --no-follow  logs: print and exit (no -f)
   --dry-run    print unit + systemctl/journalctl actions, do not change the host
@@ -70,10 +71,11 @@ func integrationStderr() io.Writer {
 }
 
 type sysctlFlags struct {
-	DryRun   bool
-	Port     int
-	Lines    int
-	NoFollow bool
+	AuthCookieName *string
+	DryRun         bool
+	Port           int
+	Lines          int
+	NoFollow       bool
 }
 
 func parseSystemctlFlags(args []string, help string) (sysctlFlags, []string, error) {
@@ -81,6 +83,7 @@ func parseSystemctlFlags(args []string, help string) (sysctlFlags, []string, err
 	rest, err := flags.
 		Bool("--dry-run", &f.DryRun).
 		Int("--port", &f.Port).
+		String("--auth-cookie-name", &f.AuthCookieName).
 		Int("--lines", &f.Lines).
 		Bool("--no-follow", &f.NoFollow).
 		Help("-h,--help", help).

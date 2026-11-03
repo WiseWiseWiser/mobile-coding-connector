@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useCurrent } from './useCurrent';
 import {
     fetchProviders as apiFetchProviders,
     addPort as apiAddPort,
     removePort as apiRemovePort,
 } from '../api/ports';
-import type { ProviderInfo as ApiProviderInfo, AddPortRequest } from '../api/ports';
+import type { ProviderInfo as ApiProviderInfo, AddPortRequest, OriginTarget, PortForwardData } from '../api/ports';
 
 // Port forward status
 export const PortStatuses = {
@@ -31,6 +31,8 @@ export type TunnelProvider = typeof TunnelProviders[keyof typeof TunnelProviders
 export type PortForwardType = 'port_forward' | 'domain' | 'exposed_url' | 'opencode' | 'extra';
 
 export interface PortForward {
+    id?: string;
+    target?: OriginTarget;
     localPort: number;
     label: string;
     publicUrl: string;
@@ -54,8 +56,8 @@ export interface UsePortForwardsReturn {
     providers: ProviderInfo[];
     loading: boolean;
     error: string | null;
-    addPort: (req: AddPortRequest) => Promise<void>;
-    removePort: (port: number) => Promise<void>;
+    addPort: (req: AddPortRequest) => Promise<PortForwardData>;
+    removePort: (port: number | string) => Promise<void>;
 }
 
 export function usePortForwards(): UsePortForwardsReturn {
@@ -119,16 +121,16 @@ export function usePortForwards(): UsePortForwardsReturn {
         };
     }, []);
 
-    const addPort = useCallback(async (req: AddPortRequest) => {
-        await apiAddPort(req);
-        // SSE will push the update, no need to manually refresh
-    }, []);
+    const addPort = async (req: AddPortRequest) => {
+        // SSE will push the update; return diagnostics to the form immediately.
+        return apiAddPort(req);
+    };
 
-    const removePort = useCallback(async (port: number) => {
+    const removePort = async (port: number | string) => {
         await apiRemovePort(port);
         // Optimistic update - remove from local state immediately; SSE will confirm
-        setPorts(portsRef.current.filter(p => p.localPort !== port));
-    }, [portsRef]);
+        setPorts(portsRef.current.filter(p => typeof port === 'string' ? p.id !== port : p.localPort !== port));
+    };
 
     return {
         ports,

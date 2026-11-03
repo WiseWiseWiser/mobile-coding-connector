@@ -11,12 +11,10 @@ import (
 	"github.com/xhd2015/less-gen/flags"
 )
 
-const cookieName = lib.CookieName
-
 var help = fmt.Sprintf(`Usage: go run ./script/request <path> [body] [options]
 
 Sends an HTTP request to the local server at http://localhost:%d.
-Automatically includes auth cookie from %s.
+Automatically includes Bearer authentication from %s.
 
 Arguments:
   path    API path (e.g. /api/checkpoints?project=myproject)
@@ -88,10 +86,7 @@ func run(args []string) error {
 	// Load auth token from credentials file
 	token, err := lib.LoadFirstTokenFromHome()
 	if err == nil && token != "" {
-		req.AddCookie(&http.Cookie{
-			Name:  cookieName,
-			Value: token,
-		})
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	// Send request

@@ -6,10 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/xhd2015/ai-critic/server/auth/cookiename"
 	"github.com/xhd2015/ai-critic/server/config"
 )
 
-const CookieName = "ai-critic-token"
+// CookieName is the legacy default, not a way to discover another instance's setting.
+// HTTP management clients should use Bearer authentication instead.
+const CookieName = cookiename.DefaultName
 
 var CredentialsFile = config.CredentialsFile
 

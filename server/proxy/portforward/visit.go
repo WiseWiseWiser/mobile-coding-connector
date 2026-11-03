@@ -1,13 +1,15 @@
 package portforward
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/ai-critic/server/proxy/origin"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"sort"
 	"strconv"
@@ -22,6 +24,7 @@ const DefaultVisitIdle = 10 * time.Minute
 // AdhocVisitSession is an in-memory ad-hoc public visit of a local port.
 type AdhocVisitSession struct {
 	ID           string
+	Target       config.OriginTarget
 	LocalPort    int
 	ProxyPort    int
 	PublicURL    string
@@ -41,6 +44,8 @@ type visitSession struct {
 	proxySrv   *http.Server
 	proxyLn    net.Listener
 	idleTimer  *time.Timer
+	transport  *origin.Transport
+	active     int
 }
 
 // VisitSessionManager manages in-memory ad-hoc visit sessions with an idle
@@ -49,19 +54,19 @@ type VisitSessionManager struct {
 	mu sync.Mutex
 
 	sessions  map[string]*visitSession // by id
-	byPort    map[int]string           // local port -> id
+	byPort    map[string]string        // local port -> id
 	providers map[string]Provider
 
-	nowFn             func() time.Time
-	listeningChecker  func(int) bool
-	mappingNamesPath  string
+	nowFn            func() time.Time
+	listeningChecker func(int) bool
+	mappingNamesPath string
 }
 
 // NewVisitSessionManager creates an empty in-memory visit session manager.
 func NewVisitSessionManager() *VisitSessionManager {
 	return &VisitSessionManager{
 		sessions:  make(map[string]*visitSession),
-		byPort:    make(map[int]string),
+		byPort:    make(map[string]string),
 		providers: make(map[string]Provider),
 		nowFn:     time.Now,
 	}
@@ -121,6 +126,16 @@ func (m *VisitSessionManager) now() time.Time {
 // provider: ""/"auto" / "owned" / "quick" / full provider names.
 // idle: 0 means DefaultVisitIdle.
 func (m *VisitSessionManager) Start(localPort int, provider string, idle time.Duration) (*AdhocVisitSession, error) {
+	return m.StartTarget(config.OriginTarget{Port: localPort}, provider, idle)
+}
+func (m *VisitSessionManager) StartTarget(target config.OriginTarget, provider string, idle time.Duration) (*AdhocVisitSession, error) {
+	var err error
+	target, err = target.Normalize(0)
+	if err != nil {
+		return nil, err
+	}
+	localPort := target.Port
+
 	if localPort <= 0 || localPort > 65535 {
 		return nil, fmt.Errorf("invalid port: %d", localPort)
 	}
@@ -129,7 +144,7 @@ func (m *VisitSessionManager) Start(localPort int, provider string, idle time.Du
 	}
 
 	m.mu.Lock()
-	if _, exists := m.byPort[localPort]; exists {
+	if _, exists := m.byPort[target.URL()]; exists {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("ad-hoc visit already active on port %d", localPort)
 	}
@@ -148,12 +163,14 @@ func (m *VisitSessionManager) Start(localPort int, provider string, idle time.Du
 	}
 	proxyPort := ln.Addr().(*net.TCPAddr).Port
 
-	target, err := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", localPort))
+	targetURL, err := url.Parse(target.URL())
 	if err != nil {
 		ln.Close()
 		return nil, err
 	}
-	rp := httputil.NewSingleHostReverseProxy(target)
+	transport := origin.NewTransport()
+	transport.Forbid(ln.Addr().String())
+	rp := origin.NewReverseProxy(targetURL, transport)
 
 	id, err := randomVisitID()
 	if err != nil {
@@ -165,20 +182,24 @@ func (m *VisitSessionManager) Start(localPort int, provider string, idle time.Du
 		AdhocVisitSession: AdhocVisitSession{
 			ID:          id,
 			LocalPort:   localPort,
+			Target:      target,
 			ProxyPort:   proxyPort,
 			Provider:    prov.Name(),
 			IdleTimeout: idle,
 			Status:      StatusConnecting,
 		},
-		proxyLn: ln,
+		proxyLn:   ln,
+		transport: transport,
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		m.touch(id)
+		m.beginRequest(id)
+		defer m.endRequest(id)
 		rp.ServeHTTP(w, r)
 	})
-	sess.proxySrv = &http.Server{Handler: handler}
-	go func() { _ = sess.proxySrv.Serve(ln) }()
+	srv := &http.Server{Handler: handler}
+	sess.proxySrv = srv
+	go func() { _ = srv.Serve(ln) }()
 
 	// Owned: empty hostname → provider generates ephemeral subdomain.
 	// Never write port-mapping-names for ad-hoc visits.
@@ -219,7 +240,7 @@ func (m *VisitSessionManager) Start(localPort int, provider string, idle time.Du
 
 	m.mu.Lock()
 	// Re-check duplicate after async work.
-	if _, exists := m.byPort[localPort]; exists {
+	if _, exists := m.byPort[target.URL()]; exists {
 		m.mu.Unlock()
 		m.shutdownProxy(sess)
 		if handle.Stop != nil {
@@ -228,7 +249,7 @@ func (m *VisitSessionManager) Start(localPort int, provider string, idle time.Du
 		return nil, fmt.Errorf("ad-hoc visit already active on port %d", localPort)
 	}
 	m.sessions[id] = sess
-	m.byPort[localPort] = id
+	m.byPort[target.URL()] = id
 	m.armIdleTimerLocked(sess)
 	out := sess.AdhocVisitSession
 	m.mu.Unlock()
@@ -311,7 +332,16 @@ func (m *VisitSessionManager) Stop(idOrPort string) error {
 	if s, ok := m.sessions[idOrPort]; ok {
 		sess = s
 	} else if port, err := strconv.Atoi(idOrPort); err == nil {
-		if id, ok := m.byPort[port]; ok {
+		var matching string
+		for key, session := range m.sessions {
+			if session.LocalPort == port {
+				if matching != "" {
+					return fmt.Errorf("port %d matches multiple visits; specify an ID", port)
+				}
+				matching = key
+			}
+		}
+		if id := matching; id != "" {
 			sess = m.sessions[id]
 		}
 	}
@@ -329,7 +359,7 @@ func (m *VisitSessionManager) Sweep() {
 	now := m.now()
 	var expired []*visitSession
 	for _, s := range m.sessions {
-		if s.IdleTimeout > 0 && !s.LastActivity.IsZero() && !now.Before(s.LastActivity.Add(s.IdleTimeout)) {
+		if s.active == 0 && s.IdleTimeout > 0 && !s.LastActivity.IsZero() && !now.Before(s.LastActivity.Add(s.IdleTimeout)) {
 			expired = append(expired, s)
 		}
 	}
@@ -368,7 +398,7 @@ func (m *VisitSessionManager) armIdleTimerLocked(s *visitSession) {
 		}
 		// Real-time timer: stop if wall clock idle elapsed.
 		// Fake-clock tests rely on Sweep instead.
-		if time.Since(cur.LastActivity) >= cur.IdleTimeout {
+		if cur.active == 0 && time.Since(cur.LastActivity) >= cur.IdleTimeout {
 			m.stopSessionLocked(cur)
 		}
 	})
@@ -383,8 +413,8 @@ func (m *VisitSessionManager) stopSessionLocked(s *visitSession) {
 		s.idleTimer = nil
 	}
 	delete(m.sessions, s.ID)
-	if m.byPort[s.LocalPort] == s.ID {
-		delete(m.byPort, s.LocalPort)
+	if m.byPort[s.Target.URL()] == s.ID {
+		delete(m.byPort, s.Target.URL())
 	}
 	s.Status = StatusStopped
 	stopTunnel := s.stopTunnel
@@ -393,6 +423,9 @@ func (m *VisitSessionManager) stopSessionLocked(s *visitSession) {
 	// call stop outside would need restructure. Stop funcs should be quick.
 	if stopTunnel != nil {
 		stopTunnel()
+	}
+	if s.transport != nil {
+		_ = s.transport.Close()
 	}
 	// Close proxy without holding issues — Close is safe.
 	if s.proxySrv != nil {
@@ -408,6 +441,9 @@ func (m *VisitSessionManager) stopSessionLocked(s *visitSession) {
 func (m *VisitSessionManager) shutdownProxy(s *visitSession) {
 	if s == nil {
 		return
+	}
+	if s.transport != nil {
+		_ = s.transport.Close()
 	}
 	if s.proxySrv != nil {
 		_ = s.proxySrv.Close()
@@ -435,22 +471,24 @@ func (m *VisitSessionManager) isListening(port int) bool {
 
 // visitAPIResponse is the JSON shape for visit API responses.
 type visitAPIResponse struct {
-	ID           string  `json:"id"`
-	Port         int     `json:"port"`
-	ProxyPort    int     `json:"proxy_port,omitempty"`
-	PublicURL    string  `json:"public_url"`
-	Provider     string  `json:"provider"`
-	Hostname     string  `json:"hostname,omitempty"`
-	IdleSeconds  float64 `json:"idle_seconds"`
-	Status       string  `json:"status"`
-	Listening    bool    `json:"listening"`
-	CreatedAt    string  `json:"created_at,omitempty"`
-	LastActivity string  `json:"last_activity,omitempty"`
+	Target       config.OriginTarget `json:"target"`
+	ID           string              `json:"id"`
+	Port         int                 `json:"port"`
+	ProxyPort    int                 `json:"proxy_port,omitempty"`
+	PublicURL    string              `json:"public_url"`
+	Provider     string              `json:"provider"`
+	Hostname     string              `json:"hostname,omitempty"`
+	IdleSeconds  float64             `json:"idle_seconds"`
+	Status       string              `json:"status"`
+	Listening    bool                `json:"listening"`
+	CreatedAt    string              `json:"created_at,omitempty"`
+	LastActivity string              `json:"last_activity,omitempty"`
 }
 
 func sessionToAPI(s AdhocVisitSession, listening bool) visitAPIResponse {
 	return visitAPIResponse{
 		ID:           s.ID,
+		Target:       s.Target,
 		Port:         s.LocalPort,
 		ProxyPort:    s.ProxyPort,
 		PublicURL:    s.PublicURL,
@@ -494,15 +532,16 @@ func (m *VisitSessionManager) handleVisitList(w http.ResponseWriter, r *http.Req
 
 func (m *VisitSessionManager) handleVisitStart(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Port        int      `json:"port"`
-		Provider    string   `json:"provider"`
-		IdleSeconds *float64 `json:"idle_seconds"`
+		Port        int                  `json:"port"`
+		Target      *config.OriginTarget `json:"target"`
+		Provider    string               `json:"provider"`
+		IdleSeconds *float64             `json:"idle_seconds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
-	if req.Port <= 0 || req.Port > 65535 {
+	if req.Target == nil && (req.Port <= 0 || req.Port > 65535) {
 		http.Error(w, fmt.Sprintf("invalid port: %d", req.Port), http.StatusBadRequest)
 		return
 	}
@@ -516,8 +555,24 @@ func (m *VisitSessionManager) handleVisitStart(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	listening := m.isListening(req.Port)
-	sess, err := m.Start(req.Port, req.Provider, idle)
+	target := config.OriginTarget{Port: req.Port}
+	if req.Target != nil {
+		target = *req.Target
+	}
+	target, err := target.Normalize(req.Port)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	listening := false
+	if req.Target == nil {
+		listening = m.isListening(req.Port)
+	} else {
+		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+		listening = origin.Probe(ctx, target) == nil
+		cancel()
+	}
+	sess, err := m.StartTarget(target, req.Provider, idle)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -559,4 +614,22 @@ func hostnameFromURL(publicURL string) string {
 		return ""
 	}
 	return u.Hostname()
+}
+
+func (m *VisitSessionManager) beginRequest(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s := m.sessions[id]; s != nil {
+		s.active++
+		s.LastActivity = m.now()
+	}
+}
+func (m *VisitSessionManager) endRequest(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s := m.sessions[id]; s != nil {
+		s.active--
+		s.LastActivity = m.now()
+		m.armIdleTimerLocked(s)
+	}
 }

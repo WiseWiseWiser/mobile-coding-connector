@@ -9,11 +9,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/xhd2015/ai-critic/run/daemon"
+	"github.com/xhd2015/ai-critic/server/auth"
 	"github.com/xhd2015/ai-critic/server/config"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap"
 	"github.com/xhd2015/less-gen/flags"
 )
 
@@ -74,6 +77,9 @@ func runIntegrationSystemctl(args []string) error {
 	if f2.Lines > 0 {
 		f.Lines = f2.Lines
 	}
+	if f2.AuthCookieName != nil {
+		f.AuthCookieName = f2.AuthCookieName
+	}
 	if f2.NoFollow {
 		f.NoFollow = true
 	}
@@ -84,17 +90,24 @@ func runIntegrationSystemctl(args []string) error {
 		f.Port = config.DefaultServerPort
 	}
 
+	if _, err := resolveAuthCookieName(f.AuthCookieName); err != nil {
+		return err
+	}
+	if f.AuthCookieName != nil && cmd != "start" && cmd != "show-config" {
+		return fmt.Errorf("--auth-cookie-name is only valid for systemctl start or show-config")
+	}
+
 	switch cmd {
 	case "status":
 		return sysctlStatus(f.Port)
 	case "start":
-		return sysctlStart(f.DryRun, f.Port)
+		return sysctlStart(f.DryRun, f.Port, f.AuthCookieName)
 	case "stop":
 		return sysctlStop(f.DryRun)
 	case "logs":
 		return sysctlLogs(f.DryRun, f.Lines, !f.NoFollow)
 	case "show-config":
-		return sysctlShowConfig(f.Port)
+		return sysctlShowConfig(f.Port, f.AuthCookieName)
 	case "-h", "--help", "help":
 		fmt.Fprint(integrationStdout(), strings.TrimPrefix(integrationSystemctlHelp, "\n"))
 		return nil
@@ -108,11 +121,11 @@ func systemctlCommandHelp(cmd string) string {
 	case "status":
 		return "Usage: ai-critic integration systemctl status [--port N]\n\nShow systemd status and /ping.\n"
 	case "start":
-		return "Usage: ai-critic integration systemctl start [--port N] [--dry-run]\n\nEnsure unit file, enable, start (restart if already active).\n"
+		return "Usage: ai-critic integration systemctl start [--port N] [--auth-cookie-name NAME] [--dry-run]\n\nEnsure unit file, enable, start (restart if already active).\n"
 	case "stop":
 		return "Usage: ai-critic integration systemctl stop [--dry-run]\n\nStop the systemd unit (does not disable).\n"
 	case "show-config":
-		return "Usage: ai-critic integration systemctl show-config [--port N]\n\nPrint generated unit, on-disk match, and day-to-day commands.\n"
+		return "Usage: ai-critic integration systemctl show-config [--port N] [--auth-cookie-name NAME]\n\nPrint generated unit, on-disk match, and day-to-day commands.\n"
 	case "logs":
 		return "Usage: ai-critic integration systemctl logs [--lines N] [--no-follow] [--dry-run]\n\nFollow journalctl -u ai-critic-server (default -n 100 -f --no-pager).\n"
 	default:
@@ -134,7 +147,7 @@ func requireRoot() error {
 	return nil
 }
 
-func resolveInstall(port int) (bin, workdir, home, unit string, err error) {
+func resolveInstall(port int, cookieName string) (bin, workdir, home, unit string, err error) {
 	bin, err = integrationExecutable()
 	if err != nil {
 		return "", "", "", "", err
@@ -151,11 +164,11 @@ func resolveInstall(port int) (bin, workdir, home, unit string, err error) {
 	if home == "" {
 		home = "/root"
 	}
-	unit = generateSystemdUnit(bin, workdir, home, port)
+	unit = generateSystemdUnit(bin, workdir, home, port, cookieName)
 	return bin, workdir, home, unit, nil
 }
 
-func generateSystemdUnit(bin, workdir, home string, port int) string {
+func generateSystemdUnit(bin, workdir, home string, port int, cookieName string) string {
 	if port <= 0 {
 		port = config.DefaultServerPort
 	}
@@ -166,6 +179,13 @@ func generateSystemdUnit(bin, workdir, home string, port int) string {
 	if strings.ContainsAny(bin, " \t") {
 		execStart = `"` + bin + `"`
 	}
+	// ExecStart is not a shell: quote the argument and escape systemd's
+	// environment-variable and percent-specifier expansion explicitly.
+	cookieArg := ""
+	if cookieName != auth.DefaultCookieName {
+		escaped := strings.NewReplacer("$", "$$", "%", "%%").Replace(cookieName)
+		cookieArg = " --auth-cookie-name " + strconv.Quote(escaped)
+	}
 	return fmt.Sprintf(`[Unit]
 Description=ai-critic-server
 After=network.target
@@ -174,7 +194,7 @@ After=network.target
 User=root
 WorkingDirectory=%s
 Environment=HOME=%s
-ExecStart=%s --port %d
+ExecStart=%s --port %d%s
 Restart=always
 RestartSec=2
 StandardOutput=journal
@@ -182,7 +202,7 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
-`, workdir, home, execStart, port)
+`, workdir, home, execStart, port, cookieArg)
 }
 
 func normalizeUnit(s string) string {
@@ -219,13 +239,26 @@ func onDiskState(generated string) string {
 	return "differ"
 }
 
-func sysctlShowConfig(port int) error {
+func sysctlShowConfig(port int, cookieOption *string) error {
+	name, err := resolveAuthCookieName(cookieOption)
+	if err != nil {
+		return err
+	}
 	if err := requireLinux(); err != nil {
 		return err
 	}
-	bin, workdir, home, unit, err := resolveInstall(port)
+	bin, workdir, home, unit, err := resolveInstall(port, name)
 	if err != nil {
 		return err
+	}
+	if cookieOption == nil {
+		body, exists, readErr := readOnDiskUnit()
+		if readErr != nil {
+			return fmt.Errorf("read existing service configuration: %w", readErr)
+		}
+		if exists && strings.Contains(body, "--auth-cookie-name") {
+			fmt.Fprintln(integrationStderr(), "warning: existing unit specifies --auth-cookie-name; pass it explicitly to preview the same configuration")
+		}
 	}
 	state := onDiskState(unit)
 	data := ".ai-critic"
@@ -237,6 +270,7 @@ func sysctlShowConfig(port int) error {
 	fmt.Fprintf(out, "binary:     %s\n", bin)
 	fmt.Fprintf(out, "workdir:    %s\n", workdir)
 	fmt.Fprintf(out, "port:       %d\n", port)
+	fmt.Fprintf(out, "auth cookie: %s\n", name)
 	fmt.Fprintf(out, "home:       %s\n", home)
 	fmt.Fprintf(out, "data:       %s\n", data)
 	fmt.Fprintf(out, "on-disk:    %s\n", state)
@@ -245,9 +279,10 @@ func sysctlShowConfig(port int) error {
 	fmt.Fprint(out, normalizeUnit(unit))
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "# day-to-day")
-	self := bin
-	fmt.Fprintf(out, "%s integration systemctl status\n", self)
-	fmt.Fprintf(out, "%s integration systemctl start\n", self)
+	self := ptywrap.ShellQuote(bin)
+	startCommand := fmt.Sprintf("%s integration systemctl start --port %d --auth-cookie-name %s", self, port, ptywrap.ShellQuote(name))
+	fmt.Fprintf(out, "%s integration systemctl status --port %d\n", self, port)
+	fmt.Fprintln(out, startCommand)
 	fmt.Fprintf(out, "%s integration systemctl stop\n", self)
 	fmt.Fprintf(out, "%s integration systemctl logs\n", self)
 	fmt.Fprintf(out, "journalctl -u %s -n 100 -f --no-pager\n", sysctlUnitName)
@@ -255,11 +290,15 @@ func sysctlShowConfig(port int) error {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "# replace binary then:")
 	fmt.Fprintf(out, "scp ai-critic-server-linux-amd64 host:%s\n", bin)
-	fmt.Fprintf(out, "%s integration systemctl start\n", self)
+	fmt.Fprintln(out, startCommand)
 	return nil
 }
 
-func sysctlStart(dryRun bool, port int) error {
+func sysctlStart(dryRun bool, port int, cookieOption *string) error {
+	name, err := resolveAuthCookieName(cookieOption)
+	if err != nil {
+		return err
+	}
 	if err := requireLinux(); err != nil {
 		return err
 	}
@@ -268,9 +307,18 @@ func sysctlStart(dryRun bool, port int) error {
 			return err
 		}
 	}
-	_, _, _, unit, err := resolveInstall(port)
+	_, _, _, unit, err := resolveInstall(port, name)
 	if err != nil {
 		return err
+	}
+	if cookieOption == nil {
+		body, exists, readErr := readOnDiskUnit()
+		if readErr != nil {
+			return fmt.Errorf("read existing service configuration: %w", readErr)
+		}
+		if exists && strings.Contains(body, "--auth-cookie-name") {
+			return fmt.Errorf("existing unit specifies --auth-cookie-name; repeat the option explicitly to preserve or change it, or use systemctl restart %s", sysctlUnitName)
+		}
 	}
 	state := onDiskState(unit)
 	out := integrationStdout()

@@ -23,12 +23,15 @@ type LocalPort struct {
 
 // PortForwardInfo is one persistent port forward from GET /api/ports.
 type PortForwardInfo struct {
-	LocalPort int    `json:"localPort"`
-	Label     string `json:"label"`
-	PublicURL string `json:"publicUrl"`
-	Status    string `json:"status"`
-	Provider  string `json:"provider"`
-	Type      string `json:"type"`
+	ID        string        `json:"id,omitempty"`
+	Target    *OriginTarget `json:"target,omitempty"`
+	Origin    *TargetCheck  `json:"origin,omitempty"`
+	LocalPort int           `json:"localPort"`
+	Label     string        `json:"label"`
+	PublicURL string        `json:"publicUrl"`
+	Status    string        `json:"status"`
+	Provider  string        `json:"provider"`
+	Type      string        `json:"type"`
 	// Bootstrap marks a forward the server started for itself at boot (a domain tunnel), rather
 	// than one somebody asked for. With Type it is what tells apart two rows that otherwise
 	// render as identical URLs — the ambiguity 'port mapping list' used to leave.
@@ -48,15 +51,16 @@ type PortAuth struct {
 
 // PortVisit is an ad-hoc visit session from /api/ports/visit.
 type PortVisit struct {
-	ID          string  `json:"id"`
-	Port        int     `json:"port"`
-	ProxyPort   int     `json:"proxy_port,omitempty"`
-	PublicURL   string  `json:"public_url"`
-	Provider    string  `json:"provider"`
-	Hostname    string  `json:"hostname,omitempty"`
-	IdleSeconds float64 `json:"idle_seconds"`
-	Status      string  `json:"status"`
-	Listening   bool    `json:"listening"`
+	Target      *OriginTarget `json:"target,omitempty"`
+	ID          string        `json:"id"`
+	Port        int           `json:"port"`
+	ProxyPort   int           `json:"proxy_port,omitempty"`
+	PublicURL   string        `json:"public_url"`
+	Provider    string        `json:"provider"`
+	Hostname    string        `json:"hostname,omitempty"`
+	IdleSeconds float64       `json:"idle_seconds"`
+	Status      string        `json:"status"`
+	Listening   bool          `json:"listening"`
 }
 
 // ListLocalPorts returns remote listening ports (GET /api/ports/local).
@@ -133,9 +137,7 @@ func (c *Client) AddPortForwardAuth(port int, label, provider, baseDomain, subdo
 	if subdomain != "" {
 		body["subdomain"] = subdomain
 	}
-	if auth.Required {
-		body["auth"] = auth
-	}
+	body["auth"] = auth
 	var out PortForwardInfo
 	if err := c.postJSON("/api/ports", body, &out); err != nil {
 		return nil, err
@@ -175,6 +177,9 @@ func (c *Client) RemovePortForward(port int) error {
 // StartPortVisit starts an ad-hoc visit (POST /api/ports/visit).
 // idle <= 0 means the server default (10m).
 func (c *Client) StartPortVisit(port int, provider string, idle time.Duration) (*PortVisit, error) {
+	return c.StartPortVisitTarget(port, provider, idle, nil)
+}
+func (c *Client) StartPortVisitTarget(port int, provider string, idle time.Duration, target *OriginTarget) (*PortVisit, error) {
 	body := map[string]interface{}{
 		"port": port,
 	}
@@ -183,6 +188,9 @@ func (c *Client) StartPortVisit(port int, provider string, idle time.Duration) (
 	}
 	if idle > 0 {
 		body["idle_seconds"] = idle.Seconds()
+	}
+	if target != nil {
+		body["target"] = target
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {

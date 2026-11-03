@@ -11,6 +11,7 @@ import (
 
 	"github.com/xhd2015/agent-pro/agent/exec/tool_resolve"
 	"github.com/xhd2015/ai-critic/server/cloudflare"
+	"github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/ai-critic/server/proxy/basic_auth_proxy"
 	"github.com/xhd2015/ai-critic/server/proxy/portforward"
 )
@@ -245,7 +246,7 @@ func UnmapDomain() (*MapDomainResponse, error) {
 		return nil, err
 	}
 
-	err = portforward.GetDefaultManager().Remove(settings.WebServer.Port)
+	err = portforward.GetDefaultManager().RemoveSelector(config.LocalMappingID(settings.WebServer.Port))
 	if err != nil {
 		return &MapDomainResponse{
 			Success: false,
@@ -271,7 +272,7 @@ func IsDomainMapped() bool {
 
 	ports := portforward.GetDefaultManager().List()
 	for _, pf := range ports {
-		if pf.LocalPort == settings.WebServer.Port {
+		if pf.LocalPort == settings.WebServer.Port && (pf.Target == nil || pf.ID == config.LocalMappingID(pf.LocalPort)) {
 			return pf.Status == portforward.StatusActive || pf.Status == portforward.StatusConnecting
 		}
 	}

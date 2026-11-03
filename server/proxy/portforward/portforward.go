@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xhd2015/ai-critic/server/cloudflare"
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/ai-critic/server/cmdjson"
 	"github.com/xhd2015/ai-critic/server/config"
@@ -119,50 +119,55 @@ type Provider interface {
 
 // PortForward represents a single port forward entry (API response)
 type PortForward struct {
-	LocalPort int              `json:"localPort"`
-	Label     string           `json:"label"`
-	PublicURL string           `json:"publicUrl"`
-	Status    string           `json:"status"`
-	Provider  string           `json:"provider"`
-	Error     string           `json:"error,omitempty"`
-	Bootstrap bool             `json:"bootstrap,omitempty"` // true if started during server bootstrap (e.g., domain tunnels)
-	Type      PortForwardType  `json:"type"`                // source type
-	Auth      *config.PortAuth `json:"auth,omitempty"`
+	ID        string               `json:"id,omitempty"`
+	Target    *config.OriginTarget `json:"target,omitempty"`
+	LocalPort int                  `json:"localPort"`
+	Label     string               `json:"label"`
+	PublicURL string               `json:"publicUrl"`
+	Status    string               `json:"status"`
+	Provider  string               `json:"provider"`
+	Error     string               `json:"error,omitempty"`
+	Bootstrap bool                 `json:"bootstrap,omitempty"` // true if started during server bootstrap (e.g., domain tunnels)
+	Type      PortForwardType      `json:"type"`                // source type
+	Auth      *config.PortAuth     `json:"auth,omitempty"`
 }
 
 // tunnel represents a running tunnel
 type tunnel struct {
-	port      int
-	label     string
-	provider  string
-	publicURL string
-	status    string
-	errMsg    string
-	stop      func()
-	closeAuth func()
-	hopAlive  func() bool
-	logs      *LogBuffer
-	auth      config.PortAuth
+	originPort int
+	id         string
+	target     config.OriginTarget
+	port       int
+	label      string
+	provider   string
+	publicURL  string
+	status     string
+	errMsg     string
+	stop       func()
+	closeAuth  func()
+	hopAlive   func() bool
+	logs       *LogBuffer
+	auth       config.PortAuth
 }
 
 // Manager manages port forwards using registered providers
 type Manager struct {
 	mu             sync.Mutex
-	tunnels        map[int]*tunnel     // keyed by local port
+	tunnels        map[string]*tunnel  // keyed by stable mapping ID
 	providers      map[string]Provider // keyed by provider name
 	subscribers    map[int]chan []PortForward
 	nextSubID      int
 	authSecretPath string
 	now            func() time.Time
 	restoreMu      sync.Mutex
-	restore        map[int]*restoreAttempt
+	restore        map[string]*restoreAttempt
 	restoreStop    chan struct{}
 }
 
 // NewManager creates a new port forward manager
 func NewManager() *Manager {
 	return &Manager{
-		tunnels:     make(map[int]*tunnel),
+		tunnels:     make(map[string]*tunnel),
 		providers:   make(map[string]Provider),
 		subscribers: make(map[int]chan []PortForward),
 	}
@@ -321,7 +326,7 @@ func (m *Manager) getExtensionGroupMappings() []PortForward {
 			} else {
 				// Skip port forwards that are already in m.tunnels
 				m.mu.Lock()
-				if _, exists := m.tunnels[port]; exists {
+				if m.hasOriginPortLocked(port) {
 					m.mu.Unlock()
 					continue
 				}
@@ -390,19 +395,23 @@ func (m *Manager) getExtraMappings() []PortForward {
 
 // parseServiceURL extracts port from service URL like "http://localhost:4096"
 func parseServiceURL(service string) int {
-	service = strings.TrimPrefix(service, "http://")
-	service = strings.TrimPrefix(service, "https://")
-	service = strings.TrimPrefix(service, "localhost:")
-	service = strings.TrimPrefix(service, "127.0.0.1:")
-
-	parts := strings.Split(service, ":")
-	if len(parts) >= 2 {
-		port, err := strconv.Atoi(parts[len(parts)-1])
-		if err == nil && port > 0 {
-			return port
+	u, err := url.Parse(service)
+	if err != nil {
+		return 0
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		return 0
+	}
+	return port
+}
+func (m *Manager) hasOriginPortLocked(port int) bool {
+	for _, t := range m.tunnels {
+		if t.originPort == port || (t.originPort == 0 && t.port == port) {
+			return true
 		}
 	}
-	return 0
+	return false
 }
 
 func isCloudflareHostnameProvider(provider string) bool {
@@ -413,18 +422,20 @@ func sameForwardHostname(a string, b string) bool {
 	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
 }
 
-// Remove stops and removes a port forward
-func (m *Manager) Remove(port int) error {
+// Remove retains the legacy, unambiguous port selector for service callers.
+func (m *Manager) Remove(port int) error { return m.RemoveSelector(strconv.Itoa(port)) }
+
+func (m *Manager) RemoveSelector(selector string) error {
 	m.mu.Lock()
-	t, exists := m.tunnels[port]
-	if !exists {
+	id, err := m.mappingIDLocked(selector)
+	if err != nil {
 		m.mu.Unlock()
-		return fmt.Errorf("port %d is not being forwarded", port)
+		return err
 	}
-	delete(m.tunnels, port)
+	t := m.tunnels[id]
+	delete(m.tunnels, id)
 	m.notifySubscribers()
 	m.mu.Unlock()
-
 	stopTunnel(t)
 	return nil
 }
@@ -451,7 +462,7 @@ func (m *Manager) GetLogs(port int) ([]string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	t, exists := m.tunnels[port]
+	t, exists := m.tunnels[config.LocalMappingID(port)]
 	if !exists {
 		return nil, fmt.Errorf("port %d is not being forwarded", port)
 	}
@@ -601,6 +612,8 @@ func fetchProcessDetails(pidSet map[int]struct{}) (ppidMap map[int]int, cmdlineM
 // RegisterAPI registers the port forwarding API endpoints
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ports", handlePorts)
+	mux.HandleFunc("/api/ports/target-check", handleTargetCheck)
+	mux.HandleFunc("/api/ports/mappings", handleSavedMappings)
 	mux.HandleFunc("/api/ports/events", handlePortEvents)
 	mux.HandleFunc("/api/ports/providers", handleProviders)
 	mux.HandleFunc("/api/ports/logs", handlePortLogs)
@@ -806,6 +819,8 @@ func handlePorts(w http.ResponseWriter, r *http.Request) {
 		handleListPorts(w, r)
 	case http.MethodPost:
 		handleAddPort(w, r)
+	case http.MethodPut:
+		handleMappingWrite(w, r)
 	case http.MethodDelete:
 		handleRemovePort(w, r)
 	default:
@@ -875,96 +890,16 @@ func handleListPorts(w http.ResponseWriter, _ *http.Request) {
 }
 
 type addPortRequest struct {
-	Port       int              `json:"port"`
-	Label      string           `json:"label"`
-	Provider   string           `json:"provider"`
-	BaseDomain string           `json:"baseDomain"`
-	Subdomain  string           `json:"subdomain"`
-	Auth       *config.PortAuth `json:"auth"`
+	Target     *config.OriginTarget `json:"target,omitempty"`
+	Port       int                  `json:"port"`
+	Label      string               `json:"label"`
+	Provider   string               `json:"provider"`
+	BaseDomain string               `json:"baseDomain"`
+	Subdomain  string               `json:"subdomain"`
+	Auth       *config.PortAuth     `json:"auth"`
 }
 
-func handleAddPort(w http.ResponseWriter, r *http.Request) {
-	var req addPortRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		fmt.Printf("[handleAddPort] ERROR decoding request: %v\n", err)
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	fmt.Printf("[handleAddPort] RECEIVED: port=%d provider=%q label=%q baseDomain=%q subdomain=%q auth=%+v\n",
-		req.Port, req.Provider, req.Label, req.BaseDomain, req.Subdomain, req.Auth)
-
-	if req.Port <= 0 || req.Port > 65535 {
-		http.Error(w, "invalid port number", http.StatusBadRequest)
-		return
-	}
-	if req.Label == "" {
-		req.Label = fmt.Sprintf("Port %d", req.Port)
-	}
-
-	// For Cloudflare providers, if subdomain is provided, construct hostname from subdomain + baseDomain
-	hostname := req.Label
-	isCloudflareProvider := req.Provider == ProviderCloudflareOwned || req.Provider == ProviderCloudflareTunnel
-	fmt.Printf("[handleAddPort] isCloudflareProvider=%v (provider=%q, expected=%q or %q)\n",
-		isCloudflareProvider, req.Provider, ProviderCloudflareOwned, ProviderCloudflareTunnel)
-
-	if isCloudflareProvider && req.Subdomain != "" {
-		fmt.Printf("[handleAddPort] Cloudflare provider with subdomain=%q, baseDomain=%q\n", req.Subdomain, req.BaseDomain)
-		if req.BaseDomain != "" {
-			hostname = fmt.Sprintf("%s.%s", req.Subdomain, req.BaseDomain)
-			fmt.Printf("[handleAddPort] Constructed hostname from subdomain + baseDomain: %s\n", hostname)
-		} else {
-			// If no base domain provided but we have subdomain, use the first owned domain
-			ownedDomains := cloudflare.GetOwnedDomains()
-			if len(ownedDomains) > 0 {
-				hostname = fmt.Sprintf("%s.%s", req.Subdomain, ownedDomains[0])
-				fmt.Printf("[handleAddPort] Constructed hostname using first owned domain: %s\n", hostname)
-			} else {
-				// Fallback: use label as-is (backward compatibility)
-				fmt.Printf("[handleAddPort] No owned domains found, using label: %s\n", hostname)
-			}
-		}
-	} else {
-		fmt.Printf("[handleAddPort] Using label as hostname: %s (isCloudflare=%v, hasSubdomain=%v)\n", hostname, isCloudflareProvider, req.Subdomain != "")
-	}
-
-	forward := ForwardRequest{
-		Port:     req.Port,
-		Label:    hostname,
-		Provider: req.Provider,
-	}
-	if req.Auth != nil && req.Auth.Required {
-		auth, err := resolveForwardAuth(req.Port, req.Auth)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		forward.Auth = auth
-	}
-
-	pf, err := defaultManager.AddForward(forward)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	if persistErr := persistForwardAuth(req.Port, forward.Auth); persistErr != nil {
-		fmt.Printf("[handleAddPort] warning: persist auth flags: %v\n", persistErr)
-	}
-	provider := req.Provider
-	if strings.TrimSpace(provider) == "" {
-		provider = ProviderCloudflareOwned
-	}
-	if persistErr := config.SetPortMappingDesired(req.Port, config.PortMappingDesiredSpec{
-		Hostname: hostname,
-		Provider: provider,
-	}); persistErr != nil {
-		fmt.Printf("[handleAddPort] warning: persist desired mapping: %v\n", persistErr)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(createdPortForward(pf, forward.Auth))
-}
+func handleAddPort(w http.ResponseWriter, r *http.Request) { handleMappingWrite(w, r) }
 
 func createdPortForward(pf *PortForward, auth config.PortAuth) *PortForward {
 	if pf == nil {
@@ -985,48 +920,7 @@ func persistForwardAuth(port int, auth config.PortAuth) error {
 	return config.SetPortMappingAuth(port, auth)
 }
 
-func handleRemovePort(w http.ResponseWriter, r *http.Request) {
-	portStr := r.URL.Query().Get("port")
-	if portStr == "" {
-		var req struct {
-			Port int `json:"port"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.Port > 0 {
-			portStr = strconv.Itoa(req.Port)
-		}
-	}
-
-	if portStr == "" {
-		http.Error(w, "port parameter is required", http.StatusBadRequest)
-		return
-	}
-
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		http.Error(w, "invalid port number", http.StatusBadRequest)
-		return
-	}
-
-	err = defaultManager.Remove(port)
-	if persistErr := config.DeletePortMappingDesired(port); persistErr != nil {
-		fmt.Printf("[handleRemovePort] warning: clear desired mapping: %v\n", persistErr)
-	}
-	if err != nil {
-		if strings.Contains(err.Error(), "not being forwarded") {
-			// Already down: still 200 so delete stops watchdog restore.
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{"status": "removed"})
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "removed"})
-}
+func handleRemovePort(w http.ResponseWriter, r *http.Request) { handleMappingRemove(w, r) }
 
 type providerInfo struct {
 	ID          string `json:"id"`
@@ -1036,25 +930,21 @@ type providerInfo struct {
 }
 
 func handlePortLogs(w http.ResponseWriter, r *http.Request) {
-	portStr := r.URL.Query().Get("port")
-	if portStr == "" {
-		http.Error(w, "port parameter is required", http.StatusBadRequest)
+	selector := r.URL.Query().Get("id")
+	if selector == "" {
+		selector = r.URL.Query().Get("port")
+	}
+	if selector == "" {
+		http.Error(w, "id or port parameter is required", 400)
 		return
 	}
-	port, err := strconv.Atoi(portStr)
+	logs, err := defaultManager.GetLogsSelector(selector)
 	if err != nil {
-		http.Error(w, "invalid port number", http.StatusBadRequest)
+		http.Error(w, err.Error(), 404)
 		return
 	}
-
-	logs, err := defaultManager.GetLogs(port)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(logs)
+	_ = json.NewEncoder(w).Encode(logs)
 }
 
 func handleProviders(w http.ResponseWriter, _ *http.Request) {
@@ -1452,79 +1342,5 @@ func handleEnsureTunnel(w http.ResponseWriter, r *http.Request) {
 
 // handlePortMappingNames handles GET/POST/DELETE requests for port mapping names
 func handlePortMappingNames(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		portStr := r.URL.Query().Get("port")
-		if portStr != "" {
-			// Get specific port's mapping
-			port, err := strconv.Atoi(portStr)
-			if err != nil {
-				http.Error(w, "invalid port number", http.StatusBadRequest)
-				return
-			}
-			domain, err := config.GetPortMappingName(port)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{"port": portStr, "domain": domain})
-		} else {
-			// Get all mappings
-			mappings, err := config.LoadPortMappingNames()
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(mappings)
-		}
-	case http.MethodPost:
-		var req struct {
-			Port   int    `json:"port"`
-			Domain string `json:"domain"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
-			return
-		}
-		if req.Port <= 0 || req.Port > 65535 {
-			http.Error(w, "invalid port number", http.StatusBadRequest)
-			return
-		}
-		if req.Domain == "" {
-			http.Error(w, "domain is required", http.StatusBadRequest)
-			return
-		}
-		if err := config.SetPortMappingName(req.Port, req.Domain); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": true,
-			"port":    req.Port,
-			"domain":  req.Domain,
-		})
-	case http.MethodDelete:
-		portStr := r.URL.Query().Get("port")
-		if portStr == "" {
-			http.Error(w, "port parameter is required", http.StatusBadRequest)
-			return
-		}
-		port, err := strconv.Atoi(portStr)
-		if err != nil {
-			http.Error(w, "invalid port number", http.StatusBadRequest)
-			return
-		}
-		if err := config.DeletePortMappingName(port); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]bool{"success": true})
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
+	handleMappingLegacyConfig(w, r, false)
 }

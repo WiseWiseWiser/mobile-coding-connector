@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import type { TunnelProvider } from '../../hooks/usePortForwards';
 import { TunnelProviders } from '../../hooks/usePortForwards';
@@ -7,7 +7,7 @@ import { NavTabs } from './types';
 import { useV2Context } from '../V2Context';
 import { fetchRandomDomain } from '../../api/domains';
 import type { AddPortRequest } from '../../api/ports';
-import { fetchAllPortMappingAuth, fetchAllPortMappingNames, savePortMappingName, type PortMappingAuth, type PortMappingNames } from '../../api/ports';
+import { fetchAllPortMappingAuth, fetchAllPortMappingNames, type PortMappingAuth, type PortMappingNames } from '../../api/ports';
 import type { AuthTokenMode, AuthUserMode } from './ServiceAuthFields';
 
 export interface PortsOutletContext {
@@ -18,6 +18,10 @@ export interface PortsOutletContext {
     actionError: string | null;
     showNewForm: boolean;
     onToggleNewForm: () => void;
+    newTargetHost: string;
+    newTargetScheme: 'http' | 'https';
+    onTargetHostChange: (host: string) => void;
+    onTargetSchemeChange: (scheme: 'http' | 'https') => void;
     newPortNumber: string;
     newPortLabel: string;
     newPortProvider: TunnelProvider;
@@ -40,7 +44,7 @@ export interface PortsOutletContext {
     onAuthTokenModeChange: (value: AuthTokenMode) => void;
     onAuthTokenChange: (value: string) => void;
     onAddPort: () => void;
-    onRemovePort: (port: number) => void;
+    onRemovePort: (port: number | string) => void;
     navigateToView: (view: string) => void;
 }
 
@@ -51,6 +55,8 @@ export function PortsLayout() {
     const navigateToView = useTabNavigate(NavTabs.Service);
 
     const [showNewPortForm, setShowNewPortForm] = useState(false);
+    const [newTargetHost, setNewTargetHost] = useState('127.0.0.1');
+    const [newTargetScheme, setNewTargetScheme] = useState<'http' | 'https'>('http');
     const [newPortNumber, setNewPortNumber] = useState('');
     const [newPortLabel, setNewPortLabel] = useState('');
     const [newPortProvider, setNewPortProvider] = useState<TunnelProvider>(TunnelProviders.Localtunnel);
@@ -85,7 +91,7 @@ export function PortsLayout() {
 
     // Apply saved mapping name when port number changes (for Cloudflare providers)
     useEffect(() => {
-        if (!newPortNumber) return;
+        if (!newPortNumber || newTargetHost !== '127.0.0.1') return;
         
         const portNum = parseInt(newPortNumber, 10);
         if (!portNum || portNum <= 0) return;
@@ -115,9 +121,9 @@ export function PortsLayout() {
             setNewPortSubdomain(subdomain);
             setNewPortBaseDomain(baseDomain);
         }
-    }, [newPortNumber, portMappingNames, portMappingAuth, newPortProvider]);
+    }, [newPortNumber, portMappingNames, portMappingAuth, newPortProvider, newTargetHost]);
 
-    const generateSubdomain = useCallback(async (baseDomain?: string) => {
+    const generateSubdomain = async (baseDomain?: string) => {
         try {
             // Use passed domain parameter, or fall back to current state
             const effectiveDomain = baseDomain || newPortBaseDomain || undefined;
@@ -133,7 +139,7 @@ export function PortsLayout() {
             const random = Math.random().toString(36).substring(2, 8);
             setNewPortSubdomain(random);
         }
-    }, [newPortBaseDomain]);
+    };
 
     const handleAddPort = async () => {
         const portNum = parseInt(newPortNumber, 10);
@@ -146,8 +152,10 @@ export function PortsLayout() {
         // Build the request with separate fields for Cloudflare providers
         const req: AddPortRequest = {
             port: portNum,
+            auth: { required: requireAuth },
             label: newPortLabel || `Port ${portNum}`,
             provider: newPortProvider,
+            target: { host: newTargetHost, scheme: newTargetScheme, port: portNum },
         };
 
         // For Cloudflare providers, pass subdomain and base_domain separately
@@ -174,35 +182,14 @@ export function PortsLayout() {
             }
         }
 
-        console.log('[PortsLayout] Adding port:', {
-            portNum,
-            isCloudflareProvider,
-            hasSubdomain,
-            hasBaseDomain,
-            newPortSubdomain,
-            newPortBaseDomain,
-            newPortLabel,
-            req
-        });
 
         try {
             setPortActionError(null);
             
-            // Save the mapping name for Cloudflare providers BEFORE forwarding
-            if (isCloudflareProvider && hasSubdomain && hasBaseDomain) {
-                const fullDomain = `${newPortSubdomain}.${newPortBaseDomain}`;
-                try {
-                    await savePortMappingName({ port: portNum, domain: fullDomain });
-                    // Update local state
-                    setPortMappingNames(prev => ({ ...prev, [String(portNum)]: fullDomain }));
-                    console.log('[PortsLayout] Saved port mapping name before forwarding:', { port: portNum, domain: fullDomain });
-                } catch (e) {
-                    console.error('[PortsLayout] Failed to save port mapping name:', e);
-                    // Continue with forwarding even if saving fails
-                }
+            const created = await addPort(req);
+            if (created.origin && !created.origin.tcpReachable) {
+                setPortActionError(`Mapping saved; origin unreachable from this server: ${created.origin.error}. Tunnel status is not target health.`);
             }
-            
-            await addPort(req);
             
             setShowNewPortForm(false);
             setNewPortNumber('');
@@ -219,7 +206,7 @@ export function PortsLayout() {
         }
     };
 
-    const handleRemovePort = async (port: number) => {
+    const handleRemovePort = async (port: number | string) => {
         try {
             setPortActionError(null);
             await removePort(port);
@@ -248,6 +235,15 @@ export function PortsLayout() {
                 generateSubdomain(newPortBaseDomain || undefined);
             }
         },
+        newTargetHost,
+        newTargetScheme,
+        onTargetHostChange: (host) => {
+            setNewTargetHost(host);
+            if (host && !['127.0.0.1', 'localhost', '::1'].includes(host)) {
+                setRequireAuth(true); setAuthTokenMode('shared'); setAuthToken('');
+            }
+        },
+        onTargetSchemeChange: setNewTargetScheme,
         newPortNumber,
         newPortLabel,
         newPortProvider,

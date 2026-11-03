@@ -631,7 +631,9 @@ func (m *Manager) ListAll() []ServiceStatus {
 func (m *Manager) buildStatusListLocked(defs []ServiceDefinition) []ServiceStatus {
 	portMap := make(map[int]portforward.PortForward)
 	for _, pf := range m.getPortForwardManager().List() {
-		portMap[pf.LocalPort] = pf
+		if pf.Target == nil || pf.ID == config.LocalMappingID(pf.LocalPort) {
+			portMap[pf.LocalPort] = pf
+		}
 	}
 
 	result := make([]ServiceStatus, 0, len(defs))
@@ -1302,7 +1304,7 @@ func (m *Manager) stop(id string, removeForward bool, wait bool) error {
 			_ = authProxy.Close()
 		}
 		if ownedForward && port > 0 {
-			_ = m.getPortForwardManager().Remove(port)
+			_ = m.getPortForwardManager().RemoveSelector(config.LocalMappingID(port))
 			m.mu.Lock()
 			if current := m.processes[id]; current != nil {
 				current.ownedForward = false
@@ -1407,7 +1409,7 @@ func (m *Manager) RepublishForward(id string) error {
 	m.mu.Unlock()
 
 	// Drop the stale entry so ensurePortForward rebuilds it instead of reusing it.
-	if err := m.getPortForwardManager().Remove(tunnelPort); err != nil &&
+	if err := m.getPortForwardManager().RemoveSelector(config.LocalMappingID(tunnelPort)); err != nil &&
 		!strings.Contains(err.Error(), "not being forwarded") {
 		return err
 	}
@@ -1444,7 +1446,7 @@ func (m *Manager) ensurePortForward(id string, def ServiceDefinition) error {
 			proxy = started
 			tunnelPort = started.Port()
 			if pf.Port != tunnelPort {
-				_ = manager.Remove(pf.Port)
+				_ = manager.RemoveSelector(config.LocalMappingID(pf.Port))
 			}
 		}
 	} else {
@@ -1453,7 +1455,7 @@ func (m *Manager) ensurePortForward(id string, def ServiceDefinition) error {
 	}
 
 	for _, existing := range manager.List() {
-		if existing.LocalPort != tunnelPort {
+		if existing.LocalPort != tunnelPort || (existing.Target != nil && existing.ID != config.LocalMappingID(tunnelPort)) {
 			continue
 		}
 		// Only reuse a live forward. Stuck "connecting"/"error" entries (e.g. after
@@ -1472,7 +1474,7 @@ func (m *Manager) ensurePortForward(id string, def ServiceDefinition) error {
 		}
 		fmt.Printf("[services] replacing stale port forward for service %s: port=%d old=%s/%q status=%s new=%s/%q\n",
 			id, tunnelPort, existing.Provider, existing.Label, existing.Status, desiredProvider, desiredLabel)
-		if err := manager.Remove(tunnelPort); err != nil && !strings.Contains(err.Error(), "not being forwarded") {
+		if err := manager.RemoveSelector(config.LocalMappingID(tunnelPort)); err != nil && !strings.Contains(err.Error(), "not being forwarded") {
 			if proxy != nil && proxy != m.currentAuthProxy(id) {
 				_ = proxy.Close()
 			}
@@ -1568,7 +1570,7 @@ func (m *Manager) teardownAuthHop(id string) {
 
 	_ = proxy.Close()
 	if owned && port > 0 {
-		_ = m.getPortForwardManager().Remove(port)
+		_ = m.getPortForwardManager().RemoveSelector(config.LocalMappingID(port))
 	}
 }
 
