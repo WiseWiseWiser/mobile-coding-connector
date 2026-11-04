@@ -482,7 +482,7 @@ func TestDirectCreateTabGoesThroughJobDirect(t *testing.T) {
 	if err := m.Ensure(context.Background()); err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
-	created, err := m.createTabIn(context.Background(), sessionlessSessionID(11), 11, "https://example.com/new")
+	created, err := m.createTabIn(context.Background(), sessionlessSessionID(11), 11, "https://example.com/new", true)
 	if err != nil {
 		t.Fatalf("createTabIn: %v", err)
 	}
@@ -493,10 +493,38 @@ func TestDirectCreateTabGoesThroughJobDirect(t *testing.T) {
 	for _, c := range f.directCalls {
 		if c.Type == "create_tab" && c.Params["url"] == "https://example.com/new" {
 			found = true
+			if c.Params["active"] != true {
+				t.Fatalf("user tab create_tab active = %v, want true", c.Params["active"])
+			}
 		}
 	}
 	if !found {
 		t.Fatalf("create_tab missing from direct calls: %+v", f.directCalls)
+	}
+}
+
+// Plumbing pages open in the background: the mirror follows Chrome's active
+// tab, and a placeholder or /go registration page that steals focus would drag
+// the mirror off the page the user is watching.
+func TestPlumbingTabsOpenInBackground(t *testing.T) {
+	f := directFake()
+	m := newTestManager(t, f)
+	if err := m.Ensure(context.Background()); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	// Window 12 has only a chrome:// tab: the ensure chain creates the
+	// placeholder there. Switch to it to force that path.
+	if err := m.SwitchSession(context.Background(), sessionlessSessionID(12), false); err != nil {
+		t.Fatalf("SwitchSession: %v", err)
+	}
+	for _, c := range f.directCalls {
+		if c.Type == "create_tab" {
+			if url, _ := c.Params["url"].(string); strings.HasPrefix(url, "data:") {
+				if c.Params["active"] != false {
+					t.Fatalf("placeholder create_tab active = %v, want false", c.Params["active"])
+				}
+			}
+		}
 	}
 }
 

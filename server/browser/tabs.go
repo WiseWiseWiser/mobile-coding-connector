@@ -558,7 +558,7 @@ func (m *Manager) TabOp(ctx context.Context, sessionID, op string, tabID int64, 
 		if windowID == 0 {
 			return nil, fmt.Errorf("the browser-agent extension reported no window for this session")
 		}
-		created, err := m.createTabIn(ctx, sessionID, windowID, target)
+		created, err := m.createTabIn(ctx, sessionID, windowID, target, true)
 		if err != nil {
 			return nil, err
 		}
@@ -621,11 +621,15 @@ func (m *Manager) retarget(ctx context.Context, sessionID string, want int64) (*
 }
 
 // createTabIn opens a content tab in a session's window.
-func (m *Manager) createTabIn(ctx context.Context, sessionID string, windowID int64, target string) (int64, error) {
+// createTabIn opens one tab in a window. active=false opens it in the
+// background: the mirror follows Chrome's active tab, so plumbing pages (the
+// /go registration page, the placeholder) must never steal focus from the page
+// the user is watching.
+func (m *Manager) createTabIn(ctx context.Context, sessionID string, windowID int64, target string, active bool) (int64, error) {
 	data, err := m.jobIn(ctx, sessionID, 0, "create_tab", map[string]any{
 		"url":       target,
 		"window_id": windowID,
-		"active":    true,
+		"active":    active,
 	}, 20*time.Second)
 	if err != nil {
 		return 0, err

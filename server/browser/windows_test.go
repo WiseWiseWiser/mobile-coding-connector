@@ -258,6 +258,12 @@ func TestAttachWindowAdoptsExistingWindow(t *testing.T) {
 	if got := fmt.Sprint(call.Params["window_id"]); got != "950" {
 		t.Fatalf("create_tab window = %s, want 950", got)
 	}
+	// The /go registration page opens in the background: the mirror follows
+	// Chrome's active tab, and a focus-stealing registration page would drag
+	// the mirror off the page the user just chose to drive.
+	if call.Params["active"] != false {
+		t.Fatalf("create_tab active = %v, want false for the /go registration page", call.Params["active"])
+	}
 	if got := fmt.Sprint(call.Params["url"]); got != m.sessionPageURL(id) {
 		t.Fatalf("create_tab url = %s", got)
 	}

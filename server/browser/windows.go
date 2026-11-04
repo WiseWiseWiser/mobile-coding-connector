@@ -454,7 +454,9 @@ func (m *Manager) AttachWindow(ctx context.Context, windowID int64, requested st
 	// opening a duplicate. create_tab is window-aware in 1.0.21, so the page
 	// lands in the adopted window and nowhere else.
 	if target.sessionPageTab(sessionID) == 0 {
-		if _, err := m.createTabIn(ctx, anchor, windowID, m.sessionPageURL(sessionID)); err != nil {
+		// Background: the registration page must not steal the window's active
+		// tab from the page the user just chose to drive.
+		if _, err := m.createTabIn(ctx, anchor, windowID, m.sessionPageURL(sessionID), false); err != nil {
 			return "", fmt.Errorf("open the session page in that window: %w", err)
 		}
 	}

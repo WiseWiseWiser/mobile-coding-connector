@@ -970,7 +970,7 @@ func reportableURL(raw string) string {
 }
 
 func (m *Manager) createContentTab(ctx context.Context, windowID int64) (int64, error) {
-	return m.createTabIn(ctx, m.sessionIDValue(), windowID, contentPlaceholderURL())
+	return m.createTabIn(ctx, m.sessionIDValue(), windowID, contentPlaceholderURL(), false)
 }
 
 // windowBounds reads the current window rectangle.
