@@ -15,6 +15,7 @@ import (
 	"github.com/xhd2015/ai-critic/server/gomod"
 	"github.com/xhd2015/ai-critic/server/hostmon"
 	"github.com/xhd2015/ai-critic/server/openclaw"
+	"github.com/xhd2015/ai-critic/server/proxy/httpproxy"
 	"github.com/xhd2015/ai-critic/server/proxy/wsproxy"
 	"github.com/xhd2015/ai-critic/server/services"
 )
@@ -22,11 +23,12 @@ import (
 // Stable ids: the CLI and the GUI address system services by them. The sys-
 // prefix keeps them clear of the generated svc- ids.
 const (
-	WSProxyID  = "sys-ws-proxy"
-	CFProxyID  = "sys-cloudflare-proxy"
-	GoModID    = "sys-go-mod-proxy"
-	OpenClawID = "sys-openclaw"
-	HostMonID  = "sys-host-monitor"
+	WSProxyID   = "sys-ws-proxy"
+	HTTPProxyID = "sys-http-proxy"
+	CFProxyID   = "sys-cloudflare-proxy"
+	GoModID     = "sys-go-mod-proxy"
+	OpenClawID  = "sys-openclaw"
+	HostMonID   = "sys-host-monitor"
 )
 
 // Register adds every system service to m. Registration order is the order the
@@ -44,6 +46,12 @@ func Register(m *services.Manager) error {
 			Name:        "WS Proxy",
 			Description: "Mobile WebSocket proxy (Xray + Cloudflare tunnel)",
 			Controller:  wsProxyController{},
+		},
+		{
+			ID:          HTTPProxyID,
+			Name:        "HTTP Proxy",
+			Description: "Intranet forward proxy with mandatory Basic auth; supports CONNECT",
+			Controller:  httpProxyController{},
 		},
 		{
 			ID:          CFProxyID,
@@ -87,6 +95,9 @@ var (
 	_ services.SystemController   = wsProxyController{}
 	_ services.SystemLifecycle    = wsProxyController{}
 	_ services.SystemAutoStarter  = wsProxyController{}
+	_ services.SystemController   = httpProxyController{}
+	_ services.SystemLifecycle    = httpProxyController{}
+	_ services.SystemAutoStarter  = httpProxyController{}
 	_ services.SystemController   = goModController{}
 	_ services.SystemLifecycle    = goModController{}
 	_ services.SystemAutoStarter  = goModController{}
@@ -161,6 +172,46 @@ func (wsProxyController) SetSystemAutoStart(enabled bool) error {
 	}
 	cfg.AutoStart = enabled
 	return wsproxy.SaveConfig(cfg)
+}
+
+// httpProxyController wraps the in-process HTTP forward proxy.
+type httpProxyController struct{}
+
+func (httpProxyController) SystemStatus() services.SystemRuntime {
+	st := httpproxy.GetManager().Status()
+	runtime := services.SystemRuntime{
+		Running:   st.Running,
+		Port:      st.Port,
+		AutoStart: &st.AutoStart,
+	}
+	if st.Running {
+		runtime.Detail = st.Detail + " · basic auth " + st.AuthUser
+		if st.PublishErr != "" {
+			runtime.Detail += " · domain error"
+			runtime.Status = "error"
+		}
+	} else {
+		runtime.Detail = st.Detail
+	}
+	runtime.PublicURL = st.PublicURL
+	return runtime
+}
+
+func (httpProxyController) StartSystem() error {
+	return httpproxy.GetManager().Start()
+}
+
+func (httpProxyController) StopSystem() error {
+	return httpproxy.GetManager().Stop()
+}
+
+func (httpProxyController) SetSystemAutoStart(enabled bool) error {
+	cfg, err := httpproxy.LoadConfig()
+	if err != nil {
+		return err
+	}
+	cfg.AutoStart = enabled
+	return httpproxy.SaveConfig(cfg)
 }
 
 // goModController wraps the in-process GOPROXY listener.

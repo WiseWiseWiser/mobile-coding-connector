@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/skip2/go-qrcode"
 )
 
 func RegisterAPI(mux *http.ServeMux) {
@@ -17,6 +19,8 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/ws-proxy/remote-direct", handleGetRemoteDirect)
 	mux.HandleFunc("PUT /api/ws-proxy/remote-direct", handlePutRemoteDirect)
 	mux.HandleFunc("GET /api/ws-proxy/vmess-link", handleVMessLink)
+	mux.HandleFunc("GET /api/ws-proxy/qrcode", handleQRCode)
+	mux.HandleFunc("GET /api/ws-proxy/connections", handleConnections)
 	mux.HandleFunc("GET /api/ws-proxy/doctor", handleDoctor)
 	mux.HandleFunc("GET /api/ws-proxy/doctor/stream", handleDoctorStream)
 }
@@ -241,6 +245,51 @@ func handleVMessLink(w http.ResponseWriter, r *http.Request) {
 		"type":       cfg.Type,
 		"path":       cfg.Path,
 		"tls":        cfg.TLS,
+	})
+}
+
+// handleQRCode renders the current vmess:// link as a scan-able PNG for
+// Shadowrocket-style import. Same payload the CLI `ws-proxy vmess-link`
+// prints, so CLI and UI can never drift.
+func handleQRCode(w http.ResponseWriter, r *http.Request) {
+	m := GetManager()
+	if err := m.Recover(); err != nil {
+		fmt.Printf("[ws-proxy] qrcode recover: %v\n", err)
+	}
+	if !m.Status().Running {
+		writeAPIErr(w, newError(ErrNotRunning, "ws-proxy is not running"))
+		return
+	}
+	link := m.GetVMessLink()
+	if link == "" {
+		writeAPIErr(w, newError(ErrNotRunning, "ws-proxy is not running or not configured"))
+		return
+	}
+	png, err := qrcode.Encode(link, qrcode.Medium, 256)
+	if err != nil {
+		writeAPIErr(w, newError(ErrInternal, "failed to encode QR: "+err.Error()))
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(png)
+}
+
+// handleConnections reports the current session picture: established
+// connections to the xray listen port (per-stream; device attribution needs
+// the Xray stats API, not wired yet).
+func handleConnections(w http.ResponseWriter, r *http.Request) {
+	m := GetManager()
+	if err := m.Recover(); err != nil {
+		fmt.Printf("[ws-proxy] connections recover: %v\n", err)
+	}
+	st := m.Status()
+	samples, sessions := SampleConnections(st.Port)
+	writeJSON(w, map[string]interface{}{
+		"running":  st.Running,
+		"port":     st.Port,
+		"sessions": sessions,
+		"items":    samples,
 	})
 }
 

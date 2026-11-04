@@ -12,6 +12,8 @@ export interface SystemServiceCardProps {
     onRestart: () => void;
     onDisable: () => void;
     onEnable: () => void;
+    /** Opens the detail view; only proxy services provide one today. */
+    onOpen?: () => void;
 }
 
 /**
@@ -20,7 +22,7 @@ export interface SystemServiceCardProps {
  * removed - only started, stopped and (when the subsystem supports it) toggled
  * for boot auto-start.
  */
-export function SystemServiceCard({ service, onStart, onStop, onRestart, onDisable, onEnable }: SystemServiceCardProps) {
+export function SystemServiceCard({ service, onStart, onStop, onRestart, onDisable, onEnable, onOpen }: SystemServiceCardProps) {
     const [showLogs, setShowLogs] = useState(false);
     const [logLines, setLogLines] = useState<{ text: string; error?: boolean }[]>([]);
     const [streaming, setStreaming] = useState(false);
@@ -72,13 +74,23 @@ export function SystemServiceCard({ service, onStart, onStop, onRestart, onDisab
         <div className={`mcc-port-card mcc-service-card mcc-service-card--system mcc-service-card--${service.status}`}>
             <div className="mcc-service-card-top">
                 <div className="mcc-service-card-title-row">
-                    <span className="mcc-port-label">{service.name}</span>
+                    <span
+                        className={`mcc-port-label${onOpen ? ' mcc-service-openable' : ''}`}
+                        onClick={onOpen}
+                        role={onOpen ? 'button' : undefined}
+                        title={onOpen ? 'Open detail view' : undefined}
+                    >
+                        {service.name}
+                    </span>
                     <div className="mcc-service-card-badges">
                         <span className="mcc-service-kind-badge">system</span>
                         {service.mocked && (
                             <span className="mcc-service-mocked-badge">mocked</span>
                         )}
                         <span className={`mcc-service-status-badge mcc-service-status-badge--${service.status}`}>{statusLabel}</span>
+                        {onOpen && (
+                            <button className="mcc-btn mcc-service-open-btn" onClick={onOpen}>Detail</button>
+                        )}
                     </div>
                 </div>
                 {service.description && (

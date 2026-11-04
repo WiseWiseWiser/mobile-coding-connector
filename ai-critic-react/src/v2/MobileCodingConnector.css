@@ -2244,3 +2244,186 @@ a.mcc-tunnel-mapping-hostname:hover {
         grid-template-columns: repeat(3, 1fr);
     }
 }
+
+/* ===== System service detail (HTTP Proxy / WS Proxy) ===== */
+.mcc-service-openable {
+    cursor: pointer;
+}
+.mcc-service-openable:hover {
+    text-decoration: underline;
+}
+.mcc-service-open-btn {
+    padding: 1px 8px;
+    font-size: 11px;
+}
+.mcc-svc-detail-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.mcc-svc-detail {
+    background: var(--mcc-bg-panel, #171a23);
+    border: 1px solid var(--mcc-border, #2a2f3d);
+    border-radius: 12px;
+    padding: 16px;
+    width: min(860px, 94vw);
+    max-height: 88vh;
+    overflow-y: auto;
+}
+.mcc-svc-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.mcc-svc-detail-header h3 {
+    margin: 0;
+    font-size: 16px;
+}
+.mcc-svc-detail-close {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: 20px;
+    cursor: pointer;
+    line-height: 1;
+}
+.mcc-svc-detail-error {
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.4);
+    color: #f87171;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12.5px;
+    margin-bottom: 10px;
+}
+.mcc-svc-detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.mcc-svc-detail-card {
+    background: var(--mcc-bg-panel2, #1d212d);
+    border: 1px solid var(--mcc-border, #2a2f3d);
+    border-radius: 10px;
+    padding: 12px;
+}
+.mcc-svc-detail-card--center {
+    text-align: center;
+}
+.mcc-svc-detail-card h4 {
+    margin: 0 0 8px;
+    font-size: 13px;
+    color: var(--mcc-dim, #8b93a7);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.mcc-kv {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--mcc-border, #2a2f3d);
+    font-size: 12.5px;
+}
+.mcc-kv:last-child {
+    border-bottom: none;
+}
+.mcc-kv > span:first-child {
+    color: var(--mcc-dim, #8b93a7);
+}
+.mcc-mono {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 11.5px;
+}
+.mcc-svc-detail-actions {
+    display: flex;
+    gap: 8px;
+    margin: 10px 0 0;
+    flex-wrap: wrap;
+}
+.mcc-btn {
+    background: var(--mcc-bg-panel, #171a23);
+    border: 1px solid var(--mcc-border, #2a2f3d);
+    color: inherit;
+    border-radius: 7px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.mcc-btn-primary {
+    border-color: #60a5fa;
+    color: #60a5fa;
+}
+.mcc-btn-danger {
+    border-color: rgba(248, 113, 113, 0.5);
+    color: #f87171;
+}
+.mcc-svc-detail-hint {
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--mcc-dim, #8b93a7);
+}
+.mcc-conn-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.mcc-conn-table th {
+    text-align: left;
+    color: var(--mcc-dim, #8b93a7);
+    font-weight: 500;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--mcc-border, #2a2f3d);
+}
+.mcc-conn-table td {
+    padding: 5px 6px;
+    border-bottom: 1px solid rgba(42, 47, 61, 0.5);
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 11.5px;
+}
+.mcc-conn-method-connect {
+    color: #a78bfa;
+    font-weight: 700;
+}
+.mcc-conn-method-plain {
+    color: #34d399;
+}
+.mcc-conn-state--established,
+.mcc-conn-state--active {
+    color: #34d399;
+}
+.mcc-conn-state--error {
+    color: #f87171;
+}
+.mcc-conn-err {
+    color: #fbbf24;
+}
+.mcc-conn-summary {
+    float: right;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--mcc-dim, #8b93a7);
+    font-size: 11.5px;
+}
+.mcc-qr-img {
+    width: 180px;
+    height: 180px;
+    border-radius: 10px;
+    background: #fff;
+    padding: 8px;
+}
+.mcc-vmess-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 8px;
+    color: var(--mcc-dim, #8b93a7);
+}

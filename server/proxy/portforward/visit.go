@@ -195,6 +195,14 @@ func (m *VisitSessionManager) StartTarget(target config.OriginTarget, provider s
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		m.beginRequest(id)
 		defer m.endRequest(id)
+		if r.Method == http.MethodConnect {
+			// Proxy-style tunneling through the hop: pipe raw bytes to the
+			// origin target instead of reverse-proxying (which cannot carry
+			// CONNECT). Used when a client treats the mapped hostname as an
+			// HTTP proxy.
+			tunnelConnect(w, r, target.Address())
+			return
+		}
 		rp.ServeHTTP(w, r)
 	})
 	srv := &http.Server{Handler: handler}

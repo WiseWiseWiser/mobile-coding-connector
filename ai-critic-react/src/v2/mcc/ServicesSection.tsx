@@ -6,6 +6,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { ServiceCard } from './ServiceCard';
 import { ServiceForm } from './ServiceForm';
 import { SystemServiceCard } from './SystemServiceCard';
+import { SystemServiceDetail } from './SystemServiceDetail';
 import { createDefaultForm, parseUpgradeSteps, parseUpgradeTimeoutInput, toFormState, type ServiceFormState } from './serviceFormState';
 import { disableMessage, enableMessage, parseEnvText } from './serviceFormat';
 
@@ -37,6 +38,7 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
     const [deleteTarget, setDeleteTarget] = useState<ServiceStatus | null>(null);
     const [disableTarget, setDisableTarget] = useState<ServiceStatus | null>(null);
     const [enableTarget, setEnableTarget] = useState<ServiceStatus | null>(null);
+    const [detailTarget, setDetailTarget] = useState<ServiceStatus | null>(null);
 
     const providerButtons = useMemo(
         () => availableProviders.filter((provider) => provider.available),
@@ -255,6 +257,9 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                         <SystemServiceCard
                             key={service.id}
                             service={service}
+                            onOpen={service.id === 'sys-http-proxy' || service.id === 'sys-ws-proxy'
+                                ? () => setDetailTarget(service)
+                                : undefined}
                             onStart={() => handleAction(() => startService(service.id))}
                             onStop={() => handleAction(() => stopService(service.id))}
                             onRestart={() => handleAction(() => restartService(service.id))}
@@ -313,6 +318,10 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                     }}
                     onClose={() => setEnableTarget(null)}
                 />
+            )}
+
+            {detailTarget && (
+                <SystemServiceDetail service={detailTarget} onClose={() => setDetailTarget(null)} />
             )}
         </section>
     );
