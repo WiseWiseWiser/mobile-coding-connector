@@ -401,4 +401,3 @@ func copyDirOverlay(srcRoot, dstRoot string) error {
 		return writeReaderFile(dest, in, info.Mode().Perm())
 	})
 }
-

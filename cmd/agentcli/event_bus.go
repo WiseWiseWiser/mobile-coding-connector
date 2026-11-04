@@ -31,21 +31,21 @@ type EventBusDialFunc func(ctx context.Context, wsURL string, header http.Header
 
 // EventBusListenOpts configures RunEventBusListen.
 type EventBusListenOpts struct {
-	Server    string
-	Token     string
-	Types     []string
-	JSON      bool
-	Replay    int
+	Server string
+	Token  string
+	Types  []string
+	JSON   bool
+	Replay int
 	// OpenTTY enables opening a local iTerm attach window on agent.tty.started
 	// and agent.tty.restarted. Default false (--open-tty flag).
 	OpenTTY bool
 	// OpenTTYSession is called once per distinct session_id when OpenTTY is set.
 	// nil → production iTerm ForceNew running `remote-agent agent-run attach <id>`.
 	OpenTTYSession func(sessionID string) error
-	DialWS    EventBusDialFunc
-	Now       func() time.Time
-	MaxEvents int
-	Context   context.Context
+	DialWS         EventBusDialFunc
+	Now            func() time.Time
+	MaxEvents      int
+	Context        context.Context
 }
 
 const (
@@ -343,7 +343,7 @@ func printEvent(stdout io.Writer, asJSON bool, nowFn func() time.Time, ev shared
 	// Human: HH:MM:SS  <type>  id=<id>  <payload>
 	meta := ""
 	if ev.ID != "" {
-		meta = colorGray("  id="+ev.ID)
+		meta = colorGray("  id=" + ev.ID)
 	}
 	line := fmt.Sprintf("%s  %s%s  %s", ts, ev.Type, meta, payload)
 	_, err := fmt.Fprintln(stdout, line)

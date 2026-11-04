@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { fetchHomeDir } from '../../api/files';
 import { deleteService, disableService, enableService, fetchServicePresets, fetchServices, isSystemService, restartService, saveService, startService, stopService, type ServiceDefinition, type ServicePreset, type ServiceStatus } from '../../api/services';
 import type { ProviderInfo } from '../../hooks/usePortForwards';
@@ -6,7 +7,6 @@ import { ConfirmModal } from './ConfirmModal';
 import { ServiceCard } from './ServiceCard';
 import { ServiceForm } from './ServiceForm';
 import { SystemServiceCard } from './SystemServiceCard';
-import { SystemServiceDetail } from './SystemServiceDetail';
 import { createDefaultForm, parseUpgradeSteps, parseUpgradeTimeoutInput, toFormState, type ServiceFormState } from './serviceFormState';
 import { disableMessage, enableMessage, parseEnvText } from './serviceFormat';
 
@@ -26,6 +26,8 @@ function serviceConfirmInfo(service: ServiceStatus): Record<string, string> {
 }
 
 export function ServicesSection({ availableProviders }: ServicesSectionProps) {
+    const navigate = useNavigate();
+    const openServicePage = (view: string) => navigate(view);
     const [homeDir, setHomeDir] = useState('');
     const [services, setServices] = useState<ServiceStatus[]>([]);
     const [presets, setPresets] = useState<ServicePreset[]>([]);
@@ -38,7 +40,6 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
     const [deleteTarget, setDeleteTarget] = useState<ServiceStatus | null>(null);
     const [disableTarget, setDisableTarget] = useState<ServiceStatus | null>(null);
     const [enableTarget, setEnableTarget] = useState<ServiceStatus | null>(null);
-    const [detailTarget, setDetailTarget] = useState<ServiceStatus | null>(null);
 
     const providerButtons = useMemo(
         () => availableProviders.filter((provider) => provider.available),
@@ -257,9 +258,11 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                         <SystemServiceCard
                             key={service.id}
                             service={service}
-                            onOpen={service.id === 'sys-http-proxy' || service.id === 'sys-ws-proxy'
-                                ? () => setDetailTarget(service)
-                                : undefined}
+                            onOpen={service.id === 'sys-http-proxy'
+                                ? () => openServicePage('http-proxy')
+                                : service.id === 'sys-ws-proxy'
+                                    ? () => openServicePage('ws-proxy')
+                                    : undefined}
                             onStart={() => handleAction(() => startService(service.id))}
                             onStop={() => handleAction(() => stopService(service.id))}
                             onRestart={() => handleAction(() => restartService(service.id))}
@@ -321,9 +324,6 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                 />
             )}
 
-            {detailTarget && (
-                <SystemServiceDetail service={detailTarget} onClose={() => setDetailTarget(null)} />
-            )}
         </section>
     );
 }

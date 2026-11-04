@@ -585,6 +585,7 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// WS proxy API (Xray + Cloudflare Tunnel for iPhone access)
 	wsproxy.RegisterAPI(mux)
+	wsproxy.RegisterInstanceAPI(mux)
 
 	// HTTP proxy API (intranet forward proxy with mandatory Basic auth)
 	httpproxy.RegisterAPI(mux)

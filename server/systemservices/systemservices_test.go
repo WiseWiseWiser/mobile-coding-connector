@@ -127,8 +127,10 @@ func TestWSProxyConfiguredReportsAutoStartAndStableURL(t *testing.T) {
 	if runtime.Running {
 		t.Fatal("ws-proxy must not report running when nothing is listening")
 	}
-	if runtime.Detail != "not running" {
-		t.Fatalf("Detail = %q, want %q", runtime.Detail, "not running")
+	// Instance mode: the aggregate line shows instance counts; an all-stopped
+	// store reports "0/N instances · not running".
+	if !strings.Contains(runtime.Detail, "not running") {
+		t.Fatalf("Detail = %q, want it to contain %q", runtime.Detail, "not running")
 	}
 
 	// The saved instance id makes the derived hostname stable across calls.

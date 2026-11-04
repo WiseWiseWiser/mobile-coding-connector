@@ -124,10 +124,30 @@ type wsProxyController struct{}
 func (wsProxyController) SystemStatus() services.SystemRuntime {
 	runtime := services.SystemRuntime{}
 
-	// LoadConfig falls back to defaults when nothing was saved, and the derived
-	// public URL then embeds a freshly generated random instance id. Acting on
-	// that would persist junk (and change the published hostname), so an
-	// unconfigured proxy exposes no auto-start switch and no public URL.
+	// Multi-instance aggregate: running/enabled counts and the domain list.
+	if instances, err := wsproxy.LoadInstances(); err == nil && len(instances) > 0 {
+		live := 0
+		enabled := 0
+		var urls []string
+		for _, st := range wsproxy.GetManager().ListInstancesWithStatus() {
+			if st.Running {
+				live++
+				urls = append(urls, st.PublicURL)
+			}
+			if st.Enabled {
+				enabled++
+			}
+		}
+		runtime.Detail = fmt.Sprintf("%d/%d instances", live, len(instances))
+		if live == 0 {
+			runtime.Detail += " · not running"
+		}
+		runtime.PublicURL = strings.Join(urls, ", ")
+		runtime.AutoStart = boolPtr(enabled > 0)
+		return runtime
+	}
+
+	// Legacy fallback (no instances store yet).
 	configured := wsproxy.ConfigExists()
 	if configured {
 		if cfg, err := wsproxy.LoadConfig(); err == nil {
@@ -157,11 +177,80 @@ func (wsProxyController) SystemStatus() services.SystemRuntime {
 }
 
 func (wsProxyController) StartSystem() error {
+	// Instance mode: start every enabled instance.
+	if instances, err := wsproxy.LoadInstances(); err == nil && len(instances) > 0 {
+		return wsproxy.GetManager().StartAllEnabled()
+	}
 	return wsproxy.GetManager().Start(false)
 }
 
 func (wsProxyController) StopSystem() error {
 	return wsproxy.GetManager().Stop()
+}
+
+// StreamSystemOperation streams a start/stop across instances: each instance
+// contributes its own lines, so partial failures are visible per instance.
+func (wsProxyController) StreamSystemOperation(w http.ResponseWriter, action string) error {
+	switch action {
+	case services.SystemActionStart:
+		instances, err := wsproxy.LoadInstances()
+		if err != nil || len(instances) == 0 {
+			return wsproxy.GetManager().StartStream(w, false)
+		}
+		sw := sse.NewWriter(w)
+		if sw == nil {
+			return fmt.Errorf("streaming unsupported")
+		}
+		anyOK := false
+		for _, inst := range instances {
+			if !inst.Enabled {
+				continue
+			}
+			sw.SendLog("starting instance " + inst.ID + "…")
+			if err := wsproxy.GetManager().StartInstance(inst.ID); err != nil {
+				sw.SendError(inst.ID + ": " + err.Error())
+				continue
+			}
+			anyOK = true
+			sw.SendLog(inst.ID + ": running")
+		}
+		if anyOK {
+			sw.SendDone(map[string]string{"status": "running", "action": action})
+		} else {
+			sw.SendDone(map[string]string{"status": "error", "action": action})
+		}
+		return nil
+	case services.SystemActionStop:
+		return wsProxyController{}.StreamStop(w)
+	case services.SystemActionRestart:
+		if err := (wsProxyController{}).StreamStop(w); err != nil {
+			return err
+		}
+		return (wsProxyController{}).StreamSystemOperation(w, services.SystemActionStart)
+	}
+	return fmt.Errorf("unsupported action %q", action)
+}
+
+// StreamStop emits stop lines for every instance.
+func (wsProxyController) StreamStop(w http.ResponseWriter) error {
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		return fmt.Errorf("streaming unsupported")
+	}
+	for _, inst := range func() []wsproxy.Instance {
+		instances, err := wsproxy.LoadInstances()
+		if err != nil {
+			return nil
+		}
+		return instances
+	}() {
+		sw.SendLog("stopping instance " + inst.ID + "…")
+		if err := wsproxy.GetManager().StopInstance(inst.ID); err != nil {
+			sw.SendError(inst.ID + ": " + err.Error())
+		}
+	}
+	sw.SendDone(map[string]string{"status": "stopped"})
+	return nil
 }
 
 func (wsProxyController) SetSystemAutoStart(enabled bool) error {
@@ -176,43 +265,6 @@ func (wsProxyController) SetSystemAutoStart(enabled bool) error {
 	}
 	cfg.AutoStart = enabled
 	return wsproxy.SaveConfig(cfg)
-}
-
-// StreamSystemOperation runs a ws-proxy action while streaming logs. start
-// delegates to the manager's own SSE start stream (xray + tunnel progress);
-// stop and restart emit compact lines around the plain calls.
-func (wsProxyController) StreamSystemOperation(w http.ResponseWriter, action string) error {
-	switch action {
-	case services.SystemActionStart:
-		return wsproxy.GetManager().StartStream(w, false)
-	case services.SystemActionStop, services.SystemActionRestart:
-		sw := sse.NewWriter(w)
-		if sw == nil {
-			return fmt.Errorf("streaming unsupported")
-		}
-		sw.SendLog("stopping ws-proxy…")
-		if err := wsproxy.GetManager().Stop(); err != nil {
-			sw.SendError("stop failed: " + err.Error())
-			sw.SendDone(map[string]string{"status": "error", "action": action})
-			return nil
-		}
-		sw.SendLog("stopped")
-		if action == services.SystemActionStop {
-			sw.SendDone(map[string]string{"status": "stopped", "action": action})
-			return nil
-		}
-		sw.SendLog("starting ws-proxy…")
-		if err := wsproxy.GetManager().Start(false); err != nil {
-			sw.SendError("start failed: " + err.Error())
-			sw.SendDone(map[string]string{"status": "error", "action": action})
-			return nil
-		}
-		status := wsproxy.GetManager().Status()
-		sw.SendLog("running: " + status.PublicURL)
-		sw.SendDone(map[string]string{"status": "running", "action": action})
-		return nil
-	}
-	return fmt.Errorf("unsupported action %q", action)
 }
 
 // httpProxyController wraps the in-process HTTP forward proxy.

@@ -6,8 +6,8 @@ import (
 
 	"golang.org/x/term"
 
-	ptyclient "github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap/client"
 	"github.com/xhd2015/ai-critic/client"
+	ptyclient "github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap/client"
 )
 
 const execHelp = `Usage: remote-agent exec <BINARY> [ARGS...]

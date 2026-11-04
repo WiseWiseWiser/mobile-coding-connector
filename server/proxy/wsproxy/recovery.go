@@ -115,11 +115,62 @@ func (m *Manager) clearPersistedRuntimeState(cfg *Config) {
 	_ = SaveConfig(cfg)
 }
 
-// Recover re-adds a missing Cloudflare ingress mapping when local xray is still healthy.
+// Recover re-adds missing Cloudflare ingress mappings when local xray is
+// still healthy. Instance-aware: every running instance gets its mapping
+// reconciled; the legacy single-instance recover stays as fallback.
 func (m *Manager) Recover() error {
+	instances, err := LoadInstances()
+	if err == nil {
+		for _, inst := range instances {
+			if inst.PublicURL == "" || inst.ListenPort <= 0 {
+				continue
+			}
+			if !subprocess.GetManager().IsRunning(xrayProcIDFor(inst.ID)) && !isXrayAlive(inst.ListenPort, inst.WSPath) {
+				continue
+			}
+			hostname := HostFromPublicURL(inst.PublicURL)
+			rt := &instanceRuntime{
+				inst:     &inst,
+				mappingD: mappingIDFor(inst.ID),
+				hostname: hostname,
+			}
+			if hasInstanceTunnelMapping(rt) {
+				continue
+			}
+			// No extension tunnel configured (yet): nothing to reconcile.
+			if unified_tunnel.GetTunnelGroupManager().GetExtensionGroup().GetConfig() == nil {
+				continue
+			}
+			fmt.Printf("[ws-proxy] Recover: re-adding mapping for %s → localhost:%d\n", hostname, inst.ListenPort)
+			if err := m.addInstanceTunnelMapping(rt); err != nil {
+				fmt.Printf("[ws-proxy] Recover failed for %s: %v\n", inst.ID, err)
+			}
+		}
+		return nil
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.recoverLocked()
+}
+
+// hasInstanceTunnelMapping checks whether the instance's hostname mapping is
+// already present on the extension tunnel group.
+func hasInstanceTunnelMapping(rt *instanceRuntime) bool {
+	if _testConfigDir != "" && _testTunnelMapped != nil {
+		if mapped, ok := _testTunnelMapped[fmt.Sprintf("%s:%d", rt.hostname, rt.port)]; ok {
+			return mapped
+		}
+	}
+	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
+	mapping, ok := tg.GetMapping(rt.mappingD)
+	if !ok {
+		return false
+	}
+	if !strings.EqualFold(mapping.Hostname, rt.hostname) {
+		return false
+	}
+	return mapping.Service == fmt.Sprintf("http://localhost:%d", rt.port)
 }
 
 func reconcileExtensionTunnelConnectors(context string) {

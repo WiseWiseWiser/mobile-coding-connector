@@ -159,3 +159,76 @@ export async function startWsProxy(): Promise<{ running: boolean; public_url?: s
 export async function stopWsProxy(): Promise<{ running: boolean }> {
     return jsonResp(await fetch('/api/ws-proxy/stop', { method: 'POST' }));
 }
+
+/* ===== WS Proxy multi-instance ===== */
+
+export type WSBackendType = 'self' | 'proxy';
+
+export interface WSProxyInstance {
+    id: string;
+    name: string;
+    backend_type: WSBackendType;
+    backend_url?: string;
+    subdomain: string;
+    hostname?: string;
+    ws_path: string;
+    uuid: string;
+    listen_port: number;
+    auto_start: boolean;
+    enabled: boolean;
+    public_url?: string;
+    legacy?: boolean;
+    running?: boolean;
+    effective_port?: number;
+    backend?: string;
+}
+
+export async function fetchWSInstances(): Promise<WSProxyInstance[]> {
+    const data = await jsonResp(await fetch('/api/ws-proxy/instances'));
+    return (data as { instances: WSProxyInstance[] }).instances ?? [];
+}
+
+export async function createWSInstance(req: {
+    name: string; backend_type: WSBackendType; backend_url?: string; subdomain: string; auto_start: boolean;
+}): Promise<WSProxyInstance> {
+    const data = await jsonResp(await fetch('/api/ws-proxy/instances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
+    }));
+    return (data as { instance: WSProxyInstance }).instance;
+}
+
+export async function updateWSInstance(id: string, patch: Partial<WSProxyInstance>): Promise<WSProxyInstance> {
+    const data = await jsonResp(await fetch(`/api/ws-proxy/instances/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+    }));
+    return (data as { instance: WSProxyInstance }).instance;
+}
+
+export async function deleteWSInstance(id: string): Promise<void> {
+    await jsonResp(await fetch(`/api/ws-proxy/instances/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+}
+
+export async function startWSInstance(id: string): Promise<WSProxyInstance> {
+    const data = await jsonResp(await fetch(`/api/ws-proxy/instances/${encodeURIComponent(id)}/start`, { method: 'POST' }));
+    return (data as { instance: WSProxyInstance }).instance;
+}
+
+export async function stopWSInstance(id: string): Promise<WSProxyInstance> {
+    const data = await jsonResp(await fetch(`/api/ws-proxy/instances/${encodeURIComponent(id)}/stop`, { method: 'POST' }));
+    return (data as { instance: WSProxyInstance }).instance;
+}
+
+export async function fetchWSInstanceQR(id: string): Promise<string> {
+    const resp = await fetch(`/api/ws-proxy/instances/${encodeURIComponent(id)}/qrcode`);
+    if (!resp.ok) throw new Error(`QR fetch failed: ${resp.status}`);
+    const blob = await resp.blob();
+    return URL.createObjectURL(blob);
+}
+
+export async function fetchWSInstanceVMess(id: string): Promise<{ vmess_link: string }> {
+    return jsonResp(await fetch(`/api/ws-proxy/instances/${encodeURIComponent(id)}/vmess-link`));
+}

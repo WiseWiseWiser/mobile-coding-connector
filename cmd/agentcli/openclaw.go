@@ -308,19 +308,19 @@ func openclawConfigGet(getClient func() (*client.Client, error), args []string) 
 
 func openclawConfigSet(getClient func() (*client.Client, error), args []string) error {
 	var (
-		enabled            bool
-		noEnabled          bool
-		gatewayPort        int
-		workspace          string
-		autoStart          bool
-		noAutoStart        bool
-		model              string
-		slackEnabled       bool
-		noSlackEnabled     bool
-		slackBotToken      string
-		slackAppToken      string
-		slackDMPolicy      string
-		slackRequireMention bool
+		enabled               bool
+		noEnabled             bool
+		gatewayPort           int
+		workspace             string
+		autoStart             bool
+		noAutoStart           bool
+		model                 string
+		slackEnabled          bool
+		noSlackEnabled        bool
+		slackBotToken         string
+		slackAppToken         string
+		slackDMPolicy         string
+		slackRequireMention   bool
 		noSlackRequireMention bool
 	)
 

@@ -14,9 +14,9 @@ func TestOpenClawConfigSetBodyIncludesSlackSecrets(t *testing.T) {
 	}
 
 	var (
-		slackEnabled   bool
-		slackBotToken  string
-		slackAppToken  string
+		slackEnabled  bool
+		slackBotToken string
+		slackAppToken string
 	)
 
 	for i := 0; i < len(args); i++ {

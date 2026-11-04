@@ -26,7 +26,7 @@ const (
 	defaultDoctorURL     = "https://www.google.com"
 	doctorRequestTimeout = 25 * time.Second
 
-	xrayReleasesURL  = "https://github.com/XTLS/Xray-core/releases"
+	xrayReleasesURL   = "https://github.com/XTLS/Xray-core/releases"
 	v2rayUReleasesURL = "https://github.com/yanue/V2rayU/releases"
 )
 
@@ -61,11 +61,11 @@ type doctorVMess struct {
 }
 
 type doctorReport struct {
-	Healthy bool          `json:"healthy"`
-	TryURL  string        `json:"try_url"`
-	Status  map[string]any  `json:"status,omitempty"`
-	VMess   *doctorVMess    `json:"vmess,omitempty"`
-	Checks  []doctorCheck   `json:"checks"`
+	Healthy bool           `json:"healthy"`
+	TryURL  string         `json:"try_url"`
+	Status  map[string]any `json:"status,omitempty"`
+	VMess   *doctorVMess   `json:"vmess,omitempty"`
+	Checks  []doctorCheck  `json:"checks"`
 }
 
 const wsproxyDoctorHelp = `Usage: remote-agent ws-proxy doctor [--try-url URL]
@@ -99,7 +99,7 @@ func wsproxyDoctor(getClient func() (*client.Client, error), args []string) erro
 		Path:   "/api/ws-proxy/doctor/stream",
 		Query:  url.Values{"try_url": {tryURL}},
 		Print:  streamcmd.Sections | streamcmd.Meta | streamcmd.ProgressChecks,
-		After:  func(done map[string]any) error {
+		After: func(done map[string]any) error {
 			return finishDoctorAfter(done, tryURL)
 		},
 	})
@@ -308,7 +308,7 @@ func clientPublicWSEndpointCheck(host, wsPath string) doctorCheck {
 	return doctorCheck{
 		ID: "public_ws_endpoint", Layer: "client",
 		Name: "public WebSocket endpoint (this machine)", Status: "fail", Detail: detail,
-		Hint:   "expected HTTP 400 from xray; HTTP 404 means Cloudflare ingress is missing",
+		Hint: "expected HTTP 400 from xray; HTTP 404 means Cloudflare ingress is missing",
 	}
 }
 

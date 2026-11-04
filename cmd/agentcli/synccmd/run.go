@@ -21,8 +21,8 @@ type RunOpts struct {
 	Name                              string
 	SkipDoctor                        bool
 	Interactive                       bool
-	Watch                             bool // -repeat watch (foreground until cancel)
-	IntervalSeconds                   int  // -repeat N when >0 (polled continuous; exclusive with Watch)
+	Watch                             bool   // -repeat watch (foreground until cancel)
+	IntervalSeconds                   int    // -repeat N when >0 (polled continuous; exclusive with Watch)
 	LocalUnisonPath                   string // empty → "unison"
 	Exec                              ExecFunc
 	Stdout, Stderr                    io.Writer

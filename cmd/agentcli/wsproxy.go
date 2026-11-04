@@ -43,6 +43,13 @@ Subcommands:
   vmess-link [--export FILE]
       Get the vmess:// link, manual config, and QR code for Shadowrocket import.
 
+  list
+      List instances (id, state, domain, backend).
+  add --name NAME --backend self|http://host:port --subdomain SUB
+      Add an instance; backend self = this server egresses directly.
+  remove --name NAME
+  istart --name NAME / istop --name NAME
+      Start/stop one instance without touching the others.
   doctor [--try-url URL]
       Diagnose server and client proxy health. Default fetch test uses
       https://www.google.com through the VMess path.
@@ -100,6 +107,16 @@ func runWSProxy(getClient func() (*client.Client, error), args []string) error {
 		return wsproxyConfigGet(getClient, rest)
 	case "vmess-link":
 		return wsproxyVMessLink(getClient, rest)
+	case "list":
+		return wsproxyInstancesList(getClient, rest)
+	case "add":
+		return wsproxyInstancesAdd(getClient, rest)
+	case "remove":
+		return wsproxyInstancesRemove(getClient, rest)
+	case "istart":
+		return wsproxyInstancesStartStop(getClient, rest, "start")
+	case "istop":
+		return wsproxyInstancesStartStop(getClient, rest, "stop")
 	case "doctor":
 		return wsproxyDoctor(getClient, rest)
 	case "sing-box":

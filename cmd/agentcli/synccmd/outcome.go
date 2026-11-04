@@ -9,8 +9,8 @@ import (
 // Sync outcomes for status display (no fake percentages).
 const (
 	OutcomeNever       = "never"
-	OutcomeSynced      = "synced"      // last run: nothing to do
-	OutcomePropagated  = "ok"          // last run: exit 0 with transfers
+	OutcomeSynced      = "synced" // last run: nothing to do
+	OutcomePropagated  = "ok"     // last run: exit 0 with transfers
 	OutcomeFailed      = "failed"
 	OutcomePropagating = "propagated" // internal alias; display as "ok"
 )

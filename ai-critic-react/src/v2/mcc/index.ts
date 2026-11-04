@@ -5,6 +5,8 @@ export type { PortForwardingViewProps } from './PortForwardingView';
 export { PortsLayout } from './PortsLayout';
 export type { PortsOutletContext } from './PortsLayout';
 export { PortListRoute } from './PortListRoute';
+export { WSProxyPage } from './WSProxyPage';
+export { HTTPProxyPage } from './HTTPProxyPage';
 export { CloudflareDiagnosticsRoute } from './CloudflareDiagnosticsRoute';
 export { PortDiagnoseRoute } from './PortDiagnoseRoute';
 export { TerminalView, TerminalManager } from './terminal';

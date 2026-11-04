@@ -6,7 +6,7 @@ import { AppLayout } from './components/layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import ScreenPage from './v2/mcc/screen/ScreenPage';
 import BrowserPage from './v2/mcc/browser/BrowserPage';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, ToolsView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, FileTransferView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, AgentEditorRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, AgentCodexWebRoute, AgentCodexSettingsRoute, PortsLayout, PortListRoute, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, FeatureListView, FeatureDetailView, CodexWebUI, CodexWebSettingsRoute, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings, CursorACPSessionSettings } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, ToolsView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, FileTransferView, ManageServerView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, AgentEditorRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, AgentCodexWebRoute, AgentCodexSettingsRoute, PortsLayout, PortListRoute, WSProxyPage, HTTPProxyPage, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, FeatureListView, FeatureDetailView, CodexWebUI, CodexWebSettingsRoute, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings, CursorACPSessionSettings } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './logs';
 import './App.css';
@@ -189,6 +189,9 @@ function App() {
                             <Route path="acp/cursor/:sessionId/settings" element={<CursorACPSessionSettings />} />
                             <Route path="service" element={<PortsLayout />}>
                                 <Route index element={<PortListRoute />} />
+                                <Route path="ws-proxy" element={<WSProxyPage />} />
+                                <Route path="ws-proxy/:instanceId" element={<WSProxyPage />} />
+                                <Route path="http-proxy" element={<HTTPProxyPage />} />
                             </Route>
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
@@ -206,6 +209,9 @@ function App() {
                         <Route path="browser" element={<BrowserPage />} />
                         <Route path="service" element={<PortsLayout />}>
                             <Route index element={<PortListRoute />} />
+                                <Route path="ws-proxy" element={<WSProxyPage />} />
+                                <Route path="ws-proxy/:instanceId" element={<WSProxyPage />} />
+                                <Route path="http-proxy" element={<HTTPProxyPage />} />
                             <Route path="diagnostics" element={<CloudflareDiagnosticsRoute />} />
                             <Route path="port-diagnose/:port" element={<PortDiagnoseRoute />} />
                         </Route>
@@ -257,6 +263,9 @@ function App() {
                             <Route path="acp/cursor/:sessionId/settings" element={<CursorACPSessionSettings />} />
                             <Route path="service" element={<PortsLayout />}>
                                 <Route index element={<PortListRoute />} />
+                                <Route path="ws-proxy" element={<WSProxyPage />} />
+                                <Route path="ws-proxy/:instanceId" element={<WSProxyPage />} />
+                                <Route path="http-proxy" element={<HTTPProxyPage />} />
                             </Route>
                         </Route>
                         <Route path="agent" element={<AgentLayout />}>
@@ -272,6 +281,9 @@ function App() {
                         <Route path="terminal" element={<TerminalPage />} />
                         <Route path="service" element={<PortsLayout />}>
                             <Route index element={<PortListRoute />} />
+                                <Route path="ws-proxy" element={<WSProxyPage />} />
+                                <Route path="ws-proxy/:instanceId" element={<WSProxyPage />} />
+                                <Route path="http-proxy" element={<HTTPProxyPage />} />
                             <Route path="diagnostics" element={<CloudflareDiagnosticsRoute />} />
                             <Route path="port-diagnose/:port" element={<PortDiagnoseRoute />} />
                         </Route>

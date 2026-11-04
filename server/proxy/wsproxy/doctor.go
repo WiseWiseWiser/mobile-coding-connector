@@ -21,10 +21,10 @@ const defaultDoctorTryURL = "https://www.google.com"
 type DoctorCheckStatus string
 
 const (
-	DoctorOK    DoctorCheckStatus = "ok"
-	DoctorWarn  DoctorCheckStatus = "warn"
-	DoctorFail  DoctorCheckStatus = "fail"
-	DoctorSkip  DoctorCheckStatus = "skip"
+	DoctorOK   DoctorCheckStatus = "ok"
+	DoctorWarn DoctorCheckStatus = "warn"
+	DoctorFail DoctorCheckStatus = "fail"
+	DoctorSkip DoctorCheckStatus = "skip"
 )
 
 type DoctorCheck struct {
@@ -37,10 +37,10 @@ type DoctorCheck struct {
 }
 
 type DoctorReport struct {
-	Healthy bool         `json:"healthy"`
-	TryURL  string       `json:"try_url"`
-	Status  *Status      `json:"status,omitempty"`
-	VMess   *VMessConfig `json:"vmess,omitempty"`
+	Healthy bool          `json:"healthy"`
+	TryURL  string        `json:"try_url"`
+	Status  *Status       `json:"status,omitempty"`
+	VMess   *VMessConfig  `json:"vmess,omitempty"`
 	Checks  []DoctorCheck `json:"checks"`
 }
 
@@ -100,10 +100,10 @@ func (m *Manager) DoctorStream(w http.ResponseWriter, tryURL string) error {
 		}
 		_ = pw.EmitProgress(doctorCheckToItem(chk))
 		_ = pw.EmitDone(map[string]any{
-			"healthy":        false,
-			"try_url":        tryURL,
-			"checks_total":   1,
-			"checks_failed":  1,
+			"healthy":       false,
+			"try_url":       tryURL,
+			"checks_total":  1,
+			"checks_failed": 1,
 		})
 		return nil
 	}
@@ -140,10 +140,10 @@ func (m *Manager) DoctorStream(w http.ResponseWriter, tryURL string) error {
 
 	healthy, failed := doctorAggregateHealth(checks)
 	done := map[string]any{
-		"healthy":        healthy,
-		"try_url":        tryURL,
-		"checks_total":   len(checks),
-		"checks_failed":  failed,
+		"healthy":       healthy,
+		"try_url":       tryURL,
+		"checks_total":  len(checks),
+		"checks_failed": failed,
 	}
 	if status != nil {
 		if raw, err := json.Marshal(status); err == nil {

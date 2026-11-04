@@ -78,8 +78,8 @@ type xrayWSSettings struct {
 }
 
 type xrayStreamSettings struct {
-	Network     string         `json:"network"`
-	WSSettings  xrayWSSettings `json:"wsSettings"`
+	Network    string         `json:"network"`
+	WSSettings xrayWSSettings `json:"wsSettings"`
 }
 
 type xrayInboundSettings struct {
@@ -147,6 +147,17 @@ func GetManager() *Manager {
 }
 
 func (m *Manager) Start(tmp bool) error {
+	// Instance mode: the permanent (non-tmp) start runs through the instance
+	// machinery; tmp keeps the legacy quick-tunnel flow, which is ephemeral
+	// and independent of the instance store.
+	if !tmp {
+		if instances, err := LoadInstances(); err == nil {
+			if def, _ := FindInstance(instances, "default"); def != nil {
+				return m.StartInstance("default")
+			}
+		}
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -691,6 +702,9 @@ func (m *Manager) startXrayProcessLocked(cfg *Config) error {
 }
 
 func (m *Manager) Stop() error {
+	// Stop is subsystem-wide: every instance goes down.
+	m.StopAllInstances()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -721,6 +735,19 @@ func (m *Manager) Stop() error {
 }
 
 func (m *Manager) Status() *Status {
+	// Instance mode: report the migrated default instance for legacy callers;
+	// the UI uses /api/ws-proxy/instances for the full picture.
+	if instances, err := LoadInstances(); err == nil {
+		if def, _ := FindInstance(instances, "default"); def != nil {
+			running := m.instanceRunning(def)
+			return &Status{
+				Running:   running,
+				PublicURL: def.PublicURL,
+				Port:      def.ListenPort,
+			}
+		}
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -739,6 +766,11 @@ func (m *Manager) Status() *Status {
 }
 
 func (m *Manager) GetVMessLink() string {
+	// Instance mode: default instance link.
+	if link, _, err := m.InstanceVMessLink("default"); err == nil {
+		return link
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -772,6 +804,11 @@ func (m *Manager) GetVMessLink() string {
 }
 
 func (m *Manager) GetVMessConfig() (*VMessConfig, error) {
+	// Instance mode: default instance config.
+	if _, cfg, err := m.InstanceVMessLink("default"); err == nil {
+		return cfg, nil
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

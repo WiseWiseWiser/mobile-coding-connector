@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
 )
 
 func TestGenerateUUID(t *testing.T) {
@@ -203,8 +202,10 @@ func TestStatusDefaults(t *testing.T) {
 	if status.Running {
 		t.Error("new manager should not be running")
 	}
-	if status.Port == 0 {
-		t.Error("status port should be non-zero (auto-assigned)")
+	// Instance mode: the port is assigned when the instance first starts and
+	// persisted on its record; an unstarted default instance reports 0.
+	if status.Port < 0 {
+		t.Error("status port must not be negative")
 	}
 	if status.PublicURL != "" {
 		t.Error("new manager should have empty URL")
