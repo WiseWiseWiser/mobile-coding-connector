@@ -66,6 +66,9 @@ type windowTab struct {
 	Active     bool   `json:"active"`
 	Capturable bool   `json:"capturable"`
 	Role       string `json:"role"`
+	// OpenerTabID names the tab that opened this one (popups opened by a page
+	// carry it); nil when Chrome does not attribute the tab.
+	OpenerTabID *int64 `json:"opener_tab_id,omitempty"`
 }
 
 func (p *windowsPayload) supportsAllWindows() bool {

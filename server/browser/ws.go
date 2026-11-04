@@ -42,6 +42,9 @@ type clientMessage struct {
 	URL       string  `json:"url"`
 	Preset    string  `json:"preset"`
 	Mode      string  `json:"mode"`
+	// Dialog answers a JS dialog on the driven tab (type "dialog").
+	DialogAccept *bool  `json:"accept,omitempty"`
+	DialogText   string `json:"prompt_text,omitempty"`
 }
 
 func (m *Manager) handleWS(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +114,7 @@ func (m *Manager) readLoop(v *viewer) {
 			m.hub.enqueueInput(InputEvent{Kind: InputKey, Key: msg.Key, Code: msg.Code, VK: msg.VK, Modifiers: msg.Modifiers})
 		case InputText:
 			m.hub.enqueueInput(InputEvent{Kind: InputText, Text: msg.Text})
-		case "navigate", "preset", "mode", "refresh", "status":
+		case "navigate", "preset", "mode", "refresh", "status", "dialog":
 			go m.handleControl(v, msg)
 		}
 	}
@@ -134,6 +137,11 @@ func (m *Manager) handleControl(v *viewer, msg clientMessage) {
 		err = m.SetMode(msg.Mode)
 	case "refresh":
 		m.hub.kick()
+	case "dialog":
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		accept := msg.DialogAccept != nil && *msg.DialogAccept
+		err = m.AnswerDialog(ctx, accept, msg.DialogText)
+		cancel()
 	}
 	if err != nil {
 		_ = v.writeJSON(map[string]any{"type": "error", "message": err.Error()})

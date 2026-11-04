@@ -47,6 +47,18 @@ type TabInfo struct {
 	Active bool   `json:"active"`
 	// Role is "session_page" for the /go tab and "user" for everything else.
 	Role string `json:"role"`
+	// Dialog is set while the tab is showing a JS dialog (alert, confirm,
+	// prompt, beforeunload). The page is suspended until it is answered.
+	Dialog TabDialog `json:"dialog,omitempty"`
+}
+
+// TabDialog describes one open JavaScript dialog on a tab.
+type TabDialog struct {
+	Open          bool   `json:"open"`
+	Type          string `json:"type,omitempty"`
+	Message       string `json:"message,omitempty"`
+	DefaultPrompt string `json:"default_prompt,omitempty"`
+	URL           string `json:"url,omitempty"`
 }
 
 func cloneTabs(in []TabInfo) []TabInfo {
@@ -71,6 +83,12 @@ type wireInfo struct {
 		URL    string `json:"url"`
 		Active bool   `json:"active"`
 		Role   string `json:"role"`
+		Dialog *struct {
+			Type          string `json:"type"`
+			Message       string `json:"message"`
+			DefaultPrompt string `json:"default_prompt"`
+			URL           string `json:"url"`
+		} `json:"dialog"`
 	} `json:"tabs"`
 }
 
@@ -116,14 +134,24 @@ func (m *Manager) fetchInfo(ctx context.Context, sessionID string) (*sessionInfo
 				role = "user"
 			}
 		}
-		info.Tabs = append(info.Tabs, TabInfo{
+		tab := TabInfo{
 			TabID:  id,
 			Index:  t.Index,
 			Title:  strings.TrimSpace(t.Title),
 			URL:    t.URL,
 			Active: t.Active,
 			Role:   role,
-		})
+		}
+		if t.Dialog != nil {
+			tab.Dialog = TabDialog{
+				Open:          true,
+				Type:          t.Dialog.Type,
+				Message:       t.Dialog.Message,
+				DefaultPrompt: t.Dialog.DefaultPrompt,
+				URL:           t.Dialog.URL,
+			}
+		}
+		info.Tabs = append(info.Tabs, tab)
 	}
 	return info, nil
 }
@@ -261,6 +289,7 @@ func (m *Manager) pollTabs(ctx context.Context) {
 			return
 		}
 		m.finishPollTabs(sessionID, info)
+		m.followPopupWindow(ctx, sessionID)
 		return
 	}
 	row, err := m.d.session(ctx, sessionID)
@@ -331,6 +360,73 @@ func (m *Manager) finishPollTabs(sessionID string, info *sessionInfo) {
 	m.mu.Unlock()
 	if changed {
 		m.broadcastStatus()
+	}
+}
+
+// followPopupWindow adopts a popup that a driven page just opened.
+//
+// OAuth buttons ("Login with SeaTalk") call sized window.open, which Chrome
+// opens as its own popup window — a surface the mirror could never see. The
+// extension now reports every window with per-tab opener attribution, so the
+// mirror can tell "a popup of MY page" from anyone else's: the popup tab's
+// opener_tab_id must name a tab of the currently driven window. Adopting the
+// popup rides the normal direct switch (capture, input, viewport follow its
+// own size); when the popup closes, the pinned-window failover returns the
+// mirror to the parent window.
+func (m *Manager) followPopupWindow(ctx context.Context, sessionID string) {
+	m.mu.Lock()
+	drivenIDs := make(map[int64]bool, len(m.tabs))
+	for _, t := range m.tabs {
+		drivenIDs[t.TabID] = true
+	}
+	m.mu.Unlock()
+
+	payload, err := m.d.windowsDirect(ctx)
+	if err != nil {
+		return
+	}
+	for i := range payload.Windows {
+		w := &payload.Windows[i]
+		if w.Type != "popup" && w.Type != "app" {
+			continue
+		}
+		ours := false
+		for _, t := range w.Tabs {
+			if t.OpenerTabID != nil && drivenIDs[*t.OpenerTabID] && t.Capturable {
+				ours = true
+				break
+			}
+		}
+		if !ours {
+			continue
+		}
+		popupID := sessionlessSessionID(w.WindowID)
+		if popupID == sessionID {
+			return // already driving this popup
+		}
+		m.mu.Lock()
+		m.sessionID = popupID
+		m.connected = false
+		m.windowID = 0
+		m.contentTabID = 0
+		m.activeTabID = 0
+		m.tabs = nil
+		m.tabsAt = time.Time{}
+		m.url = ""
+		m.viewportAt = time.Time{}
+		m.mu.Unlock()
+		if err := m.Ensure(ctx); err != nil {
+			// The popup died mid-adopt: restore the parent as current and let
+			// the normal failover path pick the window up.
+			m.mu.Lock()
+			m.sessionID = sessionID
+			m.connected = false
+			m.mu.Unlock()
+			return
+		}
+		m.hub.kick()
+		m.broadcastStatus()
+		return
 	}
 }
 
@@ -604,7 +700,10 @@ type SessionInfo struct {
 	Sessionless bool   `json:"sessionless,omitempty"`
 	// Adoptable means an explicit Attach can register this window without
 	// opening a second Chrome window.
-	Adoptable   bool          `json:"adoptable,omitempty"`
+	Adoptable bool `json:"adoptable,omitempty"`
+	// WindowType is the Chrome window kind for discovered windows: "normal",
+	// "popup", "app", "devtools". Empty for registry session rows.
+	WindowType  string        `json:"window_type,omitempty"`
 	WindowID    int64         `json:"window_id,omitempty"`
 	URL         string        `json:"url,omitempty"`
 	Preset      string        `json:"preset,omitempty"`
@@ -688,7 +787,12 @@ func (m *Manager) Sessions(ctx context.Context) SessionsResponse {
 		if payload, werr := m.d.windowsDirect(ctx); werr == nil {
 			for i := range payload.Windows {
 				w := &payload.Windows[i]
-				if w.Type != "normal" {
+				// A browser is half an operating system: popups (OAuth windows,
+				// "open in new window") belong in the rail beside normal ones,
+				// so the user can see and drive them. DevTools and other
+				// tooling windows stay perceivable in the payload but are not
+				// drivable, so they do not become rail rows.
+				if w.Type != "normal" && w.Type != "popup" && w.Type != "app" {
 					continue
 				}
 				claimed := false
@@ -727,6 +831,7 @@ func (m *Manager) Sessions(ctx context.Context) SessionsResponse {
 					Adoptable:   true,
 					Sessionless: true,
 					WindowID:    w.WindowID,
+					WindowType:  w.Type,
 					Tabs:        cloneTabs(info.Tabs),
 					ActiveTabID: activeTabID,
 				}

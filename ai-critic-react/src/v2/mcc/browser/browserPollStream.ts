@@ -244,6 +244,8 @@ function controlEndpoint(msg: ClientMessage): { path: string; body: Record<strin
             return { path: '/api/browser/mode', body: { mode: msg.mode } };
         case 'refresh':
             return { path: '/api/browser/refresh', body: {} };
+        case 'dialog':
+            return { path: '/api/browser/dialog', body: { accept: msg.accept, prompt_text: msg.prompt_text } };
         default:
             return null;
     }

@@ -698,6 +698,14 @@ func (m *Manager) ensureDirectWindow(ctx context.Context, allowOpen bool) error 
 		m.mu.Unlock()
 		return err
 	}
+	// A popup's own size is the OAuth flow's size: adopting one must not
+	// resize it to the saved preset. Mark the preset applied so ensurePreset
+	// skips this window.
+	if target.Type != "normal" {
+		m.mu.Lock()
+		m.presetApplied = true
+		m.mu.Unlock()
+	}
 	rememberSession(directID)
 	return nil
 }
@@ -1345,6 +1353,25 @@ func (m *Manager) viewportSize(ctx context.Context) (Viewport, error) {
 	return m.viewport, nil
 }
 
+// AnswerDialog responds to a JS dialog on the driven tab (alert, confirm,
+// prompt, beforeunload). The page stays suspended until it is answered, so a
+// dropped answer keeps the tab frozen — callers surface the failure.
+func (m *Manager) AnswerDialog(ctx context.Context, accept bool, promptText string) error {
+	tab := m.contentTab()
+	if tab == 0 {
+		return errNoPageTab
+	}
+	params := map[string]any{"accept": accept}
+	if promptText != "" {
+		params["prompt_text"] = promptText
+	}
+	if _, err := m.job(ctx, tab, "dialog", params, 15*time.Second); err != nil {
+		return err
+	}
+	m.hub.kick()
+	return nil
+}
+
 // Capture returns one JPEG frame of the driven tab.
 func (m *Manager) Capture(ctx context.Context) ([]byte, error) {
 	tab := m.contentTab()
@@ -1529,6 +1556,10 @@ type SessionStatus struct {
 	// ExtensionPath is where Chrome must load the unpacked extension from; its
 	// id comes from this path, so a copy elsewhere cannot attach.
 	ExtensionPath string `json:"extension_path,omitempty"`
+	// Dialog is set while the driven tab shows a JS dialog (alert, confirm,
+	// prompt, beforeunload). The page is suspended until it is answered, so
+	// the mirror must surface it instead of waiting on frames.
+	Dialog *TabDialog `json:"dialog,omitempty"`
 }
 
 // CaptureStatus describes the frame stream.
@@ -1555,6 +1586,13 @@ func (m *Manager) Snapshot() Status {
 	if sessionID == "" {
 		sessionID = SessionID
 	}
+	drivenDialog := &TabDialog{}
+	for _, t := range m.tabs {
+		if t.TabID == m.contentTabID {
+			*drivenDialog = t.Dialog
+			break
+		}
+	}
 	st := Status{
 		OK:       m.lastErr == "",
 		Preset:   m.preset,
@@ -1568,6 +1606,7 @@ func (m *Manager) Snapshot() Status {
 			ContentTabID:  m.contentTabID,
 			URL:           m.url,
 			ExtensionPath: m.extPath,
+			Dialog:        dialogOrNil(drivenDialog),
 		},
 		Tabs:        cloneTabs(m.tabs),
 		ActiveTabID: m.drivenTabLocked(),
@@ -1584,4 +1623,12 @@ func (m *Manager) Snapshot() Status {
 		st.Capture = m.hub.stats()
 	}
 	return st
+}
+
+// dialogOrNil maps a zero TabDialog to nil so the status JSON omits it.
+func dialogOrNil(d *TabDialog) *TabDialog {
+	if d == nil || !d.Open {
+		return nil
+	}
+	return d
 }

@@ -155,6 +155,7 @@ export function BrowserSheet({
         tabCount: session.id === current ? tabs.length : windowTabs(session.tabs).length,
         current: session.id === current,
         sessionless: Boolean(session.sessionless),
+        windowType: session.window_type,
     }));
     const liveCount = rows.filter((row) => row.attached).length;
     const currentRow =

@@ -3860,3 +3860,78 @@ button.bw-crumb:hover {
 .bwp-switch.is-on { background: #34c07c; }
 .bwp-switch.is-on span { left: 19px; }
 .bwp-switch:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+
+/* ---- JS dialog overlay (alert/confirm/prompt/beforeunload) ------------- */
+
+.bw-dialog {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(4, 7, 12, 0.55);
+}
+.bw-dialog-card {
+    width: min(340px, calc(100% - 32px));
+    border: 1px solid #2c3a52;
+    border-radius: 16px;
+    background: #131c2b;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.6);
+    padding: 14px 16px;
+}
+.bw-dialog-host {
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    color: #6d7a90;
+    text-transform: none;
+}
+.bw-dialog-msg {
+    margin: 8px 0 0;
+    font-size: 14px;
+    line-height: 1.45;
+    color: #e6edf7;
+    word-break: break-word;
+}
+.bw-dialog-input {
+    width: 100%;
+    margin-top: 10px;
+    padding: 9px 11px;
+    border: 1px solid #2c3a52;
+    border-radius: 10px;
+    background: #0e1521;
+    color: #e6edf7;
+    font-size: 14px;
+}
+.bw-dialog-input:focus-visible { outline: 2px solid #4d8dff; outline-offset: 1px; }
+.bw-dialog-btns {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+}
+.bw-dialog-btn {
+    padding: 8px 18px;
+    border: 1px solid #2c3a52;
+    border-radius: 10px;
+    background: #202b39;
+    color: #e6edf7;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+}
+.bw-dialog-btn.is-primary { background: #4d8dff; border-color: #4d8dff; color: #04101f; }
+.bw-dialog-btn:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+
+/* Rail badge for popup / app window rows */
+.bw-wtype {
+    flex: none;
+    padding: 2px 7px;
+    border: 1px solid #4d8dff;
+    border-radius: 999px;
+    color: #4d8dff;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+}

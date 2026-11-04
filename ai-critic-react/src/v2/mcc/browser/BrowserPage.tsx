@@ -11,6 +11,7 @@ import { BrowserPhoneView } from './BrowserPhoneView';
 import { BrowserHelp } from './BrowserHelp';
 import { BrowserTabCloseDialog } from './BrowserTabCloseDialog';
 import { BrowserOffline } from './BrowserOffline';
+import { BrowserDialogCard } from './BrowserDialogCard';
 import { useBrowserStartup } from './useBrowserStartup';
 import { useBrowserTabClose } from './useBrowserTabClose';
 import { BrowserOpenPalette } from './BrowserOpenPalette';
@@ -307,6 +308,10 @@ export default function BrowserPage() {
               ? 'CTRL · tap to click, drag to scroll, hold to drag'
               : 'CTRL · shot mode: about one frame per second';
 
+    // A JS dialog suspends the driven page: surface it instead of waiting.
+    const dialog = status?.session.dialog ?? null;
+    const answerDialog = (accept: boolean, text?: string) => send({ type: 'dialog', accept, prompt_text: text });
+
     const stage = (
         <div className={`bw-stage${dragging ? ' is-dragging' : ''}`} ref={stageRefCb}>
             <img
@@ -328,6 +333,7 @@ export default function BrowserPage() {
                     onFit={zoom.reset}
                 />
             )}
+            {dialog && <BrowserDialogCard dialog={dialog} onAnswer={answerDialog} />}
             {connection !== 'open' && (
                 <div className="bw-overlay">
                     <span>{connection === 'connecting' ? 'Connecting…' : 'Reconnecting…'}</span>

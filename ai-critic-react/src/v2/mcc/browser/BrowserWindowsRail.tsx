@@ -119,9 +119,10 @@ export function BrowserWindowsRail(props: BrowserWindowsRailProps) {
                             const closeReason = row.attached === false
                                 ? 'No connected Chrome window'
                                 : blocker || (closeTargetFor(row) ? '' : 'Window cannot be addressed');
+                            const kind = row.windowType && row.windowType !== 'normal' ? ` · ${row.windowType}` : '';
                             const meta = row.attached === false
                                 ? `${row.sessionId ?? 'session'} · disconnected`
-                                : `${row.sessionId ?? 'window'} · ${row.current ? 'focused' : 'background'}`;
+                                : `${row.sessionId ?? 'window'}${kind} · ${row.current ? 'focused' : 'background'}`;
                             return (
                                 <div key={row.key} className={`bwp-wrowgroup${row.key === selectedKey ? ' is-sel' : ''}`}>
                                     <div className="bwp-wrow">

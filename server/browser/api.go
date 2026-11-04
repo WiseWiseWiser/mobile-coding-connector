@@ -26,6 +26,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/browser/tab", m.handleTab)
 	mux.HandleFunc("/api/browser/frame", m.handleFrame)
 	mux.HandleFunc("/api/browser/input", m.handleInput)
+	mux.HandleFunc("/api/browser/dialog", m.handleDialogAnswer)
 	mux.HandleFunc("/api/browser/ws", m.handleWS)
 }
 
@@ -138,6 +139,29 @@ func (m *Manager) handleSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleDialogAnswer answers a JS dialog on the driven tab. Poll-mode clients
+// have no WebSocket, so the overlay posts here.
+func (m *Manager) handleDialogAnswer(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Accept     *bool  `json:"accept"`
+		PromptText string `json:"prompt_text"`
+	}
+	if !decodeBody(w, r, &body) {
+		return
+	}
+	if body.Accept == nil {
+		writeError(w, http.StatusBadRequest, "accept is required")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	if err := m.AnswerDialog(ctx, *body.Accept, body.PromptText); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, m.Snapshot())
 }
 
 // handleSession switches the current session. {"new":true} mints a fresh one and

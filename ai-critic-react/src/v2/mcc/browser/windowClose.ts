@@ -9,6 +9,8 @@ export interface WindowRow {
     /** False for the remembered session when no live Chrome window is known. */
     attached?: boolean;
     sessionless: boolean;
+    /** Chrome window kind for discovered windows: "normal", "popup", "app". */
+    windowType?: string;
 }
 
 export type CloseTarget = { window_id: number } | { session_id: string };

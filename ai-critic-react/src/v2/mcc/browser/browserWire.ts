@@ -20,6 +20,17 @@ export interface BrowserTab {
     active: boolean;
     /** "session_page" for the /go tab, "user" for everything else. */
     role: string;
+    /** Set while the tab shows a JS dialog (alert/confirm/prompt/beforeunload). */
+    dialog?: JsDialog;
+}
+
+/** A JavaScript dialog suspends its page until it is answered. */
+export interface JsDialog {
+    open: boolean;
+    type?: 'alert' | 'confirm' | 'prompt' | 'beforeunload' | string;
+    message?: string;
+    default_prompt?: string;
+    url?: string;
 }
 
 export interface DaemonStatus {
@@ -44,6 +55,8 @@ export interface SessionInfo {
     sessionless?: boolean;
     /** A sessionless window can be adopted by opening a /go page in it. */
     adoptable?: boolean;
+    /** Chrome window kind for discovered windows: "normal", "popup", "app". */
+    window_type?: string;
     window_id?: number;
     url?: string;
     preset?: string;
@@ -106,6 +119,8 @@ export interface BrowserStatus {
       content_tab_id?: number;
       url?: string;
       extension_path?: string;
+      /** The driven tab is showing a JS dialog; the page waits for an answer. */
+      dialog?: JsDialog;
     };
     capture: { active: boolean; viewers: number; fps: number; frames: number; last_ms: number; last_size: number };
     preset: string;
@@ -140,4 +155,7 @@ export interface ClientMessage {
     url?: string;
     preset?: string;
     mode?: BrowserMode;
+    /** Answer a JS dialog: accept=true presses OK, false presses Cancel. */
+    accept?: boolean;
+    prompt_text?: string;
 }

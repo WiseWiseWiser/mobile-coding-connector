@@ -86,13 +86,16 @@ func (m *Manager) CloseWindow(ctx context.Context, windowID int64, sessionID str
 	if err != nil {
 		return nil, err
 	}
-	normal := 0
+	// Drivable windows: normal plus the popup/app windows the rail now lists.
+	// DevTools and tooling windows do not count — they are not rail rows.
+	drivable := 0
 	for i := range payload.Windows {
-		if payload.Windows[i].Type == "" || payload.Windows[i].Type == "normal" {
-			normal++
+		switch payload.Windows[i].Type {
+		case "", "normal", "popup", "app":
+			drivable++
 		}
 	}
-	if normal <= 1 {
+	if drivable <= 1 {
 		return nil, errWindowCloseLast
 	}
 
