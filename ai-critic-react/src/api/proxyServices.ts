@@ -118,3 +118,44 @@ export async function fetchWsProxyQR(): Promise<string> {
     const blob = await resp.blob();
     return URL.createObjectURL(blob);
 }
+
+/* ===== WS Proxy status/config (detail view) ===== */
+
+export interface WsProxyStatus {
+    running: boolean;
+    public_url?: string;
+    port?: number;
+    is_tmp?: boolean;
+}
+
+export interface WsProxyConfig {
+    upstream_proxy: string;
+    listen_port?: number;
+    ws_path?: string;
+    subdomain?: string;
+    auto_start?: boolean;
+}
+
+export async function fetchWsProxyStatus(): Promise<WsProxyStatus> {
+    return jsonResp(await fetch('/api/ws-proxy/status'));
+}
+
+export async function fetchWsProxyConfig(): Promise<WsProxyConfig> {
+    return jsonResp(await fetch('/api/ws-proxy/config'));
+}
+
+export async function putWsProxyConfig(patch: Partial<WsProxyConfig>): Promise<WsProxyConfig> {
+    return jsonResp(await fetch('/api/ws-proxy/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+    }));
+}
+
+export async function startWsProxy(): Promise<{ running: boolean; public_url?: string }> {
+    return jsonResp(await fetch('/api/ws-proxy/start', { method: 'POST' }));
+}
+
+export async function stopWsProxy(): Promise<{ running: boolean }> {
+    return jsonResp(await fetch('/api/ws-proxy/stop', { method: 'POST' }));
+}

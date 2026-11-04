@@ -9,9 +9,11 @@ package systemservices
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
 	"github.com/xhd2015/ai-critic/server/gomod"
 	"github.com/xhd2015/ai-critic/server/hostmon"
 	"github.com/xhd2015/ai-critic/server/openclaw"
@@ -92,24 +94,26 @@ func Register(m *services.Manager) error {
 // Every controller must satisfy the services contract; the auto-start half is
 // asserted too because each subsystem exposes its own switch.
 var (
-	_ services.SystemController   = wsProxyController{}
-	_ services.SystemLifecycle    = wsProxyController{}
-	_ services.SystemAutoStarter  = wsProxyController{}
-	_ services.SystemController   = httpProxyController{}
-	_ services.SystemLifecycle    = httpProxyController{}
-	_ services.SystemAutoStarter  = httpProxyController{}
-	_ services.SystemController   = goModController{}
-	_ services.SystemLifecycle    = goModController{}
-	_ services.SystemAutoStarter  = goModController{}
-	_ services.SystemController   = openClawController{}
-	_ services.SystemLifecycle    = openClawController{}
-	_ services.SystemAutoStarter  = openClawController{}
-	_ services.SystemController   = hostMonController{}
-	_ services.SystemLifecycle    = hostMonController{}
-	_ services.SystemAutoStarter  = hostMonController{}
-	_ services.SystemController   = &cloudFlareProxyController{}
-	_ services.SystemRestarter    = &cloudFlareProxyController{}
-	_ services.SystemHostProvider = &cloudFlareProxyController{}
+	_ services.SystemController        = wsProxyController{}
+	_ services.SystemLifecycle         = wsProxyController{}
+	_ services.SystemAutoStarter       = wsProxyController{}
+	_ services.SystemOperationStreamer = wsProxyController{}
+	_ services.SystemController        = httpProxyController{}
+	_ services.SystemLifecycle         = httpProxyController{}
+	_ services.SystemAutoStarter       = httpProxyController{}
+	_ services.SystemOperationStreamer = httpProxyController{}
+	_ services.SystemController        = goModController{}
+	_ services.SystemLifecycle         = goModController{}
+	_ services.SystemAutoStarter       = goModController{}
+	_ services.SystemController        = openClawController{}
+	_ services.SystemLifecycle         = openClawController{}
+	_ services.SystemAutoStarter       = openClawController{}
+	_ services.SystemController        = hostMonController{}
+	_ services.SystemLifecycle         = hostMonController{}
+	_ services.SystemAutoStarter       = hostMonController{}
+	_ services.SystemController        = &cloudFlareProxyController{}
+	_ services.SystemRestarter         = &cloudFlareProxyController{}
+	_ services.SystemHostProvider      = &cloudFlareProxyController{}
 )
 
 func boolPtr(v bool) *bool { return &v }
@@ -174,6 +178,43 @@ func (wsProxyController) SetSystemAutoStart(enabled bool) error {
 	return wsproxy.SaveConfig(cfg)
 }
 
+// StreamSystemOperation runs a ws-proxy action while streaming logs. start
+// delegates to the manager's own SSE start stream (xray + tunnel progress);
+// stop and restart emit compact lines around the plain calls.
+func (wsProxyController) StreamSystemOperation(w http.ResponseWriter, action string) error {
+	switch action {
+	case services.SystemActionStart:
+		return wsproxy.GetManager().StartStream(w, false)
+	case services.SystemActionStop, services.SystemActionRestart:
+		sw := sse.NewWriter(w)
+		if sw == nil {
+			return fmt.Errorf("streaming unsupported")
+		}
+		sw.SendLog("stopping ws-proxy…")
+		if err := wsproxy.GetManager().Stop(); err != nil {
+			sw.SendError("stop failed: " + err.Error())
+			sw.SendDone(map[string]string{"status": "error", "action": action})
+			return nil
+		}
+		sw.SendLog("stopped")
+		if action == services.SystemActionStop {
+			sw.SendDone(map[string]string{"status": "stopped", "action": action})
+			return nil
+		}
+		sw.SendLog("starting ws-proxy…")
+		if err := wsproxy.GetManager().Start(false); err != nil {
+			sw.SendError("start failed: " + err.Error())
+			sw.SendDone(map[string]string{"status": "error", "action": action})
+			return nil
+		}
+		status := wsproxy.GetManager().Status()
+		sw.SendLog("running: " + status.PublicURL)
+		sw.SendDone(map[string]string{"status": "running", "action": action})
+		return nil
+	}
+	return fmt.Errorf("unsupported action %q", action)
+}
+
 // httpProxyController wraps the in-process HTTP forward proxy.
 type httpProxyController struct{}
 
@@ -183,6 +224,7 @@ func (httpProxyController) SystemStatus() services.SystemRuntime {
 		Running:   st.Running,
 		Port:      st.Port,
 		AutoStart: &st.AutoStart,
+		LogPath:   httpproxy.LogPath(),
 	}
 	if st.Running {
 		runtime.Detail = st.Detail + " · basic auth " + st.AuthUser
@@ -212,6 +254,65 @@ func (httpProxyController) SetSystemAutoStart(enabled bool) error {
 	}
 	cfg.AutoStart = enabled
 	return httpproxy.SaveConfig(cfg)
+}
+
+// StreamSystemOperation runs an http-proxy action with live SSE lines. The
+// operations are fast, so the stream emits the steps and the final status.
+func (httpProxyController) StreamSystemOperation(w http.ResponseWriter, action string) error {
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		return fmt.Errorf("streaming unsupported")
+	}
+	m := httpproxy.GetManager()
+	switch action {
+	case services.SystemActionStart:
+		sw.SendLog("starting http proxy…")
+		if err := m.Start(); err != nil {
+			// The dominant failure ("no password configured") is the same
+			// message the card's state line hints at.
+			sw.SendError(err.Error())
+			sw.SendDone(map[string]string{"status": "error", "action": action})
+			return nil
+		}
+		st := m.Status()
+		sw.SendLog(fmt.Sprintf("listener up: %s:%d", "0.0.0.0", st.Port))
+		if st.PublishErr != "" {
+			sw.SendLog("domain publish failed: " + st.PublishErr)
+		} else if st.Domain != "" {
+			sw.SendLog("domain published: " + st.Domain)
+		} else {
+			sw.SendLog("no domain configured — LAN/direct only")
+		}
+		sw.SendLog("basic auth user: " + st.AuthUser)
+		sw.SendDone(map[string]string{"status": "running", "action": action, "port": strconv.Itoa(st.Port)})
+	case services.SystemActionStop:
+		sw.SendLog("stopping http proxy…")
+		if err := m.Stop(); err != nil {
+			sw.SendError("stop failed: " + err.Error())
+			sw.SendDone(map[string]string{"status": "error", "action": action})
+			return nil
+		}
+		sw.SendLog("stopped")
+		sw.SendDone(map[string]string{"status": "stopped", "action": action})
+	case services.SystemActionRestart:
+		sw.SendLog("restarting http proxy…")
+		if err := m.Stop(); err != nil {
+			sw.SendError("stop failed: " + err.Error())
+			sw.SendDone(map[string]string{"status": "error", "action": action})
+			return nil
+		}
+		if err := m.Start(); err != nil {
+			sw.SendError("start failed: " + err.Error())
+			sw.SendDone(map[string]string{"status": "error", "action": action})
+			return nil
+		}
+		st := m.Status()
+		sw.SendLog(fmt.Sprintf("listener up: %s:%d", "0.0.0.0", st.Port))
+		sw.SendDone(map[string]string{"status": "running", "action": action, "port": strconv.Itoa(st.Port)})
+	default:
+		return fmt.Errorf("unsupported action %q", action)
+	}
+	return nil
 }
 
 // goModController wraps the in-process GOPROXY listener.

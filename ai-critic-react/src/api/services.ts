@@ -60,6 +60,13 @@ export interface ServiceStatus {
     hosts?: SystemHostStatus[];
     /** Actions a system service supports ("start", "stop", "restart"). */
     actions?: string[];
+    /** System services only: start/stop/restart can run through the SSE operation stream. */
+    operationStream?: boolean;
+}
+
+/** Streams a system service operation (start/stop/restart) with live logs. */
+export function systemOperationStreamURL(id: string, action: 'start' | 'stop' | 'restart'): string {
+    return `/api/services/system/stream?id=${encodeURIComponent(id)}&action=${encodeURIComponent(action)}`;
 }
 
 export interface SystemHostStatus {

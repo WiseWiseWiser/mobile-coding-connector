@@ -144,6 +144,9 @@ type ServiceStatus struct {
 	// Actions lists the actions a system service supports ("start", "stop",
 	// "restart"). Empty for user services, which always offer the full set.
 	Actions []string `json:"actions,omitempty"`
+	// OperationStream marks a system service whose start/stop/restart can run
+	// through /api/services/system/stream with live logs.
+	OperationStream bool `json:"operationStream,omitempty"`
 }
 
 type ServiceActionResponse struct {
@@ -390,6 +393,7 @@ func RegisterAPIWithManager(mux *http.ServeMux, m *Manager) {
 	mux.HandleFunc("/api/services/upgrade/stream", func(w http.ResponseWriter, r *http.Request) {
 		handleUpgradeServiceStreamWith(m, w, r)
 	})
+	registerSystemStreamAPI(mux, m)
 }
 
 func StartHealthCheck() {

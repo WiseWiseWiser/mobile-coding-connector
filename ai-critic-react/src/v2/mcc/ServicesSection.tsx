@@ -265,6 +265,7 @@ export function ServicesSection({ availableProviders }: ServicesSectionProps) {
                             onRestart={() => handleAction(() => restartService(service.id))}
                             onDisable={() => setDisableTarget(service)}
                             onEnable={() => setEnableTarget(service)}
+                            onRefresh={() => { void refreshServices(); }}
                         />
                     ))}
                     {!loading && systemServices.length === 0 && (

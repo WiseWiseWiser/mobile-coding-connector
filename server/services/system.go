@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -124,6 +125,13 @@ func systemActions(ctrl SystemController) []string {
 	return actions
 }
 
+// supportsOperationStream reports whether the card can run an action through
+// the SSE operation stream instead of the plain POST endpoints.
+func supportsOperationStream(ctrl SystemController) bool {
+	_, ok := ctrl.(SystemOperationStreamer)
+	return ok
+}
+
 func systemSupportsAction(ctrl SystemController, action string) bool {
 	for _, supported := range systemActions(ctrl) {
 		if supported == action {
@@ -156,6 +164,14 @@ func systemActionHint(action string) string {
 // enable/disable action.
 type SystemAutoStarter interface {
 	SetSystemAutoStart(enabled bool) error
+}
+
+// SystemOperationStreamer is implemented by controllers that can run a
+// start/stop/restart operation while streaming its logs over an SSE response.
+// The stream endpoint dispatches to it before falling back to the runtime's
+// LogPath file tail.
+type SystemOperationStreamer interface {
+	StreamSystemOperation(w http.ResponseWriter, action string) error
 }
 
 // SystemService is one server-owned service in a Manager's registry.
@@ -270,6 +286,7 @@ func (m *Manager) buildSystemStatusListLocked() []ServiceStatus {
 			Edge:            runtime.Edge,
 			Hosts:           runtime.Hosts,
 			Actions:         systemActions(svc.Controller),
+			OperationStream: supportsOperationStream(svc.Controller),
 		})
 	}
 	return result

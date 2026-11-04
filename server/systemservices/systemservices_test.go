@@ -22,11 +22,11 @@ func TestRegisterAddsEverySystemServiceOnce(t *testing.T) {
 	}
 
 	registered := m.SystemServices()
-	if len(registered) != 5 {
-		t.Fatalf("len(SystemServices()) = %d, want 5: %#v", len(registered), registered)
+	if len(registered) != 6 {
+		t.Fatalf("len(SystemServices()) = %d, want 6: %#v", len(registered), registered)
 	}
 
-	want := []string{WSProxyID, CFProxyID, GoModID, OpenClawID, HostMonID}
+	want := []string{WSProxyID, HTTPProxyID, CFProxyID, GoModID, OpenClawID, HostMonID}
 	for i, id := range want {
 		if registered[i].ID != id {
 			t.Fatalf("SystemServices()[%d].ID = %q, want %q", i, registered[i].ID, id)
@@ -54,8 +54,8 @@ func TestRegisteredSystemServicesAreListedAsSystem(t *testing.T) {
 		}
 		seen++
 	}
-	if seen != 5 {
-		t.Fatalf("listed %d system services, want 5", seen)
+	if seen != 6 {
+		t.Fatalf("listed %d system services, want 6", seen)
 	}
 }
 

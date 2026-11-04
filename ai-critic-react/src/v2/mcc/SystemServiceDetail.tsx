@@ -4,21 +4,29 @@ import {
     fetchHttpProxyConfig,
     fetchHttpProxyConnections,
     fetchHttpProxyStatus,
+    fetchWsProxyConfig,
     fetchWsProxyConnections,
     fetchWsProxyQR,
+    fetchWsProxyStatus,
     fetchWsProxyVMessLink,
+    putWsProxyConfig,
     rotateHttpProxyPassword,
     startHttpProxy,
+    startWsProxy,
     stopHttpProxy,
+    stopWsProxy,
     type HttpProxyConnections,
     type HttpProxyStatus,
     type ProxyConnInfo,
     type WsProxyConnections,
+    type WsProxyStatus,
 } from '../../api/proxyServices';
 
 export interface SystemServiceDetailProps {
     service: ServiceStatus;
     onClose: () => void;
+    /** Refresh the services list after an action changes running state. */
+    onRefreshWs?: () => void;
 }
 
 const POLL_MS = 2000;
@@ -118,7 +126,7 @@ function usePolling<T>(fn: () => Promise<T>, enabled: boolean, deps: unknown[] =
  * services: live connections for both, QR + vmess link for the WS proxy, and
  * credential management for the HTTP proxy.
  */
-export function SystemServiceDetail({ service, onClose }: SystemServiceDetailProps) {
+export function SystemServiceDetail({ service, onClose, onRefreshWs }: SystemServiceDetailProps) {
     const isHttp = service.id === 'sys-http-proxy';
     const isWs = service.id === 'sys-ws-proxy';
 
@@ -128,6 +136,9 @@ export function SystemServiceDetail({ service, onClose }: SystemServiceDetailPro
     const [actionErr, setActionErr] = useState<string | null>(null);
     const [qrUrl, setQrUrl] = useState<string | null>(null);
     const [vmessLink, setVmessLink] = useState<string | null>(null);
+    const [wsStatus, setWsStatus] = useState<WsProxyStatus | null>(null);
+    const [upstream, setUpstream] = useState('');
+    const [wsBusy, setWsBusy] = useState(false);
 
     const loadHttp = useCallback(async () => {
         const st = await fetchHttpProxyStatus();
@@ -146,6 +157,10 @@ export function SystemServiceDetail({ service, onClose }: SystemServiceDetailPro
 
     useEffect(() => {
         if (!isWs) return;
+        fetchWsProxyConfig()
+            .then((cfg) => setUpstream(cfg.upstream_proxy ?? ''))
+            .catch(() => setUpstream(''));
+        fetchWsProxyStatus().then(setWsStatus).catch(() => setWsStatus(null));
         fetchWsProxyQR()
             .then((url) => {
                 setQrUrl((prev) => {
@@ -156,6 +171,35 @@ export function SystemServiceDetail({ service, onClose }: SystemServiceDetailPro
             .catch(() => setQrUrl(null));
         fetchWsProxyVMessLink().then((r) => setVmessLink(r.vmess_link)).catch(() => setVmessLink(null));
     }, [isWs]);
+
+    const saveUpstream = async () => {
+        setActionErr(null);
+        setWsBusy(true);
+        try {
+            await putWsProxyConfig({ upstream_proxy: upstream.trim() });
+            const st = await fetchWsProxyStatus();
+            setWsStatus(st);
+        } catch (err) {
+            setActionErr(err instanceof Error ? err.message : String(err));
+        } finally {
+            setWsBusy(false);
+        }
+    };
+
+    const wsAction = async (fn: () => Promise<unknown>) => {
+        setActionErr(null);
+        setWsBusy(true);
+        try {
+            await fn();
+            const st = await fetchWsProxyStatus();
+            setWsStatus(st);
+            onRefreshWs?.();
+        } catch (err) {
+            setActionErr(err instanceof Error ? err.message : String(err));
+        } finally {
+            setWsBusy(false);
+        }
+    };
 
     const doAction = async (fn: () => Promise<unknown>) => {
         setActionErr(null);
@@ -266,6 +310,37 @@ export function SystemServiceDetail({ service, onClose }: SystemServiceDetailPro
 
                 {isWs && (
                     <>
+                        <div className="mcc-svc-detail-card" style={{ marginBottom: 12 }}>
+                            <h4>Configuration</h4>
+                            <div className="mcc-kv">
+                                <span>Status</span>
+                                <span>{wsStatus?.running ? `running · ${wsStatus.public_url ?? ''}` : 'not running'}</span>
+                            </div>
+                            <div className="mcc-kv" style={{ alignItems: 'center' }}>
+                                <span>Upstream proxy</span>
+                                <span className="mcc-svc-upstream">
+                                    <input
+                                        className="mcc-svc-input"
+                                        placeholder="http://127.0.0.1:23456"
+                                        value={upstream}
+                                        onChange={(e) => setUpstream(e.target.value)}
+                                    />
+                                    <button className="mcc-btn" onClick={saveUpstream} disabled={wsBusy}>Save</button>
+                                </span>
+                            </div>
+                            <div className="mcc-svc-detail-actions">
+                                {wsStatus?.running ? (
+                                    <button className="mcc-btn mcc-btn-danger" onClick={() => wsAction(stopWsProxy)} disabled={wsBusy}>Stop</button>
+                                ) : (
+                                    <button className="mcc-btn mcc-btn-primary" onClick={() => wsAction(startWsProxy)} disabled={wsBusy || !upstream.trim()}>
+                                        Start
+                                    </button>
+                                )}
+                                <span className="mcc-svc-detail-hint" style={{ marginTop: 0 }}>
+                                    {wsStatus?.running ? '' : 'Start 需要先保存 upstream proxy'}
+                                </span>
+                            </div>
+                        </div>
                         <div className="mcc-svc-detail-grid">
                             <div className="mcc-svc-detail-card mcc-svc-detail-card--center">
                                 <h4>Scan to import (Shadowrocket / Stash)</h4>
