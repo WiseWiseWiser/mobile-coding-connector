@@ -1,17 +1,25 @@
 package unified_tunnel
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 )
 
+// newTestDetector keeps detector logging out of the real health log.
+func newTestDetector(now func() time.Time) *slowConnectorDetector {
+	d := &slowConnectorDetector{now: now, logf: func(string, ...any) {}}
+	return d
+}
+
 func TestSlowConnectorDetectorIgnoresFastProbes(t *testing.T) {
-	d := &slowConnectorDetector{}
+	d := newTestDetector(nil)
 	for i := 0; i < slowProbeStrikes*2; i++ {
-		if d.observe(120*time.Millisecond, true) {
+		if d.observe("slow.example", 120*time.Millisecond, true) {
 			t.Fatalf("fast probe %d asked for a restart", i)
 		}
 	}
@@ -21,13 +29,13 @@ func TestSlowConnectorDetectorIgnoresFastProbes(t *testing.T) {
 }
 
 func TestSlowConnectorDetectorRestartsWithThreeConsecutiveStalls(t *testing.T) {
-	d := &slowConnectorDetector{}
+	d := newTestDetector(nil)
 	for i := 0; i < slowProbeStrikes-1; i++ {
-		if d.observe(5*time.Second, true) {
+		if d.observe("slow.example", 5*time.Second, true) {
 			t.Fatalf("stall %d restarted too early", i+1)
 		}
 	}
-	if !d.observe(5*time.Second, true) {
+	if !d.observe("slow.example", 5*time.Second, true) {
 		t.Fatalf("stall %d did not ask for a restart", slowProbeStrikes)
 	}
 	if d.strikes != 0 {
@@ -36,11 +44,11 @@ func TestSlowConnectorDetectorRestartsWithThreeConsecutiveStalls(t *testing.T) {
 }
 
 func TestSlowConnectorDetectorFastProbeResetsStrikes(t *testing.T) {
-	d := &slowConnectorDetector{}
-	slow := func() bool { return d.observe(5*time.Second, true) }
+	d := newTestDetector(nil)
+	slow := func() bool { return d.observe("slow.example", 5*time.Second, true) }
 	slow()
 	slow()
-	if d.observe(90*time.Millisecond, true) {
+	if d.observe("slow.example", 90*time.Millisecond, true) {
 		t.Fatal("fast probe restarted the tunnel")
 	}
 	slow()
@@ -50,25 +58,25 @@ func TestSlowConnectorDetectorFastProbeResetsStrikes(t *testing.T) {
 }
 
 func TestSlowConnectorDetectorUnhealthyResetsStrikes(t *testing.T) {
-	d := &slowConnectorDetector{}
-	d.observe(5*time.Second, true)
-	d.observe(5*time.Second, true)
+	d := newTestDetector(nil)
+	d.observe("slow.example", 5*time.Second, true)
+	d.observe("slow.example", 5*time.Second, true)
 	// A failed probe has its own restart path and must not count as a stall.
-	if d.observe(20*time.Second, false) {
+	if d.observe("slow.example", 20*time.Second, false) {
 		t.Fatal("unhealthy probe restarted the tunnel")
 	}
-	if d.observe(5*time.Second, true) {
+	if d.observe("slow.example", 5*time.Second, true) {
 		t.Fatal("unhealthy probe should have cleared the earlier strikes")
 	}
 }
 
 func TestSlowConnectorDetectorCooldownSuppressesRepeatedRestarts(t *testing.T) {
 	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
-	d := &slowConnectorDetector{now: func() time.Time { return now }}
+	d := newTestDetector(func() time.Time { return now })
 	stallThrice := func() bool {
-		d.observe(5*time.Second, true)
-		d.observe(5*time.Second, true)
-		return d.observe(5*time.Second, true)
+		d.observe("slow.example", 5*time.Second, true)
+		d.observe("slow.example", 5*time.Second, true)
+		return d.observe("slow.example", 5*time.Second, true)
 	}
 	if !stallThrice() {
 		t.Fatal("first degradation did not restart the tunnel")
@@ -84,8 +92,8 @@ func TestSlowConnectorDetectorCooldownSuppressesRepeatedRestarts(t *testing.T) {
 }
 
 func TestSlowConnectorDetectorThreshold(t *testing.T) {
-	d := &slowConnectorDetector{}
-	if d.observe(slowProbeThreshold-time.Millisecond, true) {
+	d := newTestDetector(nil)
+	if d.observe("slow.example", slowProbeThreshold-time.Millisecond, true) {
 		t.Fatal("probe under the threshold counted as stalled")
 	}
 	if d.strikes != 0 {
@@ -152,4 +160,23 @@ func setRestartTunnelForSlownessForTest(fn func(*UnifiedTunnelManager, string) e
 	prev := restartTunnelForSlowness
 	restartTunnelForSlowness = fn
 	return func() { restartTunnelForSlowness = prev }
+}
+
+// The restart must leave a breadcrumb: the app's stdout is not captured, so the
+// health log is the only place answering "why did the page reconnect?".
+func TestSlowConnectorDetectorLogsRestart(t *testing.T) {
+	var lines []string
+	d := &slowConnectorDetector{logf: func(format string, args ...any) {
+		lines = append(lines, fmt.Sprintf(format, args...))
+	}}
+	for i := 0; i < slowProbeStrikes; i++ {
+		d.observe("eluc-on-mac.xhd2015.xyz", 5*time.Second, true)
+	}
+	if len(lines) != slowProbeStrikes {
+		t.Fatalf("log lines = %v, want %d", lines, slowProbeStrikes)
+	}
+	last := lines[len(lines)-1]
+	if !strings.Contains(last, "restarting connector") || !strings.Contains(last, "eluc-on-mac.xhd2015.xyz") {
+		t.Fatalf("restart breadcrumb = %q", last)
+	}
 }

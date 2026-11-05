@@ -1124,7 +1124,7 @@ func (utm *UnifiedTunnelManager) checkMappingHealth(hostname string) bool {
 		fmt.Printf("[unified-tunnel] checkMappingHealth: %s status=%d healthy=%v elapsed=%v\n",
 			hostname, code, healthy, elapsed.Round(time.Millisecond))
 	}
-	if utm.slowProbes.observe(elapsed, ok && IsEdgeRegistered(code)) {
+	if utm.slowProbes.observe(hostname, elapsed, ok && IsEdgeRegistered(code)) {
 		go func() {
 			if err := restartTunnelForSlowness(utm, hostname); err != nil {
 				fmt.Printf("[unified-tunnel] slow connector restart failed: %v\n", err)
