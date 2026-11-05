@@ -254,6 +254,8 @@ func handleStageFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer projects.InvalidateGitStatus(dir)
+
 	// Run git add
 	output, err := gitrunner.Add(req.Path).Dir(dir).Run()
 	if err != nil {
@@ -282,6 +284,7 @@ func handleUnstageFile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
 		return
 	}
+	defer projects.InvalidateGitStatus(dir)
 
 	if req.Path == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "File path is required"})
@@ -315,6 +318,7 @@ func handleGitCheckout(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
 		return
 	}
+	defer projects.InvalidateGitStatus(dir)
 
 	if req.Path == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "File path is required"})
@@ -354,6 +358,7 @@ func handleGitRemove(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
 		return
 	}
+	defer projects.InvalidateGitStatus(dir)
 
 	if req.Path == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "File path is required"})
@@ -395,6 +400,7 @@ func handleGitCommit(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
 		return
 	}
+	defer projects.InvalidateGitStatus(dir)
 
 	if req.Message == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Commit message is required"})
@@ -442,6 +448,7 @@ func handleGitPush(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
 		return
 	}
+	defer projects.InvalidateGitStatus(dir)
 
 	// Check if client wants SSE streaming
 	acceptHeader := r.Header.Get("Accept")
@@ -529,6 +536,7 @@ func handleGitFetch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to resolve directory"})
 		return
 	}
+	defer projects.InvalidateGitStatus(dir)
 
 	// Check if client wants SSE streaming
 	acceptHeader := r.Header.Get("Accept")

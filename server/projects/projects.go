@@ -63,7 +63,78 @@ type GitStatusInfo struct {
 	Uncommitted   int    `json:"uncommitted"`
 }
 
+// gitStatusCacheTTL bounds how often the project list re-forks git per
+// project. The dashboard polls /api/projects continuously while several
+// sessions are open, and an uncached `git status` in a multi-GB worktree costs
+// a fork plus 2-4s of scanning, so polling alone pinned the host above load 90.
+const gitStatusCacheTTL = 60 * time.Second
+
+type gitStatusCacheEntry struct {
+	info GitStatusInfo
+	at   time.Time
+}
+
+var gitStatusCache = struct {
+	sync.Mutex
+	entries  map[string]gitStatusCacheEntry
+	inflight map[string]chan struct{}
+}{entries: map[string]gitStatusCacheEntry{}, inflight: map[string]chan struct{}{}}
+
+// getGitStatus returns the cached git status for projectDir, inspecting the
+// worktree at most once per gitStatusCacheTTL. Concurrent callers for the same
+// directory share one in-flight inspection.
 func getGitStatus(projectDir string) GitStatusInfo {
+	key := filepath.Clean(strings.TrimSpace(projectDir))
+	if key == "" || key == "." {
+		return GitStatusInfo{IsClean: true}
+	}
+
+	gitStatusCache.Lock()
+	if entry, ok := gitStatusCache.entries[key]; ok && time.Since(entry.at) < gitStatusCacheTTL {
+		gitStatusCache.Unlock()
+		return entry.info
+	}
+	if wait, ok := gitStatusCache.inflight[key]; ok {
+		gitStatusCache.Unlock()
+		<-wait
+		gitStatusCache.Lock()
+		entry, ok := gitStatusCache.entries[key]
+		gitStatusCache.Unlock()
+		if ok {
+			return entry.info
+		}
+		return GitStatusInfo{IsClean: true}
+	}
+	wait := make(chan struct{})
+	gitStatusCache.inflight[key] = wait
+	gitStatusCache.Unlock()
+
+	info := inspectGitStatusFn(key)
+
+	gitStatusCache.Lock()
+	gitStatusCache.entries[key] = gitStatusCacheEntry{info: info, at: time.Now()}
+	delete(gitStatusCache.inflight, key)
+	gitStatusCache.Unlock()
+	close(wait)
+	return info
+}
+
+// InvalidateGitStatus drops the cached status for dir so the next project list
+// reflects a commit, checkout, stage or pull immediately instead of after TTL.
+func InvalidateGitStatus(dir string) {
+	key := filepath.Clean(strings.TrimSpace(dir))
+	if key == "" || key == "." {
+		return
+	}
+	gitStatusCache.Lock()
+	defer gitStatusCache.Unlock()
+	delete(gitStatusCache.entries, key)
+}
+
+// inspectGitStatusFn is swapped by tests to count worktree inspections.
+var inspectGitStatusFn = inspectGitStatus
+
+func inspectGitStatus(projectDir string) GitStatusInfo {
 	inspect, err := git.InspectWorktree(projectDir)
 	if err != nil || inspect == nil || !inspect.IsRepo {
 		return GitStatusInfo{IsClean: true, Uncommitted: 0}

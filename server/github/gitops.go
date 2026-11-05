@@ -88,6 +88,10 @@ func runGitOp(w http.ResponseWriter, r *http.Request, gitCmd string, gitArgs ...
 		return
 	}
 
+	// Fetch/pull/push change the worktree or upstream tracking, so drop the
+	// cached project git status instead of showing it for up to a TTL.
+	defer projects.InvalidateGitStatus(project.Dir)
+
 	// Set up SSE streaming
 	sw := sse.NewWriter(w)
 	if sw == nil {
