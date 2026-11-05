@@ -123,6 +123,7 @@ func TestCheckMappingHealthRestartsStalledConnector(t *testing.T) {
 	utm := NewUnifiedTunnelManager("test")
 	utm.mappings["m1"] = &IngressMapping{ID: "m1", Hostname: "slow.example"}
 	utm.slowProbes.threshold = 20 * time.Millisecond
+	utm.slowProbes.logf = func(string, ...any) {}
 
 	for i := 0; i < slowProbeStrikes; i++ {
 		if !utm.checkMappingHealth("slow.example") {

@@ -1240,6 +1240,8 @@ func StartGlobalHealthChecks() {
 	globalHealthCheckOnce.Do(func() {
 		utm := GetUnifiedTunnelManager()
 		fmt.Printf("[unified-tunnel] StartGlobalHealthChecks: setting up health check callback\n")
+		logConnectorHealth("health watchdog armed: stall threshold=%v strikes=%d cooldown=%v",
+			slowProbeThreshold, slowProbeStrikes, slowRestartCooldown)
 
 		globalHealthCheckCancel = utm.StartHealthChecks(func(mappingID, hostname string, healthy bool, consecutiveFailures int) {
 			// Skip health checks for opencode web server mapping
