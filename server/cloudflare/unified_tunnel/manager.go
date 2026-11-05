@@ -98,11 +98,12 @@ type UnifiedTunnelManager struct {
 	paused                 bool                 // when true, health checks are paused globally
 	healthCheckPausedUntil map[string]time.Time // mappingID -> time when health check should resume
 	lastHealthProbe        map[string]healthProbe
-	rebuildTimer           *time.Timer   // debounced rebuild timer
-	rebuildDebounce        time.Duration // per-instance override; 0 uses DefaultRebuildDebounce
-	stopRequested          bool          // set by stopProcessLocked so the waiter does not respawn
-	restartAttempt         int           // unexpected-exit backoff step
-	startedAt              time.Time     // when the current process was spawned
+	slowProbes             slowConnectorDetector // restarts the connector when healthy probes stay stalled
+	rebuildTimer           *time.Timer           // debounced rebuild timer
+	rebuildDebounce        time.Duration         // per-instance override; 0 uses DefaultRebuildDebounce
+	stopRequested          bool                  // set by stopProcessLocked so the waiter does not respawn
+	restartAttempt         int                   // unexpected-exit backoff step
+	startedAt              time.Time             // when the current process was spawned
 	sleepFor               func(time.Duration)
 }
 
@@ -1111,11 +1112,24 @@ func (utm *UnifiedTunnelManager) StartHealthChecks(callback MappingHealthCallbac
 
 // checkMappingHealth checks if a mapping's hostname is reachable via HTTPS ping.
 // Cloudflare 530 (origin not registered) is treated as connecting, not a restart trigger.
+// A reachable but stalled answer restarts the connector: an aged cloudflared
+// holds requests at the edge for seconds while the origin stays fast.
 func (utm *UnifiedTunnelManager) checkMappingHealth(hostname string) bool {
 	fmt.Printf("[unified-tunnel] checkMappingHealth: checking health for hostname=%s\n", hostname)
+	start := time.Now()
 	healthy := utm.ProbeAndRecord(hostname)
-	if code, ok := utm.LastHealthProbe(hostname); ok {
-		fmt.Printf("[unified-tunnel] checkMappingHealth: %s status=%d healthy=%v\n", hostname, code, healthy)
+	elapsed := time.Since(start)
+	code, ok := utm.LastHealthProbe(hostname)
+	if ok {
+		fmt.Printf("[unified-tunnel] checkMappingHealth: %s status=%d healthy=%v elapsed=%v\n",
+			hostname, code, healthy, elapsed.Round(time.Millisecond))
+	}
+	if utm.slowProbes.observe(elapsed, ok && IsEdgeRegistered(code)) {
+		go func() {
+			if err := restartTunnelForSlowness(utm, hostname); err != nil {
+				fmt.Printf("[unified-tunnel] slow connector restart failed: %v\n", err)
+			}
+		}()
 	}
 	return healthy
 }
