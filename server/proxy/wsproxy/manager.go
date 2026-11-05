@@ -91,11 +91,26 @@ type xrayProxyServer struct {
 	Port    int    `json:"port"`
 }
 
+type xraySniffing struct {
+	Enabled      bool     `json:"enabled"`
+	DestOverride []string `json:"destOverride"`
+}
+
 type xrayInbound struct {
 	Port           int                 `json:"port"`
 	Protocol       string              `json:"protocol"`
 	Settings       xrayInboundSettings `json:"settings"`
 	StreamSettings xrayStreamSettings  `json:"streamSettings"`
+	Sniffing       *xraySniffing       `json:"sniffing,omitempty"`
+}
+
+// vmessSniffing recovers the real destination from HTTP Host / TLS SNI when
+// the client (Shadowrocket FakeIP, 198.18.0.0/15) sends a fake address.
+func vmessSniffing() *xraySniffing {
+	return &xraySniffing{
+		Enabled:      true,
+		DestOverride: []string{"http", "tls"},
+	}
 }
 
 type xrayOutbound struct {
@@ -126,7 +141,42 @@ type xrayConfig struct {
 const (
 	xrayOutboundProxy  = "proxy"
 	xrayOutboundDirect = "direct"
+	xrayOutboundDNS    = "dns-out"
 )
+
+// dnsOutbound answers client UDP/53 over VMess+WS by querying DNS on TCP.
+// Freedom UDP replies never make it back through WebSocket (Shadowrocket
+// Global Routing then fails to resolve baidu/google even though TCP works).
+func dnsOutbound() xrayOutbound {
+	return xrayOutbound{
+		Tag:      xrayOutboundDNS,
+		Protocol: "dns",
+		Settings: map[string]any{
+			"address": "1.1.1.1",
+			"port":    53,
+			"network": "tcp",
+		},
+	}
+}
+
+func dnsUDPRoute() xrayRouteRule {
+	return xrayRouteRule{
+		Type:        "field",
+		Port:        "53",
+		Network:     "udp",
+		OutboundTag: xrayOutboundDNS,
+	}
+}
+
+func withDNSHandling(cfg *xrayConfig) {
+	cfg.Outbounds = append(cfg.Outbounds, dnsOutbound())
+	rule := dnsUDPRoute()
+	if cfg.Routing == nil {
+		cfg.Routing = &xrayRouting{DomainStrategy: "AsIs", Rules: []xrayRouteRule{rule}}
+		return
+	}
+	cfg.Routing.Rules = append([]xrayRouteRule{rule}, cfg.Routing.Rules...)
+}
 
 var (
 	inst     *Manager
@@ -797,6 +847,8 @@ func (m *Manager) GetVMessLink() string {
 		"host": host,
 		"path": cfg.WSPath,
 		"tls":  "tls",
+		"sni":  host,
+		"scy":  "auto",
 	}
 
 	data, _ := json.Marshal(vmess)
@@ -851,7 +903,7 @@ func ensureXrayBinary() error {
 
 	zipPath := filepath.Join(dir, "xray.zip")
 
-	resp, err := http.Get(xrayDownloadURLAmd64)
+	resp, err := http.Get(xrayDownloadURL())
 	if err != nil {
 		return fmt.Errorf("failed to download xray: %w", err)
 	}
@@ -935,6 +987,7 @@ func generateXrayConfig(cfg *Config) error {
 						Path: cfg.WSPath,
 					},
 				},
+				Sniffing: vmessSniffing(),
 			},
 		},
 		Outbounds: []xrayOutbound{httpOutbound},
@@ -965,6 +1018,7 @@ func generateXrayConfig(cfg *Config) error {
 			Rules:          rules,
 		}
 	}
+	withDNSHandling(&xrayCfg)
 
 	if err := os.MkdirAll(xrayDir(), 0755); err != nil {
 		return fmt.Errorf("failed to create xray dir: %w", err)

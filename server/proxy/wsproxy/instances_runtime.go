@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	cloudflareSettings "github.com/xhd2015/ai-critic/server/cloudflare"
 	"github.com/xhd2015/ai-critic/server/cloudflare/unified_tunnel"
 	"github.com/xhd2015/ai-critic/server/subprocess"
 )
@@ -101,10 +102,12 @@ func generateXrayConfigFor(rt *instanceRuntime) error {
 						Path: rt.inst.WSPath,
 					},
 				},
+				Sniffing: vmessSniffing(),
 			},
 		},
 		Outbounds: []xrayOutbound{outbound},
 	}
+	withDNSHandling(&xrayCfg)
 
 	if err := os.MkdirAll(xrayDir(), 0755); err != nil {
 		return fmt.Errorf("failed to create xray dir: %w", err)
@@ -119,6 +122,20 @@ func generateXrayConfigFor(rt *instanceRuntime) error {
 // startXrayFor launches the instance's xray process; an orphan from a previous
 // server version that already serves the port is adopted instead of spawned.
 func (m *Manager) startXrayFor(rt *instanceRuntime) error {
+	err := m.startXrayOnceFor(rt)
+	if err == nil {
+		return nil
+	}
+	// A binary downloaded for another platform (or left by an older build)
+	// exec-fails forever; drop it once and re-download for this platform.
+	if strings.Contains(err.Error(), "exec format error") && os.Remove(xrayBinaryPath()) == nil {
+		fmt.Printf("[ws-proxy] removed xray binary for wrong platform; re-downloading\n")
+		return m.startXrayOnceFor(rt)
+	}
+	return err
+}
+
+func (m *Manager) startXrayOnceFor(rt *instanceRuntime) error {
 	mgr := subprocess.GetManager()
 	if mgr.IsRunning(rt.procID) {
 		return nil
@@ -155,8 +172,19 @@ func (m *Manager) startXrayFor(rt *instanceRuntime) error {
 
 // addInstanceTunnelMapping publishes hostname → localhost:port on the
 // extension tunnel group (multi-hostname capable) with a per-instance mapping.
-func (m *Manager) addInstanceTunnelMapping(rt *instanceRuntime) error {
+// The group is auto-configured when missing (find-or-create tunnel), so a
+// fresh server does not require manual tunnel setup.
+func (m *Manager) addInstanceTunnelMapping(rt *instanceRuntime, logFn func(string)) error {
+	log := func(msg string) {
+		if logFn != nil {
+			logFn(msg)
+		}
+	}
 	reconcileExtensionTunnelConnectors("ws-proxy instance")
+
+	if _, _, _, err := cloudflareSettings.EnsureGroupTunnelConfigured(unified_tunnel.GroupExtension, "", logFn); err != nil {
+		return fmt.Errorf("ensure extension tunnel: %w", err)
+	}
 
 	tg := unified_tunnel.GetTunnelGroupManager().GetExtensionGroup()
 	tgCfg := tg.GetConfig()
@@ -171,9 +199,11 @@ func (m *Manager) addInstanceTunnelMapping(rt *instanceRuntime) error {
 		return fmt.Errorf("extension tunnel has no tunnel name or ID")
 	}
 
+	log("DNS route: " + rt.hostname)
 	if err := unified_tunnel.CreateDNSRoute(tunnelRef, rt.hostname); err != nil {
-		fmt.Printf("[ws-proxy] Warning: DNS route error for %s: %v\n", rt.hostname, err)
+		log(fmt.Sprintf("warning: DNS route error for %s: %v", rt.hostname, err))
 	}
+	log(fmt.Sprintf("ingress: %s → localhost:%d", rt.hostname, rt.port))
 	if err := tg.AddMapping(&unified_tunnel.IngressMapping{
 		ID:       rt.mappingD,
 		Hostname: rt.hostname,
@@ -187,6 +217,19 @@ func (m *Manager) addInstanceTunnelMapping(rt *instanceRuntime) error {
 
 // StartInstance brings one instance up: xray process + tunnel mapping.
 func (m *Manager) StartInstance(id string) error {
+	return m.StartInstanceWithLog(id, nil)
+}
+
+// StartInstanceWithLog runs the same startup while emitting progress lines.
+// Slow steps (xray download on first run, tunnel find-or-create) are exactly
+// the ones users need visibility into.
+func (m *Manager) StartInstanceWithLog(id string, logFn func(string)) error {
+	log := func(msg string) {
+		if logFn != nil {
+			logFn(msg)
+		}
+		fmt.Printf("[ws-proxy] %s\n", msg)
+	}
 	instances, err := LoadInstances()
 	if err != nil {
 		return err
@@ -199,16 +242,21 @@ func (m *Manager) StartInstance(id string) error {
 	if err != nil {
 		return err
 	}
+	log(fmt.Sprintf("instance %s: backend %s, listen :%d", inst.ID, backendLabel(inst), rt.port))
 
+	log("ensure xray binary…")
 	if err := m.startXrayFor(rt); err != nil {
 		return err
 	}
-	if err := m.addInstanceTunnelMapping(rt); err != nil {
+	log(fmt.Sprintf("xray up on :%d", rt.port))
+
+	if err := m.addInstanceTunnelMapping(rt, log); err != nil {
 		return err
 	}
 
 	inst.ListenPort = rt.port
 	inst.PublicURL = "https://" + rt.hostname
+	log("published: " + inst.PublicURL)
 	return SaveInstances(instances)
 }
 
@@ -352,6 +400,8 @@ func (m *Manager) InstanceVMessLink(id string) (string, *VMessConfig, error) {
 		"host": host,
 		"path": inst.WSPath,
 		"tls":  "tls",
+		"sni":  host,
+		"scy":  "auto",
 	}
 	data, _ := json.Marshal(vmess)
 	link := "vmess://" + base64.StdEncoding.EncodeToString(data)

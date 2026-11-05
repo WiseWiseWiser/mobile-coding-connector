@@ -179,3 +179,33 @@ func TestInstanceAPIFlow(t *testing.T) {
 		t.Fatalf("delete status = %d", resp4.StatusCode)
 	}
 }
+
+func TestDeleteMigratedDefaultInstance(t *testing.T) {
+	dir := t.TempDir()
+	SetTestConfigDir(dir)
+	defer SetTestConfigDir("")
+
+	writeLegacyConfig(t, dir, &Config{
+		UUID:      "00000000-0000-4000-8000-000000000001",
+		Subdomain: "ws",
+		PublicURL: "https://ws-abc123.xhd2015.xyz",
+	})
+	if _, err := LoadInstances(); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterInstanceAPI(mux)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("DELETE", srv.URL+"/api/ws-proxy/instances/default", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delete migrated default status = %d, want 200", resp.StatusCode)
+	}
+}

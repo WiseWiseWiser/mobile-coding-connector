@@ -2548,5 +2548,76 @@ a.mcc-tunnel-mapping-hostname:hover {
 .mcc-input { background: #0b0d12; border: 1px solid var(--mcc-border, #2a2f3d); color: inherit; border-radius: 7px; padding: 6px 9px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; width: 100%; box-sizing: border-box; }
 .mcc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .mcc-warnbox { background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.35); border-radius: 8px; padding: 9px 12px; font-size: 12px; color: #fbbf24; margin-top: 12px; }
-.mcc-ws-page { max-width: 980px; }
+.mcc-ws-page { max-width: 980px; margin: 0 auto; padding: 16px; min-width: 0; overflow-x: hidden; }
+@media (max-width: 720px) {
+    .mcc-ws-page { padding: 12px; }
+    .mcc-grid2 { grid-template-columns: 1fr; }
+    .mcc-headerbar { flex-wrap: wrap; }
+}
 .mcc-vmess-link { display: flex; align-items: center; gap: 8px; justify-content: center; margin-top: 8px; color: var(--mcc-dim, #8b93a7); }
+
+/* ===== Start 步骤条 + spinner ===== */
+.mcc-steps { display: flex; gap: 5px; flex-wrap: wrap; padding: 6px 10px 0; }
+.mcc-step { font-size: 10.5px; padding: 2px 8px; border-radius: 12px; border: 1px solid var(--mcc-border, #2a2f3d); color: var(--mcc-dim, #8b93a7); }
+.mcc-step.done { border-color: rgba(52, 211, 153, 0.4); color: #34d399; }
+.mcc-step.active { border-color: rgba(251, 191, 36, 0.5); color: #fbbf24; }
+.mcc-step.fail { border-color: rgba(248, 113, 113, 0.5); color: #f87171; }
+.spin { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(96, 165, 250, 0.35); border-top-color: #60a5fa; border-radius: 50%; animation: mcc-spin 0.7s linear infinite; vertical-align: -1px; margin-right: 6px; }
+@keyframes mcc-spin { to { transform: rotate(360deg); } }
+.mcc-pill.starting { background: rgba(251, 191, 36, 0.12); color: #fbbf24; animation: mcc-pulse 1.2s ease-in-out infinite; }
+@keyframes mcc-pulse { 50% { opacity: 0.55; } }
+
+/* ===== WS Proxy Connect (QR + vmess) ===== */
+.mcc-inst-row { min-width: 0; overflow: hidden; }
+.mcc-inst-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.mcc-del-confirm {
+    margin-top: 10px;
+    background: rgba(248, 113, 113, 0.08);
+    border: 1px solid rgba(248, 113, 113, 0.35);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12.5px;
+}
+.mcc-del-confirm-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+.mcc-connect {
+    display: grid;
+    grid-template-columns: 148px minmax(0, 1fr);
+    gap: 16px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--mcc-border, #2a2f3d);
+    align-items: start;
+    min-width: 0;
+}
+.mcc-connect-qr { text-align: center; }
+.mcc-connect-fields { min-width: 0; overflow: hidden; }
+.mcc-connect .mcc-qr-img { width: 148px; height: 148px; margin: 0 auto; display: block; }
+.mcc-connect-cap { font-size: 11px; color: var(--mcc-dim, #8b93a7); margin-top: 6px; }
+.mcc-connect .mcc-kv { min-width: 0; gap: 10px; }
+.mcc-connect .mcc-kv .v { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.mcc-vmess-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    background: #0b0d12;
+    border: 1px solid var(--mcc-border, #2a2f3d);
+    border-radius: 8px;
+    padding: 8px 10px;
+    min-width: 0;
+    max-width: 100%;
+}
+.mcc-vmess-row code {
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+    color: #c9d4e8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.mcc-vmess-row .mcc-btn { flex-shrink: 0; }
+@media (max-width: 720px) {
+    .mcc-connect { grid-template-columns: 1fr; }
+    .mcc-inst-actions { width: 100%; justify-content: flex-end; }
+}

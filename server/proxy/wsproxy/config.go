@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/xhd2015/ai-critic/server/config"
 )
@@ -21,6 +22,29 @@ const (
 	portRangeLow         = 30000
 	portRangeHigh        = 50000
 )
+
+// xrayDownloadURLFor picks the Xray release for the target platform. The URL
+// was once hardcoded to Linux-amd64, which downloaded an unusable ELF binary
+// on macOS ("exec format error") — hence the per-OS/arch table. All Xray
+// release zips carry a flat `xray` entry, so the extractor is shared.
+func xrayDownloadURLFor(goos, goarch string) string {
+	switch goos {
+	case "darwin":
+		if goarch == "arm64" {
+			return "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-macos-arm64-v8a.zip"
+		}
+		return "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-macos-64.zip"
+	default: // linux
+		if goarch == "arm64" {
+			return "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-arm64-v8a.zip"
+		}
+		return xrayDownloadURLAmd64
+	}
+}
+
+func xrayDownloadURL() string {
+	return xrayDownloadURLFor(runtime.GOOS, runtime.GOARCH)
+}
 
 type Config struct {
 	UpstreamProxy string   `json:"upstream_proxy"`

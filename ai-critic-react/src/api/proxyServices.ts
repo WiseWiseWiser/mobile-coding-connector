@@ -229,6 +229,12 @@ export async function fetchWSInstanceQR(id: string): Promise<string> {
     return URL.createObjectURL(blob);
 }
 
-export async function fetchWSInstanceVMess(id: string): Promise<{ vmess_link: string }> {
+export async function fetchWSInstanceVMess(id: string): Promise<{
+    vmess_link: string;
+    host?: string;
+    uuid?: string;
+    path?: string;
+    tls?: string;
+}> {
     return jsonResp(await fetch(`/api/ws-proxy/instances/${encodeURIComponent(id)}/vmess-link`));
 }

@@ -60,8 +60,8 @@ func TestGenerateXrayConfigWithRemoteDirect(t *testing.T) {
 		t.Fatal(err)
 	}
 	outs, _ := parsed["outbounds"].([]any)
-	if len(outs) != 2 {
-		t.Fatalf("outbounds=%d want 2: %s", len(outs), data)
+	if len(outs) != 3 {
+		t.Fatalf("outbounds=%d want 3 (http + freedom + dns): %s", len(outs), data)
 	}
 	direct, _ := outs[1].(map[string]any)
 	if direct["protocol"] != "freedom" || direct["tag"] != xrayOutboundDirect {
@@ -69,10 +69,14 @@ func TestGenerateXrayConfigWithRemoteDirect(t *testing.T) {
 	}
 	routing, _ := parsed["routing"].(map[string]any)
 	rules, _ := routing["rules"].([]any)
-	if len(rules) != 3 {
-		t.Fatalf("rules=%d want 3: %v", len(rules), rules)
+	if len(rules) != 4 {
+		t.Fatalf("rules=%d want 4 (dns + 2 remote-direct + default): %v", len(rules), rules)
 	}
-	r0, _ := rules[0].(map[string]any)
+	dns, _ := rules[0].(map[string]any)
+	if dns["outboundTag"] != xrayOutboundDNS || dns["port"] != "53" {
+		t.Fatalf("rule0 want dns-out/53, got %v", dns)
+	}
+	r0, _ := rules[1].(map[string]any)
 	domains, _ := r0["domain"].([]any)
 	if len(domains) != 1 || domains[0] != "domain:db.internal" {
 		t.Fatalf("rule0 domain=%v", domains)
@@ -80,7 +84,7 @@ func TestGenerateXrayConfigWithRemoteDirect(t *testing.T) {
 	if r0["port"] != "6606" || r0["outboundTag"] != xrayOutboundDirect {
 		t.Fatalf("rule0=%v", r0)
 	}
-	r2, _ := rules[2].(map[string]any)
+	r2, _ := rules[3].(map[string]any)
 	if r2["outboundTag"] != xrayOutboundProxy {
 		t.Fatalf("catch-all=%v", r2)
 	}
@@ -106,11 +110,12 @@ func TestGenerateXrayConfigWithoutRemoteDirect(t *testing.T) {
 	}
 	var parsed map[string]any
 	_ = json.Unmarshal(data, &parsed)
-	if _, ok := parsed["routing"]; ok {
-		t.Fatalf("routing should be omitted without remote_direct: %s", data)
+	routing, _ := parsed["routing"].(map[string]any)
+	if routing == nil {
+		t.Fatalf("routing with dns-out required even without remote_direct: %s", data)
 	}
 	outs, _ := parsed["outbounds"].([]any)
-	if len(outs) != 1 {
-		t.Fatalf("outbounds=%d want 1", len(outs))
+	if len(outs) != 2 {
+		t.Fatalf("outbounds=%d want 2 (http + dns)", len(outs))
 	}
 }

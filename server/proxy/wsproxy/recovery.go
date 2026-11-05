@@ -142,7 +142,7 @@ func (m *Manager) Recover() error {
 				continue
 			}
 			fmt.Printf("[ws-proxy] Recover: re-adding mapping for %s → localhost:%d\n", hostname, inst.ListenPort)
-			if err := m.addInstanceTunnelMapping(rt); err != nil {
+			if err := m.addInstanceTunnelMapping(rt, nil); err != nil {
 				fmt.Printf("[ws-proxy] Recover failed for %s: %v\n", inst.ID, err)
 			}
 		}

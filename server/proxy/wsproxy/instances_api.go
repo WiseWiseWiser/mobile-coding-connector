@@ -3,9 +3,11 @@ package wsproxy
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/skip2/go-qrcode"
+	"github.com/xhd2015/agent-pro/agent/streaming/sse"
 )
 
 // RegisterInstanceAPI mounts the multi-instance CRUD + control endpoints.
@@ -15,9 +17,109 @@ func RegisterInstanceAPI(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/ws-proxy/instances/{id}", handleUpdateInstance)
 	mux.HandleFunc("DELETE /api/ws-proxy/instances/{id}", handleDeleteInstance)
 	mux.HandleFunc("POST /api/ws-proxy/instances/{id}/start", handleStartInstance)
+	mux.HandleFunc("POST /api/ws-proxy/instances/{id}/start/stream", handleStartInstanceStream)
 	mux.HandleFunc("POST /api/ws-proxy/instances/{id}/stop", handleStopInstance)
+	mux.HandleFunc("POST /api/ws-proxy/instances/{id}/stop/stream", handleStopInstanceStream)
 	mux.HandleFunc("GET /api/ws-proxy/instances/{id}/qrcode", handleInstanceQRCode)
 	mux.HandleFunc("GET /api/ws-proxy/instances/{id}/vmess-link", handleInstanceVMessLink)
+}
+
+// handleStartInstanceStream runs the start with live SSE progress lines:
+// ensure binary → xray → ensure tunnel → DNS/ingress → done. Status events
+// drive the UI step bar (onCustom in the frontend consumer).
+func handleStartInstanceStream(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		writeInstanceErr(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+	logFn := func(msg string) { sw.SendLog(msg) }
+	statusFn := func(step string) { sw.SendStatus(step, nil) }
+
+	instances, err := LoadInstances()
+	if err != nil {
+		sw.SendError(err.Error())
+		sw.SendDone(map[string]string{"status": "error"})
+		return
+	}
+	inst, _ := FindInstance(instances, id)
+	if inst == nil {
+		sw.SendError("instance not found: " + id)
+		sw.SendDone(map[string]string{"status": "error"})
+		return
+	}
+
+	statusFn("binary")
+	if err := GetManager().StartInstanceWithLog(id, func(msg string) {
+		logFn(msg)
+		switch {
+		case strings.Contains(msg, "ensure xray binary"):
+			statusFn("binary")
+		case strings.Contains(msg, "xray up"):
+			statusFn("xray")
+		case strings.Contains(msg, "ensure extension tunnel"), strings.Contains(msg, "DNS route"):
+			statusFn("tunnel")
+		case strings.Contains(msg, "ingress"), strings.Contains(msg, "published"):
+			statusFn("publish")
+		}
+	}); err != nil {
+		sw.SendError(err.Error())
+		hint := instanceStartHint(err)
+		if hint != "" {
+			sw.SendLog("hint: " + hint)
+		}
+		sw.SendDone(map[string]string{"status": "error"})
+		return
+	}
+
+	instances, _ = LoadInstances()
+	fresh, _ := FindInstance(instances, id)
+	publicURL := ""
+	port := 0
+	if fresh != nil {
+		publicURL = fresh.PublicURL
+		port = fresh.ListenPort
+	}
+	statusFn("done")
+	sw.SendDone(map[string]string{
+		"status":     "running",
+		"public_url": publicURL,
+		"port":       strconv.Itoa(port),
+	})
+}
+
+// handleStopInstanceStream stops the instance with a short streamed tail.
+func handleStopInstanceStream(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	sw := sse.NewWriter(w)
+	if sw == nil {
+		writeInstanceErr(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+	sw.SendLog("stopping instance " + id + "…")
+	if err := GetManager().StopInstance(id); err != nil {
+		sw.SendError(err.Error())
+		sw.SendDone(map[string]string{"status": "error"})
+		return
+	}
+	sw.SendLog("stopped")
+	sw.SendDone(map[string]string{"status": "stopped"})
+}
+
+// instanceStartHint turns common start failures into actionable guidance.
+func instanceStartHint(err error) string {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "backend 不可达"), strings.Contains(msg, "i/o timeout"):
+		return "backend unreachable — check the target HTTP proxy is running and the port is reachable"
+	case strings.Contains(msg, "extension tunnel"):
+		return "cloudflare tunnel setup failed — check cert.pem (~/.cloudflared) and cloudflared availability"
+	case strings.Contains(msg, "DNS route"):
+		return "DNS route failed — verify the zone credentials in ~/.cloudflared cover this domain"
+	default:
+		return ""
+	}
 }
 
 func writeInstanceErr(w http.ResponseWriter, code int, msg string) {
@@ -169,10 +271,6 @@ func handleDeleteInstance(w http.ResponseWriter, r *http.Request) {
 	inst, instances, err := loadInstanceFromPath(r)
 	if err != nil {
 		writeInstanceErr(w, http.StatusNotFound, err.Error())
-		return
-	}
-	if inst.Legacy {
-		writeInstanceErr(w, http.StatusBadRequest, "the migrated default instance cannot be deleted")
 		return
 	}
 	_ = GetManager().StopInstance(inst.ID)
