@@ -6,7 +6,7 @@ import { AppLayout } from './components/layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import ScreenPage from './v2/mcc/screen/ScreenPage';
 import BrowserPage from './v2/mcc/browser/BrowserPage';
-import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, ToolsView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, FileTransferView, ManageServerView, SystemView, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, AgentEditorRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, AgentCodexWebRoute, AgentCodexSettingsRoute, PortsLayout, PortListRoute, WSProxyPage, HTTPProxyPage, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, FeatureListView, FeatureDetailView, CodexWebUI, CodexWebSettingsRoute, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings, CursorACPSessionSettings } from './v2';
+import { MobileCodingConnector, LoginPage, SetupPage, V2Provider, WorkspaceListView, ToolsView, SettingsView, SSHServersView, ManageFilesView, ExportPage, ImportPage, CloudflareSettingsView, GitSettings, CloneRepoView, UploadFileView, DownloadFileView, FileTransferView, ManageServerView, SystemView, SystemProcessPage, AddFromFilesystemView, TerminalPage, AgentLayout, AgentPickerRoute, AgentEditorRoute, SessionListRoute, AgentChatRoute, AgentSettingsRoute, AgentCodexWebRoute, AgentCodexSettingsRoute, PortsLayout, PortListRoute, WSProxyPage, HTTPProxyPage, CloudflareDiagnosticsRoute, PortDiagnoseRoute, FilesLayout, FilesTabLayout, CheckpointListRoute, CreateCheckpointRoute, CheckpointDetailRoute, FileBrowserRoute, FileContentRoute, GitCommitRoute, ActionsRoute, ProjectConfigView, LogsView, ExperimentalView, FeatureListView, FeatureDetailView, CodexWebUI, CodexWebSettingsRoute, CursorWebUI, OpencodeWebUI, OpencodeWebSettingsView, CursorACPUI, CursorACPChat, CursorACPSettings, CursorACPSessionSettings } from './v2';
 import { checkAuth, AuthCheckStatuses } from './api/auth';
 import './logs';
 import './App.css';
@@ -174,6 +174,7 @@ function App() {
                             <Route path="download-file" element={<DownloadFileView />} />
                             <Route path="manage-server" element={<ManageServerView />} />
                             <Route path="system" element={<SystemView />} />
+                            <Route path="system/pid/:pid" element={<SystemProcessPage />} />
                             <Route path="file-transfer" element={<FileTransferView />} />
                             <Route path="ssh-servers" element={<SSHServersView />} />
                             <Route path="experimental" element={<ExperimentalView />} />
@@ -248,6 +249,7 @@ function App() {
                             <Route path="download-file" element={<DownloadFileView />} />
                             <Route path="manage-server" element={<ManageServerView />} />
                             <Route path="system" element={<SystemView />} />
+                            <Route path="system/pid/:pid" element={<SystemProcessPage />} />
                             <Route path="file-transfer" element={<FileTransferView />} />
                             <Route path="manage-files" element={<ManageFilesView />} />
                             <Route path="ssh-servers" element={<SSHServersView />} />

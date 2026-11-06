@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>System · PID homepage mockup</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --elev: #334155; --bd: #334155;
+    --text: #f1f5f9; --sec: #94a3b8; --mut: #64748b;
+    --blue: #60a5fa; --green: #22c55e; --yellow: #fbbf24; --red: #f87171;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: "SF Mono", Menlo, Monaco, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); background: #060b16; color: var(--text); }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 24px 18px 72px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .lead { color: var(--sec); font-size: 13px; margin: 0 0 14px; max-width: 760px; }
+  .assump { font-size: 12px; color: #cbd5e1; background: #0b1220; border: 1px dashed #334155; border-radius: 10px; padding: 10px 12px; margin-bottom: 20px; }
+  .frames { display: flex; flex-wrap: wrap; gap: 22px; }
+  .phone {
+    width: 390px; height: 844px; background: var(--bg); border-radius: 36px;
+    border: 8px solid #020617; overflow: hidden; display: flex; flex-direction: column;
+    position: relative; flex-shrink: 0; box-shadow: 0 20px 50px rgba(0,0,0,.45);
+  }
+  .caption { font-size: 12px; color: var(--mut); margin: 8px 0 0; max-width: 390px; }
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 14px; background: var(--card); border-bottom: 1px solid var(--bd); flex-shrink: 0; }
+  .proj { flex: 1; background: rgba(0,0,0,.22); border: 1px solid var(--bd); border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 600; }
+  .content { flex: 1; overflow: auto; min-height: 0; }
+  .page { padding: 12px 14px 28px; }
+  .bottomnav { display: flex; background: var(--card); border-top: 1px solid var(--bd); padding: 8px 0 10px; flex-shrink: 0; }
+  .nav-item { flex: 1; text-align: center; font-size: 10px; font-weight: 600; color: var(--mut); }
+  .nav-item.active { color: var(--blue); }
+  .page-h { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .page-h h2 { flex: 1; margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .icon-btn { width: 32px; height: 32px; border: 0; background: transparent; color: var(--text); border-radius: 8px; cursor: pointer; }
+  .alert { background: rgba(245,158,11,.14); border: 1px solid rgba(245,158,11,.35); color: #fde68a; border-radius: 10px; padding: 9px 12px; font-size: 12px; margin-bottom: 10px; }
+  .search { width: 100%; min-height: 40px; font-size: 16px; padding: 8px 12px; border-radius: 8px; border: 1px solid #475569; background: var(--elev); color: var(--text); margin-bottom: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chip { border: 1px solid var(--bd); background: transparent; color: var(--sec); font-size: 12px; font-weight: 650; padding: 5px 9px; border-radius: 999px; }
+  .chip.on { background: rgba(96,165,250,.12); color: var(--blue); border-color: rgba(96,165,250,.4); }
+  .group { background: var(--card); border: 1px solid var(--bd); border-radius: 10px; overflow: hidden; }
+  .ghead, .row {
+    display: grid; grid-template-columns: 22px 1fr auto auto 32px; gap: 8px; align-items: center;
+    padding: 10px; width: 100%; background: none; border: 0; color: inherit; text-align: left; cursor: pointer;
+  }
+  .row { border-top: 1px solid rgba(51,65,85,.45); }
+  .row:hover { background: rgba(96,165,250,.08); }
+  .n { font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .s { font-size: 11px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cpu { font-family: var(--mono); font-size: 12px; font-weight: 700; }
+  .cpu.hot { color: var(--red); } .cpu.warn { color: var(--yellow); }
+  .mem { font-family: var(--mono); font-size: 12px; color: var(--sec); }
+  .kill { width: 28px; height: 28px; border: 0; background: transparent; color: var(--sec); cursor: pointer; border-radius: 6px; }
+  .kill:hover { background: rgba(239,68,68,.14); color: var(--red); }
+  .hero { margin-bottom: 12px; }
+  .hero .name { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+  .hero .meta { font-size: 12px; color: var(--sec); margin-top: 4px; }
+  .tag { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 99px; margin-left: 6px; }
+  .tag.lock { background: #334155; color: #94a3b8; }
+  .tag.tun { background: rgba(239,68,68,.14); color: var(--red); }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .tile { background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 10px 12px; }
+  .tile .lab { font-size: 11px; color: var(--sec); font-weight: 600; }
+  .tile .val { font-size: 20px; font-weight: 700; margin-top: 2px; }
+  .tile .hint { font-size: 10px; color: var(--mut); margin-top: 2px; }
+  .section { margin: 14px 0 8px; font-size: 13px; font-weight: 700; color: #e2e8f0; display: flex; justify-content: space-between; align-items: baseline; }
+  .section span { font-size: 11px; color: var(--mut); font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .card.link { cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+  .card.link:hover { border-color: rgba(96,165,250,.45); }
+  .kv div { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 5px 0; color: var(--sec); border-top: 1px solid rgba(51,65,85,.4); }
+  .kv div:first-child { border-top: 0; }
+  .kv b { color: var(--text); font-family: var(--mono); font-weight: 600; text-align: right; word-break: break-all; }
+  .cmdbox { background: #0b1220; border-radius: 8px; padding: 10px; }
+  .cmdbox .lab { font-size: 11px; color: var(--mut); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .cmdbox pre { margin: 0; white-space: pre-wrap; word-break: break-all; font-family: var(--mono); font-size: 12px; line-height: 1.45; color: #93c5fd; }
+  .copy { border: 0; background: transparent; color: var(--blue); font-size: 12px; font-weight: 700; cursor: pointer; }
+  .acts { display: flex; gap: 8px; margin: 10px 0 4px; }
+  .btn { flex: 1; border: 0; border-radius: 8px; padding: 11px; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn.ghost { background: var(--elev); color: var(--text); }
+  .btn.danger { background: #dc2626; color: #fff; }
+  .child { display: grid; grid-template-columns: 1fr auto auto 18px; gap: 8px; align-items: center; padding: 10px 12px; border-top: 1px solid rgba(51,65,85,.4); cursor: pointer; }
+  .child:first-child { border-top: 0; }
+  .child:hover { background: rgba(255,255,255,.04); }
+  .empty { color: var(--mut); font-size: 12px; padding: 8px 0; }
+  .toast { position: absolute; left: 16px; right: 16px; bottom: 72px; background: #14532d; color: #bbf7d0; border-radius: 10px; padding: 8px 12px; font-size: 12px; display: none; z-index: 6; }
+  .toast.show { display: block; }
+  .notes { margin-top: 28px; background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px 18px; }
+  .notes h2 { margin: 0 0 8px; font-size: 15px; }
+  .notes ul { margin: 0; padding-left: 18px; color: var(--sec); font-size: 13px; }
+  .notes li { margin: 6px 0; }
+  .crumb { font-size: 11px; color: var(--mut); margin: -4px 0 10px; }
+  .crumb b { color: var(--blue); font-weight: 650; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>PID homepage · 进程主页 mockup</h1>
+  <p class="lead">点击列表行进入 <code>/home/system/pid/:pid</code> 全页，而不是底栏 sheet。主页展示身份、资源、完整 command、父进程、子 PID 列表；子/父均可继续下钻。</p>
+  <div class="assump">
+    <b>Assumptions</b> · 路由 <code>/home/system/pid/8375</code>，底栏仍点亮 Home · 父子树用现有 snapshot 的 pid/ppid 在前端拼，v1 不新开 API · 列表标题改为 name · pid · ⏻ 仍直接 kill，不进主页。
+  </div>
+
+  <div class="frames">
+    <div>
+      <div class="phone" id="phoneA">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content" id="viewA"></div>
+        <div class="toast" id="toastA"></div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption">可交互：列表 → Chrome 主页 → 点 Renderer 子进程再进一层；← 返回。</p>
+    </div>
+
+    <div>
+      <div class="phone" id="phoneB">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content" id="viewB"></div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption">静态：pid 8375 Renderer 主页（无子进程，可点回父进程 Chrome）。</p>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h2>主页信息架构</h2>
+    <ul>
+      <li><b>Hero</b> 名称 + pid/user/state + 保护/tunnel 标签</li>
+      <li><b>Tiles</b> CPU（本进程）/ RSS；旁注 tree Σ CPU（自己+子孙）</li>
+      <li><b>Command</b> 全文换行 + Copy</li>
+      <li><b>Identity</b> pid, ppid, user, state, elapsed, protected reason</li>
+      <li><b>Parent</b> 可点卡片 → 父 PID 主页（launchd/pid 1 也可进，Kill 在页上锁住）</li>
+      <li><b>Children</b> ppid==this 的列表；空则 “No child processes”</li>
+      <li>v1 不做 cwd / open files / environ（要额外采样，详情页先把树上的关联讲清）</li>
+    </ul>
+  </div>
+</div>
+<script>
+const PROCS = [
+  { pid: 1, ppid: 0, name: "launchd", user: "root", cpu: 0.2, rss: 14_000_000, elapsed: "8d1h", state: "Ss",
+    protected: "init (PID <= 1)",
+    cmd: "/sbin/launchd" },
+  { pid: 512, ppid: 1, name: "Google Chrome", user: "xhd2015", cpu: 18.4, rss: 420_000_000, elapsed: "13h12m", state: "S",
+    cmd: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" },
+  { pid: 8375, ppid: 512, name: "Google Chrome", user: "xhd2015", cpu: 187.0, rss: 1_718_000_000, elapsed: "13h12m", state: "R",
+    cmd: "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/156.0.8078.80/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --renderer-client-id=2609" },
+  { pid: 94308, ppid: 512, name: "Google Chrome", user: "xhd2015", cpu: 14.8, rss: 480_000_000, elapsed: "5h31m", state: "S",
+    cmd: "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper --type=gpu-process" },
+  { pid: 94309, ppid: 512, name: "Google Chrome", user: "xhd2015", cpu: 31.3, rss: 210_000_000, elapsed: "2h04m", state: "S",
+    cmd: "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Helpers/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper --type=utility --utility-sub-type=network.mojom.NetworkService" },
+  { pid: 718, ppid: 1, name: "AdobeIPCBroker", user: "root", cpu: 11.0, rss: 52_428_800, elapsed: "8d1h", state: "S",
+    cmd: "/Library/Application Support/Adobe/Adobe Desktop Common/IPCBox/AdobeIPCBroker.app/Contents/MacOS/AdobeIPCBroker --launchedBy=launchd" },
+];
+
+function fmtBytes(n) {
+  if (n > 1e9) return (n/1e9).toFixed(1) + " GB";
+  if (n > 1e6) return Math.round(n/1e6) + " MB";
+  return Math.round(n/1024) + " KB";
+}
+function cpuClass(n) { return n >= 80 ? "hot" : n >= 20 ? "warn" : ""; }
+function byPid(id) { return PROCS.find(p => p.pid === id); }
+function childrenOf(id) { return PROCS.filter(p => p.ppid === id); }
+function descendants(id) {
+  const out = [];
+  const walk = (pid) => childrenOf(pid).forEach(c => { out.push(c); walk(c.pid); });
+  walk(id);
+  return out;
+}
+function role(p) {
+  if (p.cmd.includes("--type=renderer")) return "Renderer";
+  if (p.cmd.includes("--type=gpu")) return "GPU";
+  if (p.cmd.includes("NetworkService")) return "Network";
+  if (p.pid === 1) return "init";
+  return p.name;
+}
+
+function listHTML() {
+  const chromeKids = [byPid(512), ...childrenOf(512)];
+  const sumCpu = chromeKids.reduce((s,p) => s + p.cpu, 0);
+  const sumRss = chromeKids.reduce((s,p) => s + p.rss, 0);
+  const rows = chromeKids.map(p => `
+    <div class="row" data-open="${p.pid}">
+      <span></span>
+      <div>
+        <div class="n">${role(p)} · ${p.pid}</div>
+        <div class="s">${p.user} · ${p.elapsed} · ${p.cmd}</div>
+      </div>
+      <span class="cpu ${cpuClass(p.cpu)}">${p.cpu.toFixed(1)}%</span>
+      <span class="mem">${fmtBytes(p.rss)}</span>
+      <button class="kill" data-kill="${p.pid}">⏻</button>
+    </div>`).join("");
+  return `
+    <div class="page">
+      <div class="page-h"><button class="icon-btn">←</button><h2>System</h2><span style="font-size:11px;color:var(--green);font-weight:700">2s</span></div>
+      <div class="alert">Memory pressure is high (compressor 2.1 GB) · swap 78%.</div>
+      <input class="search" type="search" placeholder="Filter by name, pid, command…" />
+      <div class="chips"><span class="chip on">CPU ↓</span><span class="chip">Memory</span><span class="chip">Name</span><span class="chip">PID</span></div>
+      <div class="group">
+        <div class="ghead"><span>▾</span><div class="n">Google Chrome · ${chromeKids.length}</div>
+          <span class="cpu ${cpuClass(sumCpu)}">${sumCpu.toFixed(1)}%</span><span class="mem">${fmtBytes(sumRss)}</span><span></span>
+        </div>
+        ${rows}
+      </div>
+    </div>`;
+}
+
+function pidHTML(pid) {
+  const p = byPid(pid);
+  if (!p) return `<div class="page">Unknown pid ${pid}</div>`;
+  const parent = p.ppid ? byPid(p.ppid) : null;
+  const kids = childrenOf(p.pid);
+  const desc = descendants(p.pid);
+  const treeCpu = p.cpu + desc.reduce((s,c) => s + c.cpu, 0);
+  const treeRss = p.rss + desc.reduce((s,c) => s + c.rss, 0);
+  const parentCard = parent ? `
+    <div class="card link" data-open="${parent.pid}">
+      <div>
+        <div class="n">${role(parent)} · ${parent.pid}</div>
+        <div class="s">${parent.user} · ${parent.cpu.toFixed(1)}% · ${fmtBytes(parent.rss)}</div>
+      </div>
+      <span style="color:var(--blue);font-size:12px;font-weight:700">Open →</span>
+    </div>` : `<div class="card"><div class="empty">No parent</div></div>`;
+  const kidRows = kids.length ? kids.map(c => `
+    <div class="child" data-open="${c.pid}">
+      <div>
+        <div class="n">${role(c)}</div>
+        <div class="s">pid ${c.pid} · ${c.user} · ${c.elapsed}</div>
+      </div>
+      <span class="cpu ${cpuClass(c.cpu)}">${c.cpu.toFixed(1)}%</span>
+      <span class="mem">${fmtBytes(c.rss)}</span>
+      <span style="color:var(--mut)">›</span>
+    </div>`).join("") : `<div class="card"><div class="empty">No child processes</div></div>`;
+  return `
+    <div class="page">
+      <div class="page-h">
+        <button class="icon-btn" data-back>←</button>
+        <h2>${role(p)}</h2>
+        <button class="kill" data-kill="${p.pid}" title="Kill">⏻</button>
+      </div>
+      <div class="crumb">System / <b>pid ${p.pid}</b></div>
+      <div class="hero">
+        <div class="name">${p.name}${p.protected ? '<span class="tag lock">protected</span>' : ''}</div>
+        <div class="meta">pid ${p.pid} · ppid ${p.ppid} · ${p.user} · state ${p.state} · ${p.elapsed}</div>
+      </div>
+      <div class="tiles">
+        <div class="tile"><div class="lab">CPU</div><div class="val cpu ${cpuClass(p.cpu)}">${p.cpu.toFixed(1)}%</div><div class="hint">this process</div></div>
+        <div class="tile"><div class="lab">RSS</div><div class="val">${fmtBytes(p.rss)}</div><div class="hint">this process</div></div>
+        <div class="tile"><div class="lab">Tree CPU</div><div class="val cpu ${cpuClass(treeCpu)}">${treeCpu.toFixed(1)}%</div><div class="hint">${1+desc.length} procs · self + descendants</div></div>
+        <div class="tile"><div class="lab">Tree RSS</div><div class="val">${fmtBytes(treeRss)}</div><div class="hint">${kids.length} direct children</div></div>
+      </div>
+      <div class="acts">
+        <button class="btn ghost" data-copy>Copy command</button>
+        <button class="btn danger" data-kill="${p.pid}" ${p.protected ? "disabled style='opacity:.45'" : ""}>${p.protected ? "Cannot Kill" : "Kill Process"}</button>
+      </div>
+      <div class="section">Command <span>full argv</span></div>
+      <div class="cmdbox"><div class="lab"><span>cmd</span></div><pre>${p.cmd}</pre></div>
+      <div class="section">Identity</div>
+      <div class="card kv">
+        <div>PID <b>${p.pid}</b></div>
+        <div>PPID <b>${p.ppid}</b></div>
+        <div>User <b>${p.user}</b></div>
+        <div>State <b>${p.state}</b></div>
+        <div>Elapsed <b>${p.elapsed}</b></div>
+        ${p.protected ? `<div>Protected <b>${p.protected}</b></div>` : ""}
+      </div>
+      <div class="section">Parent <span>open pid page</span></div>
+      ${parentCard}
+      <div class="section">Children <span>${kids.length}</span></div>
+      <div class="group">${kidRows}</div>
+    </div>`;
+}
+
+function mount(root, toastEl, initial) {
+  let stack = [initial];
+  const toast = (m) => { toastEl.textContent = m; toastEl.classList.add("show"); setTimeout(() => toastEl.classList.remove("show"), 1600); };
+  const render = () => {
+    const cur = stack[stack.length - 1];
+    root.innerHTML = cur === "list" ? listHTML() : pidHTML(cur);
+  };
+  root.addEventListener("click", (e) => {
+    const kill = e.target.closest("[data-kill]");
+    if (kill) { e.stopPropagation(); toast("Kill confirm for pid " + kill.dataset.kill); return; }
+    if (e.target.closest("[data-copy]")) {
+      const p = byPid(stack[stack.length - 1]);
+      if (p) navigator.clipboard.writeText(p.cmd).then(() => toast("Copied command")).catch(() => toast("Copy"));
+      return;
+    }
+    if (e.target.closest("[data-back]")) {
+      if (stack.length > 1) stack.pop();
+      else stack = ["list"];
+      render();
+      return;
+    }
+    const open = e.target.closest("[data-open]");
+    if (open) { stack.push(Number(open.dataset.open)); render(); }
+  });
+  render();
+}
+
+mount(document.getElementById("viewA"), document.getElementById("toastA"), "list");
+document.getElementById("viewB").innerHTML = pidHTML(8375);
+document.getElementById("viewB").addEventListener("click", () => {});
+</script>
+</body>
+</html>

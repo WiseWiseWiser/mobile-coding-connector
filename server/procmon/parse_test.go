@@ -59,6 +59,25 @@ func TestParsePSTableKeepsSpacedCommand(t *testing.T) {
 	}
 }
 
+func TestDisplayNameSpacedPath(t *testing.T) {
+	cases := []struct {
+		cmd  string
+		want string
+	}{
+		{"/Library/Application Support/Adobe/Adobe Desktop Common/ElevationManager/AdobeUpdateService", "AdobeUpdateService"},
+		{"/Library/Application Support/Adobe/Adobe Desktop Common/IPCBox/AdobeIPCBroker.app/Contents/MacOS/AdobeIPCBroker --launchedBy=launchd", "AdobeIPCBroker"},
+		{"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --type=renderer", "Google Chrome"},
+		{"eluc-wt-bin --port 8466", "eluc-wt-bin"},
+		{"/sbin/launchd", "launchd"},
+	}
+	for _, c := range cases {
+		got := displayName(c.cmd)
+		if got != c.want {
+			t.Fatalf("displayName(%q)=%q want %q", c.cmd, got, c.want)
+		}
+	}
+}
+
 func TestParseLoadAvgDarwin(t *testing.T) {
 	load, err := parseLoadAvg("{ 22.80 24.70 19.70 }")
 	if err != nil {

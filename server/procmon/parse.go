@@ -116,6 +116,7 @@ func parsePSClock(s string) (time.Duration, error) {
 }
 
 func displayName(cmd string) string {
+	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
 		return "?"
 	}
@@ -126,15 +127,34 @@ func displayName(cmd string) string {
 			return name
 		}
 	}
+	exe := argv0(cmd)
+	base := filepath.Base(exe)
+	if base == "" || base == "." || base == string(filepath.Separator) {
+		return exe
+	}
+	return base
+}
+
+// argv0 is the executable path. Absolute paths may contain spaces
+// ("/Library/Application Support/..."); flags start at " --" or " -".
+func argv0(cmd string) string {
+	if cmd == "" {
+		return cmd
+	}
+	if cmd[0] == '/' || strings.HasPrefix(cmd, "./") || strings.HasPrefix(cmd, "../") {
+		if i := strings.Index(cmd, " --"); i >= 0 {
+			return strings.TrimSpace(cmd[:i])
+		}
+		if i := strings.Index(cmd, " -"); i >= 0 {
+			return strings.TrimSpace(cmd[:i])
+		}
+		return cmd
+	}
 	fields := strings.Fields(cmd)
 	if len(fields) == 0 {
 		return cmd
 	}
-	base := filepath.Base(fields[0])
-	if base == "" || base == "." {
-		return fields[0]
-	}
-	return base
+	return fields[0]
 }
 
 func parseLoadAvg(s string) (Load, error) {

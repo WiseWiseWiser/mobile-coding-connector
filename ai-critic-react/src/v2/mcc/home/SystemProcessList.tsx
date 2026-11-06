@@ -1,15 +1,18 @@
 import { useState } from 'react';
 import { formatBytes, formatElapsed, type HostProcess } from '../../../api/processes';
 import { groupProcesses, type ProcessSort } from './groupProcesses';
+import { processTitle } from './processTree';
 
 export function SystemProcessList({
     processes,
     sort,
     onKill,
+    onOpen,
 }: {
     processes: HostProcess[];
     sort: ProcessSort;
     onKill: (proc: HostProcess) => void;
+    onOpen: (proc: HostProcess) => void;
 }) {
     const groups = groupProcesses(processes, sort);
     const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -41,7 +44,7 @@ export function SystemProcessList({
                             <span />
                         </button>
                         {expanded && group.procs.map(proc => (
-                            <ProcessRow key={proc.pid} proc={proc} onKill={onKill} />
+                            <ProcessRow key={proc.pid} proc={proc} onKill={onKill} onOpen={onOpen} />
                         ))}
                     </div>
                 );
@@ -50,14 +53,15 @@ export function SystemProcessList({
     );
 }
 
-function ProcessRow({ proc, onKill }: { proc: HostProcess; onKill: (proc: HostProcess) => void }) {
+function ProcessRow({ proc, onKill, onOpen }: { proc: HostProcess; onKill: (proc: HostProcess) => void; onOpen: (proc: HostProcess) => void }) {
     const tags = proc.tags ?? [];
     return (
-        <div className="mcc-system-row">
+        <div className="mcc-system-row" onClick={() => onOpen(proc)} role="button" tabIndex={0}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(proc); } }}>
             <span />
             <div className="mcc-system-who">
                 <div className="mcc-system-n">
-                    pid {proc.pid}
+                    {processTitle(proc)} · {proc.pid}
                     {tags.includes('stale') ? <span className="mcc-system-tag stale">stale</span> : null}
                     {tags.includes('tun') ? <span className="mcc-system-tag tun">tunnel</span> : null}
                     {proc.protected ? <span className="mcc-system-tag lock">protected</span> : null}
@@ -70,7 +74,7 @@ function ProcessRow({ proc, onKill }: { proc: HostProcess; onKill: (proc: HostPr
                 type="button"
                 className="mcc-system-kill"
                 title={proc.protected || 'Kill'}
-                onClick={() => onKill(proc)}
+                onClick={e => { e.stopPropagation(); onKill(proc); }}
             >
                 {proc.protected ? '🔒' : '⏻'}
             </button>

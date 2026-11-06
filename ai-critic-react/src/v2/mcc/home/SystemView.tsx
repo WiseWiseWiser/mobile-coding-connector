@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BackIcon } from '../../../pure-view/icons/BackIcon';
 import { useTabHistory } from '../../../hooks/useTabHistory';
 import { NavTabs } from '../types';
@@ -10,6 +11,7 @@ import { SystemKillModal } from './SystemKillModal';
 import './SystemView.css';
 
 export function SystemView() {
+    const navigate = useNavigate();
     const { goBack } = useTabHistory(NavTabs.Home);
     const [data, setData] = useState<ProcessSnapshot | null>(null);
     const [loading, setLoading] = useState(true);
@@ -122,7 +124,12 @@ export function SystemView() {
                             ))}
                         </div>
                     </div>
-                    <SystemProcessList processes={visible} sort={sort} onKill={setTarget} />
+                    <SystemProcessList
+                        processes={visible}
+                        sort={sort}
+                        onKill={setTarget}
+                        onOpen={proc => navigate(`pid/${proc.pid}`, { relative: 'path' })}
+                    />
                 </>
             )}
             {target && (
