@@ -17,6 +17,7 @@ import { loadSSHKeys } from './settings/gitStorage';
 import { encryptWithServerKey } from './crypto';
 import { SSHKeyRequiredHint } from '../components/SSHKeyRequiredHint';
 import { projectPath } from '../../../route/route';
+import { SystemStrip } from './SystemStrip';
 
 // Re-export sub-views for route registration
 export { ToolsView } from './ToolsView';
@@ -90,6 +91,7 @@ export function WorkspaceListView({ onSelectProject: propOnSelectProject }: Work
 
     return (
         <div className="mcc-workspace-list">
+            <SystemStrip />
             <div className="mcc-section-header">
                 <h2>Your Projects</h2>
             </div>

@@ -528,6 +528,13 @@ export function ManageServerView() {
             <div className="manage-server-card" style={{ marginTop: 12 }}>
                 <div className="manage-server-card-header">
                     <span className="manage-server-card-title">Server Status</span>
+                    <button
+                        type="button"
+                        className="mcc-port-action-btn"
+                        onClick={() => navigate('system')}
+                    >
+                        Open process manager
+                    </button>
                 </div>
                 {serverStatusLoading ? (
                     <div style={{ padding: 16, color: '#94a3b8' }}>Loading...</div>

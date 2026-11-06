@@ -18,6 +18,7 @@ export { UploadFileView } from './mcc/home/UploadFileView';
 export { DownloadFileView } from './mcc/home/DownloadFileView';
 export { FileTransferView } from './mcc/home/FileTransferView';
 export { ManageServerView } from './mcc/home/ManageServerView';
+export { SystemView } from './mcc/home/SystemView';
 export { AddFromFilesystemView } from './mcc/home/AddFromFilesystemView';
 export { TerminalView } from './mcc/terminal/TerminalView';
 export { TerminalPage } from './mcc/terminal/TerminalPage';

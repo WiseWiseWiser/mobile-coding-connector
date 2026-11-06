@@ -66,13 +66,14 @@ import (
 	servermachinebackup "github.com/xhd2015/ai-critic/server/machinebackup"
 	"github.com/xhd2015/ai-critic/server/mockups"
 	openclawapi "github.com/xhd2015/ai-critic/server/openclaw"
+	serverprocmon "github.com/xhd2015/ai-critic/server/procmon"
 	serverprojectpull "github.com/xhd2015/ai-critic/server/projectpull"
 	"github.com/xhd2015/ai-critic/server/projects"
+	"github.com/xhd2015/ai-critic/server/proxy/httpproxy"
 	"github.com/xhd2015/ai-critic/server/proxy/portforward"
 	pfcloudflare "github.com/xhd2015/ai-critic/server/proxy/portforward/providers/cloudflare"
 	pflocaltunnel "github.com/xhd2015/ai-critic/server/proxy/portforward/providers/localtunnel"
 	"github.com/xhd2015/ai-critic/server/proxy/proxyconfig"
-	"github.com/xhd2015/ai-critic/server/proxy/httpproxy"
 	"github.com/xhd2015/ai-critic/server/proxy/wsproxy"
 	serverqemu "github.com/xhd2015/ai-critic/server/qemu"
 	"github.com/xhd2015/ai-critic/server/quicktest"
@@ -735,6 +736,7 @@ func RegisterAPI(mux *http.ServeMux) error {
 
 	// Server status API
 	RegisterServerStatusAPI(mux)
+	serverprocmon.RegisterAPI(mux)
 
 	// Server config API
 	mux.HandleFunc("/api/server/config", func(w http.ResponseWriter, r *http.Request) {
