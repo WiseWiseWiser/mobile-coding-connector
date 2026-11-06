@@ -6,15 +6,17 @@ import { processTitle } from './processTree';
 export function SystemProcessList({
     processes,
     sort,
+    lockedPids,
     onKill,
     onOpen,
 }: {
     processes: HostProcess[];
     sort: ProcessSort;
+    lockedPids?: number[] | null;
     onKill: (proc: HostProcess) => void;
     onOpen: (proc: HostProcess) => void;
 }) {
-    const groups = groupProcesses(processes, sort);
+    const groups = groupProcesses(processes, sort, lockedPids);
     const [open, setOpen] = useState<Record<string, boolean>>({});
 
     if (groups.length === 0) {

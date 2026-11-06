@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kill portal + lock order mockup</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --elev: #334155; --bd: #334155;
+    --text: #f1f5f9; --sec: #94a3b8; --mut: #64748b;
+    --blue: #60a5fa; --red: #ef4444;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: "SF Mono", Menlo, Monaco, Consolas, monospace;
+    --nav: 56px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); background: #060b16; color: var(--text); }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 24px 18px 72px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .lead { color: var(--sec); font-size: 13px; margin: 0 0 14px; max-width: 780px; }
+  .assump { font-size: 12px; color: #cbd5e1; background: #0b1220; border: 1px dashed #334155; border-radius: 10px; padding: 10px 12px; margin-bottom: 20px; }
+  .frames { display: flex; flex-wrap: wrap; gap: 22px; }
+  .phone {
+    width: 390px; height: 780px; background: var(--bg); border-radius: 36px;
+    border: 8px solid #020617; overflow: hidden; display: flex; flex-direction: column;
+    position: relative; flex-shrink: 0; box-shadow: 0 20px 50px rgba(0,0,0,.45);
+  }
+  .caption { font-size: 12px; color: var(--mut); margin: 8px 0 0; max-width: 390px; }
+  .topbar { display: flex; gap: 10px; padding: 14px; background: var(--card); border-bottom: 1px solid var(--bd); flex-shrink: 0; }
+  .proj { flex: 1; background: rgba(0,0,0,.22); border: 1px solid var(--bd); border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 600; }
+  .content { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; }
+  .bottomnav { display: flex; background: var(--card); border-top: 1px solid var(--bd); padding: 8px 0 10px; flex-shrink: 0; z-index: 2; }
+  .nav-item { flex: 1; text-align: center; font-size: 10px; font-weight: 600; color: var(--mut); }
+  .nav-item.active { color: var(--blue); }
+  .page-h { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .page-h h2 { flex: 1; margin: 0; font-size: 16px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chip { border: 1px solid var(--bd); background: transparent; color: var(--sec); font-size: 12px; font-weight: 650; padding: 5px 9px; border-radius: 999px; cursor: pointer; }
+  .chip.on { background: rgba(96,165,250,.12); color: var(--blue); border-color: rgba(96,165,250,.4); }
+  .chip.lock { border-color: #fbbf24; color: #fbbf24; background: rgba(245,158,11,.12); }
+  .row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; padding: 10px 12px; background: var(--card); border: 1px solid var(--bd); border-radius: 10px; margin-bottom: 6px; font-size: 13px; }
+  .cpu { font-family: var(--mono); font-size: 12px; font-weight: 700; }
+  .muted { font-size: 11px; color: var(--mut); }
+  .overlay-trapped {
+    position: absolute; left: 0; right: 0; top: 52px; bottom: var(--nav);
+    background: rgba(2,6,23,.55); display: flex; align-items: flex-end; overflow: hidden;
+  }
+  .sheet-clip {
+    width: 100%; background: #1e293b; border-radius: 16px 16px 0 0; padding: 14px 16px 20px;
+    max-height: 78vh; /* too tall vs content pane → footer clipped */
+  }
+  .overlay-portal {
+    position: absolute; inset: 0; background: rgba(2,6,23,.62);
+    display: flex; align-items: flex-end; z-index: 20;
+  }
+  .sheet {
+    width: 100%; max-height: min(70dvh, calc(100% - 24px));
+    background: #1e293b; border-radius: 16px 16px 0 0;
+    display: flex; flex-direction: column; min-height: 0;
+    padding-bottom: env(safe-area-inset-bottom, 8px);
+  }
+  .hd, .ft { flex-shrink: 0; padding: 14px 16px; }
+  .hd { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--bd); }
+  .hd h3 { margin: 0; font-size: 16px; }
+  .body { padding: 14px 16px; overflow: auto; min-height: 0; }
+  .ft { display: flex; gap: 10px; border-top: 1px solid var(--bd); }
+  .ghost, .danger { flex: 1; border: 0; border-radius: 8px; padding: 12px; font-weight: 700; font-size: 14px; }
+  .ghost { background: var(--elev); color: var(--text); }
+  .danger { background: var(--red); color: #fff; }
+  .kv { background: rgba(0,0,0,.22); border-radius: 8px; padding: 10px 12px; margin: 10px 0; font-size: 12px; color: var(--sec); }
+  .kv b { float: right; color: var(--text); font-family: var(--mono); }
+  .killcmd { font-family: var(--mono); color: #f87171; background: rgba(248,113,113,.1); padding: 8px 10px; border-radius: 6px; font-size: 13px; }
+  .notes { margin-top: 28px; background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px 18px; }
+  .notes h2 { margin: 0 0 8px; font-size: 15px; }
+  .notes ul { margin: 0; padding-left: 18px; color: var(--sec); font-size: 13px; }
+  .notes li { margin: 6px 0; }
+  .banner { font-size: 11px; color: #fde68a; background: rgba(245,158,11,.14); border: 1px solid rgba(245,158,11,.35); border-radius: 8px; padding: 6px 8px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Kill footer 被底栏裁掉 + Lock order</h1>
+  <p class="lead">截图：短确认也看不到 Cancel/Kill。Modal 画在 <code>.mcc-tab-content</code>（overflow + iOS touch scroll）里，<code>position:fixed</code> 不是视口；<code>max-height: 78vh</code> 比内容区高，footer 被底栏和 overflow 裁掉。第二件事：CPU 排序每 2s 重排，需要锁定当前顺序。</p>
+  <div class="assump">
+    <b>Assumptions</b> · ConfirmModal <code>createPortal(…, document.body)</code>，盖住底栏 · sheet <code>max-height: min(70dvh, 100%)</code> + sticky footer · Lock order 只记 pid 数组在 React state，刷新丢失 · 数字继续更新，顺序冻结。
+  </div>
+
+  <div class="frames">
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div></div>
+        <div class="content">
+          <div class="page-h"><span>←</span><h2>SeaTalk</h2></div>
+          <div class="muted">pid 1160 · Tree CPU 10.4%</div>
+        </div>
+        <div class="overlay-trapped">
+          <div class="sheet-clip">
+            <h3 style="margin:0 0 10px;font-size:16px">Kill Process</h3>
+            <p style="font-size:14px;margin:0 0 10px">Are you sure you want to kill this process?</p>
+            <div class="kv"><div>Name <b>SeaTalk</b></div><div style="clear:both">PID <b>1160</b></div></div>
+            <div class="killcmd">kill -TERM 1160</div>
+            <p class="muted" style="margin:10px 0 0">↓ Cancel / Kill 在这下面，被底栏挡住</p>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption">现状：sheet 停在 tab-content 底边，footer 落到底栏后面。</p>
+    </div>
+
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div></div>
+        <div class="content">
+          <div class="page-h"><span>←</span><h2>SeaTalk</h2></div>
+          <div class="muted">pid 1160 · Tree CPU 10.4%</div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+        <div class="overlay-portal">
+          <div class="sheet">
+            <div class="hd"><h3>Kill Process</h3><span>×</span></div>
+            <div class="body">
+              <p style="margin:0 0 8px;font-size:14px">Are you sure you want to kill this process?</p>
+              <div class="kv">
+                <div>Name <b>SeaTalk</b></div>
+                <div style="clear:both">PID <b>1160</b></div>
+                <div style="clear:both">User <b>xhd2015</b></div>
+                <div style="clear:both">CPU / RSS <b>0.0% · 84 MB</b></div>
+              </div>
+              <div class="muted" style="margin-bottom:6px">Command to execute</div>
+              <div class="killcmd">kill -TERM 1160</div>
+            </div>
+            <div class="ft">
+              <button class="ghost">Cancel</button>
+              <button class="danger">Kill Process</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">修复：portal 到 body，盖住底栏；Cancel / Kill 钉在 sheet 底部，始终可见。</p>
+    </div>
+
+    <div>
+      <div class="phone" id="lockPhone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div></div>
+        <div class="content">
+          <div class="page-h"><span>←</span><h2>System</h2><span class="chip" id="pause">Pause</span></div>
+          <div class="chips">
+            <span class="chip on">CPU ↓</span><span class="chip">Memory</span><span class="chip">Name</span>
+            <button class="chip" id="lockBtn" type="button">Lock order</button>
+          </div>
+          <div class="banner" id="lockHint" hidden>Order locked · numbers still update · lost on refresh</div>
+          <div id="rows"></div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption">可交互：未锁定时每秒重排；Lock order 后 pid 顺序冻结，CPU 数字仍变。</p>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h2>机制</h2>
+    <ul>
+      <li>Kill：<code>createPortal(modal, document.body)</code>，避开 <code>.mcc-tab-content</code> 的 overflow / iOS fixed 陷阱。</li>
+      <li>Lock：<code>lockedPids: number[] | null</code> 仅 React state。刷新/进 PID 页再返回可丢（仅 mem）。新 pid 追加在末尾，消失的拿掉。</li>
+      <li>Pause 停轮询；Lock 不停轮询、只冻顺序。两者独立。</li>
+    </ul>
+  </div>
+</div>
+<script>
+let locked = false;
+let lockedOrder = [];
+let procs = [
+  { pid: 8375, name: "Chrome Renderer", cpu: 40 },
+  { pid: 1160, name: "SeaTalk", cpu: 18 },
+  { pid: 512, name: "Google Chrome", cpu: 12 },
+  { pid: 718, name: "AdobeIPCBroker", cpu: 8 },
+];
+function render() {
+  const list = locked
+    ? [...procs].sort((a, b) => lockedOrder.indexOf(a.pid) - lockedOrder.indexOf(b.pid))
+    : [...procs].sort((a, b) => b.cpu - a.cpu);
+  document.getElementById("rows").innerHTML = list.map(p =>
+    `<div class="row"><div>${p.name}<div class="muted">pid ${p.pid}</div></div><span class="cpu">${p.cpu.toFixed(1)}%</span></div>`
+  ).join("");
+}
+document.getElementById("lockBtn").onclick = () => {
+  locked = !locked;
+  if (locked) lockedOrder = [...procs].sort((a, b) => b.cpu - a.cpu).map(p => p.pid);
+  document.getElementById("lockBtn").className = "chip" + (locked ? " lock" : "");
+  document.getElementById("lockBtn").textContent = locked ? "Unlock order" : "Lock order";
+  document.getElementById("lockHint").hidden = !locked;
+  render();
+};
+setInterval(() => {
+  procs.forEach(p => { p.cpu = Math.max(0, p.cpu + (Math.random() - 0.45) * 8); });
+  render();
+}, 1000);
+render();
+</script>
+</body>
+</html>

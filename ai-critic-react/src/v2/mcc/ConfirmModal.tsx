@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import './KillProcessModal.css';
 
 export interface LocalPortInfo {
@@ -58,7 +59,7 @@ export function ConfirmModal({
         }
     };
 
-    return (
+    return createPortal(
         <div className="mcc-modal-overlay" onClick={onClose}>
             <div className="mcc-modal" onClick={e => e.stopPropagation()}>
                 <div className="mcc-modal-header">
@@ -100,6 +101,7 @@ export function ConfirmModal({
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

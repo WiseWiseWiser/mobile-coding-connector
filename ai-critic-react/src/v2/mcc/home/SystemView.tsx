@@ -4,7 +4,7 @@ import { BackIcon } from '../../../pure-view/icons/BackIcon';
 import { useTabHistory } from '../../../hooks/useTabHistory';
 import { NavTabs } from '../types';
 import { fetchProcesses, type HostProcess, type ProcessSnapshot } from '../../../api/processes';
-import { filterProcesses, type ProcessFilter, type ProcessSort } from './groupProcesses';
+import { filterProcesses, orderedPids, type ProcessFilter, type ProcessSort } from './groupProcesses';
 import { SystemSummary } from './SystemSummary';
 import { SystemProcessList } from './SystemProcessList';
 import { SystemKillModal } from './SystemKillModal';
@@ -21,6 +21,7 @@ export function SystemView() {
     const [sort, setSort] = useState<ProcessSort>('cpu');
     const [filter, setFilter] = useState<ProcessFilter>('all');
     const [target, setTarget] = useState<HostProcess | null>(null);
+    const [lockedPids, setLockedPids] = useState<number[] | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -100,12 +101,28 @@ export function SystemView() {
                                 <button
                                     key={id}
                                     type="button"
-                                    className={`mcc-system-chip${sort === id ? ' on' : ''}`}
-                                    onClick={() => setSort(id)}
+                                    className={`mcc-system-chip${sort === id && !lockedPids ? ' on' : ''}`}
+                                    onClick={() => {
+                                        setLockedPids(null);
+                                        setSort(id);
+                                    }}
                                 >
                                     {label}
                                 </button>
                             ))}
+                            <button
+                                type="button"
+                                className={`mcc-system-chip${lockedPids ? ' on' : ''}`}
+                                onClick={() => {
+                                    if (lockedPids) {
+                                        setLockedPids(null);
+                                        return;
+                                    }
+                                    setLockedPids(orderedPids(visible, sort));
+                                }}
+                            >
+                                {lockedPids ? 'Unlock order' : 'Lock order'}
+                            </button>
                         </div>
                         <div className="mcc-system-chips">
                             {([
@@ -124,9 +141,15 @@ export function SystemView() {
                             ))}
                         </div>
                     </div>
+                    {lockedPids && (
+                        <div className="mcc-system-alert" style={{ marginTop: 0 }}>
+                            Order locked · numbers still update · lost on refresh
+                        </div>
+                    )}
                     <SystemProcessList
                         processes={visible}
                         sort={sort}
+                        lockedPids={lockedPids}
                         onKill={setTarget}
                         onOpen={proc => navigate(`pid/${proc.pid}`, { relative: 'path' })}
                     />

@@ -25,7 +25,43 @@ export function filterProcesses(list: HostProcess[], query: string, filter: Proc
     });
 }
 
-export function groupProcesses(list: HostProcess[], sort: ProcessSort): ProcessGroup[] {
+export function applyLockedOrder(list: HostProcess[], lockedPids: number[] | null | undefined): HostProcess[] {
+    if (!lockedPids || lockedPids.length === 0) return list;
+    const idx = new Map(lockedPids.map((id, i) => [id, i]));
+    const known = list.filter(p => idx.has(p.pid)).sort((a, b) => (idx.get(a.pid) ?? 0) - (idx.get(b.pid) ?? 0));
+    const unknown = list.filter(p => !idx.has(p.pid));
+    return [...known, ...unknown];
+}
+
+export function orderedPids(list: HostProcess[], sort: ProcessSort): number[] {
+    return groupProcesses(list, sort).flatMap(g => g.procs.map(p => p.pid));
+}
+
+export function groupProcesses(list: HostProcess[], sort: ProcessSort, lockedPids?: number[] | null): ProcessGroup[] {
+    if (lockedPids && lockedPids.length > 0) {
+        const ordered = applyLockedOrder(list, lockedPids);
+        const map = new Map<string, HostProcess[]>();
+        const groupOrder: string[] = [];
+        for (const p of ordered) {
+            const key = p.name || '?';
+            const arr = map.get(key);
+            if (arr) {
+                arr.push(p);
+            } else {
+                map.set(key, [p]);
+                groupOrder.push(key);
+            }
+        }
+        return groupOrder.map(name => {
+            const procs = map.get(name) ?? [];
+            return {
+                name,
+                cpu: procs.reduce((s, p) => s + (p.cpu_percent || 0), 0),
+                rss: procs.reduce((s, p) => s + (p.rss_bytes || 0), 0),
+                procs,
+            };
+        });
+    }
     const map = new Map<string, HostProcess[]>();
     for (const p of list) {
         const key = p.name || '?';
