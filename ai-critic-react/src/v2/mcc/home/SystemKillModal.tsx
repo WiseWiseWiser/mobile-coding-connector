@@ -28,7 +28,6 @@ export function SystemKillModal({
                 PID: String(proc.pid),
                 User: proc.user,
                 'CPU / RSS': `${proc.cpu_percent.toFixed(1)}% · ${formatBytes(proc.rss_bytes)}`,
-                Command: proc.cmd,
             }}
             command={locked ? `kill ${proc.pid}` : `kill -TERM ${proc.pid}`}
             confirmLabel={locked ? 'Cannot Kill' : 'Kill Process'}

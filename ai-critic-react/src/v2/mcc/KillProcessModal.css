@@ -6,19 +6,36 @@
     bottom: 0;
     background: rgba(0, 0, 0, 0.6);
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
     z-index: 1000;
-    padding: 20px;
+    padding: 0;
+    overscroll-behavior: contain;
 }
 
 .mcc-modal {
     background: #1e293b;
     border: 1px solid #334155;
-    border-radius: 12px;
+    border-radius: 16px 16px 0 0;
     width: 100%;
-    max-width: 400px;
+    max-width: 100%;
+    max-height: min(78vh, 560px);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+@media (min-width: 640px) {
+    .mcc-modal-overlay {
+        align-items: center;
+        padding: 20px;
+    }
+
+    .mcc-modal {
+        max-width: 400px;
+        border-radius: 12px;
+    }
 }
 
 .mcc-modal-header {
@@ -27,6 +44,7 @@
     justify-content: space-between;
     padding: 16px 20px;
     border-bottom: 1px solid #334155;
+    flex-shrink: 0;
 }
 
 .mcc-modal-header h3 {
@@ -64,6 +82,11 @@
 
 .mcc-modal-body {
     padding: 20px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .mcc-modal-body p {
@@ -95,6 +118,7 @@
     display: flex;
     gap: 8px;
     margin-bottom: 8px;
+    min-width: 0;
 }
 
 .mcc-modal-row:last-child {
@@ -112,6 +136,9 @@
     color: #e2e8f0;
     font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
     word-break: break-all;
+    min-width: 0;
+    max-height: 4.8em;
+    overflow: auto;
 }
 
 .mcc-modal-command {
@@ -151,7 +178,9 @@
     display: flex;
     gap: 12px;
     padding: 16px 20px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
     border-top: 1px solid #334155;
+    flex-shrink: 0;
 }
 
 .mcc-modal-btn {

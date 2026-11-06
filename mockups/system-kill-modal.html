@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kill modal · scroll + sticky actions</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --elev: #334155; --bd: #334155;
+    --text: #f1f5f9; --sec: #94a3b8; --mut: #64748b;
+    --blue: #60a5fa; --red: #f87171;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: "SF Mono", Menlo, Monaco, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); background: #060b16; color: var(--text); }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 24px 18px 72px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .lead { color: var(--sec); font-size: 13px; margin: 0 0 14px; max-width: 760px; }
+  .assump { font-size: 12px; color: #cbd5e1; background: #0b1220; border: 1px dashed #334155; border-radius: 10px; padding: 10px 12px; margin-bottom: 20px; }
+  .frames { display: flex; flex-wrap: wrap; gap: 22px; }
+  .phone {
+    width: 390px; height: 780px; background: var(--bg); border-radius: 36px;
+    border: 8px solid #020617; overflow: hidden; display: flex; flex-direction: column;
+    position: relative; flex-shrink: 0; box-shadow: 0 20px 50px rgba(0,0,0,.45);
+  }
+  .caption { font-size: 12px; color: var(--mut); margin: 8px 0 0; max-width: 390px; }
+  .topbar { display: flex; gap: 10px; padding: 14px; background: var(--card); border-bottom: 1px solid var(--bd); }
+  .proj { flex: 1; background: rgba(0,0,0,.22); border: 1px solid var(--bd); border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 600; }
+  .page { flex: 1; padding: 12px 14px; overflow: auto; }
+  .bottomnav { display: flex; background: var(--card); border-top: 1px solid var(--bd); padding: 8px 0 10px; }
+  .nav-item { flex: 1; text-align: center; font-size: 10px; font-weight: 600; color: var(--mut); }
+  .nav-item.active { color: var(--blue); }
+  .hero { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .meta { font-size: 12px; color: var(--sec); margin-bottom: 12px; }
+  .btn { width: 100%; border: 0; border-radius: 8px; padding: 11px; font-weight: 700; background: #dc2626; color: #fff; cursor: pointer; }
+
+  .overlay {
+    position: absolute; inset: 0; background: rgba(2,6,23,.62);
+    display: flex; align-items: flex-end; justify-content: center; z-index: 5;
+    padding: 0;
+  }
+  .overlay.center { align-items: center; padding: 12px; }
+
+  /* broken: grows past viewport, no overflow, buttons clipped */
+  .modal-broken {
+    background: #1e293b; border: 1px solid #475569; border-radius: 12px;
+    width: 100%; max-width: 400px;
+  }
+  .broken-body { padding: 16px 18px; }
+  .broken-cmd {
+    font-family: var(--mono); font-size: 13px; color: #e2e8f0;
+    word-break: break-all; line-height: 1.4;
+  }
+
+  /* fixed: column flex, sticky header/footer, body scrolls */
+  .sheet {
+    width: 100%; max-height: min(78vh, 560px);
+    background: #1e293b; border: 1px solid #475569;
+    border-radius: 16px 16px 0 0;
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .sheet.card {
+    border-radius: 12px; max-height: min(78vh, 520px);
+  }
+  .grab { width: 36px; height: 4px; background: #475569; border-radius: 99px; margin: 8px auto 0; flex-shrink: 0; }
+  .hd, .ft { flex-shrink: 0; padding: 14px 16px; }
+  .hd { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--bd); }
+  .hd h3 { margin: 0; font-size: 16px; }
+  .close { width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--sec); font-size: 20px; }
+  .body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 16px; }
+  .ft { display: flex; gap: 10px; border-top: 1px solid var(--bd); }
+  .ghost, .danger {
+    flex: 1; border: 0; border-radius: 8px; padding: 12px; font-weight: 700; font-size: 14px; cursor: pointer;
+  }
+  .ghost { background: var(--elev); color: var(--text); }
+  .danger { background: #dc2626; color: #fff; }
+  .kv { background: rgba(0,0,0,.22); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+  .kv div { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 4px 0; color: var(--sec); }
+  .kv b { color: var(--text); font-family: var(--mono); font-weight: 600; }
+  .killcmd { font-family: var(--mono); font-size: 13px; color: #f87171; background: rgba(248,113,113,.1); padding: 8px 10px; border-radius: 6px; }
+  .lab { font-size: 11px; color: var(--mut); margin: 0 0 6px; }
+  details { margin-top: 10px; }
+  summary { font-size: 12px; color: var(--blue); font-weight: 650; cursor: pointer; }
+  .argv {
+    margin: 8px 0 0; max-height: 120px; overflow: auto; font-family: var(--mono);
+    font-size: 11px; line-height: 1.4; color: #93c5fd; background: #0b1220; padding: 8px; border-radius: 6px;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .notes { margin-top: 28px; background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px 18px; }
+  .notes h2 { margin: 0 0 8px; font-size: 15px; }
+  .notes ul { margin: 0; padding-left: 18px; color: var(--sec); font-size: 13px; }
+  .notes li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Kill modal · 可滚动 + 按钮钉住</h1>
+  <p class="lead">截图：SeaTalk Helper 的整段 argv 铺满 ConfirmModal，标题和 Cancel/Kill 被挤出视口，modal 本身不能滑。Kill 确认不需要完整 command（主页已经有了）。</p>
+  <div class="assump">
+    <b>Assumptions</b> · 确认信息只留 Name / PID / User / CPU·RSS · 要执行的命令是 <code>kill -TERM 4629</code> · 完整 argv 折进 &lt;details&gt; 可选看 · header/footer 固定，中间才能滑。
+  </div>
+
+  <div class="frames">
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div></div>
+        <div class="page">
+          <div class="hero">SeaTalk Helper</div>
+          <div class="meta">pid 4629 · xhd2015 · 8.6%</div>
+          <button class="btn">Kill Process</button>
+        </div>
+        <div class="overlay center">
+          <div class="modal-broken">
+            <div class="broken-body">
+              <div class="broken-cmd">SeaTalk Helper --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --user-data-dir=/Users/xhd2015/Library/Application Support/SeaTalk --shared-files --field-trial-handle=1718379636,r,6959624453143149946,17421292145020664467,262144 --enable-features=PdfUseShowSaveFilePicker,ScreenCaptureKitPickerScreen,ScreenCaptureKitStreamPickerSonoma --disable-features=DropInputEventsWhilePaintHolding,IOSurfaceCapturer,LocalNetworkAccessChecks,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TimeoutHangingVideoCaptureStarts,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1935764596,r,910613172774528601,10500668091282905190,4 --trace-process-track-uuid=3190708996619331833 --enable-logging=file --log-file=/Users/xhd2015/Library/Logs/SeaTalk/chromium.log --log-level=1 --more-flags-keep-growing</div>
+            </div>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption">现状：info.Command 把整段 argv 展开，无 max-height / overflow，按钮在屏外。</p>
+    </div>
+
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div></div>
+        <div class="page">
+          <div class="hero">SeaTalk Helper</div>
+          <div class="meta">pid 4629 · xhd2015 · 8.6%</div>
+        </div>
+        <div class="overlay">
+          <div class="sheet">
+            <div class="grab"></div>
+            <div class="hd">
+              <h3>Kill Process</h3>
+              <button class="close">×</button>
+            </div>
+            <div class="body">
+              <p style="margin:0 0 10px;font-size:14px;">Are you sure you want to kill this process?</p>
+              <div class="kv">
+                <div>Name <b>SeaTalk Helper</b></div>
+                <div>PID <b>4629</b></div>
+                <div>User <b>xhd2015</b></div>
+                <div>CPU / RSS <b>8.6% · 210 MB</b></div>
+              </div>
+              <div class="lab">Command to execute</div>
+              <div class="killcmd">kill -TERM 4629</div>
+              <details>
+                <summary>Full process command</summary>
+                <div class="argv">/Applications/SeaTalk.app/Contents/Frameworks/SeaTalk Helper.app/Contents/MacOS/SeaTalk Helper --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US --service-sandbox-type=none --user-data-dir=/Users/xhd2015/Library/Application Support/SeaTalk --shared-files --field-trial-handle=1718379636,r,6959624453143149946,17421292145020664467,262144 --enable-features=PdfUseShowSaveFilePicker,ScreenCaptureKitPickerScreen --disable-features=DropInputEventsWhilePaintHolding,IOSurfaceCapturer --log-file=/Users/xhd2015/Library/Logs/SeaTalk/chromium.log --log-level=1</div>
+              </details>
+            </div>
+            <div class="ft">
+              <button class="ghost">Cancel</button>
+              <button class="danger">Kill Process</button>
+            </div>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption">修复：底部 sheet，Cancel/Kill 始终可见。展开 Full process command 时只在中间区域滚。</p>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h2>机制</h2>
+    <ul>
+      <li><code>.mcc-modal</code> 没有 <code>max-height</code> / <code>overflow</code> / flex 列；overlay <code>align-items: center</code> 把超高盒子居中，头尾都被裁。</li>
+      <li><code>SystemKillModal</code> 把 <code>proc.cmd</code>（上千字符的 Chromium argv）放进 <code>info.Command</code>，<code>word-break: break-all</code> 无限长高。</li>
+      <li>PID 主页已经有完整 command；Kill 确认只需要短身份 + <code>kill -TERM pid</code>。</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>
