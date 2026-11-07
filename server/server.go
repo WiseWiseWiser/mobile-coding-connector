@@ -39,6 +39,7 @@ import (
 	servercloudflared "github.com/xhd2015/ai-critic/server/cloudflared"
 	serverconfig "github.com/xhd2015/ai-critic/server/config"
 	"github.com/xhd2015/ai-critic/server/crontasks"
+	serverdiskmon "github.com/xhd2015/ai-critic/server/diskmon"
 	"github.com/xhd2015/ai-critic/server/domains"
 	"github.com/xhd2015/ai-critic/server/encrypt"
 	"github.com/xhd2015/ai-critic/server/env"
@@ -737,6 +738,7 @@ func RegisterAPI(mux *http.ServeMux) error {
 	// Server status API
 	RegisterServerStatusAPI(mux)
 	serverprocmon.RegisterAPI(mux)
+	serverdiskmon.RegisterAPI(mux)
 
 	// Server config API
 	mux.HandleFunc("/api/server/config", func(w http.ResponseWriter, r *http.Request) {

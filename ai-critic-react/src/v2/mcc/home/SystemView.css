@@ -58,6 +58,57 @@
     background: #f59e0b;
 }
 
+.mcc-system-bar.warn > i { background: #f59e0b; }
+.mcc-system-bar.hot > i { background: #f87171; }
+
+/* Disk overview: third tile spans both columns; the tile is a button. */
+.mcc-system-disk {
+    grid-column: 1 / -1;
+    width: 100%;
+}
+
+button.mcc-system-disk {
+    text-align: left;
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+    cursor: pointer;
+}
+
+button.mcc-system-disk:hover { border-color: #475569; }
+
+.mcc-system-tile-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.mcc-system-tile-more {
+    font-size: 11px;
+    color: #64748b;
+}
+
+.mcc-system-disk-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.mcc-system-disk-pct {
+    font-size: 12px;
+    font-weight: 700;
+    color: #94a3b8;
+}
+
+.mcc-system-disk-pct.warn { color: #fbbf24; }
+.mcc-system-disk-pct.hot { color: #f87171; }
+
+.mcc-system-disk .mcc-system-bar > i { background: #3b82f6; }
+.mcc-system-disk .mcc-system-bar.warn > i { background: #f59e0b; }
+.mcc-system-disk .mcc-system-bar.hot > i { background: #f87171; }
+
 .mcc-system-kpis {
     display: flex;
     flex-wrap: wrap;
@@ -80,6 +131,12 @@
     border-radius: 10px;
     padding: 9px 12px;
     font-size: 12px;
+}
+
+.mcc-system-alert.bad {
+    background: rgba(248, 113, 113, 0.14);
+    border-color: rgba(248, 113, 113, 0.38);
+    color: #fca5a5;
 }
 
 .mcc-system-controls {

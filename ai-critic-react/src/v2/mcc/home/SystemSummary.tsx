@@ -1,6 +1,17 @@
 import { formatBytes, type ProcessSnapshot } from '../../../api/processes';
+import type { DiskSnapshot } from '../../../api/disk';
+import DiskOverview from './DiskOverview';
+import DiskIOKpi from './DiskIOKpi';
+import DiskAlert from './DiskAlert';
 
-export function SystemSummary({ data }: { data: ProcessSnapshot }) {
+interface Props {
+    data: ProcessSnapshot;
+    disk: DiskSnapshot | null;
+    diskError: string;
+    onOpenDisk: () => void;
+}
+
+export function SystemSummary({ data, disk, diskError, onOpenDisk }: Props) {
     const cpu = data.cpu.used_percent;
     const memPct = data.memory.used_percent;
     const swapPct = data.memory.swap_used_percent ?? 0;
@@ -28,13 +39,16 @@ export function SystemSummary({ data }: { data: ProcessSnapshot }) {
                         {data.memory.compressor_bytes ? ` · compressor ${formatBytes(data.memory.compressor_bytes)}` : ''}
                     </div>
                 </div>
+                <DiskOverview disk={disk} error={diskError} onOpen={onOpenDisk} />
             </div>
             <div className="mcc-system-kpis">
                 <span>Procs <b>{data.counts.processes}</b></span>
                 {data.memory.swap_total ? (
                     <span>Swap <b>{formatBytes(data.memory.swap_used ?? 0)} / {formatBytes(data.memory.swap_total)}</b></span>
                 ) : null}
+                <DiskIOKpi disk={disk} />
             </div>
+            <DiskAlert disk={disk} />
             {pressure && (
                 <div className="mcc-system-alert">
                     Memory pressure is high

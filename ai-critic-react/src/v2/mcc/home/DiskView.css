@@ -1,0 +1,134 @@
+/* Disk home: volumes, merged rows, I/O. Tile + bar tones live in SystemView.css. */
+
+.mcc-disk-sec {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 16px;
+    margin: 14px 0 8px;
+}
+
+.mcc-disk-sec h3 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #94a3b8;
+}
+
+.mcc-disk-sec span {
+    font-size: 11px;
+    color: #64748b;
+}
+
+.mcc-disk-vol {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin: 0 16px 8px;
+}
+
+.mcc-disk-vol.primary {
+    border-color: #3b82f6;
+}
+
+.mcc-disk-vol.merged {
+    background: #182030;
+    border-style: dashed;
+}
+
+.mcc-disk-vol-top {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.mcc-disk-vol-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+.mcc-disk-vol-fs,
+.mcc-disk-vol-ro {
+    font-size: 10px;
+    font-weight: 650;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    border-radius: 999px;
+    padding: 1px 6px;
+}
+
+.mcc-disk-vol-ro {
+    color: #64748b;
+}
+
+.mcc-disk-vol-free {
+    margin-left: auto;
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+.mcc-disk-vol-size {
+    font-size: 15px;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-top: 4px;
+}
+
+.mcc-disk-vol-size span {
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+}
+
+.mcc-disk-vol-path {
+    font-size: 10px;
+    color: #64748b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow-wrap: anywhere;
+}
+
+.mcc-disk-io {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 0 16px;
+}
+
+.mcc-disk-io-cell {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 10px 12px;
+}
+
+.mcc-disk-io-lab {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+}
+
+.mcc-disk-io-val {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #f1f5f9;
+    margin: 2px 0;
+}
+
+.mcc-disk-io-meta {
+    font-size: 10px;
+    color: #64748b;
+}
+
+.mcc-disk-foot {
+    padding: 0 16px;
+    margin: 10px 0 16px;
+    font-size: 10px;
+    color: #475569;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

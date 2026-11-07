@@ -4,6 +4,7 @@ import { BackIcon } from '../../../pure-view/icons/BackIcon';
 import { useTabHistory } from '../../../hooks/useTabHistory';
 import { NavTabs } from '../types';
 import { fetchProcesses, type HostProcess, type ProcessSnapshot } from '../../../api/processes';
+import { fetchDisk, type DiskSnapshot } from '../../../api/disk';
 import { filterProcesses, orderedPids, type ProcessFilter, type ProcessSort } from './groupProcesses';
 import { SystemSummary } from './SystemSummary';
 import { SystemProcessList } from './SystemProcessList';
@@ -22,6 +23,8 @@ export function SystemView() {
     const [filter, setFilter] = useState<ProcessFilter>('all');
     const [target, setTarget] = useState<HostProcess | null>(null);
     const [lockedPids, setLockedPids] = useState<number[] | null>(null);
+    const [disk, setDisk] = useState<DiskSnapshot | null>(null);
+    const [diskError, setDiskError] = useState('');
 
     useEffect(() => {
         let cancelled = false;
@@ -40,6 +43,30 @@ export function SystemView() {
             }
             if (!cancelled && !paused) {
                 timer = window.setTimeout(tick, 2000);
+            }
+        };
+        tick();
+        return () => {
+            cancelled = true;
+            if (timer) window.clearTimeout(timer);
+        };
+    }, [paused]);
+
+    useEffect(() => {
+        let cancelled = false;
+        let timer: number | undefined;
+        const tick = async () => {
+            try {
+                const next = await fetchDisk();
+                if (!cancelled) {
+                    setDisk(next);
+                    setDiskError('');
+                }
+            } catch (err) {
+                if (!cancelled) setDiskError(err instanceof Error ? err.message : String(err));
+            }
+            if (!cancelled && !paused) {
+                timer = window.setTimeout(tick, 5000);
             }
         };
         tick();
@@ -82,7 +109,12 @@ export function SystemView() {
             )}
             {data != null && (
                 <>
-                    <SystemSummary data={data} />
+                    <SystemSummary
+                        data={data}
+                        disk={disk}
+                        diskError={diskError}
+                        onOpenDisk={() => navigate('disk', { relative: 'path' })}
+                    />
                     <div className="mcc-system-controls">
                         <input
                             className="mcc-system-search"

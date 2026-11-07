@@ -141,6 +141,20 @@ func (m *Manager) Status() Status {
 	return status
 }
 
+// Latest returns the newest persisted sample without scanning the whole log.
+func (m *Manager) Latest() (Sample, bool) {
+	sample, err := readLastSample(m.dir)
+	if err != nil || sample == nil {
+		return Sample{}, false
+	}
+	return *sample, true
+}
+
+// Latest returns the newest sample of the process-wide monitor.
+func Latest() (Sample, bool) {
+	return Default().Latest()
+}
+
 // Samples returns the last n persisted samples, oldest first.
 func (m *Manager) Samples(n int) ([]Sample, error) {
 	return readSamples(m.dir, n)
