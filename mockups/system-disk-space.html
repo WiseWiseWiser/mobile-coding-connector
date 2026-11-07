@@ -428,7 +428,7 @@
           <div class="nav-item">☰<br>Files</div>
         </div>
       </div>
-      <p class="caption"><b>C · 结果</b>：卡头固定写 <code>Report &lt;id&gt;</code> + 相对时间 + 耗时 + 文件数 + 跳过的目录，回答「这是不是实时」。<code>partial</code>（90s 预算）/<code>time budget</code>/<code>detail trimmed</code>（只留汇总）以徽章出现；每个分类行可点进趋势，下方列出最大的 20 个目录（服务端最多记 40 个，门槛 256 MB，父目录被唯一子目录占满时只留子目录，避免 <code>~/Library</code> 这类空壳霸榜）。</p>
+      <p class="caption"><b>C · 结果</b>：卡头固定写 <code>Report &lt;id&gt;</code> + 相对时间 + 耗时 + 文件数 + 跳过的目录，回答「这是不是实时」。<code>partial</code>（90s 预算）/<code>time budget</code>/<code>detail trimmed</code>（只留汇总）以徽章出现；每个分类行可点进趋势，下方列出最大的 20 个目录（服务端最多记 40 个，门槛 256 MB，父目录若几乎只由一个子目录撑满，就只留子目录，避免 <code>~/Library</code> 这类空壳霸榜，但分类根目录永远保留自己那一行）。</p>
     </div>
 
     <!-- ============ D: history list ============ -->
@@ -623,7 +623,8 @@
       <li><b>重复点击不排队</b>：同一时刻只有一个全局 job；第二次 <code>POST …/start</code> 返回 <b>409</b> + 正在跑的 job，前端直接接管进度卡。</li>
       <li><b>结果可追加</b>：每份 <code>Report</code>（id = 扫描开始时间 <code>20060102-150405</code>）append 进 <code>analysis.json</code>，保留最近 50；最近 5 份保 <code>entries</code> 目录明细，更早只留 <code>categories</code> 汇总并置 <code>entries_dropped</code>。</li>
       <li><b>90s 软预算</b>：超时不算失败，写一份 <code>complete=false / truncated=true</code> 的 <code>partial</code> 报告，前端用徽章标明。</li>
-      <li><b>目录明细门槛</b>：<code>256 MB</code>，每份最多记 40 个、页面显示最大 20 个；父目录若几乎只由一个子目录构成则只留子目录，避免 <code>/Users</code> 这类空壳占满列表。</li>
+      <li><b>目录明细门槛</b>：<code>256 MB</code>，每份最多记 40 个、页面显示最大 20 个；父目录若几乎只由一个子目录构成则只留子目录，避免 <code>/Users</code> 这类空壳占满列表；分类根目录（如 <code>~/Library/Caches</code>）永不被自己的子目录挤掉。</li>
+      <li><b>路径先归一到同一套坐标系</b>：分类规则按 <code>/</code> 和 home 书写，而 macOS 的 walk 从 <code>/System/Volumes/Data</code> 起，所有真实路径都带这个挂载前缀；扫描、分类、记录、展示都先剥掉它（home 同步换算），否则每条路径都会落进 <code>other</code>，页面上也不会出现 <code>~/…</code> 缩写。</li>
       <li><b>崩溃可恢复</b>：启动时发现残留 <code>job.json</code> → 记一条 <code>interrupted</code> 尝试（"the server stopped before the scan finished"），不会永远显示「正在扫描」。</li>
       <li><b>曲线数据来自报告本身</b>：<code>GET …/reports?limit=50</code> 一次返回所有分类汇总，趋势页不再发 N 次请求；分类缺失 → 断线，<code>schema</code> 变化 → 分段各自一根轴。</li>
       <li><b>两个时间分开给</b>：<code>last_completed_at</code>（入口卡、结果页）与 <code>last_attempt{at, outcome}</code>（运行页副标题、中断/失败提示）；超过 24h 未跑才在页内提示 stale。</li>
