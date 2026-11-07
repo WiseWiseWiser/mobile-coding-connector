@@ -297,7 +297,7 @@
               <div class="prog-foot" style="margin-top:6px">141 GB reclaimable · tap any category on the finished page to see its trend</div>
             </div>
 
-            <div class="note">进度存在服务端：<code>~/.ai-critic/disk/job.json</code> 每 2s 落盘，页面 1s 轮询 <code>/status</code>；空闲时降到 10s。百分比按「主卷已用字节」折算，封顶 <b>99%</b>，真正结束才变 100。第二次点 <code>Scan</code> 不会排队：服务端返回 <b>409 + 正在跑的 job</b>，前端直接接管这张卡。90s 软预算用尽时扫描停下并写一份 <code>partial</code> 报告（不丢已扫到的分类）。</div>
+            <div class="note">进度存在服务端：<code>~/.ai-critic/disk/job.json</code> 每 2s 落盘，页面 1s 轮询 <code>/status</code>；空闲时降到 10s。百分比按「主卷已用字节」折算，封顶 <b>99%</b>，真正结束才变 100。第二次点 <code>Scan</code> 不会排队：服务端返回 <b>409 + 正在跑的 job</b>，前端直接接管这张卡。300s 软预算用尽时扫描停下并写一份 <code>partial</code> 报告（不丢已扫到的分类）。</div>
           </div>
         </div>
         <div class="bottomnav">
@@ -331,6 +331,10 @@
                 <div>
                   <div class="card-title">Report 20261107-000908</div>
                   <div class="meta">8 min ago · 8.4s · 486k files · 12 dirs skipped</div>
+                </div>
+                <div class="badges" style="margin-left:auto;margin-bottom:0">
+                  <span class="bdg">core folders scanned</span>
+                  <span class="bdg">detail trimmed</span>
                 </div>
               </div>
               <div class="stack">
@@ -417,6 +421,8 @@
             </div>
             <div class="foot" style="text-align:left;margin-top:6px">showing the 20 largest of 34 directories</div>
 
+            <div class="foot" style="margin-bottom:6px">not counted: /home (autofs mount) · /net (autofs mount) · ~/Library/CloudStorage (cloud drive)</div>
+
             <div class="foot">stored in ~/.ai-critic/disk/analysis.json · only the newest 5 keep directory detail · sizes are apparent bytes</div>
           </div>
         </div>
@@ -428,7 +434,7 @@
           <div class="nav-item">☰<br>Files</div>
         </div>
       </div>
-      <p class="caption"><b>C · 结果</b>：卡头固定写 <code>Report &lt;id&gt;</code> + 相对时间 + 耗时 + 文件数 + 跳过的目录，回答「这是不是实时」。<code>partial</code>（90s 预算）/<code>time budget</code>/<code>detail trimmed</code>（只留汇总）以徽章出现；每个分类行可点进趋势，下方列出最大的 20 个目录（服务端最多记 40 个，门槛 256 MB，父目录若几乎只由一个子目录撑满，就只留子目录，避免 <code>~/Library</code> 这类空壳霸榜，但分类根目录永远保留自己那一行）。</p>
+      <p class="caption"><b>C · 结果</b>：卡头固定写 <code>Report &lt;id&gt;</code> + 相对时间 + 耗时 + 文件数 + 跳过的目录，回答「这是不是实时」。徽章区分「重不重要」：<code>partial</code> / <code>time budget</code> 只在<b>重点目录没扫完</b>时出现；重点目录扫完了、只是预算用尽，则显示中性的 <code>core folders scanned</code>；<code>detail trimmed</code>（只留汇总）永远只是信息。卡片底部一行人话列出没进统计的位置（<code>/home</code> autofs、<code>~/Library/CloudStorage</code> 云盘、卡死的 <code>~/Library/Containers/*/Data</code>；默认只列 3 条并加 <code>+N more</code>），免得用户以为漏扫。每个分类行可点进趋势，下方列出最大的 20 个目录（服务端最多记 40 个，门槛 256 MB，父目录若几乎只由一个子目录撑满，就只留子目录，避免 <code>~/Library</code> 这类空壳霸榜，但分类根目录永远保留自己那一行）。</p>
     </div>
 
     <!-- ============ D: history list ============ -->
@@ -622,7 +628,11 @@
       <li><b>停就是停</b>：<code>POST …/cancel</code> 取消 context，walk 在 1s 内退出；<code>last_attempt.outcome = cancelled</code>，<b>不写报告</b>，历史曲线不会被半截数据污染。点停时若扫描刚好完成，返回 <code>{"cancelled": false}</code>，页面提示「the scan had already finished」。</li>
       <li><b>重复点击不排队</b>：同一时刻只有一个全局 job；第二次 <code>POST …/start</code> 返回 <b>409</b> + 正在跑的 job，前端直接接管进度卡。</li>
       <li><b>结果可追加</b>：每份 <code>Report</code>（id = 扫描开始时间 <code>20060102-150405</code>）append 进 <code>analysis.json</code>，保留最近 50；最近 5 份保 <code>entries</code> 目录明细，更早只留 <code>categories</code> 汇总并置 <code>entries_dropped</code>。</li>
-      <li><b>90s 软预算</b>：超时不算失败，写一份 <code>complete=false / truncated=true</code> 的 <code>partial</code> 报告，前端用徽章标明。</li>
+      <li><b>300s 软预算，重点目录先扫</b>：超时不算失败，写一份 <code>complete=false / truncated=true</code> 的报告。但页面不再一律喊 <code>partial</code>——报告带 <code>coverage{priority_roots, priority_scanned, priority_complete, skipped}</code>，<code>priority_complete=true</code> 表示 <code>~</code>、<code>/Library/Developer</code>、<code>/Library/Caches</code>、<code>/Applications</code>、<code>/private/var/folders</code>、<code>/opt</code> 这些「重点目录」全部读完（实测 940 万文件 / 634 GB 的开发机约 3 分半走完（含不可读目录的等待），预算内正常能做到），此时显示中性的 <code>core folders scanned</code>；只有重点目录也没扫完才显示 <code>partial</code> + <code>time budget</code> 两个警示徽章。</li>
+      <li><b>卡死的目录不陪等</b>：<code>readdir</code>/<code>lstat</code> 卡在 File Provider 或沙箱容器上时<b>无法被 context 打断</b>，一个目录就能把 worker 永久挂住，所以每目录两道上限：读目录 <b>1s</b>（<code>os.ReadDir</code> 不返回就放弃），逐条目处理 <b>500ms 无进展</b>（每处理一个条目喂一次计数，50ms 检查一次）。放弃时该目录记 <code>read timed out</code>、字节不计入任何分类，<b>但不连坐父目录</b>——<code>~/Library</code> 下确实有几个这样的子树，可它和它的 <code>Caches</code> 还得读。实测本机每个 app 容器的 <code>~/Library/Containers/*/Data</code> 都会挂住（<code>ls</code> 直接不返回），一整卷约 300 个这样的目录，代价是几秒 × 目录数，换来报告能跑完、脚注里如实列出约 300 条 <code>not counted</code>。</li>
+      <li><b>目录并行</b>：工作单元是「一棵任意深的子树」而不是单个目录——把子树成批丢给 <code>min(8, GOMAXPROCS)</code> 个 worker（<code>dirTask{node, priority}</code> + 条件变量双端队列，priority 队列优先出队，LIFO 让热目录先落袋），每个节点用 <code>pending</code> 计数（自己这次 readdir + 已入队的子目录数）在最后一个子节点完成时把体积折进父节点。所以分类汇总与 worker 完成顺序无关，报告逐字节可复现。实测 <code>~/</code> 串行约 2.3 万文件/秒，8 并发约 9.6 万文件/秒（约 4 倍）；整卷实测同样的 92s 从 310 万文件 / 74 GB（串行）提升到 570 万文件 / 148 GB（8 并发）。</li>
+      <li><b>硬链接只算一次且确定</b>：<code>Nlink&gt;1</code> 的文件字节先挂在 <code>links[dev,ino]</code>，walk 结束后统一归属到<b>路径字典序最小</b>的那条链接（不是「谁先扫到算谁」），再沿父链补体积；因此并行扫描下 <code>sum(分类) == walked</code> 依然成立。<code>Files</code> 仍统计每次看到的目录项。</li>
+      <li><b>危险挂载直接不进</b>：<code>/home</code>、<code>/net</code>（autofs，<code>ls</code> 都可能挂几分钟）、<code>/Volumes</code>、<code>/private/var/vm</code>、<code>/Backups.backupdb</code>、<code>/System/Volumes/{Data,Update,Preboot,VM}</code> 以及 <code>~/Library/CloudStorage</code>（File Provider 云盘）一律跳过；有代价的跳过写进 <code>coverage.skipped</code>，随报告落盘并在结果页脚注里如实列出。</li>
       <li><b>目录明细门槛</b>：<code>256 MB</code>，每份最多记 40 个、页面显示最大 20 个；父目录若几乎只由一个子目录构成则只留子目录，避免 <code>/Users</code> 这类空壳占满列表；分类根目录（如 <code>~/Library/Caches</code>）永不被自己的子目录挤掉。</li>
       <li><b>路径先归一到同一套坐标系</b>：分类规则按 <code>/</code> 和 home 书写，而 macOS 的 walk 从 <code>/System/Volumes/Data</code> 起，所有真实路径都带这个挂载前缀；扫描、分类、记录、展示都先剥掉它（home 同步换算），否则每条路径都会落进 <code>other</code>，页面上也不会出现 <code>~/…</code> 缩写。</li>
       <li><b>崩溃可恢复</b>：启动时发现残留 <code>job.json</code> → 记一条 <code>interrupted</code> 尝试（"the server stopped before the scan finished"），不会永远显示「正在扫描」。</li>

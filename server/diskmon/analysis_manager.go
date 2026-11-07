@@ -9,8 +9,11 @@ import (
 )
 
 // scanBudget is a soft cap: a truncated report still carries the categories
-// found so far and says so, which beats losing the whole run.
-const scanBudget = 90 * time.Second
+// found so far and says so, which beats losing the whole run. A 9M-file /
+// 600 GB developer volume needs about three minutes of parallel walking plus a
+// second per unreadable directory, so the cap leaves room for a complete report
+// on a real machine while still cutting off a runaway one.
+const scanBudget = 300 * time.Second
 
 var errAnalysisRunning = errors.New("an analysis is already running")
 
@@ -125,6 +128,7 @@ func (m *analysisManager) run(ctx context.Context, job *runningAnalysis) {
 			Roots:        result.Roots,
 			Categories:   result.Categories,
 			Entries:      result.Entries,
+			Coverage:     scanCoverage(result),
 		}
 		if embedErr := m.store.append(report, job.progress.ID); embedErr != nil {
 			m.finish(job, Attempt{
@@ -137,6 +141,22 @@ func (m *analysisManager) run(ctx context.Context, job *runningAnalysis) {
 		}
 		m.finish(job, Attempt{At: m.now(), Outcome: "completed", JobID: job.progress.ID})
 	}
+}
+
+// scanCoverage turns the walk's coverage counters into the shape the page reads.
+// The priority set is the part the headline numbers promise, so its completion
+// is reported separately from a whole-volume truncation.
+func scanCoverage(result scanResult) *ScanCoverage {
+	coverage := &ScanCoverage{
+		PriorityRoots:    result.PriorityRoots,
+		PriorityScanned:  result.PriorityScanned,
+		PriorityComplete: len(result.PriorityRoots) > 0 && result.PriorityScanned >= len(result.PriorityRoots),
+		Skipped:          result.Skipped,
+	}
+	if len(coverage.PriorityRoots) == 0 && len(coverage.Skipped) == 0 {
+		return nil
+	}
+	return coverage
 }
 
 // finish releases the running slot before recording the attempt, so a retry can

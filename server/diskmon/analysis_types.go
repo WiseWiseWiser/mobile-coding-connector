@@ -25,43 +25,63 @@ type Entry struct {
 	Reclaimable bool   `json:"reclaimable"`
 }
 
+// SkippedPath is a folder the scan deliberately refused to enter, with a short
+// reason worth showing: mounts that would block, or stores that always look
+// freeable but are not.
+type SkippedPath struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// ScanCoverage explains how far a report actually got. Truncated plus a complete
+// priority set is the normal, useful outcome: the folders the page leads with
+// are exact, the remainder is whatever the budget allowed.
+type ScanCoverage struct {
+	PriorityRoots    []string      `json:"priority_roots,omitempty"`
+	PriorityScanned  int           `json:"priority_scanned"`
+	PriorityComplete bool          `json:"priority_complete"`
+	Skipped          []SkippedPath `json:"skipped,omitempty"`
+}
+
 // Report is one completed scan. Reports are append-only; older ones lose their
 // per-directory entries but keep the category rollup that trends need.
 type Report struct {
-	ID             string     `json:"id"`
-	Schema         int        `json:"schema"`
-	ScannedAt      time.Time  `json:"scanned_at"`
-	ScanMillis     int64      `json:"scan_ms"`
-	Complete       bool       `json:"complete"`
-	Truncated      bool       `json:"truncated"`
-	UsedBytes      int64      `json:"used_bytes"`
-	TotalBytes     int64      `json:"total_bytes"`
-	ScannedBytes   int64      `json:"scanned_bytes"`
-	Files          int64      `json:"files"`
-	NoAccessDirs   int        `json:"no_access_dirs"`
-	Roots          []string   `json:"roots,omitempty"`
-	Categories     []Category `json:"categories"`
-	Entries        []Entry    `json:"entries,omitempty"`
-	EntriesDropped bool       `json:"entries_dropped,omitempty"`
+	ID             string        `json:"id"`
+	Schema         int           `json:"schema"`
+	ScannedAt      time.Time     `json:"scanned_at"`
+	ScanMillis     int64         `json:"scan_ms"`
+	Complete       bool          `json:"complete"`
+	Truncated      bool          `json:"truncated"`
+	UsedBytes      int64         `json:"used_bytes"`
+	TotalBytes     int64         `json:"total_bytes"`
+	ScannedBytes   int64         `json:"scanned_bytes"`
+	Files          int64         `json:"files"`
+	NoAccessDirs   int           `json:"no_access_dirs"`
+	Roots          []string      `json:"roots,omitempty"`
+	Categories     []Category    `json:"categories"`
+	Entries        []Entry       `json:"entries,omitempty"`
+	EntriesDropped bool          `json:"entries_dropped,omitempty"`
+	Coverage       *ScanCoverage `json:"coverage,omitempty"`
 }
 
 // ReportSummary is the list/trend shape: everything except the directory rows.
 type ReportSummary struct {
-	ID             string     `json:"id"`
-	Schema         int        `json:"schema"`
-	ScannedAt      time.Time  `json:"scanned_at"`
-	ScanMillis     int64      `json:"scan_ms"`
-	Complete       bool       `json:"complete"`
-	Truncated      bool       `json:"truncated"`
-	UsedBytes      int64      `json:"used_bytes"`
-	TotalBytes     int64      `json:"total_bytes"`
-	ScannedBytes   int64      `json:"scanned_bytes"`
-	Files          int64      `json:"files"`
-	NoAccessDirs   int        `json:"no_access_dirs"`
-	Reclaimable    int64      `json:"reclaimable"`
-	HasEntries     bool       `json:"has_entries"`
-	Categories     []Category `json:"categories"`
-	EntriesDropped bool       `json:"entries_dropped,omitempty"`
+	ID             string        `json:"id"`
+	Schema         int           `json:"schema"`
+	ScannedAt      time.Time     `json:"scanned_at"`
+	ScanMillis     int64         `json:"scan_ms"`
+	Complete       bool          `json:"complete"`
+	Truncated      bool          `json:"truncated"`
+	UsedBytes      int64         `json:"used_bytes"`
+	TotalBytes     int64         `json:"total_bytes"`
+	ScannedBytes   int64         `json:"scanned_bytes"`
+	Files          int64         `json:"files"`
+	NoAccessDirs   int           `json:"no_access_dirs"`
+	Reclaimable    int64         `json:"reclaimable"`
+	HasEntries     bool          `json:"has_entries"`
+	Categories     []Category    `json:"categories"`
+	EntriesDropped bool          `json:"entries_dropped,omitempty"`
+	Coverage       *ScanCoverage `json:"coverage,omitempty"`
 }
 
 // JobProgress is what the running scan publishes. Percent is a heuristic: the
@@ -113,6 +133,7 @@ func (r Report) summary() ReportSummary {
 		HasEntries:     len(r.Entries) > 0,
 		Categories:     r.Categories,
 		EntriesDropped: r.EntriesDropped,
+		Coverage:       r.Coverage,
 	}
 }
 

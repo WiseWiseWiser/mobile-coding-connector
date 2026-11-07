@@ -5,7 +5,15 @@ import { fetchAnalysisReports, type AnalysisReportSummary } from '../../../api/d
 import { formatBytes } from '../../../api/processes';
 import SpaceLineChart from './SpaceLineChart';
 import SpaceSparkline from './SpaceSparkline';
-import { deltaTone, duration, fileCount, reclaimableTotal, shortWhen, signedBytes } from './spaceTone';
+import {
+    deltaTone,
+    duration,
+    fileCount,
+    priorityComplete,
+    reclaimableTotal,
+    shortWhen,
+    signedBytes,
+} from './spaceTone';
 import './SystemView.css';
 import './SpaceAnalysis.css';
 
@@ -96,7 +104,7 @@ export default function SpaceHistoryView() {
                                 <div className="mcc-space-hist-when">{shortWhen(report.scanned_at)}</div>
                                 <div className="mcc-space-hist-meta">
                                     {duration(report.scan_ms)} · {fileCount(report.files)}
-                                    {!report.complete ? ' · partial' : report.entries_dropped ? ' · detail trimmed' : ''}
+                                    {!priorityComplete(report) ? ' · partial' : report.entries_dropped ? ' · detail trimmed' : ''}
                                 </div>
                             </div>
                             {values.length > 1 && <SpaceSparkline values={values} />}

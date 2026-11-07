@@ -608,6 +608,13 @@
     color: #64748b;
 }
 
+.mcc-space-skipped {
+    margin: 0 16px 8px;
+    font-size: 10px;
+    line-height: 1.5;
+    color: #64748b;
+}
+
 .mcc-space-foot {
     margin: 10px 16px 16px;
     font-size: 10px;

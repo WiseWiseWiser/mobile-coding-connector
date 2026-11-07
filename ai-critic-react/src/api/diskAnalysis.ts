@@ -20,6 +20,19 @@ export interface AnalysisEntry {
     reclaimable: boolean;
 }
 
+export interface AnalysisSkippedPath {
+    path: string;
+    reason?: string;
+}
+
+/** Which of the important folders the walk actually finished. */
+export interface AnalysisCoverage {
+    priority_roots?: string[];
+    priority_scanned: number;
+    priority_complete: boolean;
+    skipped?: AnalysisSkippedPath[];
+}
+
 export interface AnalysisReport {
     id: string;
     schema: number;
@@ -36,6 +49,7 @@ export interface AnalysisReport {
     categories: AnalysisCategory[];
     entries?: AnalysisEntry[];
     entries_dropped?: boolean;
+    coverage?: AnalysisCoverage;
 }
 
 export interface AnalysisReportSummary extends Omit<AnalysisReport, 'entries' | 'entries_dropped' | 'roots'> {

@@ -6,9 +6,11 @@ import {
     duration,
     fileCount,
     percentOf,
+    priorityComplete,
     reclaimableTotal,
     relativeTime,
     signedBytes,
+    skippedNote,
     sortedCategories,
 } from './spaceTone';
 
@@ -26,6 +28,8 @@ export default function SpaceResultCard({ summary, previous, onPickCategory }: P
     const reclaimable = reclaimableTotal(summary);
     const previousReclaimable = previous ? reclaimableTotal(previous) : null;
     const reclaimDelta = previousReclaimable === null ? null : reclaimable - previousReclaimable;
+    const partial = !priorityComplete(summary);
+    const skipped = skippedNote(summary);
     const previousBytes = (id: string) => {
         if (!previous) return null;
         const found = previous.categories.find(c => c.id === id);
@@ -43,8 +47,9 @@ export default function SpaceResultCard({ summary, previous, onPickCategory }: P
                     </div>
                 </div>
                 <div className="mcc-space-badges">
-                    {!summary.complete && <span className="mcc-space-badge warn">partial</span>}
-                    {summary.truncated && <span className="mcc-space-badge warn">time budget</span>}
+                    {partial && <span className="mcc-space-badge warn">partial</span>}
+                    {summary.truncated && partial && <span className="mcc-space-badge warn">time budget</span>}
+                    {!partial && <span className="mcc-space-badge">core folders scanned</span>}
                     {summary.entries_dropped && <span className="mcc-space-badge">detail trimmed</span>}
                 </div>
             </div>
@@ -116,6 +121,8 @@ export default function SpaceResultCard({ summary, previous, onPickCategory }: P
                     );
                 })}
             </div>
+
+            {skipped && <div className="mcc-space-skipped">{skipped}</div>}
 
             <div className="mcc-space-foot">
                 apparent file sizes · APFS clones and purgeable space are not counted · tap a category for its
