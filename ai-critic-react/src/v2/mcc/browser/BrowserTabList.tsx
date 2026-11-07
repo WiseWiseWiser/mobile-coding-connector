@@ -17,6 +17,8 @@ export interface BrowserTabListProps {
     canClose?: boolean;
     /** False in a previewed window: new tabs always land in the focused window. */
     canCreate?: boolean;
+    /** A tab nobody has followed yet; the host knows which window it belongs to. */
+    isTabNew?: (tabId: number) => boolean;
     onView: (view: SheetView) => void;
     onTab: (tabId: number) => void;
     onCloseTab: (tabId: number) => void;
@@ -63,6 +65,11 @@ export function BrowserTabList(props: BrowserTabListProps) {
                                     {tabMark(tab)}
                                 </span>
                                 <span className="bwp-tname">{tabLabel(tab)}</span>
+                                {props.isTabNew?.(tab.tab_id) && (
+                                    <span className="new" title="Tab you have not followed yet">
+                                        New
+                                    </span>
+                                )}
                                 {on && <span className="bwp-cur" aria-hidden="true" />}
                             </button>
                             {canClose && (

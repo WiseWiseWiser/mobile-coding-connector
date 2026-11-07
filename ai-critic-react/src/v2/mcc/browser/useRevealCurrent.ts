@@ -41,7 +41,13 @@ export function useRevealCurrent<T extends HTMLElement>(active: boolean, rowSele
         // can make iOS Safari pan the page despite preventScroll.
         if (!button.disabled) timer.current = window.setTimeout(() => {
             if (!interacted.current && list.contains(button) && button.getAttribute('aria-current') === 'true') {
-                button.focus({ preventScroll: true });
+                // Revealing must not yank the caret out of a field the person is
+                // typing in — clearing the search box re-renders this list with
+                // the field still focused.
+                const focused = document.activeElement;
+                const typing = focused instanceof HTMLElement
+                    && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA' || focused.isContentEditable);
+                if (!typing) button.focus({ preventScroll: true });
             }
         }, 280);
     });

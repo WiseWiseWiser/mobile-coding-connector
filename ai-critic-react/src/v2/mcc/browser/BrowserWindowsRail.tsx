@@ -17,6 +17,8 @@ export interface BrowserWindowsRailProps {
     onToggle: () => void;
     /** Preview the window's tabs on the right; never switches by itself. */
     onPreview: (row: WindowRow) => void;
+    /** A window the person has not opened since it appeared. */
+    windowNew: (key: string) => boolean;
     onNew: () => void;
     onClose: (row: WindowRow, trigger: HTMLButtonElement) => void;
     /** Fetching the plan: the button says so instead of opening a stale dialog. */
@@ -166,7 +168,14 @@ export function BrowserWindowsRail(props: BrowserWindowsRailProps) {
                                                 <WindowStackGlyph />
                                             </span>
                                             <span className="bwp-wcopy">
-                                                <span className="bwp-wtitle">{label}</span>
+                                                <span className="bwp-wline">
+                                                    <span className="bwp-wtitle">{label}</span>
+                                                    {props.windowNew(row.key) && (
+                                                        <span className="new" title="Window you have not opened yet">
+                                                            New
+                                                        </span>
+                                                    )}
+                                                </span>
                                                 <span className="bwp-wmeta">{meta}</span>
                                             </span>
                                             <span className="bwp-wtabs">
@@ -204,7 +213,9 @@ export function BrowserWindowsRail(props: BrowserWindowsRailProps) {
                             <span className="bwp-chipmark" aria-hidden="true">
                                 <WindowStackGlyph />
                             </span>
-                            <span className="bwp-chipn">{row.tabCount}</span>
+                            <span className={`bwp-chipn${props.windowNew(row.key) ? ' is-new' : ''}`}>
+                                {row.tabCount}
+                            </span>
                             {row.current && row.attached !== false && <span className="bwp-chipdot" aria-hidden="true" />}
                         </button>
                     ))

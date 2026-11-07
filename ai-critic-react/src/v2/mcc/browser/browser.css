@@ -457,6 +457,271 @@
     padding: 2px 4px;
 }
 
+/* Search is a row on the rail, not a view: the field keeps its place and the
+   results take the tree's, so the rail never jumps mid-typing. */
+.bw-search {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    margin: 8px 10px 6px;
+    padding: 0 8px;
+    border: 1px solid #2b3138;
+    border-radius: 7px;
+    background: #10151b;
+}
+
+.bw-search:focus-within {
+    border-color: rgba(77, 141, 255, 0.55);
+    background: #121820;
+}
+
+.bw-sicon {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    color: #6e7681;
+}
+
+.bw-search:focus-within .bw-sicon {
+    color: #8fb6ff;
+}
+
+.bw-sinput {
+    flex: 1 1 auto;
+    min-width: 0;
+    appearance: none;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #dfe7f1;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 0;
+}
+
+.bw-sinput::placeholder {
+    color: #6e7681;
+}
+
+.bw-sclear {
+    flex: none;
+    appearance: none;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #8b949e;
+    font-size: 12px;
+    line-height: 1;
+    padding: 1px 3px;
+    cursor: pointer;
+}
+
+.bw-sclear:hover {
+    color: #dfe7f1;
+    background: #1c2128;
+}
+
+.bw-skey {
+    flex: none;
+    border: 1px solid #2b3138;
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8.5px;
+    font-weight: 600;
+    line-height: 1;
+    color: #6e7681;
+}
+
+.bw-rail-new {
+    flex: none;
+    border: 1px solid rgba(77, 141, 255, 0.4);
+    border-radius: 4px;
+    background: rgba(77, 141, 255, 0.16);
+    padding: 2px 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8.5px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.08em;
+    color: #a9c8ff;
+}
+
+/* The same badge the phone draws, sized for an 11px rail row. */
+.bw-rail .new {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    height: 13px;
+    padding: 0 4px;
+    border: 1px solid rgba(77, 141, 255, 0.48);
+    border-radius: 4px;
+    background: rgba(77, 141, 255, 0.16);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 7.5px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: #b6d1ff;
+}
+
+.bw-rail .new.is-tab {
+    height: 12px;
+    padding: 0 3px;
+    font-size: 7px;
+}
+
+.bw-snameline {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.bw-snameline .bw-sname {
+    flex: 1 1 auto;
+    width: auto;
+}
+
+.bw-rmeta {
+    padding: 6px 10px 2px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9px;
+    font-weight: 500;
+    line-height: 1;
+    color: #6b7889;
+}
+
+.bw-rgroup {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 10px 10px 4px;
+    border-top: 1px solid rgba(34, 38, 44, 0.7);
+}
+
+.bw-rmeta + .bw-rgroupwrap .bw-rgroup {
+    border-top: 0;
+}
+
+.bw-rgtitle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #cdd8e6;
+}
+
+.bw-rgmeta {
+    flex: none;
+    margin-left: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8.5px;
+    font-weight: 500;
+    color: #5f6c7d;
+}
+
+.bw-rrow {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #adbac7;
+    font: inherit;
+    font-size: 11px;
+    text-align: left;
+    padding: 5px 10px 5px 12px;
+    cursor: pointer;
+}
+
+.bw-rrow.is-first {
+    background: rgba(56, 139, 253, 0.1);
+    box-shadow: inset 2px 0 0 #388bfd;
+}
+
+.bw-rrow.is-first:hover {
+    background: rgba(56, 139, 253, 0.16);
+}
+
+.bw-rrow:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.bw-rrow:focus-visible {
+    outline: 1px solid #388bfd;
+    outline-offset: -1px;
+    background: rgba(56, 139, 253, 0.1);
+}
+
+.bw-rrow:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.bw-rcopy {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.bw-rtitle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    color: #dfe7f1;
+}
+
+.bw-rurl {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8.5px;
+    font-weight: 500;
+    color: #6b7889;
+}
+
+.bw-rrow .m {
+    border-radius: 3px;
+    background: rgba(77, 141, 255, 0.2);
+    padding: 0 1px;
+    color: #cfe0ff;
+}
+
+.bw-rempty {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 22px 16px;
+    text-align: center;
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: #6e7681;
+}
+
+.bw-remptyq {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9.5px;
+    color: #93a5bb;
+}
+
 .bw-rail-body {
     flex: 1;
     min-height: 0;
@@ -1648,6 +1913,14 @@
         white-space: nowrap;
     }
 
+    .bwp-newcount {
+        margin-left: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 9.5px;
+        color: #a9c8ff;
+        white-space: nowrap;
+    }
+
     .bwp-headacts {
         display: flex;
         align-items: center;
@@ -1921,6 +2194,7 @@
     }
 
     .bwp-wtitle {
+        min-width: 0;
         overflow: hidden;
         color: #e6edf7;
         font-size: 12px;
@@ -1928,6 +2202,35 @@
         line-height: 1.25;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    /* The title and its badge share one line so the pill cannot wrap away
+       from the name it belongs to. */
+    .bwp-wline {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+    }
+
+    /* The one badge this feature adds: a window nobody has opened, or a tab
+       nobody has followed. It never pulses; it clears on the person's click. */
+    .bwp-wline .new,
+    .bwp-topen .new {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        height: 13px;
+        padding: 0 3.5px 0 4px;
+        border: 1px solid rgba(77, 141, 255, 0.48);
+        border-radius: 4px;
+        background: rgba(77, 141, 255, 0.16);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 7.5px;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: #b6d1ff;
     }
 
     .bwp-wmeta {
@@ -2471,6 +2774,217 @@
         color: #627084;
     }
 
+    /* Search is a row, not a view: it sits between the header and the panes on
+       every screen, and only a non-empty query swaps the panes for results. */
+    .bwp-search {
+        flex: none;
+        padding: 0 10px 6px;
+    }
+
+    .bwp-sfield {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 34px;
+        padding: 0 7px 0 10px;
+        border: 1px solid rgba(255, 255, 255, 0.075);
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    .bwp-search.is-on .bwp-sfield,
+    .bwp-sfield:focus-within {
+        border-color: rgba(77, 141, 255, 0.5);
+        background: rgba(77, 141, 255, 0.07);
+    }
+
+    .bwp-sicon {
+        flex: none;
+        width: 13px;
+        height: 13px;
+        fill: none;
+        stroke: #7c8b9e;
+        stroke-width: 1.5;
+        stroke-linecap: round;
+    }
+
+    .bwp-sinput {
+        flex: 1 1 auto;
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        background: none;
+        color: #e6edf7;
+        font-family: inherit;
+        font-size: 12.5px;
+    }
+
+    .bwp-sinput::placeholder {
+        color: #61707f;
+    }
+
+    .bwp-sclear {
+        flex: none;
+        width: 20px;
+        height: 20px;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: 99px;
+        background: rgba(255, 255, 255, 0.09);
+        color: #b6c2d2;
+        font-size: 13px;
+        line-height: 1;
+    }
+
+    .bwp-skey {
+        flex: none;
+        padding: 1px 3px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 8.5px;
+        color: #5c697b;
+    }
+
+    /* In place of the panes, not over them: the sheet keeps its height and the
+       field keeps focus while the results scroll under it. */
+    .bwp-sresults {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: 0 10px 8px;
+    }
+
+    .bwp-smeta {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        padding: 0 2px 5px;
+    }
+
+    .bwp-scount {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 9.5px;
+        color: #7d8b9d;
+    }
+
+    .bwp-snote {
+        margin-left: auto;
+        overflow: hidden;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 8.5px;
+        color: #586575;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .bwp-sgroup {
+        margin-bottom: 8px;
+    }
+
+    .bwp-sghead {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        padding: 3px 2px 4px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+    }
+
+    .bwp-sgname {
+        min-width: 0;
+        overflow: hidden;
+        font-size: 10.5px;
+        font-weight: 600;
+        color: #93a2b5;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .bwp-sgnum {
+        flex: none;
+        margin-left: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 9px;
+        color: #5c697b;
+    }
+
+    .bwp-slist {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .bwp-sresult {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        width: 100%;
+        padding: 5px 6px 6px;
+        border: 0;
+        border-radius: 7px;
+        background: none;
+        text-align: left;
+    }
+
+    .bwp-sresult:hover {
+        background: rgba(255, 255, 255, 0.045);
+    }
+
+    .bwp-sresult:focus-visible {
+        outline: 2px solid rgba(77, 141, 255, 0.65);
+        outline-offset: -2px;
+    }
+
+    .bwp-srtitle {
+        width: 100%;
+        min-width: 0;
+        overflow: hidden;
+        font-size: 11.5px;
+        color: #dfe7f1;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .bwp-srurl {
+        width: 100%;
+        min-width: 0;
+        overflow: hidden;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 8.8px;
+        color: #6b7889;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .bwp-sresult .m {
+        border-radius: 3px;
+        background: rgba(77, 141, 255, 0.2);
+        color: #cfe0ff;
+    }
+
+    .bwp-sempty {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 10px 2px;
+    }
+
+    .bwp-semptyq {
+        overflow: hidden;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 10px;
+        color: #93a2b5;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .bwp-semptyh {
+        font-size: 10px;
+        color: #6b7889;
+    }
+
     /* Two-pane main view: the window rail on the left, the previewed window's
        tabs on the right. Tapping a window only previews; tapping a tab there
        switches. */
@@ -2623,6 +3137,15 @@
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 9px;
         color: #77879b;
+    }
+
+    /* Collapsed rail: the chip has no room for a pill, so the count carries
+       the mark instead — same colour family, no extra width. */
+    .bwp-chipn.is-new {
+        padding: 1px 3px 2px;
+        border-radius: 5px;
+        background: rgba(77, 141, 255, 0.18);
+        color: #a9c8ff;
     }
 
     .bwp-chipdot {

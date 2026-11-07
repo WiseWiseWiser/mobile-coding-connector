@@ -7,8 +7,13 @@ import { BrowserBookmarksSheetView } from './BrowserBookmarksSheetView';
 import { BrowserCloseWindowDialog } from './BrowserCloseWindowDialog';
 import { BrowserSweepDialog } from './BrowserSweepDialog';
 import { BrowserNewTabView } from './BrowserNewTabView';
+import { BrowserSearchResults } from './BrowserSearchResults';
+import { BrowserSearchRow } from './BrowserSearchRow';
 import { BrowserTabList } from './BrowserTabList';
 import { BrowserWindowsRail } from './BrowserWindowsRail';
+import { searchWindows } from './tabSearch';
+import { useSeenMarks } from './useSeenMarks';
+import { orderByCreation, orderTabs } from './windowsOrder';
 import {
     nextRailOpen,
     paneTabsFor,
@@ -145,23 +150,32 @@ export function BrowserSheet({
     // Which window's tabs the right pane lists. Pure preview state: it follows
     // the connected window until the person previews another one.
     const [paneKey, setPaneKey] = useState(current);
+    // A search is a row, not a view: a non-empty query swaps the panes for
+    // results and clearing it brings the panes back untouched.
+    const [query, setQuery] = useState('');
     // Confirmation belongs to one open sheet, view and target window.
     // Scope mismatch resets it naturally without an effect that sets state on every poll.
     const scope = `${open ? 'open' : 'closed'}:${view}:${current}`;
     const confirming = open && closeSelection?.scope === scope;
-    const visible = sessions.filter(
-        (session) => session.attached || session.sessionless || session.id === current,
+    // Oldest window first. Chrome's window ids only move forward, so they order
+    // the rail by creation without any timestamp in the payload.
+    const visible = orderByCreation(
+        sessions.filter((session) => session.attached || session.sessionless || session.id === current),
     );
     const currentSession = sessions.find((session) => session.id === current);
     const tabsLocked = Boolean(currentSession && (!currentSession.attached || currentSession.sessionless));
     const locked = readOnly || tabsLocked;
+    // The mirrored window's tabs arrive on their own prop; every other window
+    // carries its snapshot. Both are put back in Chrome's tab order.
+    const tabsFor = (session: SessionInfo) =>
+        orderTabs(session.id === current ? tabs : windowTabs(session.tabs));
     const rows: WindowRow[] = visible.map((session) => ({
         key: session.id,
         sessionId: session.id,
         windowId: session.window_id,
         title: !session.attached && !session.sessionless ? 'Disconnected' : session.title?.trim() || session.id,
         attached: session.attached || Boolean(session.sessionless),
-        tabCount: session.id === current ? tabs.length : windowTabs(session.tabs).length,
+        tabCount: tabsFor(session).length,
         current: session.id === current,
         sessionless: Boolean(session.sessionless),
         windowType: session.window_type,
@@ -195,13 +209,37 @@ export function BrowserSheet({
     const paneRow = rows.find((row) => row.key === paneKey) ?? currentRow;
     const paneIsCurrent = paneRow.key === currentRow.key;
     const paneSession = sessions.find((session) => session.id === paneRow.sessionId);
-    const paneTabs = paneTabsFor(paneSession, tabs, paneIsCurrent);
+    const paneTabs = orderTabs(paneTabsFor(paneSession, tabs, paneIsCurrent));
     const paneTitle = paneTitleFor(paneRow);
+
+    // The rail, the badges and the search all read the same list, so a window
+    // cannot be badged in one place and missing from the other.
+    const searchable = rows.map((row) => {
+        const session = sessions.find((item) => item.id === row.sessionId);
+        return { key: row.key, title: row.title, tabs: session ? tabsFor(session) : [] };
+    });
+    const marks = useSeenMarks(searchable);
+    const searching = query.trim().length > 0;
+    const groups = searching ? searchWindows(searchable, query) : [];
+    const newWindows = marks.unread(rows.filter((row) => row.attached).map((row) => row.key));
+
+    // Picking a hit is a jump, not a filter: switch to that window, activate
+    // the tab, and put the panes back.
+    const pickResult = (windowKey: string, tabId: number) => {
+        marks.markWindow(windowKey);
+        marks.markTab(windowKey, tabId);
+        setQuery('');
+        onOpenTab(windowKey, tabId);
+    };
 
     // A closed sheet discards its view-specific state.
     if (wasOpen !== open) {
         setWasOpen(open);
-        if (!open) { setCloseSelection(null); setPaneKey(current); }
+        if (!open) {
+            setCloseSelection(null);
+            setPaneKey(current);
+            setQuery('');
+        }
     }
 
     // Switching windows anywhere (rail attach, a previewed tab, the parent)
@@ -311,6 +349,11 @@ export function BrowserSheet({
                         <div className="bwp-shead">
                             <span className="bwp-kicker">Browser</span>
                             <span className="bwp-live">{liveCount} {liveCount === 1 ? 'window' : 'windows'}</span>
+                            {newWindows > 0 ? (
+                                <span className="bwp-newcount" title="Windows you have not opened yet">
+                                    {newWindows} new
+                                </span>
+                            ) : null}
                             <div className="bwp-headacts">
                                 <button
                                     type="button"
@@ -348,6 +391,28 @@ export function BrowserSheet({
                                 </button>
                             </div>
                         </div>
+                        <div className={`bwp-search${searching ? ' is-on' : ''}`}>
+                            <BrowserSearchRow
+                                value={query}
+                                onChange={setQuery}
+                                onClear={() => setQuery('')}
+                                onEnter={() => {
+                                    const first = groups[0]?.hits[0];
+                                    if (first) pickResult(groups[0].key, first.tabId);
+                                }}
+                                placeholder="Search tabs and URLs"
+                                disabled={busy}
+                            />
+                        </div>
+                        {searching ? (
+                            <BrowserSearchResults
+                                query={query}
+                                groups={groups}
+                                windowCount={rows.length}
+                                onPick={(group, tabId) => pickResult(group.key, tabId)}
+                                disabled={busy}
+                            />
+                        ) : (
                         <div className="bwp-duo">
                             <BrowserWindowsRail
                                 rows={rows}
@@ -358,8 +423,14 @@ export function BrowserSheet({
                                 windowCloseSupported={windowCloseSupported}
                                 newBusy={newBusy}
                                 newWindowError={newWindowError}
+                                windowNew={marks.windowNew}
                                 onToggle={toggleRail}
-                                onPreview={(row) => setPaneKey(row.key)}
+                                onPreview={(row) => {
+                                    // Opening the row is the read receipt: the
+                                    // badge clears now, not when it renders.
+                                    marks.markWindow(row.key);
+                                    setPaneKey(row.key);
+                                }}
                                 onNew={() => {
                                     if (newBusy || busy) return;
                                     setNewBusy(true);
@@ -389,7 +460,9 @@ export function BrowserSheet({
                                     canClose={paneIsCurrent}
                                     canCreate={paneIsCurrent}
                                     onView={switchView}
+                                    isTabNew={(tabId) => marks.tabNew(paneRow.key, tabId)}
                                     onTab={(tabId) => {
+                                        marks.markTab(paneRow.key, tabId);
                                         if (paneIsCurrent) {
                                             onTab(tabId);
                                             return;
@@ -405,6 +478,7 @@ export function BrowserSheet({
                                 />
                             </div>
                         </div>
+                        )}
                         <div className="bwp-foot">
                             <div className="bwp-row">
                                 <span className="bwp-lbl">Size</span>
