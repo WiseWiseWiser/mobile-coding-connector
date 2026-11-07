@@ -485,11 +485,12 @@ func (m *Manager) TabOp(ctx context.Context, sessionID, op string, tabID int64, 
 		if err := m.tabExists(info, tabID); err != nil {
 			return nil, err
 		}
-		// Window-id rail: every tab closes like any tab. The /go anchor is the
-		// daemon's session registration and its close job refuses to touch it,
-		// so anchor closes go over CDP, which has no such opinion. The
-		// extension's confirmation flow still guards pages it considers
-		// stateful.
+		// Window-id rail: every tab closes like any tab, the /go anchor included.
+		// Anchor closes skip the confirmation job and go over Target.closeTarget:
+		// the page carries no unsaved state, and the extension only checks that
+		// the tab is in the session window. Losing the anchor ends the session,
+		// which the poll below already treats as a successful close. The user
+		// warning lives in the client, before the close is ever sent.
 		if !isSessionPageURL(tabOf(info, tabID).URL) && featureEnabled(info.Features, tabCloseConfirmationFeature) {
 			result, err := m.remoteTabCloseJob(ctx, sessionID, "BrowserAgent.closeTab", map[string]any{"tab_id": tabID})
 			if err != nil {

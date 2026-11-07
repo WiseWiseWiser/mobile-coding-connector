@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser 手机面板 — 关闭 /go 会话页确认 Mockup</title>
+<style>
+  :root {
+    --bg: #04060c;
+    --sheet: #0a0d16;
+    --card: #101524;
+    --card-hi: #141b30;
+    --line: #1c2336;
+    --line-soft: #161c2c;
+    --accent: #5b6cff;
+    --accent-soft: #232c58;
+    --text: #e9ecf5;
+    --muted: #7f8699;
+    --faint: #565d70;
+    --danger: #e5484d;
+    --danger-soft: #2a1216;
+    --warn: #c7a33d;
+    --ok: #38c793;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Noto Sans CJK SC", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 18px 12px 40px;
+  }
+  .hint { color: var(--faint); font-size: 12px; margin-bottom: 14px; text-align: center; line-height: 1.75; max-width: 460px; }
+  .hint b { color: var(--muted); font-weight: 600; }
+
+  .stage { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; width: 100%; max-width: 940px; }
+  .col { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 430px; }
+  .cap { color: var(--faint); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; text-align: center; }
+  .cap b { color: var(--muted); }
+
+  .phone {
+    position: relative; width: 100%;
+    background: var(--sheet); border: 1px solid var(--line);
+    border-radius: 26px; box-shadow: 0 18px 60px rgba(0,0,0,.55);
+    overflow: hidden; display: flex; flex-direction: column; min-height: 700px;
+  }
+  /* chrome bar */
+  .bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 12px 10px; border-bottom: 1px solid var(--line-soft);
+    background: #070a12;
+  }
+  .back { width: 26px; height: 26px; border: none; background: transparent; color: var(--muted); font-size: 15px; }
+  .urlbox {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+    padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--card);
+    color: var(--muted); font-size: 11.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .lock { color: var(--ok); font-size: 9px; }
+  .badge {
+    padding: 3px 6px; border-radius: 5px; border: 1px solid var(--line);
+    color: var(--faint); font-size: 9px; letter-spacing: .08em;
+  }
+
+  /* sheet */
+  .sh { display: flex; align-items: center; gap: 8px; padding: 14px 14px 8px; }
+  .sh-kicker { font-size: 11px; letter-spacing: .2em; font-weight: 700; color: var(--muted); }
+  .sh-count { color: var(--faint); font-size: 10.5px; letter-spacing: .04em; }
+  .spacer { flex: 1; }
+  .hbtn {
+    width: 30px; height: 30px; border-radius: 9px; border: 1px solid transparent;
+    background: transparent; color: var(--muted); font-size: 14px;
+  }
+  .seg { display: flex; gap: 4px; padding: 9px 14px 2px; }
+  .seg button {
+    flex: 1; padding: 8px 0; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--card); color: var(--muted); font-size: 11px; font-weight: 650;
+    letter-spacing: .06em; text-transform: uppercase;
+  }
+  .seg button.is-on { border-color: var(--accent); background: var(--accent-soft); color: #cfd6ff; }
+
+  .pane { padding: 10px 14px 4px; }
+  .pane-title { color: var(--faint); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 7px; }
+
+  .tabrow {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 10px; margin-bottom: 6px;
+    border: 1px solid var(--line-soft); border-radius: 9px; background: var(--card);
+  }
+  .tabrow.is-active { border-color: #2b3a63; background: var(--card-hi); }
+  .tabrow.is-flag { border-color: rgba(199,163,61,.45); background: #17140c; }
+  .fav {
+    width: 20px; height: 20px; flex: none; display: grid; place-items: center;
+    border-radius: 5px; background: #222a3d; color: #9aa6bb; font-size: 10px; font-weight: 700;
+  }
+  .tabname { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; color: #d6deec; }
+  .tabsub { color: var(--faint); font-size: 10px; }
+  .xbtn {
+    width: 26px; height: 26px; flex: none; border: none; border-radius: 7px;
+    background: transparent; color: var(--faint); font-size: 14px;
+  }
+  .xbtn.pressed { background: #2a1216; color: var(--danger); }
+  .tag {
+    padding: 2px 5px; border-radius: 4px; font-size: 8.5px; letter-spacing: .06em;
+    border: 1px solid rgba(199,163,61,.4); color: var(--warn); text-transform: uppercase;
+  }
+
+  .foot { margin-top: auto; padding: 12px 14px 16px; border-top: 1px solid var(--line-soft); }
+  .frow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .flabel { width: 54px; color: var(--faint); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+  .fseg { display: flex; gap: 4px; flex: 1; }
+  .fseg span {
+    padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px;
+    color: var(--muted); font-size: 10.5px; background: var(--card);
+  }
+  .fseg span.is-on { border-color: var(--accent); background: var(--accent-soft); color: #cfd6ff; }
+
+  /* toast (current cold rejection) */
+  .toast {
+    position: absolute; left: 12px; right: 12px; bottom: 74px;
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 10px 11px; border: 1px solid rgba(229,72,77,.45); border-radius: 10px;
+    background: #1b0d10; color: #ff9a94; font-size: 11px; line-height: 1.45;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  /* confirm dialog — mirrors .bwp-ccard */
+  .clayer {
+    position: absolute; inset: 0; z-index: 40;
+    display: flex; align-items: center; justify-content: center; padding: 18px;
+    background: rgba(2,4,8,.72); -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px);
+  }
+  .ccard {
+    width: 100%; max-width: 322px; padding: 16px 16px 14px;
+    border: 1px solid rgba(255,255,255,.13); border-radius: 15px;
+    background: linear-gradient(180deg, #151d28, #10161f);
+    box-shadow: 0 24px 70px rgba(0,0,0,.72);
+  }
+  .ckicker {
+    display: flex; align-items: center; gap: 6px;
+    color: var(--warn); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9.5px; letter-spacing: .04em; text-transform: uppercase;
+  }
+  .ckicker svg { flex: none; width: 13px; height: 13px; }
+  .ccard h3 { margin: 8px 0 5px; color: #f4f8ff; font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+  .ccard p { margin: 0; color: #a9b6c7; font-size: 11.5px; line-height: 1.55; }
+  .ccard p strong { color: #eef4fc; font-weight: 600; }
+  .ccard code {
+    padding: 1px 4px; border-radius: 4px; background: rgba(255,255,255,.07);
+    color: #cfd8e6; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px;
+  }
+  .cnote {
+    display: flex; align-items: flex-start; gap: 6px; margin-top: 10px;
+    padding: 8px 9px; border: 1px solid rgba(255,255,255,.07); border-radius: 8px;
+    background: rgba(255,255,255,.035); color: #8493a6; font-size: 9.5px; line-height: 1.4;
+  }
+  .cnote svg { flex: none; width: 12px; height: 12px; margin-top: 1px; color: var(--warn); }
+  .cactions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 13px; }
+  .ccancel, .cdanger {
+    min-height: 38px; border-radius: 9px; font-size: 11.5px; font-weight: 650;
+  }
+  .ccancel { border: 1px solid rgba(255,255,255,.14); background: #1a2230; color: #d4dce7; }
+  .cdanger { border: 1px solid var(--danger); background: var(--danger); color: #fff; }
+  .ccancel:focus-visible, .cdanger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .note { margin-top: 22px; max-width: 640px; color: var(--faint); font-size: 11.5px; line-height: 1.8; }
+  .note b { color: var(--muted); }
+  .note code { color: #9fb0c8; font-family: ui-monospace, Menlo, monospace; }
+</style>
+</head>
+<body>
+<p class="hint">
+  关闭 <b>/go 会话页</b>：从“冷拒绝 toast”改为②的<b>确认弹窗</b>。<br>
+  左：当前行为（直接报错，什么都不发生）· 中：窗口里还有别的 tab · 右：它是窗口最后一个 tab
+</p>
+
+<div class="stage">
+  <!-- A. current cold rejection -->
+  <div class="col">
+    <div class="phone">
+      <div class="bar">
+        <button class="back">‹</button>
+        <div class="urlbox"><span class="lock">●</span> mac-agent-via-rsp-aes42.xhd2015.xyz</div>
+        <span class="badge">LIVE</span>
+      </div>
+      <div class="sh"><span class="sh-kicker">BROWSER</span><span class="sh-count">1 window</span><span class="spacer"></span><button class="hbtn">↻</button><button class="hbtn">☆</button><button class="hbtn">?</button><button class="hbtn">×</button></div>
+      <div class="seg"><button class="is-on">Windows</button><button>Tabs</button></div>
+      <div class="pane">
+        <div class="pane-title">sess-uvxz6o</div>
+        <div class="tabrow is-flag">
+          <span class="fav">S</span>
+          <span class="tabname">sess-uvxz6o — Browser Agent</span>
+          <span class="tag">go</span>
+          <button class="xbtn pressed">×</button>
+        </div>
+      </div>
+      <div class="foot">
+        <div class="frow"><span class="flabel">Size</span><div class="fseg"><span class="is-on">iPhone</span><span>iPad</span><span>Mac</span><span>1510×906</span></div></div>
+        <div class="frow"><span class="flabel">Capture</span><div class="fseg"><span class="is-on">Cast</span><span>Shot</span><span>auto · 1 fps</span></div></div>
+      </div>
+      <div class="toast">
+        <span>⛔</span>
+        <span>close tab: refusing to close session control page (/go?session=)</span>
+      </div>
+    </div>
+    <p class="cap">A — 现在：<b>冷拒绝</b>（服务端/扩展直接拒绝，用户无处可去）</p>
+  </div>
+
+  <!-- B. confirm, window has other tabs -->
+  <div class="col">
+    <div class="phone">
+      <div class="bar">
+        <button class="back">‹</button>
+        <div class="urlbox"><span class="lock">●</span> mac-agent-via-rsp-aes42.xhd2015.xyz</div>
+        <span class="badge">LIVE</span>
+      </div>
+      <div class="sh"><span class="sh-kicker">BROWSER</span><span class="sh-count">1 window</span><span class="spacer"></span><button class="hbtn">↻</button><button class="hbtn">☆</button><button class="hbtn">?</button><button class="hbtn">×</button></div>
+      <div class="seg"><button class="is-on">Windows</button><button>Tabs</button></div>
+      <div class="pane">
+        <div class="pane-title">sess-uvxz6o</div>
+        <div class="tabrow is-flag">
+          <span class="fav">S</span>
+          <span class="tabname">sess-uvxz6o — Browser Agent</span>
+          <span class="tag">go</span>
+          <button class="xbtn pressed">×</button>
+        </div>
+        <div class="tabrow is-active">
+          <span class="fav">S</span>
+          <span class="tabname">SeaTalk — Sign in</span>
+          <span class="xbtn">×</span>
+        </div>
+      </div>
+      <div class="foot">
+        <div class="frow"><span class="flabel">Size</span><div class="fseg"><span class="is-on">iPhone</span><span>iPad</span><span>Mac</span><span>1510×906</span></div></div>
+        <div class="frow"><span class="flabel">Capture</span><div class="fseg"><span class="is-on">Cast</span><span>Shot</span><span>auto · 1 fps</span></div></div>
+      </div>
+
+      <div class="clayer">
+        <div class="ccard" role="dialog" aria-modal="true">
+          <div class="ckicker">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 2.3 14 13H2L8 2.3Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+              <path d="M8 6.2v3.1M8 11.4h.01" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+            Session control page
+          </div>
+          <h3>Close the session page?</h3>
+          <p>
+            <code>/go?session=sess-uvxz6o</code> registers this Chrome window with the agent.
+            Closing it disconnects the browser mirror for this window; the other tab keeps running in Chrome.
+          </p>
+          <div class="cnote">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="8" cy="8" r="5.6" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M8 7.2v3.1M8 5.1h.01" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            </svg>
+            Reopen it from the rail (“+”) when you need the mirror back.
+          </div>
+          <div class="cactions">
+            <button class="ccancel">Cancel</button>
+            <button class="cdanger">Close page</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="cap">B — 确认：窗口里还有别的 tab（只断开镜像）</p>
+  </div>
+
+  <!-- C. confirm, it is the last tab -->
+  <div class="col">
+    <div class="phone">
+      <div class="bar">
+        <button class="back">‹</button>
+        <div class="urlbox"><span class="lock">●</span> mac-agent-via-rsp-aes42.xhd2015.xyz</div>
+        <span class="badge">LIVE</span>
+      </div>
+      <div class="sh"><span class="sh-kicker">BROWSER</span><span class="sh-count">1 window</span><span class="spacer"></span><button class="hbtn">↻</button><button class="hbtn">☆</button><button class="hbtn">?</button><button class="hbtn">×</button></div>
+      <div class="seg"><button class="is-on">Windows</button><button>Tabs</button></div>
+      <div class="pane">
+        <div class="pane-title">sess-uvxz6o</div>
+        <div class="tabrow is-flag">
+          <span class="fav">S</span>
+          <span class="tabname">sess-uvxz6o — Browser Agent</span>
+          <span class="tag">go</span>
+          <button class="xbtn pressed">×</button>
+        </div>
+      </div>
+      <div class="foot">
+        <div class="frow"><span class="flabel">Size</span><div class="fseg"><span class="is-on">iPhone</span><span>iPad</span><span>Mac</span><span>1510×906</span></div></div>
+        <div class="frow"><span class="flabel">Capture</span><div class="fseg"><span class="is-on">Cast</span><span>Shot</span><span>auto · 1 fps</span></div></div>
+      </div>
+
+      <div class="clayer">
+        <div class="ccard" role="dialog" aria-modal="true">
+          <div class="ckicker">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 2.3 14 13H2L8 2.3Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+              <path d="M8 6.2v3.1M8 11.4h.01" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+            Session control page
+          </div>
+          <h3>Close the session page?</h3>
+          <p>
+            This is the <strong>only tab</strong> in its Chrome window.
+            Closing it closes the window too, and the mirror moves to another live window.
+          </p>
+          <div class="cnote">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="8" cy="8" r="5.6" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M8 7.2v3.1M8 5.1h.01" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            </svg>
+            The session <code>sess-uvxz6o</code> ends. The last Chrome window is never closed.
+          </div>
+          <div class="cactions">
+            <button class="ccancel">Cancel</button>
+            <button class="cdanger">Close window</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="cap">C — 确认：它是窗口最后一个 tab（关窗口 + 镜像切换）</p>
+  </div>
+</div>
+
+<p class="note">
+  <b>规则</b>：任何 /go 页都可以关（扩展不再硬拒绝）；关闭动作先过这道 modal，按钮文案随后果变化 —
+  “Close page”（只断镜像）/“Close window”（连窗口一起关）。Cancel 拿初始焦点，Esc / 点遮罩走安全路径。
+  <br>
+  关掉后：镜像自动切到下一个可驱动的窗口；没有就回到空状态提示，rail 的 “+” 可以再开一个。
+</p>
+</body>
+</html>

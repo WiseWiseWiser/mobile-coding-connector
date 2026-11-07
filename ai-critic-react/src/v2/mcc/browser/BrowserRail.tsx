@@ -4,6 +4,9 @@ import type { BrowserTab, DaemonStatus, SessionInfo } from './browserWire';
 import { windowTabs } from './browserView';
 import { closeTargetFor, closeWindowBlocker } from './windowClose';
 import type { CloseTarget } from './windowClose';
+import { ledgerFor, sweepAction, sweepBlocker, sweepBody, sweepWindowCount } from './sweep';
+import { useSweepFlow } from './useSweepFlow';
+import type { SweepResult } from './useBrowserSessions';
 
 export interface BrowserRailProps {
     sessions: SessionInfo[];
@@ -19,6 +22,8 @@ export interface BrowserRailProps {
     onCloseTab: (session: string, tabId: number) => void;
     onNew: () => void;
     onCloseWindow: (target: CloseTarget) => Promise<string | null>;
+    onSweep: (dryRun: boolean) => Promise<SweepResult>;
+    onToast: (message: string, warn?: boolean) => void;
     onRefresh: () => void;
 }
 
@@ -91,6 +96,38 @@ export function BrowserRail(props: BrowserRailProps) {
         : null;
     const closeTabCount = windowTabs(closeRow?.tabs).length;
     const liveWindows = sessions.filter((session) => session.attached || session.sessionless).length;
+    // Windows, not sessions: a window's own agent page and the session that
+    // opened it can be two rows, and a sweep closes windows.
+    const sweepWindows = sweepWindowCount(
+        sessions.map((session) => ({
+            key: session.id,
+            attached: session.attached || Boolean(session.sessionless),
+            windowId: session.window_id,
+        })),
+    );
+    // The same plan-and-confirm flow the phone sheet uses, rendered inline:
+    // the desktop rail has room, so the prompt never covers the tabs.
+    const sweep = useSweepFlow({
+        scope: 'rail',
+        blocked: busy,
+        onSweep: props.onSweep,
+        onToast: props.onToast,
+    });
+    const sweepBlocked = sweepBlocker({
+        supported: props.windowCloseSupported,
+        readOnly: props.readOnly,
+        busy: (busy && !sweep.planning) || sweep.applying,
+        windowCount: sweepWindows,
+    });
+    const sweepCards = sweep.open && sweep.plan ? sweep.plan : null;
+    const sweepLedger = sweepCards ? ledgerFor(sweepCards) : null;
+    // Cancel is Escape or the Cancel button; either way the rail keeps focus on
+    // the button that opened the prompt, so the keyboard never lands on body.
+    const dismissSweep = () => {
+        const back = sweep.trigger;
+        sweep.cancel();
+        back?.focus();
+    };
     const closeBlocked =
         closeWindowBlocker({
             supported: props.windowCloseSupported,
@@ -109,11 +146,15 @@ export function BrowserRail(props: BrowserRailProps) {
     };
 
     // The prompt traps Tab between its two buttons and Escape behaves like Cancel.
-    const closePromptKeys = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const promptKeys = (
+        event: ReactKeyboardEvent<HTMLDivElement>,
+        cancel: () => void,
+        locked: boolean,
+    ) => {
         if (event.key === 'Escape') {
             event.preventDefault();
             event.stopPropagation();
-            dismissClose();
+            if (!locked) cancel();
             return;
         }
         if (event.key !== 'Tab') return;
@@ -262,7 +303,7 @@ export function BrowserRail(props: BrowserRailProps) {
                     className="bw-closeconfirm"
                     role="alertdialog"
                     aria-label="Close this Chrome window"
-                    onKeyDown={closePromptKeys}
+                    onKeyDown={(event) => promptKeys(event, dismissClose, closing)}
                 >
                     <p>
                         Close <strong>{closeRow?.title?.trim() || current}</strong> and its{' '}
@@ -286,6 +327,41 @@ export function BrowserRail(props: BrowserRailProps) {
                     </div>
                 </div>
             )}
+            {sweepCards && (
+                <div
+                    className="bw-closeconfirm"
+                    role="alertdialog"
+                    aria-label="Close all other windows"
+                    onKeyDown={(event) => promptKeys(event, dismissSweep, sweep.applying)}
+                >
+                    <p>
+                        <strong>{sweepBody(sweepCards).closing}</strong> {sweepBody(sweepCards).keeping}
+                    </p>
+                    <p className="bw-closehint">
+                        Windows {sweepLedger?.windows} · Tabs {sweepLedger?.tabs} · Keeps {sweepLedger?.kept}
+                    </p>
+                    {sweep.error && <p className="bw-closeerr" role="alert">{sweep.error}</p>}
+                    <div className="bw-closeacts">
+                        <button
+                            type="button"
+                            className="bw-closecancel"
+                            autoFocus
+                            onClick={dismissSweep}
+                            disabled={sweep.applying}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            className="bw-closego"
+                            onClick={sweep.confirm}
+                            disabled={sweep.applying}
+                        >
+                            {sweep.applying ? 'Closing…' : sweepAction(sweepCards)}
+                        </button>
+                    </div>
+                </div>
+            )}
             <div className="bw-rail-actions">
                 <button type="button" className="bw-newwin" onClick={props.onNew} disabled={busy}>
                     + New window
@@ -302,6 +378,19 @@ export function BrowserRail(props: BrowserRailProps) {
                     title={closeBlocked || 'Close the current Chrome window'}
                 >
                     Close window
+                </button>
+                <button
+                    type="button"
+                    className="bw-sweepwin"
+                    onClick={(event) => sweep.start(event.currentTarget)}
+                    disabled={Boolean(sweepBlocked) || sweep.planning}
+                    title={sweepBlocked || 'Close every Chrome window except this one'}
+                >
+                    <span className="bw-sweepx" aria-hidden="true">×</span>
+                    <span className="bw-sweepname">{sweep.planning ? 'Planning…' : 'Close other windows'}</span>
+                    {!sweep.planning && sweepWindows > 1 && (
+                        <span className="bw-sweepnum">{sweepWindows} → 1</span>
+                    )}
                 </button>
             </div>
             <footer className="bw-rail-foot">

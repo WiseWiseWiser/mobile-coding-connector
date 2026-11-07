@@ -8,6 +8,7 @@ import type { SheetView } from './BrowserSheet';
 import { tabLabel } from './browserView';
 import type { BookmarkDocument, BookmarkItem, BookmarkSource } from './browserBookmarks';
 import type { PollInterval } from './browserPollStream';
+import type { SweepResult } from './useBrowserSessions';
 import type { ProbeEvidence } from './browserStream';
 import type {
     BrowserMode,
@@ -62,6 +63,10 @@ export interface BrowserPhoneViewProps {
     onView: (view: SheetView) => void;
     onNewWindow: () => Promise<boolean>;
     onCloseWindow: (target: { window_id: number } | { session_id: string }) => Promise<string | null>;
+    /** Plans (`dryRun`) or applies the whole-browser sweep. */
+    onSweep: (dryRun: boolean) => Promise<SweepResult>;
+    /** Sheet-local outcomes: a failed plan, a finished sweep. */
+    onToast: (message: string, warn?: boolean) => void;
     onTab: (tabId: number) => void;
     /** Activate a tab of any window: switches there first when needed. */
     onOpenTab: (sessionId: string, tabId: number) => void;
@@ -181,6 +186,8 @@ export function BrowserPhoneView(props: BrowserPhoneViewProps) {
                 onView={props.onView}
                 onNewWindow={props.onNewWindow}
                 onCloseWindow={props.onCloseWindow}
+                onSweep={props.onSweep}
+                onToast={props.onToast}
                 onTab={props.onTab}
                 onOpenTab={props.onOpenTab}
                 onCloseTab={props.onCloseTab}

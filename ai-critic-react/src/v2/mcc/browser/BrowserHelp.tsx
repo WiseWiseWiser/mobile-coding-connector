@@ -67,6 +67,11 @@ export function BrowserHelp({ onClose }: BrowserHelpProps) {
                         ☆ opens Chrome&apos;s bookmarks read-only; when Chrome is empty it links to local
                         saves. Saving the current page writes to that local list.
                     </dd>
+                    <dt>Sweep</dt>
+                    <dd>
+                        The red × closes every other Chrome window, keeps this window&apos;s agent page,
+                        then opens one blank page.
+                    </dd>
                     <dt>Sessions</dt>
                     <dd>Every window the agent can drive; on a phone they are the chips at the top of the sheet.</dd>
                     <dt>Keys</dt>

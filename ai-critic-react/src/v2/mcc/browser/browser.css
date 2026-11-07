@@ -675,6 +675,7 @@
 
 .bw-rail-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 7px;
     margin: 8px 10px;
     flex: none;
@@ -717,8 +718,48 @@
     color: #ff9b94;
 }
 
+.bw-sweepwin {
+    flex: 1 1 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    appearance: none;
+    border: 1px dashed rgba(248, 81, 73, 0.32);
+    border-radius: 8px;
+    background: transparent;
+    color: #f0a19c;
+    padding: 6px 9px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.bw-sweepwin:hover:not(:disabled) {
+    border-color: rgba(248, 81, 73, 0.65);
+    background: rgba(248, 81, 73, 0.1);
+    color: #ff9b94;
+}
+
+.bw-sweepx {
+    color: #f85149;
+    font-size: 13px;
+    line-height: 1;
+}
+
+.bw-sweepname {
+    flex: 1 1 auto;
+    text-align: left;
+}
+
+.bw-sweepnum {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.02em;
+    color: #8b98aa;
+}
+
 .bw-newwin:disabled,
-.bw-closewin:disabled {
+.bw-closewin:disabled,
+.bw-sweepwin:disabled {
     opacity: 0.5;
     cursor: default;
 }
@@ -2013,6 +2054,55 @@
         color: #c7a33d;
     }
 
+    /* The plan as numbers, not prose: what closes, what the delta is, what
+       stays. A single-column list keeps the phone card short. */
+    .bwp-ledger {
+        margin-top: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 9px;
+        overflow: hidden;
+    }
+
+    .bwp-lg {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 9px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .bwp-lg:first-child {
+        border-top: 0;
+    }
+
+    .bwp-lg span {
+        color: #778495;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 8.5px;
+        font-weight: 700;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+    }
+
+    .bwp-lg em {
+        color: #7f8d9f;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 9px;
+        font-style: normal;
+        font-weight: 500;
+        text-transform: none;
+        white-space: nowrap;
+    }
+
+    .bwp-lg b {
+        margin-left: auto;
+        color: #e9f0fa;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
     .bwp-cerr {
         margin-top: 9px;
         color: #ff7b72;
@@ -2580,6 +2670,81 @@
         height: 40px;
     }
 
+    /* The rail's pinned foot: the one control that acts on the whole browser
+       rather than one window, so it never scrolls away with the rows. Neutral
+       chrome, red glyph — a permanently alarming rail would be worse than the
+       problem it solves. */
+    .bwp-railfoot {
+        flex: none;
+        margin-top: auto;
+        padding: 6px 6px 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .bwp-sweep {
+        position: relative;
+        width: 100%;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 0 8px;
+        border: 1px solid rgba(255, 255, 255, 0.075);
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.06);
+        color: #b9c5d4;
+        font-family: inherit;
+        font-size: 10.5px;
+        font-weight: 600;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .bwp-sweep svg {
+        flex: none;
+        width: 15px;
+        height: 15px;
+        color: #ff6259;
+    }
+
+    .bwp-sweeplbl {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .bwp-sweepn {
+        margin-left: auto;
+        flex: none;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-weight: 500;
+        font-size: 9px;
+        color: #7f8d9f;
+    }
+
+    .bwp-sweep.is-off {
+        opacity: 0.45;
+        cursor: default;
+    }
+
+    .bwp-sweep:active:not(.is-off) {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Collapsed rail: the glyph alone, still a full-size tap target. */
+    .bwp-rail:not(.is-open) .bwp-sweep {
+        width: 40px;
+        height: 38px;
+        margin: 0 auto;
+        padding: 0;
+    }
+
+    .bwp-rail:not(.is-open) .bwp-sweeplbl,
+    .bwp-rail:not(.is-open) .bwp-sweepn {
+        display: none;
+    }
+
     .bwp-panetabs {
         flex: 1 1 auto;
         min-width: 0;
@@ -2616,6 +2781,7 @@
     .bwp-wrowmain:focus-visible,
     .bwp-ccancel:focus-visible,
     .bwp-cdanger:focus-visible,
+    .bwp-sweep:focus-visible,
     .bwp-hbtn:focus-visible,
     .bwp-x:focus-visible,
     .bwp-btn2:focus-visible,
@@ -3702,6 +3868,9 @@ button.bw-crumb:hover {
     color: #e6edf7;
 }
 .bw-tabclose-kicker { color: #ff9b94; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.bw-tabclose-kicker.is-warn { color: #e0b64a; }
+.bw-tabclose-anchor { margin-top: 8px !important; }
+.bw-tabclose-anchor code { color: #dbe4f2; font-size: 12px; background: #1b2331; border: 1px solid #2a3446; border-radius: 5px; padding: 1px 5px; }
 .bw-tabclose-card h3 { margin: 9px 0; font-size: 18px; }
 .bw-tabclose-card p { margin: 0; color: #a9b6c7; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .bw-tabclose-card strong { color: #eef4fc; }

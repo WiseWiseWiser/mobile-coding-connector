@@ -5,6 +5,7 @@ import { BrowserAddressEditor } from './BrowserAddressEditor';
 import { useAddressVisualViewport } from './useAddressVisualViewport';
 import { BrowserBookmarksSheetView } from './BrowserBookmarksSheetView';
 import { BrowserCloseWindowDialog } from './BrowserCloseWindowDialog';
+import { BrowserSweepDialog } from './BrowserSweepDialog';
 import { BrowserNewTabView } from './BrowserNewTabView';
 import { BrowserTabList } from './BrowserTabList';
 import { BrowserWindowsRail } from './BrowserWindowsRail';
@@ -19,6 +20,8 @@ import {
 } from './railOpen';
 import { closeTargetFor } from './windowClose';
 import type { WindowRow } from './windowClose';
+import type { SweepResult } from './useBrowserSessions';
+import { useSweepFlow } from './useSweepFlow';
 import type { BookmarkDocument, BookmarkItem, BookmarkSource } from './browserBookmarks';
 export type SheetView = 'main' | 'url' | 'newtab' | 'bookmarks';
 interface BrowserSheetProps {
@@ -45,6 +48,10 @@ interface BrowserSheetProps {
     onNewWindow: () => Promise<boolean>;
     /** Resolves to the server's refusal, or null when the window closed. */
     onCloseWindow: (target: { window_id: number } | { session_id: string }) => Promise<string | null>;
+    /** Plans the sweep (`dryRun`) or applies it, from the sheet's own dialog. */
+    onSweep: (dryRun: boolean) => Promise<SweepResult>;
+    /** Outcomes the sheet has no surface for: a failed plan, a finished sweep. */
+    onToast: (message: string, warn?: boolean) => void;
     onTab: (tabId: number) => void;
     /** Activate a tab of any window: switches there first when needed. */
     onOpenTab: (sessionId: string, tabId: number) => void;
@@ -120,6 +127,8 @@ export function BrowserSheet({
     onReload,
     onNavigateTarget,
     onSelectAddressTab,
+    onSweep,
+    onToast,
     onHelp,
 }: BrowserSheetProps) {
     const sheetWrapRef = useAddressVisualViewport(open && view === 'url');
@@ -171,6 +180,15 @@ export function BrowserSheet({
         } satisfies WindowRow);
     const closeRow = confirming ? closeSelection.row : null;
     const closeTarget = closeRow ? closeTargetFor(closeRow) : null;
+    // The sweep plans before it asks: the dry-run answer is the dialog's copy,
+    // so the numbers cannot be guessed here and go stale there.
+    const sweep = useSweepFlow({
+        scope,
+        blocked: busy,
+        onSweep,
+        onToast,
+        onApplied: onClose,
+    });
 
     // The right pane lists the previewed window's tabs; the left rail picks
     // which. Previewing never switches — tapping a tab there does.
@@ -244,7 +262,7 @@ export function BrowserSheet({
                 aria-label="Sessions and tabs"
                 data-view={view}
             >
-                <div className="bwp-sheetflow" inert={confirming ? true : undefined}>
+                <div className="bwp-sheetflow" inert={confirming || sweep.open ? true : undefined}>
                     <div className="bwp-grab" aria-hidden="true" />
                     {view === 'url' ? (
                     <BrowserAddressEditor
@@ -355,6 +373,8 @@ export function BrowserSheet({
                                     setCloseError('');
                                     setCloseSelection({ scope, row, trigger });
                                 }}
+                                sweepPlanning={sweep.planning}
+                                onSweep={sweep.start}
                             />
                             <div className="bwp-panetabs">
                                 <BrowserTabList
@@ -431,6 +451,16 @@ export function BrowserSheet({
                     </>
                 )}
                 </div>
+                {sweep.open && sweep.plan && (
+                    <BrowserSweepDialog
+                        plan={sweep.plan}
+                        returnFocus={sweep.trigger}
+                        busy={sweep.applying}
+                        error={sweep.error}
+                        onCancel={sweep.cancel}
+                        onConfirm={sweep.confirm}
+                    />
+                )}
                 {closeRow && (
                     <BrowserCloseWindowDialog
                         title={closeRow.title}

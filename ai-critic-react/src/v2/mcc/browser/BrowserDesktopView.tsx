@@ -5,6 +5,7 @@ import { BrowserRail } from './BrowserRail';
 import { BrowserTabs } from './BrowserTabs';
 import { BrowserToolbar } from './BrowserToolbar';
 import { BrowserUrlBar } from './BrowserUrlBar';
+import type { SweepResult } from './useBrowserSessions';
 import type {
     BrowserMode,
     BrowserStatus,
@@ -43,6 +44,8 @@ export interface BrowserDesktopViewProps {
     onCloseRailTab: (session: string, tabId: number) => void;
     onNewWindow: () => void;
     onCloseWindow: (target: { window_id: number } | { session_id: string }) => Promise<string | null>;
+    onSweep: (dryRun: boolean) => Promise<SweepResult>;
+    onToast: (message: string, warn?: boolean) => void;
     onRefreshSessions: () => void;
     onPreset: (preset: string) => void;
     onMode: (mode: BrowserMode) => void;
@@ -81,6 +84,8 @@ export function BrowserDesktopView(props: BrowserDesktopViewProps) {
                 onCloseTab={props.onCloseRailTab}
                 onNew={props.onNewWindow}
                 onCloseWindow={props.onCloseWindow}
+                onSweep={props.onSweep}
+                onToast={props.onToast}
                 onRefresh={props.onRefreshSessions}
             />
             {props.railOpen && (

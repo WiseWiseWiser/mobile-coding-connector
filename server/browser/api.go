@@ -23,6 +23,7 @@ func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/browser/session", m.handleSession)
 	mux.HandleFunc("/api/browser/window/attach", m.handleWindowAttach)
 	mux.HandleFunc("/api/browser/window/close", m.handleWindowClose)
+	mux.HandleFunc("/api/browser/windows/sweep", m.handleWindowsSweep)
 	mux.HandleFunc("/api/browser/tab", m.handleTab)
 	mux.HandleFunc("/api/browser/frame", m.handleFrame)
 	mux.HandleFunc("/api/browser/input", m.handleInput)
@@ -284,6 +285,45 @@ func (m *Manager) handleWindowClose(w http.ResponseWriter, r *http.Request) {
 		resp["closed_session_id"] = result.SessionID
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleWindowsSweep keeps one Chrome window and closes the rest. dry_run
+// returns the plan the confirmation dialog numbers itself from; the real call
+// recomputes that plan before it closes anything, so a stale dialog cannot close
+// a window that appeared afterwards.
+func (m *Manager) handleWindowsSweep(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		DryRun bool `json:"dry_run"`
+	}
+	if !decodeBody(w, r, &body) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+	result, err := m.SweepWindows(ctx, body.DryRun)
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, errWindowCloseUnsupported), errors.Is(err, errSweepOneWindow),
+			errors.Is(err, errSweepNoAnchor), errors.Is(err, errNoLiveWindow),
+			errors.Is(err, errWindowGone):
+			status = http.StatusConflict
+		case errors.Is(err, errReadOnly):
+			status = http.StatusFailedDependency
+		default:
+			status = http.StatusBadGateway
+		}
+		writeJSON(w, status, struct {
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+			*SweepWindowsResult
+		}{false, err.Error(), result})
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		OK bool `json:"ok"`
+		*SweepWindowsResult
+	}{true, result})
 }
 
 // handleTab activates, closes, or creates a tab. Creating takes a session id

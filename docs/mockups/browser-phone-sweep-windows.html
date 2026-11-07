@@ -1,0 +1,1171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ai-critic /browser — close all other windows (phone sheet)</title>
+<style>
+  :root {
+    --page: #05070d;
+    --ink: #dbe4ef;
+    --muted: #8b98aa;
+    --line: #1b2430;
+    --accent: #4d8dff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    background:
+      radial-gradient(900px 520px at 50% -12%, rgba(77, 141, 255, .10), transparent 70%),
+      var(--page);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 46px 20px 72px;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  .doc { max-width: 880px; margin: 0 auto 40px; }
+  .eyebrow {
+    font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--accent);
+  }
+  h1 { font-size: 30px; line-height: 1.15; letter-spacing: -.02em; margin: 12px 0 10px; }
+  .lede { max-width: 660px; font-size: 13.5px; line-height: 1.62; color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .legend span {
+    font: 600 10.5px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: #0b0f15; color: #9aa8ba;
+  }
+  .legend b { color: #dbe4ef; font-weight: 600; }
+
+  .shots { display: grid; grid-template-columns: repeat(2, 402px); gap: 44px 40px; justify-content: center; align-items: start; }
+  figure { display: flex; flex-direction: column; gap: 14px; }
+  figcaption { display: flex; flex-direction: column; gap: 6px; }
+  .cap-n {
+    font: 700 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .16em; text-transform: uppercase; color: #5c697b;
+  }
+  .cap-t { font-size: 12.5px; line-height: 1.5; color: #9fadc0; }
+  .cap-t b { color: #dce5f0; font-weight: 600; }
+
+  /* ---------- phone shell (402 x 874, iPhone 16 Pro) ---------- */
+  .phone {
+    position: relative; width: 402px; height: 874px; border-radius: 46px;
+    background: #05070b; border: 1px solid #1d2634; overflow: hidden;
+    box-shadow: 0 40px 90px -40px #000, 0 0 0 1px rgba(255, 255, 255, .02) inset;
+    transform-origin: top left;
+  }
+  .screen { position: absolute; inset: 0; background: #05070b; }
+
+  .sb { position: absolute; top: 0; left: 0; right: 0; height: 54px; display: flex; align-items: center; gap: 6px; padding: 0 28px 0 30px; }
+  .sb-time { font-size: 15.5px; font-weight: 650; letter-spacing: -.01em; }
+  .sb-gear { width: 12px; height: 12px; color: #cfd9e6; opacity: .85; }
+  .sb-sp { flex: 1; }
+  .sb-sig { display: flex; align-items: flex-end; gap: 2px; height: 11px; margin-right: 3px; }
+  .sb-sig i { width: 3px; border-radius: 1px; background: #e7eef8; display: block; }
+  .sb-sig i:nth-child(1) { height: 4px; }
+  .sb-sig i:nth-child(2) { height: 6px; }
+  .sb-sig i:nth-child(3) { height: 8px; }
+  .sb-sig i:nth-child(4) { height: 10px; }
+  .sb-net { font-size: 12.5px; font-weight: 600; letter-spacing: .01em; }
+  .sb-bat { position: relative; width: 24px; height: 11.5px; border: 1.2px solid rgba(231, 238, 248, .55); border-radius: 3.4px; margin-left: 4px; }
+  .sb-bat::after { content: ""; position: absolute; right: -3.2px; top: 3.4px; width: 2px; height: 4.4px; border-radius: 0 1.5px 1.5px 0; background: rgba(231, 238, 248, .55); }
+  .sb-bat i { position: absolute; inset: 1.6px; width: 62%; border-radius: 1.8px; background: #e7eef8; }
+
+  .urlpill {
+    position: absolute; top: 56px; left: 12px; right: 12px; height: 36px;
+    display: flex; align-items: center; gap: 8px; padding: 0 11px;
+    border: 1px solid #232c38; border-radius: 18px; background: #0a0e14;
+  }
+  .urlpill svg { flex: none; width: 14px; height: 14px; color: #8f9db0; }
+  .urltext { flex: 1; min-width: 0; font-size: 12.5px; color: #e2eaf4; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .urlpill .reload { width: 15px; height: 15px; color: #98a6b8; }
+
+  .stage { position: absolute; top: 92px; left: 0; right: 0; bottom: 0; }
+
+  /* ---------- the shipped bottom sheet ---------- */
+  .bwp-sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 73.5%;
+    display: flex; flex-direction: column;
+    padding: 12px 0 88px;
+    border-radius: 22px 22px 0 0;
+    background: linear-gradient(180deg, #0f151d, #0b0f15);
+    box-shadow: 0 -30px 84px rgba(0, 0, 0, .72);
+  }
+  .bwp-grab { flex: none; width: 34px; height: 4px; border-radius: 2px; background: #303b4a; margin: 16px auto 14px; }
+  .bwp-shead { flex: none; height: 42px; display: flex; align-items: center; padding: 0 6px 1px 16px; }
+  .bwp-kicker {
+    font: 700 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .17em; text-transform: uppercase; color: #8b98aa;
+  }
+  .bwp-live { margin-left: 6px; font: 500 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #5c697b; }
+  .bwp-gap { flex: 1 1 auto; }
+  .bwp-headacts { display: flex; align-items: center; }
+  .bwp-hbtn, .bwp-x {
+    display: grid; place-items: center; width: 40px; height: 40px;
+    border: 0; border-radius: 10px; background: none; color: #c3cedd;
+    font: 400 19px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  .bwp-x { font-size: 22px; }
+
+  /* duo: rail + tab pane */
+  .bwp-duo { flex: 1 1 auto; min-height: 0; display: flex; }
+
+  .bwp-rail {
+    flex: none; width: 56px; display: flex; flex-direction: column;
+    border-right: 1px solid rgba(255, 255, 255, .07);
+  }
+  .bwp-rail.is-open { width: 189px; }
+  .bwp-railhead { flex: none; display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px; min-height: 42px; }
+  .bwp-railtoggle {
+    position: relative; flex: none; width: 40px; height: 38px; display: grid; place-items: center;
+    border: 1px solid rgba(255, 255, 255, .06); border-radius: 9px;
+    background: rgba(255, 255, 255, .06); color: #9aa8ba;
+  }
+  .bwp-railtoggle svg { width: 17px; height: 17px; }
+  .rail-pane { fill: transparent; }
+  .bwp-rail.is-open .rail-pane { fill: rgba(77, 141, 255, .4); }
+  .bwp-railcount {
+    position: absolute; right: 3px; bottom: 1px;
+    font: 500 8.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #7f8d9f;
+  }
+  .bwp-railbody { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 2px 0 6px; }
+
+  .bwp-chip {
+    position: relative; width: 100%; height: 54px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    border: 0; border-left: 2px solid transparent; background: none; color: #9aa8ba;
+  }
+  .bwp-chip.is-sel { border-left-color: #4d8dff; background: rgba(77, 141, 255, .07); }
+  .bwp-chipmark {
+    width: 30px; height: 30px; display: grid; place-items: center;
+    border: 1px solid rgba(255, 255, 255, .08); border-radius: 8px; background: #1a2230;
+  }
+  .bwp-chipmark svg { width: 15px; height: 15px; }
+  .bwp-chipn { font: 500 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #8492a5; }
+  .bwp-chipdot {
+    flex: none; width: 5px; height: 5px; border-radius: 99px;
+    background: #4d8dff; box-shadow: 0 0 6px rgba(77, 141, 255, .9);
+  }
+  .bwp-chip > .bwp-chipdot { position: absolute; top: 9px; right: 9px; }
+
+  .bwp-wrowgroup { border-left: 2px solid transparent; padding: 0 6px; }
+  .bwp-wrowgroup.is-sel { border-left-color: #4d8dff; background: rgba(77, 141, 255, .12); }
+  .bwp-wrow { display: flex; align-items: center; gap: 4px; min-height: 50px; }
+  .bwp-wrowmain {
+    flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 9px;
+    padding: 6px 0; border: 0; background: none; color: inherit; text-align: left;
+  }
+  .bwp-wmark {
+    flex: none; width: 26px; height: 26px; display: grid; place-items: center;
+    border: 1px solid rgba(255, 255, 255, .08); border-radius: 7px; background: #1a2230; color: #9aa8ba;
+  }
+  .bwp-wmark svg { width: 14px; height: 14px; }
+  .bwp-wcopy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .bwp-wtitle {
+    font-size: 12px; font-weight: 600; line-height: 1.25; color: #e6edf7;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .bwp-wmeta {
+    font: 500 9px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace; color: #7b8a9c;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .bwp-wtabs { flex: none; margin-left: 4px; font: 500 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #8492a5; }
+  .bwp-wclose, .bwp-tclose {
+    flex: none; display: grid; place-items: center; width: 28px; height: 34px;
+    border: 0; border-radius: 7px; background: none; color: #7d8b9d;
+    font: 400 17px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  /* the sweep control: pinned to the bottom of the rail */
+  .bwp-railfoot { flex: none; margin-top: auto; padding: 6px 6px 8px; border-top: 1px solid rgba(255, 255, 255, .07); }
+  .bwp-sweep {
+    position: relative; width: 100%; height: 36px;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    border: 1px solid rgba(255, 255, 255, .075); border-radius: 9px;
+    background: rgba(255, 255, 255, .06); color: #b9c5d4;
+    font: 600 10.5px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  }
+  .bwp-sweep svg { flex: none; width: 15px; height: 15px; color: #ff6259; }
+  .bwp-sweepn { margin-left: auto; font: 500 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #7f8d9f; }
+  .bwp-rail:not(.is-open) .bwp-sweep { width: 40px; height: 38px; margin: 0 auto; }
+  .bwp-rail:not(.is-open) .bwp-sweeplbl, .bwp-rail:not(.is-open) .bwp-sweepn { display: none; }
+  .bwp-sweep.is-off { opacity: .45; }
+
+  /* the new-control marker, mockup only */
+  .bwp-sweep.is-new::after {
+    content: ""; position: absolute; inset: -4px; border-radius: 12px;
+    border: 1px dashed rgba(91, 128, 255, .85);
+  }
+  .bwp-sweep.is-new::before {
+    content: "new"; position: absolute; top: -21px; left: 50%; transform: translateX(-50%);
+    padding: 3px 5px; border-radius: 5px; background: #4d8dff; color: #04101f;
+    font: 700 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em;
+  }
+
+  .bwp-panetabs { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .bwp-thead {
+    flex: none; display: flex; align-items: center; gap: 0;
+    padding: 8px 10px 3px 16px; border-top: 1px solid rgba(255, 255, 255, .07);
+  }
+  .bwp-panetitle {
+    max-width: 42%; font-size: 10px; color: #77879b;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .bwp-mini {
+    flex: none; width: 34px; height: 30px; display: grid; place-items: center;
+    border: 0; border-radius: 8px; background: none; color: #9aa8ba;
+    font: 400 17px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  .bwp-tabs { list-style: none; padding: 2px 6px 6px; display: flex; flex-direction: column; gap: 1px; }
+  .bwp-trow { position: relative; display: flex; align-items: center; height: 45px; border-radius: 9px; }
+  .bwp-trow.is-on { background: rgba(77, 141, 255, .1); }
+  .bwp-trow.is-on::before {
+    content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px;
+    border-radius: 2px; background: #4d8dff;
+  }
+  .bwp-topen {
+    flex: 1 1 auto; min-width: 0; height: 100%; display: flex; align-items: center; gap: 9px;
+    padding: 0 4px 0 8px; border: 0; background: none; color: inherit; text-align: left;
+  }
+  .bwp-mono {
+    flex: none; width: 22px; height: 22px; display: grid; place-items: center;
+    border-radius: 6px; background: #1a2230; color: #93a2b5;
+    font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .bwp-tname { flex: 1 1 auto; min-width: 0; font-size: 12px; color: #dbe3ee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bwp-cur { flex: none; width: 6px; height: 6px; border-radius: 99px; background: #4d8dff; }
+  .bwp-tclose { margin-right: 4px; }
+
+  .bwp-foot {
+    flex: none; display: flex; flex-direction: column; gap: 6px;
+    padding: 7px 14px 8px; border-top: 1px solid rgba(255, 255, 255, .07); background: #0a0e14;
+  }
+  .bwp-row { display: flex; align-items: center; gap: 8px; height: 30px; }
+  .bwp-lbl {
+    flex: none; width: 44px;
+    font: 700 8.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .11em; text-transform: uppercase; color: #778495;
+  }
+  .bwp-seg { display: flex; gap: 2px; height: 30px; padding: 2px; border-radius: 8px; background: #070b10; }
+  .bwp-seg3 { width: 172px; }
+  .bwp-seg2 { width: 106px; }
+  .bwp-seg button {
+    flex: 1 1 0; border: 0; border-radius: 6px; background: none; color: #8b98aa;
+    font: 600 10px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  }
+  .bwp-seg button.is-on { background: #1d2836; color: #e6edf7; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07); }
+  .bwp-actual { margin-left: auto; font: 500 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #6f7d8f; }
+
+  /* ---------- confirm layer ---------- */
+  .bwp-clayer {
+    position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; padding: 14px;
+    background: rgba(2, 4, 8, .72);
+    -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px);
+  }
+  .bwp-ccard {
+    width: 100%; max-width: 322px; padding: 15px; border-radius: 15px;
+    border: 1px solid rgba(255, 255, 255, .13);
+    background: linear-gradient(180deg, #151d28, #10161f);
+    box-shadow: 0 26px 60px -18px rgba(0, 0, 0, .85);
+  }
+  .bwp-ckicker {
+    display: flex; align-items: center; gap: 6px;
+    font: 700 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .14em; text-transform: uppercase; color: #ff8d84;
+  }
+  .bwp-ckicker svg { width: 12px; height: 12px; }
+  .bwp-ccard h3 { margin-top: 9px; font-size: 17px; line-height: 1.25; letter-spacing: -.01em; color: #f4f8ff; }
+  .bwp-ccard p { margin-top: 7px; font-size: 11.5px; line-height: 1.5; color: #a9b6c7; }
+  .bwp-ccard p b { color: #eaf1fa; font-weight: 600; }
+  .bwp-ledger { margin-top: 12px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 9px; overflow: hidden; }
+  .bwp-lg { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-top: 1px solid rgba(255, 255, 255, .06); }
+  .bwp-lg:first-child { border-top: 0; }
+  .bwp-lg span {
+    font: 700 8.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .11em; text-transform: uppercase; color: #778495;
+  }
+  .bwp-lg em { font: 500 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; font-style: normal; color: #7f8d9f; }
+  .bwp-lg b { margin-left: auto; font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e9f0fa; }
+  .bwp-cnote { display: flex; gap: 6px; margin-top: 11px; font-size: 9.5px; line-height: 1.45; color: #8493a6; }
+  .bwp-cnote svg { flex: none; width: 11px; height: 11px; margin-top: 1px; color: #c7a33d; }
+  .bwp-cactions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 13px; }
+  .bwp-cactions button {
+    height: 38px; border: 0; border-radius: 9px;
+    font: 600 11.5px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  }
+  .bwp-ccancel { background: #1a2230; color: #cdd8e6; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .09); }
+  .bwp-cdanger { background: #e5484d; color: #fff; }
+
+  /* ---------- result toast ---------- */
+  .bwp-toast {
+    position: absolute; left: 14px; right: 14px; bottom: calc(73.5% + 10px); z-index: 30;
+    display: flex; gap: 8px; padding: 9px 11px; border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, .12); background: rgba(22, 30, 41, .97);
+    box-shadow: 0 16px 34px -14px #000;
+  }
+  .bwp-toast svg { flex: none; width: 13px; height: 13px; margin-top: 1px; color: #4dd6a3; }
+  .bwp-toast b { display: block; font-size: 11.5px; font-weight: 600; color: #eaf1fa; }
+  .bwp-toast span { display: block; margin-top: 2px; font-size: 9.5px; line-height: 1.4; color: #93a2b5; }
+
+  /* ---------- browser toolbar ---------- */
+  .safaribar { position: absolute; left: 0; right: 0; bottom: 0; height: 92px; display: flex; align-items: center; justify-content: center; }
+  .safaripill {
+    width: 358px; height: 50px; display: flex; align-items: center; justify-content: space-around;
+    padding: 0 10px; border: 1px solid #202a37; border-radius: 25px;
+    background: rgba(12, 16, 22, .92);
+  }
+  .safaripill svg { width: 19px; height: 19px; color: #cfd8e4; }
+  .safaripill svg.dim { color: #566274; }
+
+  /* ---------- notes ---------- */
+  .notes { max-width: 1100px; margin: 56px auto 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 34px; }
+  .note h3 {
+    font: 700 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .16em; text-transform: uppercase; color: #5c697b; margin-bottom: 7px;
+  }
+  .note p { font-size: 12.5px; line-height: 1.62; color: #93a2b5; }
+  .note code { font: 500 11.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #c3d3e6; background: #0f151d; padding: 2px 5px; border-radius: 4px; }
+  .note b { color: #dce5f0; font-weight: 600; }
+  .foot-note { max-width: 1100px; margin: 40px auto 0; padding-top: 18px; border-top: 1px solid #121a26; font-size: 11.5px; line-height: 1.6; color: #5f6d80; }
+
+  /* ---------- responsive: one frame at a time, scaled to fit ---------- */
+  @media (max-width: 883px) {
+    body { padding: 30px 16px 52px; }
+    .doc { margin-bottom: 30px; }
+    h1 { font-size: 25px; }
+    .shots { grid-template-columns: minmax(0, 1fr); gap: 30px; }
+    figure { width: 100%; }
+    .notes { margin-top: 38px; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .foot-note { margin-top: 30px; }
+  }
+  @media (max-width: 440px) {
+    body { padding: 20px 12px 40px; }
+    h1 { font-size: 21px; margin: 10px 0 8px; }
+    .lede { font-size: 12.5px; }
+    .legend { gap: 6px; margin-top: 14px; }
+    .legend span { font-size: 10px; padding: 6px 8px; }
+    .cap-t { font-size: 11.5px; }
+    .note p, .foot-note { font-size: 11.5px; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-stack" viewBox="0 0 16 16" fill="none">
+    <rect x="3.1" y="1.9" width="9.8" height="7.6" rx="1.7" stroke="currentColor" stroke-width="1.2" opacity=".38"/>
+    <rect x="3.1" y="5.9" width="9.8" height="8.2" rx="1.7" fill="var(--glyph-bg,#1a2230)" stroke="currentColor" stroke-width="1.2"/>
+  </symbol>
+  <symbol id="i-rail" viewBox="0 0 16 16" fill="none">
+    <rect class="rail-pane" x="3.4" y="3.7" width="3.1" height="8.6" rx="1"/>
+    <rect x="2.7" y="3.1" width="10.6" height="9.8" rx="1.8" stroke="currentColor" stroke-width="1.25"/>
+    <path d="M6.6 3.4v9.2" stroke="currentColor" stroke-width="1.25"/>
+  </symbol>
+  <symbol id="i-redx" viewBox="0 0 16 16" fill="none">
+    <path d="M4.6 4.6 11.4 11.4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+    <path d="M11.4 4.6 4.6 11.4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-warn" viewBox="0 0 16 16" fill="none">
+    <path d="M8 2.4 14.2 13.1H1.8L8 2.4Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M8 6.3v3.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+    <circle cx="8" cy="11.3" r=".85" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-ok" viewBox="0 0 16 16" fill="none">
+    <circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.2"/>
+    <path d="M5.2 8.3 7.2 10.3 11 6.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-monitor" viewBox="0 0 16 16" fill="none">
+    <rect x="1.8" y="3.2" width="12.4" height="8.1" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+    <path d="M6 13.3h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-reload" viewBox="0 0 16 16" fill="none">
+    <path d="M13.1 8a5.1 5.1 0 1 1-1.6-3.7" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
+    <path d="M13.2 2.6v3.1h-3.1" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-share" viewBox="0 0 20 20" fill="none">
+    <path d="M10 2.6v9.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M6.7 5.7 10 2.4l3.3 3.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M4.4 10v5.6a1.6 1.6 0 0 0 1.6 1.6h8a1.6 1.6 0 0 0 1.6-1.6V10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-book" viewBox="0 0 20 20" fill="none">
+    <path d="M3.2 4.4h4.4a2.4 2.4 0 0 1 2.4 2.4v9a2 2 0 0 0-2-2H3.2V4.4Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M16.8 4.4h-4.4a2.4 2.4 0 0 0-2.4 2.4v9a2 2 0 0 1 2-2h4.8V4.4Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-tabs" viewBox="0 0 20 20" fill="none">
+    <rect x="2.4" y="6.2" width="11" height="10" rx="2.2" stroke="currentColor" stroke-width="1.4"/>
+    <path d="M6.4 6.2V5.6a2.2 2.2 0 0 1 2.2-2.2h6.8a2.2 2.2 0 0 1 2.2 2.2v6.6a2.2 2.2 0 0 1-2.2 2.2h-.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-chev" viewBox="0 0 20 20" fill="none">
+    <path d="M12.4 4.6 6.6 10l5.8 5.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>
+
+<header class="doc">
+  <p class="eyebrow">ai-critic · /browser · phone sheet</p>
+  <h1>Close all other windows</h1>
+  <p class="lede">
+    One action collapses every Chrome window into the one you are driving: the agent page stays connected,
+    everything else closes, and one blank page is left open. The frames below reuse the shipped sheet —
+    same 22&nbsp;px radius, 56&nbsp;px chip rail, <span class="mono">WINDOWS</span> / <span class="mono">TABS</span>
+    kickers, Size &amp; Capture footer, and the existing close-window dialog shell.
+  </p>
+  <div class="legend">
+    <span><b>Dashed ring</b> = the new control</span>
+    <span><b>Red ×</b> = closes windows, always confirmed</span>
+    <span><b>Kept</b> this window · agent page + one <span class="mono">about:blank</span></span>
+    <span><b>Closed</b> every other window and tab</span>
+    <span><b>Rendered</b> 402 × 874, scaled to fit any screen</span>
+  </div>
+</header>
+
+<main class="shots">
+
+  <!-- ============ 01 · rail collapsed (default) ============ -->
+  <figure>
+    <div class="phone">
+      <div class="screen">
+        <div class="sb">
+          <span class="sb-time">10:05</span>
+          <svg class="sb-gear" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="8" r="2.4" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M8 1.6v1.6M8 12.8v1.6M1.6 8h1.6M12.8 8h1.6M3.5 3.5l1.1 1.1M11.4 11.4l1.1 1.1M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+          </svg>
+          <span class="sb-sp"></span>
+          <span class="sb-sig"><i></i><i></i><i></i><i></i></span>
+          <span class="sb-net">4G</span>
+          <span class="sb-bat"><i></i></span>
+        </div>
+
+        <div class="urlpill">
+          <svg aria-hidden="true"><use href="#i-monitor"/></svg>
+          <span class="urltext">mac-agent-via-rsp-aes42.xhd2015.xyz</span>
+          <svg class="reload" aria-hidden="true"><use href="#i-reload"/></svg>
+        </div>
+
+        <div class="stage"></div>
+
+        <div class="bwp-sheet">
+          <div class="bwp-grab"></div>
+          <div class="bwp-shead">
+            <span class="bwp-kicker">Browser</span>
+            <span class="bwp-live">3 windows</span>
+            <span class="bwp-gap"></span>
+            <div class="bwp-headacts">
+              <button class="bwp-hbtn" aria-label="Reload browser session">&#8635;</button>
+              <button class="bwp-hbtn" aria-label="Favourite">&#9734;</button>
+              <button class="bwp-hbtn" aria-label="Shortcuts">?</button>
+              <button class="bwp-x" aria-label="Close sheet">&times;</button>
+            </div>
+          </div>
+
+          <div class="bwp-duo">
+            <aside class="bwp-rail">
+              <div class="bwp-railhead">
+                <button class="bwp-railtoggle" aria-label="Show all windows" aria-expanded="false">
+                  <svg aria-hidden="true"><use href="#i-rail"/></svg>
+                  <span class="bwp-railcount">3</span>
+                </button>
+              </div>
+              <div class="bwp-railbody">
+                <button class="bwp-chip" aria-label="Preview SPL Weekly">
+                  <span class="bwp-chipmark"><svg aria-hidden="true"><use href="#i-stack"/></svg></span>
+                  <span class="bwp-chipn">2</span>
+                </button>
+                <button class="bwp-chip" aria-label="Preview World · el">
+                  <span class="bwp-chipmark"><svg aria-hidden="true"><use href="#i-stack"/></svg></span>
+                  <span class="bwp-chipn">2</span>
+                </button>
+                <button class="bwp-chip is-sel" aria-label="Preview World · eluc" aria-current="true">
+                  <span class="bwp-chipmark"><svg aria-hidden="true"><use href="#i-stack"/></svg></span>
+                  <span class="bwp-chipn">2</span>
+                  <span class="bwp-chipdot"></span>
+                </button>
+              </div>
+              <div class="bwp-railfoot">
+                <button class="bwp-sweep is-new" aria-label="Close all other windows" title="Close all other windows">
+                  <svg aria-hidden="true"><use href="#i-redx"/></svg>
+                  <span class="bwp-sweeplbl">Close other windows</span>
+                  <span class="bwp-sweepn">3&nbsp;&rarr;&nbsp;1</span>
+                </button>
+              </div>
+            </aside>
+
+            <div class="bwp-panetabs">
+              <div class="bwp-thead">
+                <span class="bwp-kicker">Tabs</span>
+                <span class="bwp-live">2</span>
+                <span class="bwp-gap"></span>
+                <span class="bwp-panetitle">World &middot; eluc</span>
+                <button class="bwp-mini" aria-label="New tab">+</button>
+              </div>
+              <ul class="bwp-tabs">
+                <li class="bwp-trow">
+                  <button class="bwp-topen">
+                    <span class="bwp-mono">S</span>
+                    <span class="bwp-tname">sess-c0zyta - Browser Agent</span>
+                  </button>
+                  <button class="bwp-tclose" aria-label="Close tab">&times;</button>
+                </li>
+                <li class="bwp-trow is-on">
+                  <button class="bwp-topen">
+                    <span class="bwp-mono">W</span>
+                    <span class="bwp-tname">World &middot; eluc</span>
+                    <span class="bwp-cur" aria-hidden="true"></span>
+                  </button>
+                  <button class="bwp-tclose" aria-label="Close tab">&times;</button>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="bwp-foot">
+            <div class="bwp-row">
+              <span class="bwp-lbl">Size</span>
+              <div class="bwp-seg bwp-seg3">
+                <button>iPhone</button>
+                <button>iPad</button>
+                <button class="is-on">Mac</button>
+              </div>
+              <span class="bwp-actual">1440&times;900</span>
+            </div>
+            <div class="bwp-row">
+              <span class="bwp-lbl">Capture</span>
+              <div class="bwp-seg bwp-seg2">
+                <button>Cast</button>
+                <button class="is-on">Shot</button>
+              </div>
+              <span class="bwp-actual">auto &middot; 1 fps</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="safaribar">
+          <div class="safaripill">
+            <svg aria-hidden="true"><use href="#i-chev"/></svg>
+            <svg class="dim" aria-hidden="true"><use href="#i-chev" transform="rotate(180 10 10)"/></svg>
+            <svg aria-hidden="true"><use href="#i-share"/></svg>
+            <svg aria-hidden="true"><use href="#i-book"/></svg>
+            <svg aria-hidden="true"><use href="#i-tabs"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption>
+      <span class="cap-n">01 · collapsed rail &mdash; default state</span>
+      <span class="cap-t">
+        The control is pinned to the bottom of the window rail, in the same slot whether the rail is
+        closed or open. Collapsed it is a single 40&nbsp;&times;&nbsp;38 button holding one red
+        <span class="mono">&times;</span>, so it never pushes the chips.
+      </span>
+    </figcaption>
+  </figure>
+
+  <!-- ============ 02 · rail open ============ -->
+  <figure>
+    <div class="phone">
+      <div class="screen">
+        <div class="sb">
+          <span class="sb-time">10:05</span>
+          <svg class="sb-gear" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="8" r="2.4" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M8 1.6v1.6M8 12.8v1.6M1.6 8h1.6M12.8 8h1.6M3.5 3.5l1.1 1.1M11.4 11.4l1.1 1.1M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+          </svg>
+          <span class="sb-sp"></span>
+          <span class="sb-sig"><i></i><i></i><i></i><i></i></span>
+          <span class="sb-net">4G</span>
+          <span class="sb-bat"><i></i></span>
+        </div>
+
+        <div class="urlpill">
+          <svg aria-hidden="true"><use href="#i-monitor"/></svg>
+          <span class="urltext">mac-agent-via-rsp-aes42.xhd2015.xyz</span>
+          <svg class="reload" aria-hidden="true"><use href="#i-reload"/></svg>
+        </div>
+
+        <div class="stage"></div>
+
+        <div class="bwp-sheet">
+          <div class="bwp-grab"></div>
+          <div class="bwp-shead">
+            <span class="bwp-kicker">Browser</span>
+            <span class="bwp-live">3 windows</span>
+            <span class="bwp-gap"></span>
+            <div class="bwp-headacts">
+              <button class="bwp-hbtn" aria-label="Reload browser session">&#8635;</button>
+              <button class="bwp-hbtn" aria-label="Favourite">&#9734;</button>
+              <button class="bwp-hbtn" aria-label="Shortcuts">?</button>
+              <button class="bwp-x" aria-label="Close sheet">&times;</button>
+            </div>
+          </div>
+
+          <div class="bwp-duo">
+            <aside class="bwp-rail is-open">
+              <div class="bwp-railhead">
+                <button class="bwp-railtoggle" aria-label="Hide the window list" aria-expanded="true">
+                  <svg aria-hidden="true"><use href="#i-rail"/></svg>
+                </button>
+                <span class="bwp-kicker">Windows</span>
+                <span class="bwp-gap"></span>
+                <button class="bwp-mini" aria-label="New window" title="New window">+</button>
+              </div>
+              <div class="bwp-railbody">
+                <div class="bwp-wrowgroup">
+                  <div class="bwp-wrow">
+                    <button class="bwp-wrowmain" title="Preview SPL Weekly's tabs">
+                      <span class="bwp-wmark"><svg aria-hidden="true"><use href="#i-stack"/></svg></span>
+                      <span class="bwp-wcopy">
+                        <span class="bwp-wtitle">SPL Weekly</span>
+                        <span class="bwp-wmeta">sess-9met2k</span>
+                      </span>
+                      <span class="bwp-wtabs">2 tabs</span>
+                    </button>
+                    <button class="bwp-wclose" aria-label="Close window">&times;</button>
+                  </div>
+                </div>
+                <div class="bwp-wrowgroup">
+                  <div class="bwp-wrow">
+                    <button class="bwp-wrowmain" title="Preview World · elm's tabs">
+                      <span class="bwp-wmark"><svg aria-hidden="true"><use href="#i-stack"/></svg></span>
+                      <span class="bwp-wcopy">
+                        <span class="bwp-wtitle">World &middot; elm</span>
+                        <span class="bwp-wmeta">sess-c0zyta</span>
+                      </span>
+                      <span class="bwp-wtabs">2 tabs</span>
+                    </button>
+                    <button class="bwp-wclose" aria-label="Close window">&times;</button>
+                  </div>
+                </div>
+                <div class="bwp-wrowgroup is-sel">
+                  <div class="bwp-wrow">
+                    <button class="bwp-wrowmain" title="Preview World · eluc's tabs" aria-current="true">
+                      <span class="bwp-wmark"><svg aria-hidden="true"><use href="#i-stack"/></svg></span>
+                      <span class="bwp-wcopy">
+                        <span class="bwp-wtitle">World &middot; eluc</span>
+                        <span class="bwp-wmeta">sess-c0zyta</span>
+                      </span>
+                      <span class="bwp-wtabs">2 tabs</span>
+                      <span class="bwp-chipdot" aria-hidden="true"></span>
+                    </button>
+                    <button class="bwp-wclose" aria-label="Close window">&times;</button>
+                  </div>
+                </div>
+              </div>
+              <div class="bwp-railfoot">
+                <button class="bwp-sweep" aria-label="Close all other windows" title="Close all other windows">
+                  <svg aria-hidden="true"><use href="#i-redx"/></svg>
+                  <span class="bwp-sweeplbl">Close other windows</span>
+                  <span class="bwp-sweepn">3&nbsp;&rarr;&nbsp;1</span>
+                </button>
+              </div>
+            </aside>
+
+            <div class="bwp-panetabs">
+              <div class="bwp-thead">
+                <span class="bwp-kicker">Tabs</span>
+                <span class="bwp-live">2</span>
+                <span class="bwp-gap"></span>
+                <span class="bwp-panetitle">World &middot; eluc</span>
+                <button class="bwp-mini" aria-label="New tab">+</button>
+              </div>
+              <ul class="bwp-tabs">
+                <li class="bwp-trow">
+                  <button class="bwp-topen">
+                    <span class="bwp-mono">S</span>
+                    <span class="bwp-tname">sess-c0zyta - Browser Agent</span>
+                  </button>
+                  <button class="bwp-tclose" aria-label="Close tab">&times;</button>
+                </li>
+                <li class="bwp-trow is-on">
+                  <button class="bwp-topen">
+                    <span class="bwp-mono">W</span>
+                    <span class="bwp-tname">World &middot; eluc</span>
+                    <span class="bwp-cur" aria-hidden="true"></span>
+                  </button>
+                  <button class="bwp-tclose" aria-label="Close tab">&times;</button>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="bwp-foot">
+            <div class="bwp-row">
+              <span class="bwp-lbl">Size</span>
+              <div class="bwp-seg bwp-seg3">
+                <button>iPhone</button>
+                <button>iPad</button>
+                <button class="is-on">Mac</button>
+              </div>
+              <span class="bwp-actual">1440&times;900</span>
+            </div>
+            <div class="bwp-row">
+              <span class="bwp-lbl">Capture</span>
+              <div class="bwp-seg bwp-seg2">
+                <button>Cast</button>
+                <button class="is-on">Shot</button>
+              </div>
+              <span class="bwp-actual">auto &middot; 1 fps</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="safaribar">
+          <div class="safaripill">
+            <svg aria-hidden="true"><use href="#i-chev"/></svg>
+            <svg class="dim" aria-hidden="true"><use href="#i-chev" transform="rotate(180 10 10)"/></svg>
+            <svg aria-hidden="true"><use href="#i-share"/></svg>
+            <svg aria-hidden="true"><use href="#i-book"/></svg>
+            <svg aria-hidden="true"><use href="#i-tabs"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption>
+      <span class="cap-n">02 · rail open — the same slot, labelled</span>
+      <span class="cap-t">
+        Opening the rail grows the control into a row: red <span class="mono">&times;</span>,
+        <b>Close other windows</b>, and the outcome
+        it will produce (<b>3&nbsp;&rarr;&nbsp;1</b>). Nothing else in the sheet header changes.
+      </span>
+    </figcaption>
+  </figure>
+
+  <!-- ============ 03 · confirm ============ -->
+  <figure>
+    <div class="phone">
+      <div class="screen">
+        <div class="sb">
+          <span class="sb-time">10:05</span>
+          <svg class="sb-gear" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="8" r="2.4" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M8 1.6v1.6M8 12.8v1.6M1.6 8h1.6M12.8 8h1.6M3.5 3.5l1.1 1.1M11.4 11.4l1.1 1.1M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+          </svg>
+          <span class="sb-sp"></span>
+          <span class="sb-sig"><i></i><i></i><i></i><i></i></span>
+          <span class="sb-net">4G</span>
+          <span class="sb-bat"><i></i></span>
+        </div>
+
+        <div class="urlpill">
+          <svg aria-hidden="true"><use href="#i-monitor"/></svg>
+          <span class="urltext">mac-agent-via-rsp-aes42.xhd2015.xyz</span>
+          <svg class="reload" aria-hidden="true"><use href="#i-reload"/></svg>
+        </div>
+
+        <div class="stage"></div>
+
+        <div class="bwp-sheet">
+          <div class="bwp-grab"></div>
+          <div class="bwp-shead">
+            <span class="bwp-kicker">Browser</span>
+            <span class="bwp-live">3 windows</span>
+            <span class="bwp-gap"></span>
+            <div class="bwp-headacts">
+              <button class="bwp-hbtn" aria-label="Reload browser session">&#8635;</button>
+              <button class="bwp-hbtn" aria-label="Favourite">&#9734;</button>
+              <button class="bwp-hbtn" aria-label="Shortcuts">?</button>
+              <button class="bwp-x" aria-label="Close sheet">&times;</button>
+            </div>
+          </div>
+
+          <div class="bwp-duo">
+            <aside class="bwp-rail is-open">
+              <div class="bwp-railhead">
+                <button class="bwp-railtoggle" aria-label="Hide the window list" aria-expanded="true">
+                  <svg aria-hidden="true"><use href="#i-rail"/></svg>
+                </button>
+                <span class="bwp-kicker">Windows</span>
+                <span class="bwp-gap"></span>
+                <button class="bwp-mini" aria-label="New window" title="New window">+</button>
+              </div>
+              <div class="bwp-railbody">
+                <div class="bwp-wrowgroup">
+                  <div class="bwp-wrow">
+                    <button class="bwp-wrowmain">
+                      <span class="bwp-wmark"><svg aria-hidden="true"><use href="#i-stack"/></svg></span>
+                      <span class="bwp-wcopy">
+                        <span class="bwp-wtitle">SPL Weekly</span>
+                        <span class="bwp-wmeta">sess-9met2k</span>
+                      </span>
+                      <span class="bwp-wtabs">2 tabs</span>
+                    </button>
+                    <button class="bwp-wclose" aria-label="Close window">&times;</button>
+                  </div>
+                </div>
+                <div class="bwp-wrowgroup">
+                  <div class="bwp-wrow">
+                    <button class="bwp-wrowmain">
+                      <span class="bwp-wmark"><svg aria-hidden="true"><use href="#i-stack"/></svg></span>
+                      <span class="bwp-wcopy">
+                        <span class="bwp-wtitle">World &middot; elm</span>
+                        <span class="bwp-wmeta">sess-c0zyta</span>
+                      </span>
+                      <span class="bwp-wtabs">2 tabs</span>
+                    </button>
+                    <button class="bwp-wclose" aria-label="Close window">&times;</button>
+                  </div>
+                </div>
+                <div class="bwp-wrowgroup is-sel">
+                  <div class="bwp-wrow">
+                    <button class="bwp-wrowmain" aria-current="true">
+                      <span class="bwp-wmark"><svg aria-hidden="true"><use href="#i-stack"/></svg></span>
+                      <span class="bwp-wcopy">
+                        <span class="bwp-wtitle">World &middot; eluc</span>
+                        <span class="bwp-wmeta">sess-c0zyta</span>
+                      </span>
+                      <span class="bwp-wtabs">2 tabs</span>
+                      <span class="bwp-chipdot" aria-hidden="true"></span>
+                    </button>
+                    <button class="bwp-wclose" aria-label="Close window">&times;</button>
+                  </div>
+                </div>
+              </div>
+              <div class="bwp-railfoot">
+                <button class="bwp-sweep" aria-busy="false">
+                  <svg aria-hidden="true"><use href="#i-redx"/></svg>
+                  <span class="bwp-sweeplbl">Close other windows</span>
+                  <span class="bwp-sweepn">3&nbsp;&rarr;&nbsp;1</span>
+                </button>
+              </div>
+            </aside>
+
+            <div class="bwp-panetabs">
+              <div class="bwp-thead">
+                <span class="bwp-kicker">Tabs</span>
+                <span class="bwp-live">2</span>
+                <span class="bwp-gap"></span>
+                <span class="bwp-panetitle">World &middot; eluc</span>
+                <button class="bwp-mini" aria-label="New tab">+</button>
+              </div>
+              <ul class="bwp-tabs">
+                <li class="bwp-trow">
+                  <button class="bwp-topen">
+                    <span class="bwp-mono">S</span>
+                    <span class="bwp-tname">sess-c0zyta - Browser Agent</span>
+                  </button>
+                  <button class="bwp-tclose" aria-label="Close tab">&times;</button>
+                </li>
+                <li class="bwp-trow is-on">
+                  <button class="bwp-topen">
+                    <span class="bwp-mono">W</span>
+                    <span class="bwp-tname">World &middot; eluc</span>
+                    <span class="bwp-cur" aria-hidden="true"></span>
+                  </button>
+                  <button class="bwp-tclose" aria-label="Close tab">&times;</button>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="bwp-foot">
+            <div class="bwp-row">
+              <span class="bwp-lbl">Size</span>
+              <div class="bwp-seg bwp-seg3">
+                <button>iPhone</button>
+                <button>iPad</button>
+                <button class="is-on">Mac</button>
+              </div>
+              <span class="bwp-actual">1440&times;900</span>
+            </div>
+            <div class="bwp-row">
+              <span class="bwp-lbl">Capture</span>
+              <div class="bwp-seg bwp-seg2">
+                <button>Cast</button>
+                <button class="is-on">Shot</button>
+              </div>
+              <span class="bwp-actual">auto &middot; 1 fps</span>
+            </div>
+          </div>
+
+          <div class="bwp-clayer">
+            <div class="bwp-ccard" role="alertdialog" aria-modal="true" aria-labelledby="sweep-h">
+              <div class="bwp-ckicker">
+                <svg aria-hidden="true"><use href="#i-warn"/></svg>
+                Close windows
+              </div>
+              <h3 id="sweep-h">Close all other windows?</h3>
+              <p>
+                <b>2 Chrome windows</b> and <b>5 tabs</b> close. This window keeps its agent page,
+                then opens one blank page.
+              </p>
+              <div class="bwp-ledger">
+                <div class="bwp-lg">
+                  <span>Windows</span>
+                  <b>3 &rarr; 1</b>
+                </div>
+                <div class="bwp-lg">
+                  <span>Tabs</span>
+                  <em>&minus;5&nbsp;&nbsp;+1</em>
+                  <b>6 &rarr; 2</b>
+                </div>
+                <div class="bwp-lg">
+                  <span>Kept</span>
+                  <b>sess-c0zyta &middot; agent page</b>
+                </div>
+              </div>
+              <div class="bwp-cnote">
+                <svg aria-hidden="true"><use href="#i-warn"/></svg>
+                <span>Chrome's last window is never closed. Closed tabs cannot be reopened.</span>
+              </div>
+              <div class="bwp-cactions">
+                <button class="bwp-ccancel">Cancel</button>
+                <button class="bwp-cdanger">Close 2 windows</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="safaribar">
+          <div class="safaripill">
+            <svg aria-hidden="true"><use href="#i-chev"/></svg>
+            <svg class="dim" aria-hidden="true"><use href="#i-chev" transform="rotate(180 10 10)"/></svg>
+            <svg aria-hidden="true"><use href="#i-share"/></svg>
+            <svg aria-hidden="true"><use href="#i-book"/></svg>
+            <svg aria-hidden="true"><use href="#i-tabs"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption>
+      <span class="cap-n">03 · confirm — the close-window dialog shell</span>
+      <span class="cap-t">
+        Same <span class="mono">.bwp-clayer</span> / <span class="mono">.bwp-ccard</span> as closing one window:
+        scrim tap and Escape cancel, Cancel owns focus, the danger button names the count, and the ledger states
+        exactly what closes and what survives.
+      </span>
+    </figcaption>
+  </figure>
+
+  <!-- ============ 04 · after ============ -->
+  <figure>
+    <div class="phone">
+      <div class="screen">
+        <div class="sb">
+          <span class="sb-time">10:05</span>
+          <svg class="sb-gear" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="8" r="2.4" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M8 1.6v1.6M8 12.8v1.6M1.6 8h1.6M12.8 8h1.6M3.5 3.5l1.1 1.1M11.4 11.4l1.1 1.1M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+          </svg>
+          <span class="sb-sp"></span>
+          <span class="sb-sig"><i></i><i></i><i></i><i></i></span>
+          <span class="sb-net">4G</span>
+          <span class="sb-bat"><i></i></span>
+        </div>
+
+        <div class="urlpill">
+          <svg aria-hidden="true"><use href="#i-monitor"/></svg>
+          <span class="urltext">mac-agent-via-rsp-aes42.xhd2015.xyz</span>
+          <svg class="reload" aria-hidden="true"><use href="#i-reload"/></svg>
+        </div>
+
+        <div class="bwp-toast">
+          <svg aria-hidden="true"><use href="#i-ok"/></svg>
+          <span>
+            <b>Closed 2 windows and 5 tabs.</b>
+            <span>This window kept its agent page and a blank page.</span>
+          </span>
+        </div>
+
+        <div class="stage"></div>
+
+        <div class="bwp-sheet">
+          <div class="bwp-grab"></div>
+          <div class="bwp-shead">
+            <span class="bwp-kicker">Browser</span>
+            <span class="bwp-live">1 window</span>
+            <span class="bwp-gap"></span>
+            <div class="bwp-headacts">
+              <button class="bwp-hbtn" aria-label="Reload browser session">&#8635;</button>
+              <button class="bwp-hbtn" aria-label="Favourite">&#9734;</button>
+              <button class="bwp-hbtn" aria-label="Shortcuts">?</button>
+              <button class="bwp-x" aria-label="Close sheet">&times;</button>
+            </div>
+          </div>
+
+          <div class="bwp-duo">
+            <aside class="bwp-rail is-open">
+              <div class="bwp-railhead">
+                <button class="bwp-railtoggle" aria-label="Hide the window list" aria-expanded="true">
+                  <svg aria-hidden="true"><use href="#i-rail"/></svg>
+                </button>
+                <span class="bwp-kicker">Windows</span>
+                <span class="bwp-gap"></span>
+                <button class="bwp-mini" aria-label="New window" title="New window">+</button>
+              </div>
+              <div class="bwp-railbody">
+                <div class="bwp-wrowgroup is-sel">
+                  <div class="bwp-wrow">
+                    <button class="bwp-wrowmain" aria-current="true">
+                      <span class="bwp-wmark"><svg aria-hidden="true"><use href="#i-stack"/></svg></span>
+                      <span class="bwp-wcopy">
+                        <span class="bwp-wtitle">about:blank</span>
+                        <span class="bwp-wmeta">sess-c0zyta</span>
+                      </span>
+                      <span class="bwp-wtabs">2 tabs</span>
+                      <span class="bwp-chipdot" aria-hidden="true"></span>
+                    </button>
+                    <button class="bwp-wclose" aria-label="Close window" disabled>&times;</button>
+                  </div>
+                </div>
+              </div>
+              <div class="bwp-railfoot">
+                <button class="bwp-sweep is-off" disabled title="Only one window is open">
+                  <svg aria-hidden="true"><use href="#i-redx"/></svg>
+                  <span class="bwp-sweeplbl">Close other windows</span>
+                </button>
+              </div>
+            </aside>
+
+            <div class="bwp-panetabs">
+              <div class="bwp-thead">
+                <span class="bwp-kicker">Tabs</span>
+                <span class="bwp-live">2</span>
+                <span class="bwp-gap"></span>
+                <span class="bwp-panetitle">about:blank</span>
+                <button class="bwp-mini" aria-label="New tab">+</button>
+              </div>
+              <ul class="bwp-tabs">
+                <li class="bwp-trow">
+                  <button class="bwp-topen">
+                    <span class="bwp-mono">S</span>
+                    <span class="bwp-tname">sess-c0zyta - Browser Agent</span>
+                  </button>
+                  <button class="bwp-tclose" aria-label="Close tab">&times;</button>
+                </li>
+                <li class="bwp-trow is-on">
+                  <button class="bwp-topen">
+                    <span class="bwp-mono">A</span>
+                    <span class="bwp-tname">about:blank</span>
+                    <span class="bwp-cur" aria-hidden="true"></span>
+                  </button>
+                  <button class="bwp-tclose" aria-label="Close tab">&times;</button>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="bwp-foot">
+            <div class="bwp-row">
+              <span class="bwp-lbl">Size</span>
+              <div class="bwp-seg bwp-seg3">
+                <button>iPhone</button>
+                <button>iPad</button>
+                <button class="is-on">Mac</button>
+              </div>
+              <span class="bwp-actual">1440&times;900</span>
+            </div>
+            <div class="bwp-row">
+              <span class="bwp-lbl">Capture</span>
+              <div class="bwp-seg bwp-seg2">
+                <button>Cast</button>
+                <button class="is-on">Shot</button>
+              </div>
+              <span class="bwp-actual">auto &middot; 1 fps</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="safaribar">
+          <div class="safaripill">
+            <svg aria-hidden="true"><use href="#i-chev"/></svg>
+            <svg class="dim" aria-hidden="true"><use href="#i-chev" transform="rotate(180 10 10)"/></svg>
+            <svg aria-hidden="true"><use href="#i-share"/></svg>
+            <svg aria-hidden="true"><use href="#i-book"/></svg>
+            <svg aria-hidden="true"><use href="#i-tabs"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption>
+      <span class="cap-n">04 · after — one window, agent page + blank</span>
+      <span class="cap-t">
+        The rail now holds a single window, the tab list is the kept <span class="mono">/go</span> page plus a
+        focused <span class="mono">about:blank</span>, and the control is disabled rather than hidden, so the
+        slot never moves.
+      </span>
+    </figcaption>
+  </figure>
+
+</main>
+
+<section class="notes">
+  <div class="note">
+    <h3>Where it lives</h3>
+    <p>
+      Bottom of the window rail, in one slot for both rail states: a 40&nbsp;&times;&nbsp;38 red
+      <span class="mono">&times;</span> when collapsed, a labelled row when open. It is window-scoped, so it
+      belongs beside the window list — not in
+      the sheet header with the page actions, and not in the tab header.
+    </p>
+  </div>
+  <div class="note">
+    <h3>Which window survives</h3>
+    <p>
+      The window you are already driving (the one holding this session's <code>/go</code> page). No
+      re-attach and no <code>SwitchSession</code>, so the mirror never jumps mid-sweep.
+    </p>
+  </div>
+  <div class="note">
+    <h3>What stays in it</h3>
+    <p>
+      Every <code>/go?session=</code> tab — running agents stay connected — plus one fresh
+      <code>about:blank</code> opened active. Every other tab of that window closes, including the page you
+      were looking at.
+    </p>
+  </div>
+  <div class="note">
+    <h3>What closes</h3>
+    <p>
+      Every other drivable window (<code>normal</code>, <code>popup</code>, <code>app</code>) with all of its
+      tabs. <code>devtools</code> windows are never touched, and Chrome's last window is never closed, so the
+      sweep can never leave the browser windowless.
+    </p>
+  </div>
+  <div class="note">
+    <h3>Numbers are real</h3>
+    <p>
+      The ledger is computed from one window listing taken when the dialog opens, so the copy and the confirm
+      label always match what will happen (<code>3 &rarr; 1</code>, <code>Close 2 windows</code>).
+    </p>
+  </div>
+  <div class="note">
+    <h3>Gated, never silent</h3>
+    <p>
+      Same blocker as closing one window: browser-agent <b>1.0.22+</b>, not read-only, nothing in flight, and
+      at least two windows. Otherwise the control is disabled with one line of reason.
+    </p>
+  </div>
+</section>
+
+<p class="foot-note">
+  Rendered at 402&nbsp;&times;&nbsp;874 with the sheet at 73.5% height, matching the shipped <span class="mono">browser.css</span>
+  metrics. Frames 02–04 show the rail open for legibility; the dialogs and the tab rows are the ones already in the app.
+</p>
+
+<script>
+  (function () {
+    var W = 402, H = 874;
+    var phones = [].slice.call(document.querySelectorAll('.phone'));
+    var raf = 0;
+    function fit() {
+      raf = 0;
+      phones.forEach(function (p) {
+        var avail = p.parentElement.clientWidth;
+        var s = Math.min(1, avail / W);
+        p.style.transform = 'scale(' + s + ')';
+        p.style.marginLeft = Math.max(0, (avail - W * s) / 2) + 'px';
+        p.style.marginBottom = (-H * (1 - s)) + 'px';
+        p.dataset.scale = s.toFixed(3);
+      });
+    }
+    function schedule() { if (!raf) raf = requestAnimationFrame(fit); }
+    window.addEventListener('resize', schedule);
+    window.addEventListener('orientationchange', schedule);
+    schedule();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(schedule);
+  })();
+</script>
+
+</body>
+</html>

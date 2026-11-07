@@ -262,6 +262,16 @@ export default function BrowserPage() {
         return null;
     };
 
+    /**
+     * The sheet owns the sweep's dialog; the stage still has to re-capture,
+     * because the keeper window's page is blank now.
+     */
+    const sweepWindows = async (dryRun: boolean) => {
+        const result = await sessions.sweep(dryRun);
+        if (!dryRun && result.ok) refresh();
+        return result;
+    };
+
     const pickPreset = (preset: string) => {
         send({ type: 'preset', preset });
         const item = status?.presets?.find((entry) => entry.name === preset);
@@ -398,6 +408,8 @@ export default function BrowserPage() {
                         onView={(view) => setSheet(view)}
                         onNewWindow={newWindow}
                         onCloseWindow={closeCurrentWindow}
+                        onSweep={sweepWindows}
+                        onToast={showToast}
                         onTab={pickTab}
                         onOpenTab={(id, tabId) => {
                             // A previewed tab is the switch: go to that window,
@@ -455,6 +467,8 @@ export default function BrowserPage() {
                     onCloseRailTab={(id, tabId) => void closeTab(id, tabId)}
                     onNewWindow={() => void newWindow()}
                     onCloseWindow={closeCurrentWindow}
+                    onSweep={sweepWindows}
+                    onToast={showToast}
                     onRefreshSessions={() => void sessions.refresh()}
                     onPreset={(preset) => send({ type: 'preset', preset })}
                     onMode={(next) => send({ type: 'mode', mode: next })}
@@ -482,7 +496,7 @@ export default function BrowserPage() {
                 </BrowserDesktopView>
             )}
 
-            {tabClose.pending && <BrowserTabCloseDialog pending={tabClose.pending} busy={tabClose.deciding} onKeep={() => void tabClose.choose(false)} onDiscard={() => void tabClose.choose(true)} onDismiss={tabClose.dismiss} />}
+            {tabClose.pending && <BrowserTabCloseDialog pending={tabClose.pending} busy={tabClose.deciding} onKeep={() => void tabClose.choose(false)} onDiscard={() => void tabClose.choose(true)} onConfirmSessionPage={() => void tabClose.confirmSessionPage()} onDismiss={tabClose.dismiss} />}
             {helpOpen && <BrowserHelp onClose={() => setHelpOpen(false)} />}
             {!isPhone && actions.composer && (
                 <BrowserOpenPalette

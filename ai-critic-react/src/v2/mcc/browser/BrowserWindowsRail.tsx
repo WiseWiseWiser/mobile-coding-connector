@@ -1,4 +1,5 @@
 import { useRevealCurrent } from './useRevealCurrent';
+import { sweepBlocker, sweepWindowCount } from './sweep';
 import { closeTargetFor, closeWindowBlocker } from './windowClose';
 import type { WindowRow } from './windowClose';
 
@@ -18,6 +19,10 @@ export interface BrowserWindowsRailProps {
     onPreview: (row: WindowRow) => void;
     onNew: () => void;
     onClose: (row: WindowRow, trigger: HTMLButtonElement) => void;
+    /** Fetching the plan: the button says so instead of opening a stale dialog. */
+    sweepPlanning: boolean;
+    /** The element comes along so the dialog can hand focus back to it. */
+    onSweep: (trigger: HTMLButtonElement) => void;
 }
 
 /**
@@ -60,6 +65,20 @@ function WindowStackGlyph() {
 }
 
 /**
+ * The sweep glyph: a bare red cross. The other closes in this pane (a window,
+ * a tab) are lone gray glyphs too, so the shape reads as "close" and only the
+ * color says "this one closes many".
+ */
+function SweepGlyph() {
+    return (
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M4.6 4.6 11.4 11.4" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+            <path d="M11.4 4.6 4.6 11.4" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+        </svg>
+    );
+}
+
+/**
  * The left pane: every window, collapsed to chips or expanded to cards.
  *
  * Tapping a window only previews its tabs on the right — switching happens
@@ -70,11 +89,21 @@ export function BrowserWindowsRail(props: BrowserWindowsRailProps) {
     const { rows, open, selectedKey, busy, readOnly, windowCloseSupported } = props;
     const listRef = useRevealCurrent<HTMLDivElement>(open, '.bwp-wrowgroup');
     const liveCount = rows.filter((row) => row.attached !== false).length;
+    // Windows, not rows: the sweep closes windows, and two sessions can share one.
+    const sweepWindows = sweepWindowCount(rows);
     const blocker = closeWindowBlocker({
         supported: windowCloseSupported,
         readOnly,
         busy: busy || props.newBusy,
         windowCount: liveCount,
+    });
+    // The sweep answers to its own rules: it needs a second window, which is a
+    // different question from "can this one window be closed".
+    const sweepReason = sweepBlocker({
+        supported: windowCloseSupported,
+        readOnly,
+        busy: (busy && !props.sweepPlanning) || props.newBusy,
+        windowCount: sweepWindows,
     });
     return (
         <aside className={`bwp-rail${open ? ' is-open' : ''}`}>
@@ -180,6 +209,31 @@ export function BrowserWindowsRail(props: BrowserWindowsRailProps) {
                         </button>
                     ))
                 )}
+            </div>
+            {/*
+              Pinned below the list, in both states: the sweep is the one
+              window-level action that has no per-window home, and hiding it
+              behind the expander would make it undiscoverable on a phone.
+            */}
+            <div className="bwp-railfoot">
+                <button
+                    type="button"
+                    className={`bwp-sweep${sweepReason ? ' is-off' : ''}`}
+                    onClick={(event) => props.onSweep(event.currentTarget)}
+                    disabled={Boolean(sweepReason) || props.sweepPlanning}
+                    aria-busy={props.sweepPlanning}
+                    aria-label={`Close all other windows${sweepReason ? `: ${sweepReason}` : ''}`}
+                    title={sweepReason || 'Close all other windows'}
+                >
+                    <SweepGlyph />
+                    <span className="bwp-sweeplbl">
+                        {props.sweepPlanning ? 'Planning…' : 'Close other windows'}
+                    </span>
+                    {/* The same arithmetic the dialog will show, from live rows. */}
+                    {!props.sweepPlanning && sweepWindows > 1 && (
+                        <span className="bwp-sweepn">{sweepWindows} → 1</span>
+                    )}
+                </button>
             </div>
         </aside>
     );

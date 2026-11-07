@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { closeWindow as closeWindowRequest, fetchSessions, openNewSession, resolveTabClose as resolveTabCloseRequest, switchSession, tabOp } from './browserApi';
+import {
+    closeWindow as closeWindowRequest,
+    fetchSessions,
+    openNewSession,
+    resolveTabClose as resolveTabCloseRequest,
+    sweepWindows,
+    switchSession,
+    tabOp,
+} from './browserApi';
 import type { TabOp } from './browserApi';
-import type { BrowserTab, DaemonStatus, SessionInfo } from './browserWire';
+import type { BrowserTab, DaemonStatus, SessionInfo, SweepWindowsResponse } from './browserWire';
 
 /** The tab strip refreshes on this beat while nothing else is happening. */
 const POLL_MS = 8000;
@@ -22,6 +30,13 @@ export interface WindowCloseResult {
     current?: string;
 }
 
+export interface SweepResult {
+    ok: boolean;
+    error?: string;
+    /** The plan (dry run) or the applied outcome, whichever the server answered. */
+    plan?: SweepWindowsResponse;
+}
+
 export interface BrowserSessions {
     sessions: SessionInfo[];
     current: string;
@@ -39,6 +54,7 @@ export interface BrowserSessions {
     switchTo: (id: string) => Promise<void>;
     addSession: () => Promise<boolean>;
     closeWindow: (target: { window_id: number } | { session_id: string }) => Promise<WindowCloseResult>;
+    sweep: (dryRun: boolean) => Promise<SweepResult>;
     activate: (session: string, tabId: number) => Promise<TabResult>;
     close: (session: string, tabId: number) => Promise<TabResult>;
     resolveTabClose: (session: string, operationId: string, accept: boolean) => Promise<TabResult>;
@@ -174,6 +190,28 @@ export function useBrowserSessions(active: boolean): BrowserSessions {
         }
     };
 
+    /**
+     * Planning and applying are the same call with a flag; the plan is what the
+     * dialog shows, and the applied result refreshes the rail because the server
+     * may have moved the current session into the surviving window.
+     */
+    const sweep = async (dryRun: boolean): Promise<SweepResult> => {
+        setBusy(true);
+        try {
+            const response = await sweepWindows(dryRun);
+            // A failed sweep is partial by contract: reload even then, so the
+            // rail shows the windows that did close instead of a stale list.
+            if (!dryRun) await load();
+            if (!response.ok) return { ok: false, error: response.error ?? 'cannot close the other windows', plan: response };
+            return { ok: true, plan: response };
+        } catch (err) {
+            if (!dryRun) void load();
+            return { ok: false, error: message(err) };
+        } finally {
+            setBusy(false);
+        }
+    };
+
     const runTab = async (session: string, op: TabOp, tabId = 0, url = ''): Promise<TabResult> => {
         setBusy(true);
         try {
@@ -232,6 +270,7 @@ export function useBrowserSessions(active: boolean): BrowserSessions {
         switchTo,
         addSession,
         closeWindow,
+        sweep,
         activate: (session, tabId) => runTab(session, 'activate', tabId),
         close: (session, tabId) => runTab(session, 'close', tabId),
         resolveTabClose,

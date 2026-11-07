@@ -3,6 +3,7 @@ import type {
     BrowserStatus,
     CloseWindowResponse,
     SessionsResponse,
+    SweepWindowsResponse,
     TabOpResponse,
 } from './browserWire';
 import type { BookmarkDocument, BookmarkNode } from './browserBookmarks';
@@ -81,6 +82,15 @@ export function resolveTabClose(session: string, operationId: string, accept: bo
  */
 export function closeWindow(target: { window_id: number } | { session_id: string }): Promise<CloseWindowResponse> {
     return post('/api/browser/window/close', target).then((response) => json<CloseWindowResponse>(response));
+}
+
+/**
+ * Keeps the window holding the current session and closes every other drivable
+ * window. `dryRun` only plans: the dialog's numbers come from it, and the real
+ * call plans again before it closes anything.
+ */
+export function sweepWindows(dryRun: boolean): Promise<SweepWindowsResponse> {
+    return post('/api/browser/windows/sweep', { dry_run: dryRun }).then((response) => json<SweepWindowsResponse>(response));
 }
 
 /** A bookmark tree: Chrome is read-only, local is app-owned. */

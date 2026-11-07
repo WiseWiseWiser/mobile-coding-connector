@@ -98,6 +98,31 @@ export interface CloseWindowResponse {
     error?: string;
 }
 
+/**
+ * POST /api/browser/windows/sweep keeps one window and closes the rest.
+ *
+ * A dry run fills the planned counts and leaves the applied fields empty; the
+ * real call answers the same shape plus what it actually closed. A partial
+ * failure still returns the result, so the client can name the windows that did
+ * close instead of showing only an error.
+ */
+export interface SweepWindowsResponse {
+    ok: boolean;
+    dry_run: boolean;
+    kept_window_id: number;
+    kept_session_id?: string;
+    /** Registration pages that stay: they carry the agent transport. */
+    keep_tabs: number;
+    /** Every tab that leaves: the keeper's extras plus the closed windows' tabs. */
+    close_tabs: number;
+    /** Drivable windows that leave; the keeper itself is not counted. */
+    close_windows: number;
+    closed_windows?: number[];
+    closed_tabs?: number;
+    created_blank?: boolean;
+    error?: string;
+}
+
 export interface TabOpResponse {
     ok: boolean;
     session_id: string;
