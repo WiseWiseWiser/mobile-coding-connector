@@ -37,10 +37,17 @@ type classifyRule struct {
 type classifier struct {
 	rules []classifyRule // sorted longest first
 	paths map[string][]string
+	// volume is a mount prefix dropped before matching, so rules written
+	// against "/" and the home directory also match what a walk finds under
+	// /System/Volumes/Data.
+	volume string
 }
 
-func newClassifier(home string) *classifier {
+func newClassifier(home, volume string) *classifier {
 	home = filepath.Clean(home)
+	if volume != "" {
+		volume = filepath.Clean(volume)
+	}
 	join := func(rel string) string { return filepath.Join(home, rel) }
 
 	rules := []classifyRule{
@@ -118,10 +125,27 @@ func newClassifier(home string) *classifier {
 	// The fallback bucket has no paths of its own.
 	delete(paths, "other")
 
-	return &classifier{rules: rules, paths: paths}
+	return &classifier{rules: rules, paths: paths, volume: volume}
+}
+
+// logical drops the volume mount prefix.
+func (c *classifier) logical(path string) string { return logicalPath(path, c.volume) }
+
+// logicalPath strips a mount prefix so that rules and walked paths live in the
+// same space. The mount point itself and paths outside it come back unchanged.
+func logicalPath(path, volume string) string {
+	if volume == "" || path == "" {
+		return path
+	}
+	rest, ok := strings.CutPrefix(path, volume)
+	if !ok || !strings.HasPrefix(rest, "/") {
+		return path
+	}
+	return rest
 }
 
 func (c *classifier) classify(path string) (string, bool) {
+	path = c.logical(path)
 	for _, rule := range c.rules {
 		if path == rule.prefix || strings.HasPrefix(path, rule.prefix+"/") {
 			return rule.category, rule.reclaimable
@@ -133,6 +157,7 @@ func (c *classifier) classify(path string) (string, bool) {
 // isRuleRoot reports whether path is itself a category root; those directories
 // are worth listing as entries even when they sit deeper than the depth cut.
 func (c *classifier) isRuleRoot(path string) bool {
+	path = c.logical(path)
 	for _, rule := range c.rules {
 		if path == rule.prefix {
 			return true

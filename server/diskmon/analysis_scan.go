@@ -21,6 +21,10 @@ type scanConfig struct {
 	MinEntryBytes int64
 	// Progress is called from the walk goroutine with cumulative counters.
 	Progress func(walked, files int64, noAccess int, phase string)
+	// Volume is a mount prefix stripped before paths are classified and shown,
+	// so /System/Volumes/Data/Users/me/Library reads as ~/Library. Empty means
+	// it is derived from Roots.
+	Volume string
 }
 
 var errScanTruncated = errors.New("scan budget exceeded")
@@ -93,9 +97,15 @@ func runScan(ctx context.Context, cfg scanConfig) (scanResult, error) {
 	if cfg.Home == "" {
 		cfg.Home, _ = os.UserHomeDir()
 	}
+	if cfg.Volume == "" {
+		cfg.Volume = volumePrefix(cfg.Roots)
+	}
+	// Home is compared against walked paths, so it lives in the same space:
+	// with the volume prefix dropped.
+	cfg.Home = logicalPath(cfg.Home, cfg.Volume)
 	acc := &scanAccumulator{
 		cfg:        cfg,
-		class:      newClassifier(cfg.Home),
+		class:      newClassifier(cfg.Home, cfg.Volume),
 		deadline:   time.Now().Add(cfg.Budget),
 		catBytes:   map[string]int64{},
 		catReclaim: map[string]int64{},
@@ -239,7 +249,7 @@ func (a *scanAccumulator) emit(path string, force bool) {
 		return
 	}
 	a.lastEmit = now
-	a.cfg.Progress(a.walked, a.files, a.noAccess, shortenHome(path, a.cfg.Home))
+	a.cfg.Progress(a.walked, a.files, a.noAccess, shortenHome(a.class.logical(path), a.cfg.Home))
 }
 
 func (a *scanAccumulator) finish() scanResult {
@@ -282,7 +292,7 @@ func (a *scanAccumulator) shouldRecord(path string) bool {
 	if a.class.isRuleRoot(path) {
 		return true
 	}
-	parent := filepath.Dir(path)
+	parent := filepath.Dir(a.class.logical(path))
 	if parent == filepath.Clean(a.cfg.Home) {
 		return true
 	}
@@ -308,16 +318,19 @@ func (a *scanAccumulator) topEntries() []Entry {
 		if frame.size < minBytes {
 			continue
 		}
-		passThrough := false
-		for _, other := range kept {
-			// Keep the child when the parent is just a wrapper around it.
-			if strings.HasPrefix(frame.path, other.path+"/") && other.size-frame.size < other.size/10 {
-				passThrough = true
-				break
+		// A parent that is only a wrapper around this child is dropped in
+		// favour of the child, so "~/Library" cannot hide
+		// "~/Library/Developer/Xcode/DerivedData". Category roots always keep
+		// their row, and so do parents built from several children.
+		for i := 0; i < len(kept); i++ {
+			parent := kept[i]
+			if a.class.isRuleRoot(parent.path) {
+				continue
 			}
-		}
-		if passThrough {
-			continue
+			if strings.HasPrefix(frame.path, parent.path+"/") && parent.size-frame.size < parent.size/10 {
+				kept = append(kept[:i], kept[i+1:]...)
+				i--
+			}
 		}
 		kept = append(kept, frame)
 	}
@@ -326,7 +339,7 @@ func (a *scanAccumulator) topEntries() []Entry {
 	for _, frame := range kept {
 		out = append(out, Entry{
 			Category:    frame.cat,
-			Path:        shortenHome(frame.path, a.cfg.Home),
+			Path:        shortenHome(a.class.logical(frame.path), a.cfg.Home),
 			Bytes:       frame.size,
 			Reclaimable: frame.reclaimable,
 		})
@@ -341,6 +354,18 @@ func contains(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// volumePrefix reports the mount prefix that should be dropped from walked
+// paths, or "" when every root is already rooted at "/".
+func volumePrefix(roots []string) string {
+	for _, root := range roots {
+		root = filepath.Clean(root)
+		if root == dataMount || strings.HasPrefix(root, dataMount+"/") {
+			return dataMount
+		}
+	}
+	return ""
 }
 
 // defaultScanRoots is the writable half of the boot volume: the data volume on

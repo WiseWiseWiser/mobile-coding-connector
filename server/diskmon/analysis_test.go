@@ -11,9 +11,87 @@ import (
 	"time"
 )
 
+// A macOS walk starts at /System/Volumes/Data, so every path carries that
+// prefix. Rules are written against "/" and the home directory and must still
+// match, or the whole scan lands in "other".
+func TestClassifierStripsDataVolume(t *testing.T) {
+	home := "/Users/me"
+	classifier := newClassifier(home, dataMount)
+
+	cases := []struct {
+		path        string
+		category    string
+		reclaimable bool
+	}{
+		{dataMount + "/Users/me/Library/Developer/Xcode/DerivedData/App-abc", "xcode", true},
+		{dataMount + "/Users/me/Library/Caches/Homebrew/downloads", "dev-cache", true},
+		{dataMount + "/Users/me/Downloads/installer.dmg", "downloads", false},
+		{dataMount + "/Applications/Xcode.app/Contents", "other", false},
+	}
+	for _, testCase := range cases {
+		category, reclaimable := classifier.classify(testCase.path)
+		if category != testCase.category || reclaimable != testCase.reclaimable {
+			t.Errorf("classify(%q) = (%s, %v), want (%s, %v)",
+				testCase.path, category, reclaimable, testCase.category, testCase.reclaimable)
+		}
+	}
+
+	if !classifier.isRuleRoot(dataMount + "/Users/me/Library/Developer") {
+		t.Error("a category root under the data volume is not recognized")
+	}
+	if got, want := shortenHome(classifier.logical(dataMount+"/Users/me/Downloads"), home), "~/Downloads"; got != want {
+		t.Errorf("logical path = %q, want %q", got, want)
+	}
+	if got := classifier.logical(dataMount); got != dataMount {
+		t.Errorf("logical(volume root) = %q, want it unchanged", got)
+	}
+}
+
+// The same walk, end to end: the fake volume prefix must not leak into the
+// category totals or the entry paths shown on the page.
+func TestScanStripsVolumePrefix(t *testing.T) {
+	volume := t.TempDir()
+	home := filepath.Join(volume, "Users", "me")
+	derived := filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData")
+	mustWriteFile(t, filepath.Join(derived, "App-abc", "build.bin"), 3<<20)
+	mustWriteFile(t, filepath.Join(home, "Downloads", "installer.dmg"), 2<<20)
+
+	res, err := runScan(context.Background(), scanConfig{
+		Roots:         []string{volume},
+		Home:          home,
+		Volume:        volume,
+		Budget:        10 * time.Second,
+		MinEntryBytes: 1 << 20,
+	})
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+
+	byID := map[string]int64{}
+	for _, category := range res.Categories {
+		byID[category.ID] = category.Bytes
+	}
+	if byID["xcode"] != 3<<20 {
+		t.Errorf("xcode bytes = %d, want %d (categories: %v)", byID["xcode"], 3<<20, byID)
+	}
+	if byID["downloads"] != 2<<20 {
+		t.Errorf("downloads bytes = %d, want %d", byID["downloads"], 2<<20)
+	}
+
+	paths := map[string]bool{}
+	for _, entry := range res.Entries {
+		paths[entry.Path] = true
+	}
+	for _, want := range []string{"~/Library/Developer/Xcode/DerivedData", "~/Downloads"} {
+		if !paths[want] {
+			t.Errorf("entries missing %q (got %v)", want, paths)
+		}
+	}
+}
+
 func TestClassifierLongestPrefixWins(t *testing.T) {
 	home := "/Users/me"
-	classifier := newClassifier(home)
+	classifier := newClassifier(home, "")
 
 	cases := []struct {
 		path        string
@@ -94,9 +172,9 @@ func TestScanCountsCategoriesAndDedupesHardlinks(t *testing.T) {
 		paths[entry.Path] = entry.Bytes
 	}
 	for path, want := range map[string]int64{
-		"~/Downloads": 1 << 20,
-		"~/Movies":    2 << 20,
-		"~/Library":   5 << 20,
+		"~/Downloads":      1 << 20,
+		"~/Movies":         2 << 20,
+		"~/Library/Caches": 5 << 20,
 	} {
 		if paths[path] != want {
 			t.Errorf("entry %q = %d, want %d (got %v)", path, paths[path], want, paths)
