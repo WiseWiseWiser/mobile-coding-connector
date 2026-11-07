@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>System · Disk space analysis + report history mockup</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --elev: #334155; --bd: #334155;
+    --text: #f1f5f9; --sec: #94a3b8; --mut: #64748b;
+    --blue: #60a5fa; --green: #22c55e; --yellow: #fbbf24; --amber: #f59e0b; --red: #f87171;
+    --violet: #a78bfa; --cyan: #22d3ee; --pink: #f472b6;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: "SF Mono", Menlo, Monaco, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); background: #060b16; color: var(--text); }
+  .wrap { max-width: 2200px; margin: 0 auto; padding: 24px 18px 72px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .lead { color: var(--sec); font-size: 13px; margin: 0 0 14px; max-width: 900px; }
+  .assump { font-size: 12px; color: #cbd5e1; background: #0b1220; border: 1px dashed #334155; border-radius: 10px; padding: 10px 12px; margin-bottom: 20px; max-width: 1400px; }
+  .assump b { color: var(--text); }
+  .frames { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start; }
+  .phone {
+    width: 390px; height: 844px; background: var(--bg); border-radius: 36px;
+    border: 8px solid #020617; overflow: hidden; display: flex; flex-direction: column;
+    position: relative; flex-shrink: 0; box-shadow: 0 20px 50px rgba(0,0,0,.45);
+  }
+  .caption { font-size: 12px; color: var(--mut); margin: 8px 0 0; max-width: 390px; line-height: 1.5; }
+  .caption b { color: #cbd5e1; }
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 14px; background: var(--card); border-bottom: 1px solid var(--bd); flex-shrink: 0; }
+  .proj { flex: 1; background: rgba(0,0,0,.22); border: 1px solid var(--bd); border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 600; }
+  .content { flex: 1; overflow: auto; min-height: 0; }
+  .page { padding: 12px 14px 28px; }
+  .bottomnav { display: flex; background: var(--card); border-top: 1px solid var(--bd); padding: 8px 0 10px; flex-shrink: 0; z-index: 2; }
+  .nav-item { flex: 1; text-align: center; font-size: 10px; font-weight: 600; color: var(--mut); }
+  .nav-item.active { color: var(--blue); }
+
+  .page-h { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .page-h h2 { margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .icon-btn { width: 30px; height: 30px; border: 0; background: transparent; color: var(--text); border-radius: 8px; cursor: pointer; font-size: 18px; padding: 0; }
+  .live { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--green); font-weight: 700; margin-left: auto; }
+  .live::before { content: ""; width: 6px; height: 6px; border-radius: 99px; background: currentColor; }
+  .chip { border: 1px solid var(--bd); background: transparent; color: var(--sec); font-size: 12px; font-weight: 650; padding: 5px 9px; border-radius: 999px; cursor: pointer; white-space: nowrap; font-family: inherit; }
+  .chip.on { background: rgba(96,165,250,.12); color: var(--blue); border-color: rgba(96,165,250,.4); }
+  .chip.danger { color: var(--red); border-color: rgba(248,113,113,.35); }
+  .sub { font-size: 12px; color: var(--sec); margin: 0 0 10px; }
+  .sub .dot { color: var(--mut); margin: 0 4px; }
+
+  /* ---- disk home (shipped) ---- */
+  .hero { background: var(--card); border: 1px solid var(--bd); border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+  .hero-top { display: flex; align-items: baseline; gap: 8px; }
+  .hero-lab { font-size: 12px; color: var(--sec); font-weight: 650; }
+  .hero-big { font-size: 26px; font-weight: 750; letter-spacing: -.03em; margin: 2px 0; }
+  .hero-pct { margin-left: auto; font-size: 15px; font-weight: 700; color: var(--amber); }
+  .bar { height: 6px; border-radius: 99px; background: #0b1220; overflow: hidden; margin: 6px 0 6px; }
+  .bar > i { display: block; height: 100%; background: var(--amber); }
+  .hero-meta { font-size: 11px; color: var(--mut); }
+  .sect { margin: 14px 0 6px; font-size: 10px; letter-spacing: .08em; font-weight: 700; color: var(--mut); }
+  .sect .r { float: right; letter-spacing: 0; font-weight: 650; color: var(--blue); text-transform: none; }
+  .vol { background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .vol-top { display: flex; align-items: center; gap: 8px; }
+  .vol-name { font-size: 13px; font-weight: 650; }
+  .tag { font-size: 9px; font-weight: 700; letter-spacing: .04em; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--bd); color: var(--sec); }
+  .tag.free { color: var(--green); border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.08); }
+  .tag.cache { color: var(--cyan); border-color: rgba(34,211,238,.35); background: rgba(34,211,238,.08); }
+  .tag.keep { color: var(--mut); }
+  .tag.warn { color: var(--amber); border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.08); }
+  .vol-meta { font-size: 11px; color: var(--mut); margin-top: 3px; }
+  .merged { display: flex; align-items: center; gap: 8px; background: rgba(51,65,85,.35); border: 1px dashed var(--bd); border-radius: 10px; padding: 9px 12px; }
+  .merged .vol-name { font-size: 12px; }
+  .merged .vol-meta { margin-top: 1px; }
+  .foot { font-family: var(--mono); font-size: 10px; color: var(--mut); text-align: center; margin-top: 14px; }
+
+  /* ---- entry card ---- */
+  .linkcard { display: flex; align-items: center; gap: 10px; width: 100%; font-family: inherit; background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 11px 12px; color: inherit; text-align: left; cursor: pointer; margin-top: 14px; }
+  .linkcard:hover { border-color: #475569; background: #22304a; }
+  .linkcard .lk { font-size: 13px; font-weight: 650; }
+  .linkcard .ls { font-size: 10px; color: var(--mut); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .linkcard .chev { margin-left: 2px; color: var(--mut); font-size: 18px; }
+  .lk-ico { width: 28px; height: 28px; border-radius: 8px; background: rgba(96,165,250,.12); color: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .lk-spark { width: 64px; height: 26px; margin-left: auto; flex-shrink: 0; }
+
+  /* ---- stacked composition ---- */
+  .stack { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: #0b1220; gap: 1px; }
+  .stack > i { display: block; height: 100%; }
+  .stack.sm { height: 6px; margin-top: 8px; }
+  .c-xcode { background: #60a5fa; }
+  .c-dev { background: #22d3ee; }
+  .c-vm { background: #a78bfa; }
+  .c-media { background: #f472b6; }
+  .c-down { background: #fbbf24; }
+  .c-log { background: #f87171; }
+  .c-other { background: #475569; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; }
+  .lg { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--sec); }
+  .lg i { width: 7px; height: 7px; border-radius: 2px; display: block; }
+  .lg b { color: var(--text); font-weight: 650; }
+
+  /* ---- analysis page ---- */
+  .scan-head { background: var(--card); border: 1px solid var(--bd); border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+  .scan-title { font-size: 13px; font-weight: 650; color: var(--sec); }
+  .scan-pct { font-size: 30px; font-weight: 750; letter-spacing: -.04em; margin: 2px 0; }
+  .scan-phase { font-family: var(--mono); font-size: 10px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 6px; }
+  .progress { height: 6px; border-radius: 99px; background: #0b1220; overflow: hidden; margin: 8px 0 6px; }
+  .progress > i { display: block; height: 100%; background: var(--blue); border-radius: 99px; }
+  .spend { background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 10px 12px; margin-bottom: 7px; }
+  .spend-top { display: flex; align-items: center; gap: 8px; }
+  .spend-name { font-size: 12.5px; font-weight: 650; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spend-bytes { margin-left: auto; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .spend-path { font-family: var(--mono); font-size: 9.5px; color: var(--mut); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spend-bar { height: 4px; border-radius: 99px; background: #0b1220; overflow: hidden; margin-top: 6px; }
+  .spend-bar > i { display: block; height: 100%; }
+  .pending { opacity: .45; }
+  .delta { font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 5px; }
+  .delta.down { color: #4ade80; background: rgba(34,197,94,.1); }
+  .delta.up { color: var(--red); background: rgba(248,113,113,.1); }
+  .reclaim { display: flex; align-items: center; gap: 10px; background: rgba(34,197,94,.07); border: 1px solid rgba(34,197,94,.28); border-radius: 10px; padding: 11px 12px; margin: 10px 0; }
+  .reclaim .rv { font-size: 17px; font-weight: 750; color: #4ade80; letter-spacing: -.02em; }
+  .reclaim .rl { font-size: 10px; color: var(--sec); margin-top: 1px; }
+  .reclaim .btn { margin-left: auto; font-family: inherit; font-size: 11px; font-weight: 700; color: #86efac; background: rgba(34,197,94,.12); border: 1px solid rgba(34,197,94,.35); border-radius: 8px; padding: 6px 9px; cursor: pointer; }
+  .note { font-size: 10.5px; color: var(--mut); margin-top: 8px; line-height: 1.55; }
+  .crumb { font-size: 10.5px; color: var(--mut); margin: 0 0 8px; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ---- history / trend ---- */
+  .chart-card { background: var(--card); border: 1px solid var(--bd); border-radius: 12px; padding: 12px 12px 8px; margin-bottom: 10px; }
+  .chart-h { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 650; }
+  .chart-h .r { margin-left: auto; font-size: 10px; color: var(--mut); font-weight: 600; }
+  .chart { width: 100%; height: 118px; display: block; margin-top: 6px; }
+  .xlab { display: flex; margin-top: 2px; font-family: var(--mono); font-size: 8.5px; color: var(--mut); }
+  .xlab span { flex: 1; text-align: center; overflow: hidden; white-space: nowrap; }
+  .rep { display: flex; align-items: center; gap: 8px; width: 100%; font-family: inherit; text-align: left; color: inherit; background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 10px 12px; margin-bottom: 7px; cursor: pointer; }
+  .rep.static { cursor: default; }
+  .rep-rec.up { color: var(--amber); }
+  .rep-rec.down { color: #4ade80; }
+  .rep.cur { border-color: rgba(96,165,250,.45); background: #22304a; }
+  .rep-when { font-size: 11px; font-weight: 650; font-family: var(--mono); }
+  .rep-meta { font-size: 9.5px; color: var(--mut); margin-top: 2px; }
+  .rep-right { margin-left: auto; text-align: right; }
+  .rep-bytes { font-size: 12px; font-weight: 700; }
+  .rep-rec { font-size: 9.5px; color: #4ade80; }
+  .rep-mini { width: 46px; height: 20px; margin-left: 8px; flex-shrink: 0; }
+  .empty { font-size: 11px; color: var(--mut); text-align: center; padding: 18px 8px; line-height: 1.6; }
+  .actions { display: flex; gap: 8px; margin-top: 10px; }
+  .actions .btn2 { flex: 1; font-family: inherit; font-size: 11.5px; font-weight: 650; color: var(--text); background: transparent; border: 1px solid var(--bd); border-radius: 9px; padding: 8px 6px; cursor: pointer; }
+  .actions .btn2:hover { background: #22304a; }
+
+  .notes { margin-top: 28px; background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px 18px; max-width: 1400px; }
+  .notes h2 { margin: 0 0 8px; font-size: 15px; }
+  .notes ul { margin: 0; padding-left: 18px; color: var(--sec); font-size: 13px; }
+  .notes li { margin: 6px 0; }
+  .notes code { font-family: var(--mono); font-size: 12px; color: #cbd5e1; }
+
+  /* ---- analysis mechanism (implemented) ---- */
+  .chip.mini { font-size: 9px; padding: 1px 6px; vertical-align: 1px; }
+  .scan-head .prog-foot { font-size: 10px; color: var(--mut); margin-top: 8px; line-height: 1.5; }
+  .cells { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
+  .cells div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .cells span { font-size: 8.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--mut); }
+  .cells b { font-size: 11px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-head { display: flex; align-items: flex-start; gap: 8px; }
+  .card-title { font-size: 13px; font-weight: 700; }
+  .meta { font-size: 10px; color: var(--mut); margin-top: 1px; }
+  button.spend { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+  button.spend:hover { border-color: #475569; }
+  .badges { display: flex; gap: 5px; flex-wrap: wrap; margin: 0 0 8px; }
+  .bdg { font-size: 9px; font-weight: 650; color: var(--sec); border: 1px solid var(--bd); border-radius: 999px; padding: 1px 7px; }
+  .bdg.warn { color: var(--amber); border-color: rgba(245,158,11,.35); }
+  .entrylist { background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 2px 12px; }
+  .entry { padding: 8px 0; border-bottom: 1px solid #263043; }
+  .entry:last-child { border-bottom: 0; }
+  .entry-top { display: flex; align-items: baseline; gap: 6px; }
+  .entry-cat { font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .entry-bytes { margin-left: auto; font-size: 11px; font-weight: 650; }
+  .entry-path { font-family: var(--mono); font-size: 10px; color: var(--sec); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>System · Disk 空间占用分析（服务端状态 + 历史报告 + 同类曲线）</h1>
+  <p class="lead">入口仍在 <code>/home/system/disk</code>：显示「上次什么时候跑的、可回收多少、有几份报告」。点进去 <code>/home/system/disk/space</code>：扫描进度来自<strong>服务端记录的 job 状态</strong>（可中断、可刷新、可换设备再看），结果落成一份 <strong>report</strong>；历史报告列表 + 单分类跨报告曲线回答「这个月它是在变大还是变小」。</p>
+  <div class="assump">
+    <b>Assumptions</b> · 进度用 <code>GET …/status</code> 1s 轮询（幂等、跨刷新天然一致），不用 SSE · 扫描被中断时<strong>不落报告</strong>（避免半截数据污染曲线），只留一条 interrupted 状态 · 历史保留最近 <b>50</b> 份，最近 <b>5</b> 份保明细，更早只留分类汇总 · 曲线按「同类项的字节数」画，x 轴是报告序号而非等距时间（报告间隔不均，轴标签写真实时间）· 数值为 mock，非真实主机。
+  </div>
+
+  <div class="frames">
+    <!-- ============ A: disk home + entry ============ -->
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content">
+          <div class="page">
+            <div class="page-h">
+              <button class="icon-btn">‹</button>
+              <h2>Disk</h2>
+              <span class="live">5s</span>
+              <button class="chip">Pause</button>
+            </div>
+            <div class="sub">1 volume · 460 GB total · host of this page</div>
+
+            <div class="hero">
+              <div class="hero-lab">Boot volume · Data · APFS</div>
+              <div class="hero-top">
+                <div class="hero-big">418 GB used</div>
+                <span class="hero-pct">91%</span>
+              </div>
+              <div class="bar"><i style="width:91%"></i></div>
+              <div class="hero-meta">free 43 GB of 460 GB · sampled 00:17:53</div>
+            </div>
+
+            <!-- NEW entry: last run + report count + mini trend -->
+            <button class="linkcard">
+              <div class="lk-ico">◔</div>
+              <div>
+                <div class="lk">Space analysis <span class="chip mini">History 8</span></div>
+                <div class="ls">8 min ago · 135 GB reclaimable</div>
+              </div>
+              <svg class="lk-spark" viewBox="0 0 64 26" aria-hidden="true">
+                <polyline points="2,6 10,8 18,5 26,10 34,12 42,15 50,17 60,19"
+                  fill="none" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="60" cy="19" r="2" fill="#22d3ee"/>
+              </svg>
+              <span class="chev">›</span>
+            </button>
+            <div class="sect">VOLUMES · 1 mounted</div>
+            <div class="vol">
+              <div class="vol-top"><span class="vol-name">Data</span><span class="tag">apfs</span><span class="tag free">43 GB free</span></div>
+              <div class="bar"><i style="width:91%"></i></div>
+              <div class="vol-meta">418 GB of 460 GB · 91%</div>
+            </div>
+            <div class="merged">
+              <div>
+                <div class="vol-name">Root snapshot</div>
+                <div class="vol-meta">/ · same APFS container as /System/Volumes/Data — counted once</div>
+              </div>
+            </div>
+
+            <div class="note">阈值只看主卷已用比例：&lt;80% 蓝 / 80–94% 琥珀 / ≥95% 或剩余 &lt;10 GiB 红。macOS 不暴露每卷读写速率，这一页就干脆不画 I/O，而不是显示成 0。</div>
+            <div class="foot">sampled 00:17:53 · the entry row reads the same cache as the hero tile</div>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption"><b>A · 入口</b>：一行说清「上次何时跑、可回收多少」，标题旁的 <code>History 8</code> 是报告数、直接进历史；右侧一条迷你曲线（可回收量）。没有报告时标题行只剩 <code>Space analysis</code>，副标题是「Analyses where the space went ›」，不画假曲线。运行中卡片描边变蓝、副标题变成 <code>scanning now · 62%</code>。</p>
+    </div>
+
+    <!-- ============ B: running (server-side job) ============ -->
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content">
+          <div class="page">
+            <div class="page-h">
+              <button class="icon-btn">‹</button>
+              <h2>Space analysis</h2>
+              <span class="live">1s</span>
+              <button class="chip danger">Stop</button>
+            </div>
+            <div class="sub">last completed 8 min ago · 8 reports stored · scanning since 00:16:40</div>
+
+            <div class="scan-head">
+              <div class="scan-title">Scanning on the server</div>
+              <div class="scan-pct">62%</div>
+              <div class="progress"><i style="width:62%"></i></div>
+              <div class="cells">
+                <div><span>Phase</span><b>~/Library/Developer</b></div>
+                <div><span>Walked</span><b>256 GB</b></div>
+                <div><span>Files</span><b>486k</b></div>
+                <div><span>No access</span><b>12</b></div>
+              </div>
+              <div class="prog-foot">job #m5x2k9p0 · started 00:16:40 · progress is written to disk, so a refresh picks it up at 62% instead of restarting</div>
+            </div>
+
+            <div class="sect">PREVIOUS REPORT <span class="r">8 min ago</span></div>
+            <div class="scan-head" style="opacity:.72">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Report 20261106-224102</div>
+                  <div class="meta">8.1s · 481k files · 12 dirs skipped</div>
+                </div>
+              </div>
+              <div class="stack sm">
+                <i class="c-xcode" style="width:19%"></i>
+                <i class="c-dev" style="width:11%"></i>
+                <i class="c-vm" style="width:12%"></i>
+                <i class="c-media" style="width:15%"></i>
+                <i class="c-down" style="width:6%"></i>
+                <i class="c-log" style="width:3%"></i>
+                <i class="c-other" style="width:34%"></i>
+              </div>
+              <div class="prog-foot" style="margin-top:6px">141 GB reclaimable · tap any category on the finished page to see its trend</div>
+            </div>
+
+            <div class="note">进度存在服务端：<code>~/.ai-critic/disk/job.json</code> 每 2s 落盘，页面 1s 轮询 <code>/status</code>；空闲时降到 10s。百分比按「主卷已用字节」折算，封顶 <b>99%</b>，真正结束才变 100。第二次点 <code>Scan</code> 不会排队：服务端返回 <b>409 + 正在跑的 job</b>，前端直接接管这张卡。90s 软预算用尽时扫描停下并写一份 <code>partial</code> 报告（不丢已扫到的分类）。</div>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption"><b>B · 运行中</b>：状态全部来自服务端 job，切页、刷新、换设备都接着显示同一个 62%。<code>Stop</code> 是真取消（cancel context，walk 在 1s 内停），按钮立刻变成 <code>Stopping the scan…</code>；副标题同时给出「上次完成」和「上次尝试」两个时间，避免被中断的运行冒充「刚跑过」；下面的旧报告变灰只读，等这次跑完再替换成新报告。</p>
+    </div>
+
+    <!-- ============ C: result ============ -->
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content">
+          <div class="page">
+            <div class="page-h">
+              <button class="icon-btn">‹</button>
+              <h2>Space analysis</h2>
+              <span class="live" style="color:var(--sec)">10s</span>
+              <button class="chip">History 8</button>
+              <button class="chip on">Scan</button>
+            </div>
+            <div class="sub">last completed 8 min ago · 8 reports stored</div>
+
+            <div class="scan-head">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Report 20261107-000908</div>
+                  <div class="meta">8 min ago · 8.4s · 486k files · 12 dirs skipped</div>
+                </div>
+              </div>
+              <div class="stack">
+                <i class="c-xcode" style="width:19%"></i>
+                <i class="c-dev" style="width:10%"></i>
+                <i class="c-vm" style="width:12%"></i>
+                <i class="c-media" style="width:15%"></i>
+                <i class="c-down" style="width:6%"></i>
+                <i class="c-log" style="width:3%"></i>
+                <i class="c-other" style="width:35%"></i>
+              </div>
+              <div class="legend">
+                <span class="lg"><i class="c-xcode"></i>Xcode <b>78 GB</b></span>
+                <span class="lg"><i class="c-dev"></i>Dev cache <b>41 GB</b></span>
+                <span class="lg"><i class="c-vm"></i>Containers <b>52 GB</b></span>
+                <span class="lg"><i class="c-media"></i>Media <b>63 GB</b></span>
+                <span class="lg"><i class="c-down"></i>Downloads <b>24 GB</b></span>
+                <span class="lg"><i class="c-log"></i>Logs <b>12 GB</b></span>
+                <span class="lg"><i class="c-other"></i>Other <b>142 GB</b></span>
+              </div>
+            </div>
+
+            <div class="reclaim">
+              <div>
+                <div class="rv">≈ 135 GB reclaimable</div>
+                <div class="rl">−6 GB since the last scan · 412 GB walked of 418 GB used</div>
+              </div>
+              <span class="delta down">−6 GB</span>
+            </div>
+
+            <div class="sect">BY CATEGORY <span class="r">tap for its trend ›</span></div>
+            <button class="spend">
+              <div class="spend-top">
+                <span class="spend-name">Xcode / simulators</span>
+                <span class="tag cache">52 GB freeable</span>
+                <span class="delta up">+3 GB</span>
+                <span class="spend-bytes">78 GB</span>
+              </div>
+              <div class="spend-path">~/Library/Developer</div>
+              <div class="spend-bar"><i class="c-xcode" style="width:100%"></i></div>
+            </button>
+            <button class="spend">
+              <div class="spend-top">
+                <span class="spend-name">Photos / media</span>
+                <span class="tag keep">keep</span>
+                <span class="spend-bytes">63 GB</span>
+              </div>
+              <div class="spend-path">~/Pictures/Photos Library.photoslibrary</div>
+              <div class="spend-bar"><i class="c-media" style="width:81%"></i></div>
+            </button>
+            <button class="spend">
+              <div class="spend-top">
+                <span class="spend-name">Dev cache</span>
+                <span class="tag cache">41 GB freeable</span>
+                <span class="delta down">−9 GB</span>
+                <span class="spend-bytes">41 GB</span>
+              </div>
+              <div class="spend-path">~/Library/Caches · ~/.sandbox/gocache · ~/.npm</div>
+              <div class="spend-bar"><i class="c-dev" style="width:53%"></i></div>
+            </button>
+
+            <div class="sect">BIGGEST DIRECTORIES <span class="r">34 recorded</span></div>
+            <div class="entrylist">
+              <div class="entry">
+                <div class="entry-top"><span class="entry-cat" style="color:#60a5fa">Xcode</span><span class="entry-bytes">61 GB</span></div>
+                <div class="entry-path">~/Library/Developer/Xcode/DerivedData</div>
+              </div>
+              <div class="entry">
+                <div class="entry-top"><span class="entry-cat" style="color:#a78bfa">Containers</span><span class="entry-bytes">48 GB</span></div>
+                <div class="entry-path">~/Library/Containers/com.docker.docker/Data</div>
+              </div>
+              <div class="entry">
+                <div class="entry-top"><span class="entry-cat" style="color:#22d3ee">Dev cache</span><span class="entry-bytes">22 GB</span></div>
+                <div class="entry-path">~/.sandbox/gocache</div>
+              </div>
+              <div class="entry">
+                <div class="entry-top"><span class="entry-cat" style="color:#f472b6">Media</span><span class="entry-bytes">17 GB</span></div>
+                <div class="entry-path">~/Movies</div>
+              </div>
+              <div class="entry">
+                <div class="entry-top"><span class="entry-cat" style="color:#38bdf8">Caches</span><span class="entry-bytes">9.4 GB</span></div>
+                <div class="entry-path">~/Library/Caches/Homebrew</div>
+              </div>
+            </div>
+            <div class="foot" style="text-align:left;margin-top:6px">showing the 20 largest of 34 directories</div>
+
+            <div class="foot">stored in ~/.ai-critic/disk/analysis.json · only the newest 5 keep directory detail · sizes are apparent bytes</div>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption"><b>C · 结果</b>：卡头固定写 <code>Report &lt;id&gt;</code> + 相对时间 + 耗时 + 文件数 + 跳过的目录，回答「这是不是实时」。<code>partial</code>（90s 预算）/<code>time budget</code>/<code>detail trimmed</code>（只留汇总）以徽章出现；每个分类行可点进趋势，下方列出最大的 20 个目录（服务端最多记 40 个，门槛 256 MB，父目录被唯一子目录占满时只留子目录，避免 <code>~/Library</code> 这类空壳霸榜）。</p>
+    </div>
+
+    <!-- ============ D: history list ============ -->
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content">
+          <div class="page">
+            <div class="page-h">
+              <button class="icon-btn">‹</button>
+              <h2>History</h2>
+              <button class="chip" style="margin-left:auto">8 reports</button>
+            </div>
+            <div class="sub">newest 50 kept · newest 5 keep directory detail · every row is a finished scan</div>
+
+            <div class="chart-card">
+              <div class="chart-h">Reclaimable <span class="delta down">−49 GB since the first</span></div>
+              <svg class="chart" viewBox="0 0 320 118" aria-hidden="true">
+                <g stroke="#1f2b3d" stroke-width="1" stroke-dasharray="2 3">
+                  <line x1="8" y1="14" x2="316" y2="14"/><line x1="8" y1="46" x2="316" y2="46"/>
+                  <line x1="8" y1="78" x2="316" y2="78"/><line x1="8" y1="110" x2="316" y2="110"/>
+                </g>
+                <text x="2" y="16" fill="#64748b" font-size="8">200 GB</text>
+                <text x="2" y="48" fill="#64748b" font-size="8">160</text>
+                <text x="2" y="80" fill="#64748b" font-size="8">120</text>
+                <text x="8" y="115" fill="#64748b" font-size="8">80</text>
+                <polygon points="20,61.6 62,66.4 104,50.8 146,35.2 188,44.8 230,77.2 272,86.8 312,94 312,110 20,110"
+                  fill="rgba(34,211,238,.10)"/>
+                <polyline points="20,61.6 62,66.4 104,50.8 146,35.2 188,44.8 230,77.2 272,86.8 312,94"
+                  fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <g fill="#22d3ee">
+                  <circle cx="20" cy="61.6" r="2.4"/><circle cx="62" cy="66.4" r="2.4"/>
+                  <circle cx="104" cy="50.8" r="2.4"/><circle cx="146" cy="35.2" r="2.4"/>
+                  <circle cx="188" cy="44.8" r="2.4"/><circle cx="230" cy="77.2" r="2.4"/>
+                  <circle cx="272" cy="86.8" r="2.4"/><circle cx="312" cy="94" r="3"/>
+                </g>
+              </svg>
+              <div class="xlab"><span>10-26</span><span>10-28</span><span>10-30</span><span>11-02</span><span>11-03</span><span>11-05</span><span>11-06</span><span>11-07</span></div>
+              <div class="foot" style="margin-top:6px;text-align:left">peak 184 GB · 8 reports</div>
+            </div>
+
+            <div class="sect">ALL REPORTS <span class="r">newest first</span></div>
+            <button class="rep cur">
+              <div>
+                <div class="rep-when">11-07 00:09</div>
+                <div class="rep-meta">8.4s · 486k files</div>
+              </div>
+              <svg class="rep-mini" viewBox="0 0 46 20"><polyline points="2,6 12,9 22,7 32,12 44,15" fill="none" stroke="#22d3ee" stroke-width="1.4"/></svg>
+              <div class="rep-right"><div class="rep-bytes">135 GB</div><div class="rep-rec down">−6 GB</div></div>
+            </button>
+            <button class="rep">
+              <div>
+                <div class="rep-when">11-06 22:41</div>
+                <div class="rep-meta">8.1s · 481k files</div>
+              </div>
+              <svg class="rep-mini" viewBox="0 0 46 20"><polyline points="2,7 12,6 22,9 32,13 44,14" fill="none" stroke="#22d3ee" stroke-width="1.4"/></svg>
+              <div class="rep-right"><div class="rep-bytes">141 GB</div><div class="rep-rec down">−8 GB</div></div>
+            </button>
+            <button class="rep">
+              <div>
+                <div class="rep-when">11-05 09:12</div>
+                <div class="rep-meta">7.9s · 477k files</div>
+              </div>
+              <svg class="rep-mini" viewBox="0 0 46 20"><polyline points="2,12 12,8 22,10 32,5 44,9" fill="none" stroke="#22d3ee" stroke-width="1.4"/></svg>
+              <div class="rep-right"><div class="rep-bytes">149 GB</div><div class="rep-rec down">−13 GB</div></div>
+            </button>
+            <button class="rep">
+              <div>
+                <div class="rep-when">11-03 18:30</div>
+                <div class="rep-meta">9.2s · 492k files</div>
+              </div>
+              <svg class="rep-mini" viewBox="0 0 46 20"><polyline points="2,13 12,11 22,7 32,6 44,9" fill="none" stroke="#22d3ee" stroke-width="1.4"/></svg>
+              <div class="rep-right"><div class="rep-bytes">162 GB</div><div class="rep-rec up">+4 GB</div></div>
+            </button>
+            <button class="rep">
+              <div>
+                <div class="rep-when">11-02 11:05</div>
+                <div class="rep-meta">8.8s · 488k files</div>
+              </div>
+              <svg class="rep-mini" viewBox="0 0 46 20"><polyline points="2,13 12,7 22,8 32,10 44,12" fill="none" stroke="#22d3ee" stroke-width="1.4"/></svg>
+              <div class="rep-right"><div class="rep-bytes">158 GB</div><div class="rep-rec down">−13 GB</div></div>
+            </button>
+            <button class="rep">
+              <div>
+                <div class="rep-when">10-30 14:20</div>
+                <div class="rep-meta">7.5s · 470k files · detail trimmed</div>
+              </div>
+              <svg class="rep-mini" viewBox="0 0 46 20"><polyline points="2,8 12,11 22,9 32,12 44,10" fill="none" stroke="#22d3ee" stroke-width="1.4"/></svg>
+              <div class="rep-right"><div class="rep-bytes">171 GB</div><div class="rep-rec down">−7 GB</div></div>
+            </button>
+            <button class="rep">
+              <div>
+                <div class="rep-when">10-28 09:40</div>
+                <div class="rep-meta">8.0s · 473k files · detail trimmed</div>
+              </div>
+              <svg class="rep-mini" viewBox="0 0 46 20"><polyline points="2,9 12,10 22,8 32,11 44,12" fill="none" stroke="#22d3ee" stroke-width="1.4"/></svg>
+              <div class="rep-right"><div class="rep-bytes">178 GB</div><div class="rep-rec down">−6 GB</div></div>
+            </button>
+            <button class="rep">
+              <div>
+                <div class="rep-when">10-26 15:02</div>
+                <div class="rep-meta">7.7s · 469k files · detail trimmed</div>
+              </div>
+              <svg class="rep-mini" viewBox="0 0 46 20"><polyline points="2,10 12,9 22,11 32,12 44,13" fill="none" stroke="#22d3ee" stroke-width="1.4"/></svg>
+              <div class="rep-right"><div class="rep-bytes">184 GB</div><div class="rep-rec">oldest</div></div>
+            </button>
+
+            <div class="note">行仍可点开（分类汇总一直在），只是第 6 份起 <code>entries</code> 已清空，详情页显示 <code>detail trimmed</code> 而不是空表。超过 50 份时由服务端淘汰最旧的一份，不做时间淘汰。</div>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption"><b>D · 历史列表</b>：顶部先画「可回收」总量的曲线（一眼看趋势，末点高亮），下面是每份报告一行：时间、耗时 + 文件数、可回收量、与上一份的差、6 点迷你走势；当前报告高亮。数据全部来自一次 <code>GET …/reports?limit=50</code>，不再逐份请求。</p>
+    </div>
+
+    <!-- ============ E: category trend ============ -->
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content">
+          <div class="page">
+            <div class="page-h">
+              <button class="icon-btn">‹</button>
+              <h2 style="color:#22d3ee">Dev cache</h2>
+              <button class="chip" style="margin-left:auto">41 GB now</button>
+            </div>
+            <div class="sub">now 41 GB · 10% of used · peak 52 GB on 11-02 · 41 GB freeable</div>
+
+            <div class="chart-card">
+              <div class="chart-h">Bytes over time <span class="r">8 points · 10-26 → 11-07</span></div>
+              <svg class="chart" viewBox="0 0 320 118" aria-hidden="true">
+                <g stroke="#1f2b3d" stroke-width="1" stroke-dasharray="2 3">
+                  <line x1="38" y1="14" x2="316" y2="14"/><line x1="38" y1="46" x2="316" y2="46"/>
+                  <line x1="38" y1="78" x2="316" y2="78"/><line x1="38" y1="110" x2="316" y2="110"/>
+                </g>
+                <text x="2" y="16" fill="#64748b" font-size="8">60 GB</text>
+                <text x="2" y="48" fill="#64748b" font-size="8">40</text>
+                <text x="2" y="80" fill="#64748b" font-size="8">20</text>
+                <text x="2" y="113" fill="#64748b" font-size="8">0</text>
+                <polygon points="40,39.6 79,38 118,34.8 157,26.8 196,31.6 235,41.2 274,44.4 312,49.2 312,110 40,110"
+                  fill="rgba(96,165,250,.10)"/>
+                <polyline points="40,39.6 79,38 118,34.8 157,26.8 196,31.6 235,41.2 274,44.4 312,49.2"
+                  fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <g fill="#60a5fa">
+                  <circle cx="40" cy="39.6" r="2.4"/><circle cx="79" cy="38" r="2.4"/>
+                  <circle cx="118" cy="34.8" r="2.4"/><circle cx="157" cy="26.8" r="2.4"/>
+                  <circle cx="196" cy="31.6" r="2.4"/><circle cx="235" cy="41.2" r="2.4"/>
+                  <circle cx="274" cy="44.4" r="2.4"/><circle cx="312" cy="49.2" r="3.4" stroke="#0b1220" stroke-width="1.2"/>
+                </g>
+              </svg>
+              <div class="xlab"><span>10-26</span><span>10-28</span><span>10-30</span><span>11-02</span><span>11-03</span><span>11-05</span><span>11-06</span><span>11-07</span></div>
+            </div>
+
+            <div class="note">曲线只在同一个 <code>category id</code> 内比较。扫描规则版本（<code>schema</code>）变化时不再混画：每一段单独一张图，标 <code>Measurement v1</code> / <code>v2</code>，各自一根 Y 轴。</div>
+
+            <div class="sect">EVERY REPORT</div>
+            <div class="rep static"><div><div class="rep-when">11-07 00:09</div><div class="rep-meta">report 20261107-000908</div></div><div class="rep-right"><div class="rep-bytes">41 GB</div><div class="rep-rec down">−6 GB</div></div></div>
+            <div class="rep static"><div><div class="rep-when">11-06 22:41</div><div class="rep-meta">report 20261106-224102</div></div><div class="rep-right"><div class="rep-bytes">47 GB</div><div class="rep-rec up">+2 GB</div></div></div>
+            <div class="rep static"><div><div class="rep-when">11-05 09:12</div><div class="rep-meta">report 20261105-091203</div></div><div class="rep-right"><div class="rep-bytes">45 GB</div><div class="rep-rec down">−4 GB</div></div></div>
+            <div class="rep static"><div><div class="rep-when">11-03 18:30</div><div class="rep-meta">report 20261103-183001</div></div><div class="rep-right"><div class="rep-bytes">49 GB</div><div class="rep-rec down">−3 GB</div></div></div>
+            <div class="rep static"><div><div class="rep-when">11-02 11:05</div><div class="rep-meta">report 20261102-110502</div></div><div class="rep-right"><div class="rep-bytes">52 GB</div><div class="rep-rec up">+5 GB</div></div></div>
+            <div class="rep static"><div><div class="rep-when">10-30 14:20</div><div class="rep-meta">report 20261030-142018</div></div><div class="rep-right"><div class="rep-bytes">47 GB</div><div class="rep-rec up">+3 GB</div></div></div>
+            <div class="rep static"><div><div class="rep-when">10-28 09:40</div><div class="rep-meta">report 20261028-094012</div></div><div class="rep-right"><div class="rep-bytes">44 GB</div><div class="rep-rec up">+1 GB</div></div></div>
+            <div class="rep static"><div><div class="rep-when">10-26 15:02</div><div class="rep-meta">report 20261026-150230</div></div><div class="rep-right"><div class="rep-bytes">43 GB</div><div class="rep-rec">oldest</div></div></div>
+
+            <div class="foot" style="text-align:left">135 GB of the newest report is reclaimable across all categories · a missing point stays a gap, never a zero</div>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption"><b>E · 同类曲线</b>：从结果页点任意分类进入（标题染上该分类的颜色）。副标题给「当前 / 占已用 / 峰值 + 日期 / 可回收」，图上一根轴、缺口就是缺口；底部逐次明细写 <code>report &lt;id&gt;</code>，可直接回看那天的完整报告。</p>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h2>机制要点（与实现一致）</h2>
+    <ul>
+      <li><b>进度是服务端状态</b>：<code>~/.ai-critic/disk/job.json</code> 每 2s 落盘 <code>{id, started_at, phase, walked_bytes, files, no_access_dirs, percent, state}</code>；前端运行中 1s、空闲 10s 轮询 <code>GET /api/server/disk/analysis/status</code>。百分比 = walked / (used × 90%)，封顶 99，结束才 100。</li>
+      <li><b>停就是停</b>：<code>POST …/cancel</code> 取消 context，walk 在 1s 内退出；<code>last_attempt.outcome = cancelled</code>，<b>不写报告</b>，历史曲线不会被半截数据污染。点停时若扫描刚好完成，返回 <code>{"cancelled": false}</code>，页面提示「the scan had already finished」。</li>
+      <li><b>重复点击不排队</b>：同一时刻只有一个全局 job；第二次 <code>POST …/start</code> 返回 <b>409</b> + 正在跑的 job，前端直接接管进度卡。</li>
+      <li><b>结果可追加</b>：每份 <code>Report</code>（id = 扫描开始时间 <code>20060102-150405</code>）append 进 <code>analysis.json</code>，保留最近 50；最近 5 份保 <code>entries</code> 目录明细，更早只留 <code>categories</code> 汇总并置 <code>entries_dropped</code>。</li>
+      <li><b>90s 软预算</b>：超时不算失败，写一份 <code>complete=false / truncated=true</code> 的 <code>partial</code> 报告，前端用徽章标明。</li>
+      <li><b>目录明细门槛</b>：<code>256 MB</code>，每份最多记 40 个、页面显示最大 20 个；父目录若几乎只由一个子目录构成则只留子目录，避免 <code>/Users</code> 这类空壳占满列表。</li>
+      <li><b>崩溃可恢复</b>：启动时发现残留 <code>job.json</code> → 记一条 <code>interrupted</code> 尝试（"the server stopped before the scan finished"），不会永远显示「正在扫描」。</li>
+      <li><b>曲线数据来自报告本身</b>：<code>GET …/reports?limit=50</code> 一次返回所有分类汇总，趋势页不再发 N 次请求；分类缺失 → 断线，<code>schema</code> 变化 → 分段各自一根轴。</li>
+      <li><b>两个时间分开给</b>：<code>last_completed_at</code>（入口卡、结果页）与 <code>last_attempt{at, outcome}</code>（运行页副标题、中断/失败提示）；超过 24h 未跑才在页内提示 stale。</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

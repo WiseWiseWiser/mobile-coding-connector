@@ -1,0 +1,616 @@
+/* Space analysis: entry card, live progress, report, history, trends. */
+
+.mcc-space-entry {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: calc(100% - 32px);
+    margin: 10px 16px 0;
+    padding: 10px 12px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+}
+
+.mcc-space-entry.running {
+    border-color: #3b82f6;
+}
+
+.mcc-space-entry-ico {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    border-radius: 8px;
+    background: #0f172a;
+    color: #60a5fa;
+}
+
+.mcc-space-entry-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.mcc-space-entry-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+.mcc-space-entry-count {
+    font-size: 10px;
+    font-weight: 650;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    border-radius: 999px;
+    padding: 0 6px;
+}
+
+.mcc-space-entry-sub {
+    font-size: 11px;
+    color: #94a3b8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-space-entry-go {
+    color: #64748b;
+    font-size: 16px;
+}
+
+.mcc-space-spark {
+    flex: 0 0 auto;
+    opacity: 0.9;
+}
+
+.mcc-space-sect {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 16px;
+    margin: 14px 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #94a3b8;
+}
+
+.mcc-space-sect span {
+    font-weight: 500;
+    letter-spacing: 0;
+    color: #64748b;
+}
+
+.mcc-space-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px;
+    margin: 8px 16px;
+}
+
+.mcc-space-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.mcc-space-card-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+.mcc-space-meta {
+    font-size: 10px;
+    color: #94a3b8;
+    margin-top: 2px;
+}
+
+.mcc-space-badges {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.mcc-space-badge {
+    font-size: 9px;
+    font-weight: 650;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    border-radius: 999px;
+    padding: 1px 6px;
+    white-space: nowrap;
+}
+
+.mcc-space-badge.warn {
+    color: #f59e0b;
+    border-color: #4a3a16;
+}
+
+/* Live progress */
+
+.mcc-space-prog {
+    border-color: #3b82f6;
+}
+
+.mcc-space-prog-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.mcc-space-prog-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+.mcc-space-prog-id {
+    font-size: 10px;
+    color: #64748b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    margin-top: 2px;
+}
+
+.mcc-space-prog-pct {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #60a5fa;
+}
+
+.mcc-space-prog-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: #0f172a;
+    overflow: hidden;
+    margin: 8px 0 10px;
+}
+
+.mcc-space-prog-bar i {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    transition: width 600ms ease;
+}
+
+.mcc-space-prog-cells {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+}
+
+.mcc-space-prog-cells div {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.mcc-space-prog-cells span {
+    font-size: 9px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.mcc-space-prog-cells b {
+    font-size: 11px;
+    font-weight: 650;
+    color: #e2e8f0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-space-prog-foot {
+    margin-top: 8px;
+    font-size: 10px;
+    color: #64748b;
+}
+
+/* Report rollup */
+
+.mcc-space-stack {
+    display: flex;
+    gap: 1px;
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #0f172a;
+}
+
+.mcc-space-stack i {
+    display: block;
+    height: 100%;
+}
+
+.mcc-space-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin-top: 6px;
+}
+
+.mcc-space-lg {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9px;
+    color: #94a3b8;
+}
+
+.mcc-space-lg i {
+    width: 6px;
+    height: 6px;
+    border-radius: 2px;
+}
+
+.mcc-space-lg b {
+    color: #e2e8f0;
+    font-weight: 650;
+}
+
+.mcc-space-reclaim {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 10px 0 4px;
+    padding: 8px 10px;
+    background: #182030;
+    border-radius: 8px;
+}
+
+.mcc-space-reclaim-value {
+    font-size: 14px;
+    font-weight: 750;
+    color: #22d3ee;
+}
+
+.mcc-space-reclaim-sub {
+    font-size: 10px;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+.mcc-space-delta {
+    font-size: 10px;
+    font-weight: 650;
+    white-space: nowrap;
+}
+
+.mcc-space-delta.up {
+    color: #f59e0b;
+}
+
+.mcc-space-delta.down {
+    color: #22c55e;
+}
+
+.mcc-space-delta.flat {
+    color: #64748b;
+}
+
+/* Category rows */
+
+.mcc-space-cats {
+    display: flex;
+    flex-direction: column;
+    margin-top: 6px;
+}
+
+.mcc-space-cat {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 0;
+    color: inherit;
+    cursor: pointer;
+}
+
+.mcc-space-cat:active {
+    background: #182030;
+}
+
+.mcc-space-cat-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mcc-space-cat-name {
+    font-size: 12px;
+    font-weight: 650;
+    color: #e2e8f0;
+}
+
+.mcc-space-cat-bytes {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 650;
+    color: #cbd5e1;
+}
+
+.mcc-space-cat-path {
+    font-size: 9px;
+    color: #64748b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin: 1px 0 4px;
+}
+
+.mcc-space-tag {
+    font-size: 9px;
+    font-weight: 600;
+    color: #64748b;
+    border: 1px solid #334155;
+    border-radius: 999px;
+    padding: 0 5px;
+    white-space: nowrap;
+}
+
+.mcc-space-tag.cache {
+    color: #22c55e;
+    border-color: #1d3a2a;
+}
+
+.mcc-space-cat-bar {
+    height: 3px;
+    border-radius: 999px;
+    background: #0f172a;
+    overflow: hidden;
+}
+
+.mcc-space-cat-bar i {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+}
+
+/* Directory list */
+
+.mcc-space-entries {
+    padding: 4px 12px;
+}
+
+.mcc-space-entry-row {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-bottom: 1px solid #263043;
+    padding: 8px 0;
+    color: inherit;
+    cursor: pointer;
+    position: relative;
+}
+
+.mcc-space-entry-row:last-child {
+    border-bottom: none;
+}
+
+.mcc-space-entry-top {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.mcc-space-entry-cat {
+    font-size: 9px;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.mcc-space-entry-bytes {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 650;
+    color: #cbd5e1;
+}
+
+.mcc-space-entry-path {
+    font-size: 10px;
+    color: #94a3b8;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin: 1px 0 4px;
+}
+
+.mcc-space-empty {
+    font-size: 11px;
+    color: #94a3b8;
+    line-height: 1.5;
+}
+
+/* Charts */
+
+.mcc-space-chart svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.mcc-space-xlab {
+    display: flex;
+    margin-top: 2px;
+}
+
+.mcc-space-xlab span {
+    flex: 1;
+    text-align: center;
+    font-size: 8px;
+    color: #64748b;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.mcc-space-axis-note {
+    margin-top: 4px;
+    font-size: 9px;
+    color: #64748b;
+    text-align: right;
+}
+
+/* History */
+
+.mcc-space-hist {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 16px;
+}
+
+.mcc-space-hist-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 8px 10px;
+    color: inherit;
+    cursor: pointer;
+}
+
+.mcc-space-hist-row.static {
+    cursor: default;
+}
+
+.mcc-space-hist-row.current {
+    border-color: #3b82f6;
+}
+
+.mcc-space-hist-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.mcc-space-hist-when {
+    font-size: 12px;
+    font-weight: 650;
+    color: #f1f5f9;
+}
+
+.mcc-space-hist-meta {
+    font-size: 9px;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-space-hist-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    flex: 0 0 auto;
+}
+
+.mcc-space-hist-bytes {
+    font-size: 12px;
+    font-weight: 700;
+    color: #e2e8f0;
+}
+
+.mcc-space-hist-sub {
+    font-size: 9px;
+    color: #64748b;
+}
+
+.mcc-space-hist-sub.up {
+    color: #f59e0b;
+}
+
+.mcc-space-hist-sub.down {
+    color: #22c55e;
+}
+
+/* Notes */
+
+.mcc-space-note {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 8px 16px;
+    padding: 8px 10px;
+    background: #182030;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    font-size: 10px;
+    color: #94a3b8;
+}
+
+.mcc-space-stale {
+    margin: 8px 16px 0;
+    font-size: 10px;
+    color: #f59e0b;
+}
+
+.mcc-space-links {
+    margin: 8px 16px 0;
+}
+
+.mcc-space-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 9px 12px;
+    color: #e2e8f0;
+    font-size: 12px;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.mcc-space-link span:last-child {
+    font-size: 10px;
+    font-weight: 500;
+    color: #64748b;
+}
+
+.mcc-space-foot {
+    margin: 10px 16px 16px;
+    font-size: 10px;
+    line-height: 1.5;
+    color: #475569;
+}

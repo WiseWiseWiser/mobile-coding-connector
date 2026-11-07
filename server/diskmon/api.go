@@ -47,9 +47,11 @@ func (s *sampler) get() (*Snapshot, error) {
 	return snap, nil
 }
 
-// RegisterAPI mounts GET /api/server/disk.
+// RegisterAPI mounts GET /api/server/disk and the manual space-analysis
+// endpoints under /api/server/disk/analysis.
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/server/disk", handleDisk)
+	registerAnalysisAPI(mux)
 }
 
 func handleDisk(w http.ResponseWriter, r *http.Request) {

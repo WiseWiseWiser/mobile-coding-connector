@@ -6,6 +6,7 @@ import { formatBytes } from '../../../api/processes';
 import DiskVolumeCard from './DiskVolumeCard';
 import DiskMergedRow from './DiskMergedRow';
 import DiskIOCard from './DiskIOCard';
+import SpaceEntryCard from './SpaceEntryCard';
 import {
     diskSubtitle,
     diskTone,
@@ -111,6 +112,8 @@ export default function DiskView() {
                                 : 'capacity unavailable'}
                         </div>
                     </div>
+
+                    <SpaceEntryCard />
 
                     <div className="mcc-disk-sec">
                         <h3>Volumes</h3>
