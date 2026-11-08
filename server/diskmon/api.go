@@ -52,6 +52,7 @@ func (s *sampler) get() (*Snapshot, error) {
 func RegisterAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/server/disk", handleDisk)
 	registerAnalysisAPI(mux)
+	registerCleanupAPI(mux)
 }
 
 func handleDisk(w http.ResponseWriter, r *http.Request) {

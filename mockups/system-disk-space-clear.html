@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>System · Disk 报告页清理按钮（对齐 clear-tmp 分类）mockup</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --elev: #334155; --bd: #334155;
+    --text: #f1f5f9; --sec: #94a3b8; --mut: #64748b;
+    --blue: #60a5fa; --green: #22c55e; --yellow: #fbbf24; --amber: #f59e0b; --red: #f87171;
+    --violet: #a78bfa; --cyan: #22d3ee; --pink: #f472b6;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: "SF Mono", Menlo, Monaco, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); background: #060b16; color: var(--text); }
+  .wrap { max-width: 2200px; margin: 0 auto; padding: 24px 18px 72px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .lead { color: var(--sec); font-size: 13px; margin: 0 0 14px; max-width: 980px; line-height: 1.6; }
+  .assump { font-size: 12px; color: #cbd5e1; background: #0b1220; border: 1px dashed #334155; border-radius: 10px; padding: 10px 12px; margin-bottom: 20px; max-width: 1400px; line-height: 1.6; }
+  .assump b { color: var(--text); }
+  .frames { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start; }
+  .phone {
+    width: 390px; height: 844px; background: var(--bg); border-radius: 36px;
+    border: 8px solid #020617; overflow: hidden; display: flex; flex-direction: column;
+    position: relative; flex-shrink: 0; box-shadow: 0 20px 50px rgba(0,0,0,.45);
+  }
+  .caption { font-size: 12px; color: var(--mut); margin: 8px 0 0; max-width: 390px; line-height: 1.55; }
+  .caption b { color: #cbd5e1; }
+  .caption code { font-family: var(--mono); font-size: 11px; color: #cbd5e1; }
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 14px; background: var(--card); border-bottom: 1px solid var(--bd); flex-shrink: 0; }
+  .proj { flex: 1; background: rgba(0,0,0,.22); border: 1px solid var(--bd); border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 600; }
+  .content { flex: 1; overflow: auto; min-height: 0; }
+  .page { padding: 12px 14px 28px; }
+  .bottomnav { display: flex; background: var(--card); border-top: 1px solid var(--bd); padding: 8px 0 10px; flex-shrink: 0; z-index: 2; }
+  .nav-item { flex: 1; text-align: center; font-size: 10px; font-weight: 600; color: var(--mut); }
+  .nav-item.active { color: var(--blue); }
+
+  .page-h { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .page-h h2 { margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .icon-btn { width: 30px; height: 30px; border: 0; background: transparent; color: var(--text); border-radius: 8px; cursor: pointer; font-size: 18px; padding: 0; }
+  .live { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--green); font-weight: 700; }
+  .live::before { content: ""; width: 6px; height: 6px; border-radius: 99px; background: currentColor; }
+  .chip { border: 1px solid var(--bd); background: transparent; color: var(--sec); font-size: 12px; font-weight: 650; padding: 5px 9px; border-radius: 999px; cursor: pointer; white-space: nowrap; font-family: inherit; }
+  .chip.on { background: rgba(96,165,250,.12); color: var(--blue); border-color: rgba(96,165,250,.4); }
+  .chip.clean { background: rgba(34,197,94,.12); color: #86efac; border-color: rgba(34,197,94,.4); }
+  .chip.danger { color: var(--red); border-color: rgba(248,113,113,.35); }
+  .chip[disabled] { opacity: .45; cursor: not-allowed; }
+  .sub { font-size: 12px; color: var(--sec); margin: 0 0 10px; }
+
+  .sect { margin: 14px 0 6px; font-size: 10px; letter-spacing: .08em; font-weight: 700; color: var(--mut); }
+  .sect .r { float: right; letter-spacing: 0; font-weight: 650; color: var(--blue); text-transform: none; }
+  .sect .r.mut { color: var(--mut); }
+
+  .stack { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: #0b1220; gap: 1px; }
+  .stack > i { display: block; height: 100%; }
+  .c-xcode { background: #60a5fa; }
+  .c-dev { background: #22d3ee; }
+  .c-vm { background: #a78bfa; }
+  .c-media { background: #f472b6; }
+  .c-down { background: #fbbf24; }
+  .c-log { background: #f87171; }
+  .c-cache { background: #38bdf8; }
+  .c-other { background: #475569; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; }
+  .lg { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--sec); }
+  .lg i { width: 7px; height: 7px; border-radius: 2px; display: block; }
+  .lg b { color: var(--text); font-weight: 650; }
+
+  .scan-head { background: var(--card); border: 1px solid var(--bd); border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+  .card-head { display: flex; align-items: flex-start; gap: 8px; }
+  .card-title { font-size: 13px; font-weight: 700; }
+  .meta { font-size: 10px; color: var(--mut); margin-top: 1px; }
+  .badges { display: flex; gap: 5px; flex-wrap: wrap; }
+  .bdg { font-size: 9px; font-weight: 650; color: var(--sec); border: 1px solid var(--bd); border-radius: 999px; padding: 1px 7px; }
+  .bdg.warn { color: var(--amber); border-color: rgba(245,158,11,.35); }
+
+  .reclaim { display: flex; align-items: center; gap: 10px; background: rgba(34,197,94,.07); border: 1px solid rgba(34,197,94,.28); border-radius: 10px; padding: 11px 12px; margin: 10px 0; }
+  .reclaim .rv { font-size: 17px; font-weight: 750; color: #4ade80; letter-spacing: -.02em; }
+  .reclaim .rl { font-size: 10px; color: var(--sec); margin-top: 1px; line-height: 1.5; }
+  .reclaim .btn { margin-left: auto; font-family: inherit; font-size: 11px; font-weight: 700; color: #86efac; background: rgba(34,197,94,.12); border: 1px solid rgba(34,197,94,.35); border-radius: 8px; padding: 6px 9px; cursor: pointer; white-space: nowrap; }
+  .reclaim.warn { background: rgba(245,158,11,.07); border-color: rgba(245,158,11,.3); }
+  .reclaim.warn .rv { color: var(--amber); }
+
+  .spend { display: block; width: 100%; text-align: left; font: inherit; color: inherit; background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 10px 12px; margin-bottom: 7px; cursor: pointer; }
+  button.spend:hover { border-color: #475569; }
+  .spend-top { display: flex; align-items: center; gap: 8px; }
+  .spend-name { font-size: 12.5px; font-weight: 650; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spend-bytes { margin-left: auto; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .spend-path { font-family: var(--mono); font-size: 9.5px; color: var(--mut); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spend-bar { height: 4px; border-radius: 99px; background: #0b1220; overflow: hidden; margin-top: 6px; }
+  .spend-bar > i { display: block; height: 100%; }
+  .tag { font-size: 9px; font-weight: 700; letter-spacing: .04em; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--bd); color: var(--sec); white-space: nowrap; }
+  .tag.cache { color: var(--cyan); border-color: rgba(34,211,238,.35); background: rgba(34,211,238,.08); }
+  .tag.keep { color: var(--mut); }
+  .tag.warn { color: var(--amber); border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.08); }
+  .tag.new { color: #86efac; border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.08); }
+  .tag.never { color: var(--red); border-color: rgba(248,113,113,.3); background: rgba(248,113,113,.07); }
+  /* display-command kind badges: rm -rf (own delete) vs official tool vs root */
+  .tag.cmd { color: #93c5fd; border-color: rgba(147,197,253,.3); background: rgba(147,197,253,.07); font-family: var(--mono); letter-spacing: 0; }
+  .tag.official { color: #86efac; border-color: rgba(134,239,172,.3); background: rgba(134,239,172,.07); }
+  .tag.root { color: #fcd34d; border-color: rgba(252,211,77,.3); background: rgba(252,211,77,.07); }
+  .cl-cmd { display: flex; align-items: center; gap: 5px; margin-top: 2px; min-width: 0; }
+  .cl-cmd .cmdline { font-family: var(--mono); font-size: 9px; color: #cbd5e1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cl-cmd .cmdline .dim { color: var(--mut); }
+  .cl.wait { background: rgba(252,211,77,.06); border: 1px solid rgba(252,211,77,.28); border-radius: 9px; }
+  /* macOS native password dialog (rendered by SecurityAgent, not by the app) */
+  .macdlg { width: 232px; margin: 84px auto 0; border-radius: 12px; overflow: hidden; background: #e9e9e9; box-shadow: 0 18px 50px rgba(0,0,0,.55), 0 0 0 .5px rgba(255,255,255,.25); color: #1d1d1f; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; }
+  .macdlg-h { padding: 14px 16px 6px; font-size: 12.5px; font-weight: 700; text-align: center; }
+  .macdlg-b { padding: 0 16px 12px; font-size: 10.5px; line-height: 1.5; color: #3a3a3c; text-align: center; }
+  .macdlg-b code { font-family: var(--mono); font-size: 9.5px; background: rgba(0,0,0,.06); padding: 1px 4px; border-radius: 4px; }
+  .macdlg-in { margin: 2px 16px 14px; height: 22px; border-radius: 5px; background: #fff; border: 1px solid #b9b9bd; box-shadow: inset 0 1px 1px rgba(0,0,0,.06); display: flex; align-items: center; padding: 0 6px; font-size: 11px; color: #9a9aa0; letter-spacing: .18em; }
+  .macdlg-in .caret { display: inline-block; width: 1px; height: 12px; background: #0a84ff; margin-left: 1px; animation: blink 1.05s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .macdlg-btns { display: flex; justify-content: flex-end; gap: 8px; padding: 0 16px 14px; }
+  .macdlg-btns .mb { font-size: 11px; font-weight: 600; padding: 3px 12px; border-radius: 6px; background: #fff; border: .5px solid rgba(0,0,0,.14); }
+  .macdlg-btns .mb.pri { background: #0a84ff; border-color: #0a84ff; color: #fff; }
+  .dlgwrap { position: absolute; inset: 0; background: rgba(2,6,23,.55); display: flex; justify-content: center; align-items: flex-start; padding-top: 176px; z-index: 20; }
+  .dlgwrap .macdlg { margin: 0; }
+  .dlgnote { position: absolute; left: 0; right: 0; bottom: 116px; text-align: center; font-size: 9.5px; color: #94a3b8; padding: 0 26px; line-height: 1.5; z-index: 21; }
+  .delta { font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 5px; }
+  .delta.down { color: #4ade80; background: rgba(34,197,94,.1); }
+  .delta.up { color: var(--red); background: rgba(248,113,113,.1); }
+
+  .entrylist { background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 2px 12px; }
+  .entry { padding: 8px 0; border-bottom: 1px solid #263043; }
+  .entry:last-child { border-bottom: 0; }
+  .entry-top { display: flex; align-items: baseline; gap: 6px; }
+  .entry-cat { font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .entry-bytes { margin-left: auto; font-size: 11px; font-weight: 650; }
+  .entry-path { font-family: var(--mono); font-size: 10px; color: var(--sec); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .foot { font-family: var(--mono); font-size: 10px; color: var(--mut); text-align: center; margin-top: 14px; line-height: 1.6; }
+  .foot.left { text-align: left; margin-top: 6px; }
+
+  /* ---- cleanup classes ---- */
+  .clean-head { display: flex; align-items: center; gap: 6px; margin: 16px 0 6px; }
+  .clean-head .t { font-size: 10px; letter-spacing: .08em; font-weight: 700; color: var(--mut); }
+  .clean-head .n { font-size: 10px; color: var(--mut); font-weight: 650; }
+  .clean-head .all { margin-left: auto; font-family: inherit; font-size: 10px; font-weight: 650; color: var(--blue); background: transparent; border: 0; cursor: pointer; }
+  .tier { font-size: 8.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--mut); margin: 10px 0 5px; }
+  .tier.d { color: #86efac; }
+  .tier.a { color: var(--amber); }
+  .tier.s { color: var(--violet); }
+  .tier.i { color: var(--mut); }
+
+  .cl { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; font: inherit; color: inherit; background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 9px 11px; margin-bottom: 6px; cursor: pointer; }
+  .cl.off { opacity: .5; }
+  .cl.dis { opacity: .62; cursor: not-allowed; }
+  .cl.sel { border-color: rgba(34,197,94,.4); background: rgba(34,197,94,.05); }
+  .box { width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid #475569; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #04120a; background: transparent; }
+  .box.on { background: #4ade80; border-color: #4ade80; }
+  .box.on::after { content: "✓"; }
+  .box.dash { color: var(--mut); border-style: dashed; }
+  .box.dash::after { content: "–"; }
+  .cl-main { min-width: 0; flex: 1; }
+  .cl-name { font-size: 12px; font-weight: 650; display: flex; align-items: center; gap: 5px; }
+  .cl-path { font-family: var(--mono); font-size: 9px; color: var(--mut); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cl-size { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cl-size small { display: block; font-size: 8.5px; font-weight: 600; color: var(--mut); text-align: right; margin-top: 1px; }
+
+  /* ---- sheet ---- */
+  .sheet { position: absolute; inset: 0; background: rgba(2,6,23,.72); display: flex; align-items: flex-end; }
+  .sheet-body { background: var(--bg); border-top: 1px solid var(--bd); border-radius: 18px 18px 0 0; width: 100%; max-height: 100%; display: flex; flex-direction: column; box-shadow: 0 -18px 40px rgba(0,0,0,.5); }
+  .sheet-h { padding: 14px 14px 8px; display: flex; align-items: flex-start; gap: 8px; }
+  .sheet-h h3 { margin: 0; font-size: 15px; }
+  .sheet-h .x { margin-left: auto; border: 0; background: transparent; color: var(--mut); font-size: 18px; cursor: pointer; padding: 0 2px; }
+  .sheet-scroll { overflow: auto; padding: 0 14px 8px; min-height: 0; }
+  .sheet-foot { padding: 10px 14px 14px; border-top: 1px solid var(--bd); background: var(--card); }
+  .sheet-foot .line { display: flex; align-items: baseline; gap: 6px; font-size: 11px; color: var(--sec); margin-bottom: 8px; }
+  .sheet-foot .line b { margin-left: auto; font-size: 15px; font-weight: 750; color: #4ade80; }
+  .btn-primary { width: 100%; font-family: inherit; font-size: 13px; font-weight: 750; color: #04120a; background: #4ade80; border: 0; border-radius: 10px; padding: 11px; cursor: pointer; }
+  .btn-primary.ghost { background: transparent; color: var(--sec); border: 1px solid var(--bd); font-weight: 650; font-size: 11.5px; padding: 9px; margin-top: 8px; }
+  .hint { font-size: 10px; color: var(--mut); line-height: 1.55; margin-top: 8px; }
+  .hint b { color: #cbd5e1; }
+  .warnrow { display: flex; gap: 8px; background: rgba(245,158,11,.07); border: 1px solid rgba(245,158,11,.28); border-radius: 9px; padding: 8px 10px; margin: 10px 0 0; font-size: 10px; color: #fcd34d; line-height: 1.55; }
+  .warnrow.bad { background: rgba(248,113,113,.07); border-color: rgba(248,113,113,.28); color: #fca5a5; }
+  .warnrow.ok { background: rgba(34,197,94,.07); border-color: rgba(34,197,94,.28); color: #86efac; }
+
+  .run { display: flex; align-items: center; gap: 9px; background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 9px 11px; margin-bottom: 6px; }
+  .run.cur { border-color: rgba(96,165,250,.45); }
+  .run .dot { width: 8px; height: 8px; border-radius: 99px; background: #475569; flex-shrink: 0; }
+  .run .dot.ok { background: #4ade80; }
+  .run .dot.skip { background: var(--amber); }
+  .run .dot.live { background: var(--blue); box-shadow: 0 0 0 3px rgba(96,165,250,.18); }
+  .run-main { min-width: 0; flex: 1; }
+  .run-name { font-size: 12px; font-weight: 650; }
+  .run-note { font-size: 9.5px; color: var(--mut); margin-top: 1px; }
+  .run-free { font-size: 11px; font-weight: 700; color: #4ade80; white-space: nowrap; }
+  .run-free.skip { color: var(--amber); }
+
+  .prog { height: 6px; border-radius: 99px; background: #0b1220; overflow: hidden; margin: 8px 0 4px; }
+  .prog > i { display: block; height: 100%; background: var(--blue); border-radius: 99px; }
+
+  /* ---- mapping table ---- */
+  .maptable { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .maptable th { text-align: left; font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--mut); font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--bd); }
+  .maptable td { padding: 6px 8px; border-bottom: 1px solid #263043; vertical-align: top; }
+  .maptable tr:last-child td { border-bottom: 0; }
+  .maptable td.id { font-family: var(--mono); font-size: 10.5px; color: #cbd5e1; white-space: nowrap; }
+  .maptable td.gap { color: var(--amber); font-weight: 650; }
+  .maptable td.ok { color: var(--sec); }
+  .maptable code { font-family: var(--mono); font-size: 10px; color: var(--mut); }
+
+  .notes { margin-top: 28px; background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px 18px; max-width: 1500px; }
+  .notes h2 { margin: 0 0 8px; font-size: 15px; }
+  .notes h3 { margin: 18px 0 6px; font-size: 13px; color: #e2e8f0; }
+  .notes ul, .notes ol { margin: 0; padding-left: 18px; color: var(--sec); font-size: 13px; line-height: 1.65; }
+  .notes li { margin: 6px 0; }
+  .notes code { font-family: var(--mono); font-size: 12px; color: #cbd5e1; }
+  .notes table { border-collapse: collapse; font-size: 12.5px; color: var(--sec); margin-top: 6px; }
+  .notes th { text-align: left; color: var(--text); font-weight: 650; padding: 5px 10px 5px 0; border-bottom: 1px solid #1f2937; }
+  .notes td { padding: 5px 10px 5px 0; border-bottom: 1px solid #172033; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>System · Disk 报告页新增「清理」按钮（复用 clear-tmp 的清理逻辑 + 补齐分类）</h1>
+  <p class="lead">
+    在空间分析报告页直接给一个清理入口：先 dry-run 出计划（每个清理类一行、带 size），勾选后一次执行，
+    逐条流式回填「释放了多少」。同时把 <code>clear-tmp</code> 的 19 个清理类补进报告视图——
+    今天的报告只有 8 个<b>空间桶</b>，其中 6 个 clear-tmp 类被埋在 <code>Everything else</code> 里，
+    而 <code>reclaimable</code> 又把手写的路径前缀算成「可回收」（把永不清理的 Go mod 缓存也算进去了）。
+    <br><b>实施口径（本轮已定）</b>：把 clear-tmp 的核心清理层抽进 <code>dot-pkgs</code> 的既有模块
+    <code>go-pkgs</code>，路径 <code>go-pkgs/disk/reclaim</code>（<b>不新建 go.mod</b>），clear-tmp 与 ai-critic 共用这一份；
+    每行显示的命令由 step 的 op 列表算出（等价 <code>rm -rf</code> 就显示 <code>rm -rf</code>，官方命令就显示官方命令）；
+    需要 root 的 step 弹 <b>macOS 原生密码框</b>，密码不经过 HTTP。
+  </p>
+
+  <div class="assump">
+    <b>本稿的三个前提（都要在 Decisions 里确认）</b>
+    ① 清理动作<b>不在 ai-critic 里重新发明</b>：clear-tmp 的删除逻辑（allowlist、iTerm 运行中跳过、codex 旧 release 保留策略、sudo/opt-in 闸门）抽进 <code>dot-pkgs/go-pkgs/disk/reclaim</code>，两边 import 同一个包；
+    ② <b>分类与清理类是两层</b>：空间桶继续供图表/趋势（<code>sum(bytes) == walked</code> 不能破），清理类单独一行一行列（带路径、tier、size、按钮），不混进饼图；
+    ③ <b>默认 dry-run、默认只选 default tier</b>，两阶段式（预览 → 执行），对外部命令（<code>brew</code>/<code>npm</code>/<code>pnpm</code>/<code>go</code>/<code>xcrun</code>）绝不隐式调用。
+    <br>下面所有数字为示意值，取自真机报告量级。
+  </div>
+
+  <div class="frames">
+
+    <!-- ============ A: report page with cleanup classes ============ -->
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content">
+          <div class="page">
+            <div class="page-h">
+              <button class="icon-btn">‹</button>
+              <h2>Space analysis</h2>
+              <span class="live" style="color:var(--sec)">10s</span>
+              <button class="chip">History 8</button>
+              <button class="chip clean">Clear 47 GB</button>
+              <button class="chip on">Scan</button>
+            </div>
+            <div class="sub">last completed 3 min ago · 8 reports stored</div>
+
+            <div class="scan-head">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Report 20261108-071314</div>
+                  <div class="meta">3 min ago · 3m14s · 9.4M files · 628 dirs skipped</div>
+                </div>
+                <div class="badges" style="margin-left:auto">
+                  <span class="bdg">core folders scanned</span>
+                </div>
+              </div>
+              <div class="stack" style="margin-top:10px">
+                <i class="c-dev" style="width:34%"></i>
+                <i class="c-vm" style="width:2%"></i>
+                <i class="c-cache" style="width:18%"></i>
+                <i class="c-down" style="width:4%"></i>
+                <i class="c-log" style="width:2%"></i>
+                <i class="c-other" style="width:40%"></i>
+              </div>
+              <div class="legend">
+                <span class="lg"><i class="c-dev"></i>Dev cache <b>45 GB</b></span>
+                <span class="lg"><i class="c-vm"></i>Containers <b>11 MB</b></span>
+                <span class="lg"><i class="c-cache"></i>App caches <b>7.1 GB</b></span>
+                <span class="lg"><i class="c-down"></i>Downloads <b>2.8 GB</b></span>
+                <span class="lg"><i class="c-log"></i>Logs <b>218 MB</b></span>
+                <span class="lg"><i class="c-other"></i>Everything else <b>511 GB</b></span>
+              </div>
+            </div>
+
+            <div class="reclaim warn">
+              <div>
+                <div class="rv">≈ 47.2 GB can be cleared</div>
+                <div class="rl">
+                  measured per cleanup class, not by path prefix
+                  <br>the old line said 45.5 GB "reclaimable" and counted Go module cache
+                </div>
+              </div>
+              <button class="btn">Preview ›</button>
+            </div>
+
+            <div class="clean-head">
+              <span class="t">CLEANUP CLASSES</span>
+              <span class="n">19 + 1 read-only</span>
+              <button class="all">select all safe</button>
+            </div>
+
+            <div class="tier d">DEFAULT · SAFE TO CLEAR</div>
+            <div class="cl sel">
+              <span class="box on"></span>
+              <div class="cl-main">
+                <div class="cl-name">Sandbox Go cache <span class="tag cache">default</span></div>
+                <div class="cl-path">~/.sandbox/gocache</div>
+              </div>
+              <span class="cl-size">22.4 GB</span>
+            </div>
+            <div class="cl sel">
+              <span class="box on"></span>
+              <div class="cl-main">
+                <div class="cl-name">Podman VM image cache <span class="tag cache">default</span></div>
+                <div class="cl-path">~/.local/share/containers/podman/machine/applehv/cache</div>
+              </div>
+              <span class="cl-size">12.6 GB</span>
+            </div>
+            <div class="cl sel">
+              <span class="box on"></span>
+              <div class="cl-main">
+                <div class="cl-name">Homebrew downloads <span class="tag cache">default</span></div>
+                <div class="cl-path">~/Library/Caches/Homebrew</div>
+              </div>
+              <span class="cl-size">6.2 GB</span>
+            </div>
+            <div class="cl sel">
+              <span class="box on"></span>
+              <div class="cl-main">
+                <div class="cl-name">npm cache <span class="tag cache">default</span></div>
+                <div class="cl-path">~/.npm/_cacache</div>
+              </div>
+              <span class="cl-size">3.4 GB</span>
+            </div>
+            <div class="cl sel">
+              <span class="box on"></span>
+              <div class="cl-main">
+                <div class="cl-name">Codex log databases <span class="tag cache">default</span></div>
+                <div class="cl-path">~/.codex/logs_2.sqlite*</div>
+              </div>
+              <span class="cl-size">1.8 GB</span>
+            </div>
+            <div class="cl sel">
+              <span class="box on"></span>
+              <div class="cl-main">
+                <div class="cl-name">iTerm backup bundles <span class="tag cache">default</span></div>
+                <div class="cl-path">~/Applications/iTerm*.app.bak*</div>
+              </div>
+              <span class="cl-size">480 MB</span>
+            </div>
+            <div class="cl sel">
+              <span class="box on"></span>
+              <div class="cl-main">
+                <div class="cl-name">remote-agent logs <span class="tag cache">default</span></div>
+                <div class="cl-path">~/Library/Caches/remote-agent/*.log</div>
+              </div>
+              <span class="cl-size">240 MB</span>
+            </div>
+            <div class="cl sel">
+              <span class="box on"></span>
+              <div class="cl-main">
+                <div class="cl-name">ai-critic server logs <span class="tag cache">default</span></div>
+                <div class="cl-path">~/ai-critic-server*.log</div>
+              </div>
+              <span class="cl-size">120 MB</span>
+            </div>
+            <div class="foot left">8 default classes · 47.2 GB · all rebuildable</div>
+
+            <div class="tier a">AGGRESSIVE · RE-DOWNLOAD AFTER</div>
+            <div class="cl">
+              <span class="box"></span>
+              <div class="cl-main">
+                <div class="cl-name">Go build cache <span class="tag new">added</span></div>
+                <div class="cl-path">~/Library/Caches/go-build</div>
+              </div>
+              <span class="cl-size">9.1 GB</span>
+            </div>
+            <div class="cl">
+              <span class="box"></span>
+              <div class="cl-main">
+                <div class="cl-name">~/.cache <span class="tag new">added</span></div>
+                <div class="cl-path">~/.cache</div>
+              </div>
+              <span class="cl-size">4.6 GB</span>
+            </div>
+            <div class="cl">
+              <span class="box"></span>
+              <div class="cl-main">
+                <div class="cl-name">Old codex runtimes <span class="tag new">added</span></div>
+                <div class="cl-path">~/.codex/packages/standalone/releases</div>
+              </div>
+              <span class="cl-size">3.9 GB</span>
+            </div>
+            <div class="cl">
+              <span class="box"></span>
+              <div class="cl-main">
+                <div class="cl-name">pnpm store <span class="tag new">added</span></div>
+                <div class="cl-path">~/Library/pnpm/store</div>
+              </div>
+              <span class="cl-size">2.7 GB</span>
+            </div>
+            <div class="cl">
+              <span class="box"></span>
+              <div class="cl-main">
+                <div class="cl-name">Playwright browsers <span class="tag new">added</span></div>
+                <div class="cl-path">~/Library/Caches/ms-playwright</div>
+              </div>
+              <span class="cl-size">1.5 GB</span>
+            </div>
+            <div class="cl">
+              <span class="box"></span>
+              <div class="cl-main">
+                <div class="cl-name">bun install cache <span class="tag new">added</span></div>
+                <div class="cl-path">~/.bun/install/cache</div>
+              </div>
+              <span class="cl-size">1.2 GB</span>
+            </div>
+            <div class="cl">
+              <span class="box"></span>
+              <div class="cl-main">
+                <div class="cl-name">npx one-shot packages <span class="tag new">added</span></div>
+                <div class="cl-path">~/.npm/_npx</div>
+              </div>
+              <span class="cl-size">860 MB</span>
+            </div>
+            <div class="cl">
+              <span class="box"></span>
+              <div class="cl-main">
+                <div class="cl-name">OpenCode snapshots <span class="tag new">added</span></div>
+                <div class="cl-path">~/.local/share/opencode/snapshot</div>
+              </div>
+              <span class="cl-size">320 MB</span>
+            </div>
+            <div class="foot left">8 aggressive classes · +24.2 GB</div>
+
+            <div class="tier s">SYSTEM · NEEDS OPT-IN / ADMIN</div>
+            <div class="cl dis">
+              <span class="box dash"></span>
+              <div class="cl-main">
+                <div class="cl-name">iOS Simulator runtimes <span class="tag warn">opt-in</span></div>
+                <div class="cl-path">xcrun simctl runtime delete all</div>
+              </div>
+              <span class="cl-size">21.3 GB<small>needs --ios-sim</small></span>
+            </div>
+            <div class="cl dis">
+              <span class="box dash"></span>
+              <div class="cl-main">
+                <div class="cl-name">iOS Simulator asset cache <span class="tag warn">SIP</span></div>
+                <div class="cl-path">/System/Library/AssetsV2/com_apple_MobileAsset_*</div>
+              </div>
+              <span class="cl-size">6.8 GB<small>usually blocked</small></span>
+            </div>
+            <div class="cl dis">
+              <span class="box dash"></span>
+              <div class="cl-main">
+                <div class="cl-name">dirs_cleaner leftovers <span class="tag warn">admin</span></div>
+                <div class="cl-path">/private/var/dirs_cleaner</div>
+              </div>
+              <span class="cl-size">1.1 GB<small>root · prompts</small></span>
+            </div>
+
+            <div class="tier i">NEVER CLEARED</div>
+            <div class="cl dis">
+              <span class="box dash"></span>
+              <div class="cl-main">
+                <div class="cl-name">Go module cache <span class="tag never">never</span></div>
+                <div class="cl-path">~/go/pkg/mod</div>
+              </div>
+              <span class="cl-size">12.4 GB<small>re-download all</small></span>
+            </div>
+            <div class="cl dis">
+              <span class="box dash"></span>
+              <div class="cl-main">
+                <div class="cl-name">ShipIt updates <span class="tag keep">read-only</span></div>
+                <div class="cl-path">~/Library/Caches/*.ShipIt</div>
+              </div>
+              <span class="cl-size">640 MB<small>cleartmp keeps</small></span>
+            </div>
+
+            <div class="foot">classes come from clear-tmp · 8 default + 8 aggressive + 3 system + 1 read-only</div>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption"><b>A · 报告页</b>：标题行多一个 <code>Clear 47 GB</code>（数字＝默认勾选类的实测总和，没有就隐藏）。
+        分类条保持原样——它是<b>空间去向</b>（含 Photos、Projects 这些不该删的），所以 Charts/趋势不动；
+        下面新增 <b>CLEANUP CLASSES</b>，按 clear-tmp 的 tier 分组：<i>default 预勾选</i>、<i>aggressive 明确不勾</i>、
+        <i>system 灰掉并写原因</i>（opt-in / SIP / sudo）、<i>never cleared</i> 里放 Go mod 缓存和 ShipIt——只显示、不能删，
+        把「为什么这个 12 GB 不算可回收」直接写在行上。旧报告（没有清理数据的）这里显示一行「rescan to measure」并禁用按钮。</p>
+    </div>
+
+    <!-- ============ B: preview sheet (dry-run) ============ -->
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content">
+          <div class="page" style="opacity:.35">
+            <div class="page-h"><h2>Space analysis</h2></div>
+            <div class="scan-head"><div class="card-title">Report 20261108-071314</div></div>
+          </div>
+        </div>
+        <div class="sheet">
+          <div class="sheet-body">
+            <div class="sheet-h">
+              <div>
+                <h3>Clear caches</h3>
+                <div class="meta">dry-run · measured just now · same steps as clear-tmp</div>
+              </div>
+              <button class="x">✕</button>
+            </div>
+            <div class="sheet-scroll">
+              <div class="warnrow ok">Nothing deleted yet. Every line below is the exact command <code>reclaim</code> would run — shown verbatim, derived from the step's op list.</div>
+
+              <div class="tier d">DEFAULT · 8 SELECTED</div>
+              <div class="cl sel"><span class="box on"></span><div class="cl-main"><div class="cl-name">Sandbox Go cache</div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/.sandbox/gocache</span></div></div><span class="cl-size">22.4 GB</span></div>
+              <div class="cl sel"><span class="box on"></span><div class="cl-main"><div class="cl-name">Codex log databases</div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/.codex/logs_2.sqlite*</span></div></div><span class="cl-size">1.8 GB</span></div>
+              <div class="cl sel"><span class="box on"></span><div class="cl-main"><div class="cl-name">ai-critic server logs</div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/ai-critic-server*.log</span></div></div><span class="cl-size">120 MB</span></div>
+              <div class="cl sel"><span class="box on"></span><div class="cl-main"><div class="cl-name">Homebrew downloads</div><div class="cl-cmd"><span class="tag official">official</span><span class="cmdline">brew cleanup -s --prune=all</span></div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/Library/Caches/Homebrew</span></div></div><span class="cl-size">6.2 GB</span></div>
+              <div class="cl sel"><span class="box on"></span><div class="cl-main"><div class="cl-name">npm cache</div><div class="cl-cmd"><span class="tag official">official</span><span class="cmdline">npm cache clean --force</span></div></div><span class="cl-size">3.4 GB</span></div>
+              <div class="cl sel"><span class="box on"></span><div class="cl-main"><div class="cl-name">remote-agent logs</div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/Library/Caches/remote-agent/*.log</span></div></div><span class="cl-size">240 MB</span></div>
+              <div class="cl sel"><span class="box on"></span><div class="cl-main"><div class="cl-name">Podman VM image cache</div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/.local/share/containers/podman/machine/applehv/cache</span></div></div><span class="cl-size">12.6 GB</span></div>
+              <div class="cl sel"><span class="box on"></span><div class="cl-main"><div class="cl-name">iTerm backup bundles</div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/Applications/iTerm*.app.bak*</span><span class="dim"> · skips bundles in use</span></div></div><span class="cl-size">480 MB</span></div>
+
+              <div class="tier a">AGGRESSIVE · 0 SELECTED</div>
+              <div class="cl"><span class="box"></span><div class="cl-main"><div class="cl-name">Go build cache</div><div class="cl-cmd"><span class="tag official">official</span><span class="cmdline">go clean -cache</span></div></div><span class="cl-size">9.1 GB</span></div>
+              <div class="cl"><span class="box"></span><div class="cl-main"><div class="cl-name">~/.cache</div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/.cache</span></div></div><span class="cl-size">4.6 GB</span></div>
+              <div class="cl"><span class="box"></span><div class="cl-main"><div class="cl-name">Old codex runtimes</div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/.codex/packages/standalone/releases/&lt;all but newest&gt;</span></div></div><span class="cl-size">3.9 GB</span></div>
+              <div class="cl"><span class="box"></span><div class="cl-main"><div class="cl-name">pnpm store</div><div class="cl-cmd"><span class="tag official">official</span><span class="cmdline">pnpm store prune</span></div></div><span class="cl-size">2.7 GB</span></div>
+              <div class="cl"><span class="box"></span><div class="cl-main"><div class="cl-name">Playwright browsers</div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/Library/Caches/ms-playwright</span></div></div><span class="cl-size">1.5 GB</span></div>
+              <div class="cl"><span class="box"></span><div class="cl-main"><div class="cl-name">Bun cache</div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/.bun/install/cache</span></div></div><span class="cl-size">1.2 GB</span></div>
+              <div class="cl"><span class="box"></span><div class="cl-main"><div class="cl-name">npm _npx</div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/.npm/_npx</span></div></div><span class="cl-size">860 MB</span></div>
+              <div class="cl"><span class="box"></span><div class="cl-main"><div class="cl-name">OpenCode snapshots</div><div class="cl-cmd"><span class="tag cmd">rm -rf</span><span class="cmdline">~/.local/share/opencode/snapshot</span></div></div><span class="cl-size">320 MB</span></div>
+
+              <div class="tier s">SYSTEM · DISABLED (needs root)</div>
+              <div class="cl dis"><span class="box dash"></span><div class="cl-main"><div class="cl-name">iOS Simulator runtimes</div><div class="cl-cmd"><span class="tag official">official</span><span class="cmdline">xcrun simctl runtime delete all</span></div></div><span class="cl-size">21.3 GB</span></div>
+              <div class="cl dis"><span class="box dash"></span><div class="cl-main"><div class="cl-name">iOS mobile assets</div><div class="cl-cmd"><span class="tag root">sudo</span><span class="cmdline">chflags -R nouchg,noschg,norestricted -- &lt;asset&gt;</span></div><div class="cl-cmd"><span class="tag root">sudo</span><span class="cmdline">rm -rf -- &lt;asset&gt;</span></div></div><span class="cl-size">6.8 GB</span></div>
+              <div class="cl dis"><span class="box dash"></span><div class="cl-main"><div class="cl-name">dirs_cleaner leftovers</div><div class="cl-cmd"><span class="tag root">sudo</span><span class="cmdline">find /private/var/dirs_cleaner -mindepth 1 -maxdepth 1 -exec rm -rf {} +</span></div></div><span class="cl-size">1.1 GB</span></div>
+
+              <div class="warnrow bad">Go module cache (12.4 GB) · accounting only — <b>reclaim never deletes it</b> (hard test, not a toggle). <span class="dim">Also shown, never touched: <code>shipit</code> 640 MB.</span></div>
+              <div class="hint">
+                <b>rm -rf</b> = in-process delete, same effect, no shell; <b>official</b> = the tool's own command, verbatim; <b>sudo</b> = needs root → macOS password dialog.
+                A missing tool skips that one step and reports it; the rest still run.
+              </div>
+            </div>
+            <div class="sheet-foot">
+              <div class="line"><span>8 classes selected</span><b>47.2 GB</b></div>
+              <button class="btn-primary">Clear 47.2 GB</button>
+              <button class="btn-primary ghost">Copy as CLI: remote-agent disk clean --only sandbox-gocache,podman-applehv-cache,…</button>
+            </div>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption"><b>B · 预览（dry-run）</b>：第一步永远只出计划。每行显示<b>它到底会执行什么</b>，并且这条命令是<b>从 step 的 op 列表算出来的</b>，
+        不是手写的说明文字：等价于 <code>rm -rf</code> 的删除显示为 <code>rm -rf</code>（实际执行走进程内 <code>RemoveAll</code>，不经过 shell），
+        官方命令（<code>go clean -cache</code> / <code>brew cleanup</code> / <code>pnpm store prune</code> / <code>xcrun simctl</code>）原样显示，
+        混合型（Homebrew）按执行顺序列两行，需要 root 的标 <code>sudo</code> 并在执行时弹密码框。
+        aggressive 默认不勾；底部把 <code>Go mod 缓存永不清理</code> 做成红字——它正是今天 45 GB 数字虚高的来源。
+      </p>
+    </div>
+
+    <!-- ============ C: running ============ -->
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content">
+          <div class="page">
+            <div class="page-h">
+              <button class="icon-btn">‹</button>
+              <h2>Clearing…</h2>
+              <span class="live">live</span>
+              <button class="chip danger">Stop</button>
+            </div>
+            <div class="sub">8 steps · started 22s ago · attachable from any device</div>
+
+            <div class="scan-head">
+              <div class="card-title">Freed so far</div>
+              <div style="font-size:30px;font-weight:750;letter-spacing:-.04em;margin:2px 0;color:#4ade80">44.9 GB</div>
+              <div class="prog"><i style="width:75%"></i></div>
+              <div class="meta">6 of 8 done · 1 skipped · 1 running</div>
+            </div>
+
+            <div class="run"><span class="dot ok"></span><div class="run-main"><div class="run-name">Sandbox Go cache</div><div class="run-note">rm -rf ~/.sandbox/gocache</div></div><span class="run-free">−22.4 GB</span></div>
+            <div class="run"><span class="dot ok"></span><div class="run-main"><div class="run-name">Podman VM image cache</div><div class="run-note">rm -rf …/applehv/cache</div></div><span class="run-free">−12.6 GB</span></div>
+            <div class="run"><span class="dot ok"></span><div class="run-main"><div class="run-name">Homebrew downloads</div><div class="run-note">brew cleanup -s --prune=all</div></div><span class="run-free">−6.2 GB</span></div>
+            <div class="run"><span class="dot ok"></span><div class="run-main"><div class="run-name">npm cache</div><div class="run-note">npm cache clean --force</div></div><span class="run-free">−3.4 GB</span></div>
+            <div class="run"><span class="dot skip"></span><div class="run-main"><div class="run-name">Codex log databases</div><div class="run-note">skipped: file in use by codex (216 MB)</div></div><span class="run-free skip">skipped</span></div>
+            <div class="run"><span class="dot ok"></span><div class="run-main"><div class="run-name">iTerm backup bundles</div><div class="run-note">2 bundles removed · 1 running bundle skipped</div></div><span class="run-free">−240 MB</span></div>
+            <div class="run"><span class="dot ok"></span><div class="run-main"><div class="run-name">remote-agent logs</div><div class="run-note">rm -rf ~/Library/Caches/remote-agent/*.log</div></div><span class="run-free">−240 MB</span></div>
+            <div class="run cur"><span class="dot live"></span><div class="run-main"><div class="run-name">ai-critic server logs</div><div class="run-note">running…</div></div><span class="run-free" style="color:var(--blue)">…</span></div>
+
+            <div class="foot">steps run in a fixed order · one failing step never stops the rest</div>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption"><b>C · 执行中</b>：跑在<b>服务端</b>，SSE 逐条推 <code>progress</code>（一行一个 step，带 before/after/freed），所以关掉页面、换设备回来还是这条进度；
+        <code>Stop</code> 是协作式取消（context cancel，当前 step 做完就停，不杀 <code>brew</code> 到一半）。
+        失败/跳过不中断整轮——和 clear-tmp 一致：单个 step 报 warning，后面的照跑，最后汇总「跳过 1 个、释放 44.9 GB」。
+      </p>
+    </div>
+
+    <!-- ============ D: result ============ -->
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content">
+          <div class="page">
+            <div class="page-h">
+              <button class="icon-btn">‹</button>
+              <h2>Space analysis</h2>
+              <span class="live" style="color:var(--sec)">10s</span>
+              <button class="chip">History 8</button>
+              <button class="chip on">Scan</button>
+            </div>
+            <div class="sub">last completed 3 min ago · last clear 12s ago</div>
+
+            <div class="reclaim">
+              <div>
+                <div class="rv">Freed 44.9 GB</div>
+                <div class="rl">7 of 8 steps · 1 skipped · 3.2s total<br>report is now stale — measured sizes predate the clear</div>
+              </div>
+              <button class="btn">Scan again ›</button>
+            </div>
+
+            <div class="entrylist">
+              <div class="entry"><div class="entry-top"><span class="entry-cat" style="color:#4ade80">OK</span><span class="entry-bytes">−22.4 GB</span></div><div class="entry-path">sandbox-gocache · ~/.sandbox/gocache</div></div>
+              <div class="entry"><div class="entry-top"><span class="entry-cat" style="color:#4ade80">OK</span><span class="entry-bytes">−12.6 GB</span></div><div class="entry-path">podman-applehv-cache</div></div>
+              <div class="entry"><div class="entry-top"><span class="entry-cat" style="color:#4ade80">OK</span><span class="entry-bytes">−6.2 GB</span></div><div class="entry-path">brew-cleanup</div></div>
+              <div class="entry"><div class="entry-top"><span class="entry-cat" style="color:#4ade80">OK</span><span class="entry-bytes">−3.4 GB</span></div><div class="entry-path">npm-cache</div></div>
+              <div class="entry"><div class="entry-top"><span class="entry-cat" style="color:#f59e0b">SKIP</span><span class="entry-bytes">216 MB left</span></div><div class="entry-path">codex-logs · file in use by codex</div></div>
+            </div>
+            <div class="foot left">per-class before/after comes back in the done frame only — nothing is written to disk</div>
+
+            <div class="clean-head">
+              <span class="t">CLEANUP CLASSES</span>
+              <span class="n">17 left · 60.1 GB</span>
+            </div>
+            <div class="cl">
+              <span class="box"></span>
+              <div class="cl-main">
+                <div class="cl-name">Go build cache <span class="tag new">added</span></div>
+                <div class="cl-path">~/Library/Caches/go-build</div>
+              </div>
+              <span class="cl-size">9.1 GB</span>
+            </div>
+            <div class="cl">
+              <span class="box"></span>
+              <div class="cl-main">
+                <div class="cl-name">iOS Simulator runtimes <span class="tag warn">opt-in</span></div>
+                <div class="cl-path">21.3 GB · needs --ios-sim</div>
+              </div>
+              <span class="cl-size">21.3 GB</span>
+            </div>
+            <div class="cl dis">
+              <span class="box dash"></span>
+              <div class="cl-main">
+                <div class="cl-name">Go module cache <span class="tag never">never</span></div>
+                <div class="cl-path">~/go/pkg/mod</div>
+              </div>
+              <span class="cl-size">12.4 GB<small>not clearable</small></span>
+            </div>
+            <div class="foot">cleared classes drop to 0 and grey out until the next measurement</div>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption"><b>D · 结果</b>：清完立刻给「释放了多少 / 跳过了什么 / 为什么跳过」，并明确标出<b>报告已过期</b>（尺寸是清理前测的），
+        一键 <code>Scan again</code>。结果只活在这次 SSE 流里（<code>done{results[], skipped[]}</code>），不落盘、不进 scan 报告的历史曲线；
+        关掉页面就没了——所以「已清 / 跳过」的结论必须当场显示完，不能指望下次打开还能看到。
+      </p>
+    </div>
+
+    <!-- ============ E: category mapping ============ -->
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content">
+          <div class="page">
+            <div class="page-h">
+              <button class="icon-btn">‹</button>
+              <h2>Cleanup classes</h2>
+              <span class="live" style="color:var(--sec)">19</span>
+              <button class="chip">Copy</button>
+            </div>
+            <div class="sub">every class clear-tmp knows, and where it hid before</div>
+
+            <div class="sect">WHERE THEY LIVE TODAY <span class="r mut">8 buckets</span></div>
+            <div class="entrylist">
+              <div class="entry">
+                <div class="entry-top"><span class="entry-cat" style="color:#22d3ee">DEV CACHE</span><span class="entry-bytes">45 GB</span></div>
+                <div class="entry-path">9 classes inside one row</div>
+              </div>
+              <div class="entry">
+                <div class="entry-top"><span class="entry-cat" style="color:#475569">EVERYTHING ELSE</span><span class="entry-bytes">511 GB</span></div>
+                <div class="entry-path">6 classes invisible here</div>
+              </div>
+              <div class="entry">
+                <div class="entry-top"><span class="entry-cat" style="color:#38bdf8">APP CACHES</span><span class="entry-bytes">7.1 GB</span></div>
+                <div class="entry-path">2 classes</div>
+              </div>
+              <div class="entry">
+                <div class="entry-top"><span class="entry-cat" style="color:#a78bfa">CONTAINERS</span><span class="entry-bytes">11 MB</span></div>
+                <div class="entry-path">1 class</div>
+              </div>
+              <div class="entry">
+                <div class="entry-top"><span class="entry-cat" style="color:#f87171">LOGS</span><span class="entry-bytes">218 MB</span></div>
+                <div class="entry-path">1 class</div>
+              </div>
+            </div>
+
+            <div class="sect">THE 19 + 1 <span class="r mut">tier · path</span></div>
+            <div class="entrylist">
+              <div class="entry"><div class="entry-top"><span class="entry-cat" style="color:#86efac">DEFAULT</span><span class="entry-bytes">47.2 GB</span></div><div class="entry-path">sandbox-gocache · podman-applehv-cache · brew-cleanup · npm-cache · codex-logs · iterm-bak-apps · remote-agent-logs · home-logs</div></div>
+              <div class="entry"><div class="entry-top"><span class="entry-cat" style="color:#f59e0b">AGGRESSIVE</span><span class="entry-bytes">24.2 GB</span></div><div class="entry-path">go-build-cache · xcache · codex-releases · pnpm-store · ms-playwright · bun-cache · npm-npx · opencode-snapshot</div></div>
+              <div class="entry"><div class="entry-top"><span class="entry-cat" style="color:#a78bfa">SYSTEM</span><span class="entry-bytes">29.2 GB</span></div><div class="entry-path">ios-sim-runtimes · ios-sim-mobileasset · dirs-cleaner</div></div>
+              <div class="entry"><div class="entry-top"><span class="entry-cat" style="color:#64748b">READ-ONLY</span><span class="entry-bytes">640 MB</span></div><div class="entry-path">shipit — measured, never deleted</div></div>
+              <div class="entry"><div class="entry-top"><span class="entry-cat" style="color:#f87171">NEVER</span><span class="entry-bytes">12.4 GB</span></div><div class="entry-path">go-mod-cache — shown so nobody thinks it is free</div></div>
+            </div>
+
+            <div class="foot">clear-tmp = 8 default + 8 aggressive + 3 system/opt-in + 1 inventory</div>
+          </div>
+        </div>
+        <div class="bottomnav">
+          <div class="nav-item active">⌂<br>Home</div>
+          <div class="nav-item">✦<br>Agent</div>
+          <div class="nav-item">&gt;_<br>Terminal</div>
+          <div class="nav-item">◎<br>Services</div>
+          <div class="nav-item">☰<br>Files</div>
+        </div>
+      </div>
+      <p class="caption"><b>E · 分类对照</b>：给「分类为什么对不上」一个可读的答案。左列是今天报告的口径（8 个空间桶），
+        右列是 clear-tmp 的 21 行（19 可清 + 2 只读）。关键事实：<b>6 个类今天被算进 <code>Everything else</code></b>
+        （codex-logs / home-logs / pnpm-store / codex-releases / opencode-snapshot / iterm-bak-apps），
+        <b>9 个类挤在 <code>Dev cache</code> 一行</b>里，所以从报告里根本看不出「Go 编译缓存」和「Go mod 缓存」是两件不同的事。
+        这一页也顺手把 <code>--skip</code>/tier 语义摊开，方便用户自己判断该勾到什么程度。
+      </p>
+    </div>
+
+    <!-- ============ F: sudo needs the user (macOS password dialog) ============ -->
+    <div>
+      <div class="phone">
+        <div class="topbar"><span>☰</span><div class="proj">No Project ▾</div><span>👤</span></div>
+        <div class="content">
+          <div class="page">
+            <div class="page-h">
+              <button class="icon-btn">‹</button>
+              <h2>Clearing…</h2>
+              <span class="live">live</span>
+              <button class="chip danger">Stop</button>
+            </div>
+            <div class="sub">11 selected · 3 need root · started 2m 08s ago</div>
+
+            <div class="scan-head">
+              <div class="card-title">Freed so far</div>
+              <div style="font-size:30px;font-weight:750;letter-spacing:-.04em;margin:2px 0;color:#4ade80">47.2 GB</div>
+              <div class="prog"><i style="width:73%"></i></div>
+              <div class="meta">8 of 11 done · 1 blocked on a password dialog · 2 queued</div>
+            </div>
+
+            <div class="run"><span class="dot ok"></span><div class="run-main"><div class="run-name">Sandbox Go cache</div><div class="run-note">rm -rf ~/.sandbox/gocache</div></div><span class="run-free">−22.4 GB</span></div>
+            <div class="run"><span class="dot ok"></span><div class="run-main"><div class="run-name">Homebrew downloads</div><div class="run-note">brew cleanup -s --prune=all <span class="dim">→</span> rm -rf ~/Library/Caches/Homebrew</div></div><span class="run-free">−6.1 GB</span></div>
+            <div class="run cur wait"><span class="dot" style="background:#fcd34d"></span><div class="run-main"><div class="run-name">dirs_cleaner leftovers</div><div class="run-note">still running — the password dialog is on the Mac that runs the server</div></div><span class="run-free skip" style="color:#fcd34d">running</span></div>
+            <div class="run"><span class="dot skip"></span><div class="run-main"><div class="run-name">iOS mobile assets</div><div class="run-note">queued · needs root too</div></div><span class="run-free skip">queued</span></div>
+
+            <div class="foot">a step that needs root never blocks the rest: it waits, then falls back to “skipped · needs admin”</div>
+          </div>
+        </div>
+        <div class="dlgwrap">
+          <div class="macdlg">
+            <div class="macdlg-h">ai-critic-server wants to make changes.</div>
+            <div class="macdlg-b">Enter your password to allow this.</div>
+            <div class="macdlg-in">••••••••<span class="caret"></span></div>
+            <div class="macdlg-btns"><span class="mb">Cancel</span><span class="mb pri">OK</span></div>
+          </div>
+        </div>
+        <div class="dlgnote">密码只交给 macOS SecurityAgent，<b>不经过 HTTP、不进服务端进程内存</b>，也不写日志/清理记录；Web UI 里没有密码输入框。</div>
+      </div>
+      <p class="caption"><b>F · 需要 root 时（弹系统密码框）</b>：<code>dirs-cleaner</code>、<code>ios-sim-mobileasset</code>、<code>ios-sim-runtimes</code> 这几条必须 root。
+        服务端按四级链自动降级：① <code>sudo -n true</code> 静默探测（已有 ticket 就直接跑，不打扰）→ ② <b>osascript 调起 macOS 原生密码框</b>
+        （<code>do shell script … with administrator privileges</code>，仅在 <code>launchctl managername == Aqua</code> 的图形会话里可用）→
+        ③ 都没成就在<b>启动服务的那个终端</b>里走 <code>/dev/tty</code> + <code>sudo -S</code>（和今天的 <code>~/ai-critic-server*.log</code> 启动方式一致）→
+        ④ 60 秒无人响应或全部失败就把该 step 标 <code>skipped: needs admin</code>，并在结果里给一条可复制的命令。
+        实现上没有单独的 <code>waiting</code> 状态：那一行在密码框弹出期间一直是 <code>progress{status:"running"}</code>，取消或超时后才变 <code>skipped</code>（detail 为 <code>needs administrator authorization</code>）。所以远程看页面只看到「这条卡住了 / 这条被跳过」，<b>永远拿不到密码</b>。
+      </p>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h2>机制要点（与实现对齐）</h2>
+
+    <h3>1. 清理逻辑只有一份：抽到 dot-pkgs，clear-tmp 与 ai-critic 共用</h3>
+    <ul>
+      <li>事实：clear-tmp 在 <code>github.com/xhd2015/my-private-working-note/projects/clear-tmp</code>（<b>私有仓库</b>），
+        ai-critic（开源）不能 import 它；而把删除逻辑抄一份进 ai-critic 更不可接受——allowlist、iTerm 运行中跳过、
+        codex release 保留最新、sudo 闸门，都是<b>真删文件</b>的代码，两份实现必然漂移。</li>
+      <li>因此把 clear-tmp 的<b>核心清理层</b>抽进公共库 <code>dot-pkgs</code>（已存在的模块 <code>go-pkgs</code>，
+        <b>不新建 go.mod、不新建 tag namespace</b>），两边都从同一个 import path 拿：
+        <code>github.com/xhd2015/dot-pkgs/go-pkgs/disk/reclaim</code>。</li>
+      <li>代码归属（约 2,700 行从 clear-tmp 搬走，clear-tmp 自己还剩 ~3,700 行 CLI/Web/podman/history）：
+        <table>
+          <tr><th>包</th><th>内容</th><th>来源</th></tr>
+          <tr><td><code>go-pkgs/disk/reclaim</code></td><td>Step / Op / Tier / Registry / Plan / Selection / Run / Steps / Display / Elevate / Size / Human / History</td><td><code>steps.go</code>、<code>run.go</code>、<code>plan.go</code>、<code>selection.go</code>、<code>size.go</code>、<code>human.go</code>、<code>dirs_cleaner.go</code> 的 elevate 片段</td></tr>
+        </table>
+        实际落成一个扁平包（<code>measure</code>/<code>elevate</code>/<code>human</code>/<code>steps</code> <b>没有</b>再拆子包）：
+        拆开只会多四层 import 噪音，而这里每一层都只被 <code>reclaim</code> 自己用；
+        对外只暴露 <code>StepInfos(home)</code>（纯数据 + <code>Actions []Op</code>）和 <code>ScanSteps(opts, ids)</code>（按 id 子集测量），
+        宿主 UI 不需要 <code>Run</code> 的内部结构。</li>
+      <li>发布顺序：<b>一个 tag</b> <code>go-pkgs/v0.0.204</code>（覆盖 <code>go-pkgs/disk/...</code>；
+        203 是第一次抽取，204 补了 <code>StepInfos</code>/<code>ScanSteps</code> 与 go-mod-cache 清单行）→
+        clear-tmp 改 <code>require ... v0.0.204</code> 并删掉搬走的文件（<code>--dry-run --json</code> 只允许多出 <code>display</code> 字段，
+        diff 为空才算抽对）→ ai-critic 把 <code>go-pkgs v0.0.203 → v0.0.204</code>。
+        CI 不用改：<code>.github/workflows/test.yml</code> 里的 <code>go -C go-pkgs test -v ./...</code> 天然覆盖 <code>go-pkgs/disk/...</code>。</li>
+      <li>代价（明确的）：clear-tmp 的 <code>go.sum</code> 会多出 <code>go-pkgs</code> 的 ~30 个间接依赖（只在 module graph，二进制体积不变）；
+        ai-critic 已有 <code>go-pkgs v0.0.200</code>，只改版本号一行。</li>
+      <li>被否掉的方案：调已安装的 <code>clear-tmp</code> 二进制（运行时依赖、每次 dry-run 实测 60s+、错误不可观测）；
+        separate repo <code>dot-pkgs-disk</code>（多一套 tag/CI）；在 ai-critic 里重写一份（必漂移）。</li>
+    </ul>
+
+    <h3>2. 分类与清理类分开，互不污染</h3>
+    <ul>
+      <li><b>空间桶</b>（xcode/containers/dev-cache/caches/media/downloads/logs/other）继续只负责图表与趋势，
+        不变的不变量：<code>sum(bucket.bytes) == walked_bytes</code>、bucket id 稳定（趋势曲线按 id 连）。</li>
+      <li><b>清理类</b>是动作，id 直接来自公共库的 registry（<code>sandbox-gocache</code>…，<b>不在 ai-critic 里手写第二份列表</b>）、带 tier、op 列表、可执行性。
+        它们<b>不参与</b>饼图，只在自己的分区里逐行列出——所以「新增 Go build cache / Go mod cache」不会把曲线打断。</li>
+      <li>两者的桥：清理类带 <code>bucket</code> 字段（从同一个前缀表推得），报告页点清理类可以跳到对应的空间桶趋势；<code>reclaimable</code> 改为
+        「可清理类的实测总和」，不再用路径前缀猜。</li>
+    </ul>
+
+    <h3>3. 尺寸从哪来（不重扫整台机器）</h3>
+    <ul>
+      <li>不复用扫描报告：报告是按 bucket 折叠的，清理类的根目录和 bucket 前缀不是一一对应，从报告里抠数字会算错。
+        改为清理面板自己测：<code>reclaim.ScanSteps(opts, ids)</code> 只走这 21 条路径。</li>
+      <li><code>GET /cleanup/plan</code> <b>永不阻塞</b>：第一次调用立刻返回骨架（<code>measured:false, pending:true</code>），
+        同时后台跑一遍 <code>ScanSteps</code>；前端每 1.5s 轮询，<code>pending</code> 消失后数字逐行落定。实测整轮 ~50s（<code>go-build-cache</code> 9.9 GB 占大头）。</li>
+      <li>system tier 的 3 条<b>不进后台那一轮</b>：<code>ios-sim-runtimes</code> 会 shell out <code>xcrun simctl</code>、<code>dirs-cleaner</code> 要 <code>sudo</code>，
+        放进去会让整个 plan 卡住甚至挂死。它们只在用户展开 system tier 时走 <code>POST /cleanup/measure</code>，60s 超时就返回 <code>{"pending":true}</code> 让前端继续轮询。</li>
+      <li>测不出来就显示 <code>—  /  not sized</code>（<code>ios-sim-mobileasset</code>、<code>dirs-cleaner</code> 今天就是），
+        <b>不瞎填数字</b>；<code>measured:false</code> 的行不计入 <code>totals</code>，所以「可清理 X GB」永远是已测之和。</li>
+    </ul>
+
+    <h3>4. 接口（与实现一致）</h3>
+    <ul>
+      <li><code>GET  /api/server/disk/cleanup/plan</code>（<code>?refresh=1</code> 强制重测）→
+        <code>{home, scannedAt, scanMillis, pending?, volume?, groups[], classes[], totals{selectedBytes, aggressiveBytes, systemBytes, inventoryBytes, unmeasured}}</code>。
+        每个 class 带 <code>id, group, label, sizeBytes, measured, selected, readOnly, actions[], command, paths[], notes[], details[]</code>——
+        <b><code>actions[]</code> 由公共库从 op 列表渲染</b>，前端只负责显示，绝不拼命令。</li>
+      <li><code>POST /api/server/disk/cleanup/measure</code> <code>{ids:[]}</code> → <code>{"pending":bool}</code>；只给 system tier 用。</li>
+      <li><code>POST /api/server/disk/cleanup/run</code> <code>{ids:[], sudo:"ask"|"never"}</code> → SSE：<code>meta</code>（<code>home/steps/sudo/sudoGranted</code>）/
+        <code>section</code> / <code>progress</code>（每 step 一条 <code>status: running|skipped|done</code> + <code>detail</code> + <code>freedBytes</code>）/
+        <code>log</code>（工具原样输出）/ <code>done</code>（<code>{freedBytes, results[], skipped[]}</code>）。
+        <code>sudo:"never"</code> 时 admin 类直接进 <code>skipped[]</code>（reason <code>needs administrator authorization</code>）并附可复制命令，
+        <b>后台永不弹框</b>。</li>
+      <li>并发：清理在跑时再 POST 回 <code>409 a cleanup is already running</code>；清理结束会 <code>invalidate()</code> 掉缓存的尺寸，下次 <code>/plan</code> 重新测。
+        没有 cancel 接口——每个 step 都很短，关掉 SSE 连接即放弃后续 step。</li>
+      <li>不写清理历史：<code>~/.ai-critic/disk/&lt;id&gt;.json</code> 只存扫描报告，清理结果随 SSE 一次性返回，不落盘（避免 schema 又要加字段）。</li>
+    </ul>
+
+    <h3>5. 安全线（会被测试逐条钉住）</h3>
+    <ul>
+      <li>只接受<b>注册表里的 step id</b>，请求体里的任意路径一律丢弃（不提供「删这个路径」的通用接口）。</li>
+      <li>没有 confirm 字段：<code>selected</code> 非空就是确认，<code>ids</code> 为空回 400。aggressive 与 system 必须在 UI 上显式勾选。</li>
+      <li>路径只可能落在 <code>{Home}</code>、<code>/Applications</code>、<code>/private/var/dirs_cleaner</code>、<code>/System/Library/AssetsV2</code> 四处白名单内（与 clear-tmp 相同）。</li>
+      <li><code>go-mod-cache</code> 以 <code>readOnly:true</code> 的 inventory 行出现（显示 <code>go clean -modcache</code> 是因为它是清单项），
+        但 <code>resolveRun</code>/<code>measureClass</code> 都拒绝它：<code>POST /run</code> 带它回 400，<code>POST /measure</code> 同样拒绝。
+        <b>命令永不被执行</b>，公共库侧另有 <code>steps.go:173</code> 的硬性 prohibit + <code>aggressive_steps_test.go</code> 断言。</li>
+      <li>外部命令按 step 白名单执行（brew/npm/pnpm/go/xcrun/sudo），<code>exec.Command(argv[0], argv[1:]...)</code>，<b>任何路径都不拼进 shell</b>；
+        <code>rm -rf</code> 只是显示形态，执行走 <code>os.RemoveAll</code> + 白名单校验。</li>
+      <li>root 操作只能通过 <code>elevate</code> 包的四级链，禁止在别处直接调 <code>sudo</code>；密码只在第 3 级 <code>/dev/tty</code> 里读，且不落任何结构体字段。</li>
+    </ul>
+
+    <h3>6. 显示即行为：<code>rm -rf</code> 还是官方命令，由 op 列表算出来</h3>
+    <ul>
+      <li>step 定义不再只有 <code>Apply func()</code>，而是<b>结构化 op 列表</b>：
+        <code>Op{Kind: remove|remove-glob|exec|script, Paths, Argv, Script, SkipRunning, KeepNewest}</code>。
+        执行按 kind 分派，<b>显示也从同一份 op 渲染</b>（<code>Step.Display(home) []string</code>），
+        所以「UI 上写的命令」和「真的跑的东西」在类型层面就绑死，不可能漂移。</li>
+      <li>展示规则（用户要求的就是这条）：等价 <code>rm -rf</code> 的删除 → 显示 <code>rm -rf ~/.sandbox/gocache</code>
+        （执行走进程内 <code>os.RemoveAll</code>，<b>不经过 <code>sh -c</code></b>）；官方工具 → 原样显示
+        <code>go clean -cache</code> / <code>brew cleanup -s --prune=all</code> / <code>pnpm store prune</code> / <code>xcrun simctl runtime delete all</code>；
+        混合型 → 按顺序多行（<code>brew-cleanup</code> 就是「官方命令 + <code>rm -rf ~/Library/Caches/Homebrew</code>」两行）；
+        需要 root → 前面标 <code>sudo</code>。</li>
+      <li>有 3 个 step 的<b>测量路径 ≠ 命令路径</b>（codex releases 只删旧版、iTerm 跳过运行中、pnpm store 由工具自己决定删什么），
+        这些行额外给一句 <code>measured: …</code> 说明，避免「命令和数字对不上」的困惑。</li>
+      <li><code>--dry-run --json</code> 在保留旧 <code>command</code> 字段的同时新增 <code>display[]</code>；
+        clear-tmp 的 web UI 继续用旧字段，ai-critic 用新字段——同一份数据，两个消费者。</li>
+    </ul>
+
+    <h3>7. 需要 root 的 step（用户要求：弹密码框，而不是直接说 no）</h3>
+    <ul>
+      <li>受影响的只有 3 个：<code>dirs-cleaner</code>（<code>sudo find /private/var/dirs_cleaner -mindepth 1 -maxdepth 1 -exec rm -rf {} +</code>）、
+        <code>ios-sim-mobileasset</code>（sudo <code>chflags</code> + <code>rm -rf</code>）、<code>ios-sim-runtimes</code>（<code>xcrun simctl runtime delete all</code>）。</li>
+      <li>四级链（<code>reclaim</code> 里的 elevate 部分）：
+        <b>①</b> <code>sudo -n true</code> 静默探测，已有 ticket 就直接跑（重复清理不重复弹框）；
+        <b>②</b> <code>osascript -e 'do shell script "…" with administrator privileges'</code> 弹 <b>macOS 原生密码框</b>
+        （脚本走 base64 传参，避开引号地狱；仅当 <code>launchctl managername</code> 为 <code>Aqua</code> 才尝试，SSH 会话下跳过）；
+        <b>③</b> 落在<b>启动服务那个终端</b>的 <code>/dev/tty</code> 上 <code>sudo -S</code> 读密码（今天的服务就是从终端起的，日志写 <code>~/ai-critic-server*.log</code>）；
+        <b>④</b> 60s 无人输入 / 全部失败 → 该 step 记 <code>skipped: needs admin</code> + 一条可复制的完整命令，<b>不影响其他 step</b>。</li>
+      <li>密码<b>永不跨 HTTP</b>：不进请求体、不进服务端内存里的可序列化结构、不进日志、不进 服务端日志、不进 SSE 帧。
+        Web UI 里没有密码输入框——远程打开页面只会看到那条 class 停在 <code>running</code>，失败后变成 <code>skipped: needs administrator authorization</code>。</li>
+      <li>开关：<code>--sudo=auto|ask|never</code>（默认 auto），<code>--sudo-forget</code> 用完即 <code>sudo -k</code>。
+        <code>never</code> 时这 3 个 step 直接标 needs-admin，UI 上按钮变灰 + 复制命令。</li>
+      <li>测试：<code>elevate</code> 用一个假的 <code>Runner</code> 注入，断言「sudo -n 成功就不再弹框」「osascript 失败后落到 tty」「全都失败只返回 ErrNeedsAdmin 而不返回密码相关内容」；
+        密码字符串在测试里用一个哨兵值，断言它不出现在任何返回结构/日志里。</li>
+    </ul>
+
+    <h3>8. 分类数量结论（回答「clear-tmp 有多少类」）</h3>
+    <table>
+      <tr><th>tier</th><th>数量</th><th>ids</th></tr>
+      <tr><td>default</td><td>8</td><td><code>sandbox-gocache, codex-logs, home-logs, brew-cleanup, npm-cache, remote-agent-logs, podman-applehv-cache, iterm-bak-apps</code></td></tr>
+      <tr><td>aggressive</td><td>8</td><td><code>go-build-cache, pnpm-store, npm-npx, bun-cache, codex-releases, xcache, ms-playwright, opencode-snapshot</code></td></tr>
+      <tr><td>system / opt-in</td><td>3</td><td><code>ios-sim-runtimes, ios-sim-mobileasset, dirs-cleaner</code></td></tr>
+      <tr><td>inventory（只读）</td><td>2</td><td><code>shipit</code>、<code>go-mod-cache</code></td></tr>
+      <tr><td><b>合计</b></td><td><b>19 可清 + 2 只读 = 21 行</b></td><td>另有 <code>podman</code>、<code>dirs-cleaner</code> 两个子命令，不重复计</td></tr>
+    </table>
+    <p style="font-size:12.5px;color:#94a3b8;line-height:1.65">
+      对照：ai-critic 报告今天只有 <b>8 个空间桶</b>。缺口 6 个（落在 <code>other</code>）+ 9 个被折叠进 <code>dev-cache</code> 一行 +
+      2 个在扫描根之外。补法不是把 8 改成 20（会打断趋势、且 media/downloads 这类根本不能删），而是<b>新增清理类这一层</b>，
+      并把 <code>reclaimable</code> 改成从这层算。
+    </p>
+
+    <h3>9. 验收方式（实际执行的）</h3>
+    <ul>
+      <li><b>公共库</b>：<code>cd go-pkgs &amp;&amp; go test ./disk/...</code>（CI 的 <code>go -C go-pkgs test ./...</code> 已覆盖）。
+        <code>ops_test.go</code> 逐条断言「<code>Display()</code> 必须等于从 op 列表渲染的结果」+
+        「每个 step 都有 display」+「remove op 的 Apply 真的删了对应文件」；
+        <code>scan_steps_test.go</code> 钉住 <code>StepInfos</code>/<code>ScanSteps</code> 的 id 子集与 <code>measured</code> 语义。</li>
+      <li><b>抽走不许丢东西</b>：<code>aggressive_steps_test.go</code> 断言 <code>go clean -modcache</code> <b>不会</b>被执行
+        （<code>steps.go:173</code> 的 prohibit 生效）、<code>--only go-mod-cache</code> 报 unknown step；
+        <code>go-mod-cache</code> 只以 <code>ReadOnly</code> inventory 行出现在 <code>StepInfos</code> 里。</li>
+      <li><b>两边一致</b>：clear-tmp 换成 import 公共库后，<code>--dry-run --json</code> 与抽取前的 baseline 逐字段比对，
+        只允许多出 <code>display</code> 字段（id 集合、顺序、command、size 全等）——已实测通过。</li>
+      <li><b>提权</b>：<code>dirs_cleaner_test.go</code>/<code>ios_assets_test.go</code> 用注入的 runner 覆盖
+        「无 TTY 且无 sudo 时返回 needs-admin 而非密码内容」「注入 sudo 成功后走那条路径」；
+        真机手验：点 system 行 → 弹 macOS 原生密码框，Cancel 后该行标 skipped 且其余 step 继续。</li>
+      <li><b>ai-critic</b>：<code>go test ./server/diskmon/</code>（12 个用例：registry 覆盖、action kind、readOnly+totals、
+        骨架先行、TTL 缓存与 refresh、invalidate、sudo=never 跳过 admin、readOnly 拒绝、并发 409、measure 拒绝与缓存、方法与 body 校验）。</li>
+      <li><b>演练</b>：<code>/plan</code> 只读（断言 mtime 未变）；<code>pnpm build</code> + headless 截图（分区/弹层/运行中/结果），390px 无横向滚动。</li>
+    </ul>
+  </div>
+
+  <div class="notes" style="margin-top:16px">
+    <h2>Decisions（已逐条定稿，按此实现）</h2>
+    <ol>
+      <li><b>清理逻辑怎么复用</b>：✅ <b>已定</b> —— 抽进 <code>dot-pkgs/go-pkgs/disk/reclaim</code>（既有模块，不新建 go.mod），clear-tmp 与 ai-critic 共用。
+        否掉：调已安装二进制（运行时依赖 + dry-run 实测 60s+ + 错误不可观测）、在 ai-critic 重写（必漂移）、新开一个 repo/module。</li>
+      <li><b>包怎么切</b>：✅ <b>已定（实施时进一步收成一个包）</b> —— 原计划
+        <code>disk/reclaim</code> + <code>disk/reclaim/steps</code> + <code>disk/measure</code> + <code>disk/elevate</code> + <code>disk/human</code>，
+        实际全部落在 <code>disk/reclaim</code> 一个包里（<code>ops.go</code>/<code>plan.go</code>/<code>run.go</code>/<code>selection.go</code>/<code>steps.go</code>/<code>size.go</code>/<code>human.go</code>/<code>dirs_cleaner.go</code>/<code>export.go</code>）：
+        这几个文件互相调用，拆包只会产生循环 import 或四层薄封装，对外只暴露 <code>StepInfos</code>/<code>ScanSteps</code>/<code>Run</code> 三个入口足够。</li>
+      <li><b>显示怎么来的</b>：✅ <b>已定</b> —— 从 step 的 <code>Op[]</code> 渲染：等价 <code>rm -rf</code> 显示 <code>rm -rf</code>（执行走 <code>os.RemoveAll</code>，不进 shell），
+        官方命令原样显示，混合型多行，root 加 <code>sudo</code> 前缀。<i>不允许在 UI 层手写命令字符串</i>；<code>--dry-run --json</code> 新增 <code>display[]</code>，旧 <code>command</code> 保留。</li>
+      <li><b>root 怎么拿</b>：✅ <b>已定</b> —— 四级链 <code>sudo -n</code> → macOS 原生密码框（osascript）→ <code>/dev/tty</code> + <code>sudo -S</code> → 标 <code>skipped: needs admin</code> + 复制命令。
+        密码不跨 HTTP、不进日志/记录；Web UI 无密码输入框。<i>开关 <code>--sudo=auto|ask|never</code> 默认 auto（推荐）</i>。</li>
+      <li><b>发布顺序</b>：✅ <b>已定</b> —— tag <code>go-pkgs/v0.0.203</code> → clear-tmp 改 import + 加 <code>require</code>（dry-run diff 只多 <code>display</code>）→ ai-critic <code>v0.0.203 → v0.0.204</code>（204 补 <code>StepInfos</code>/<code>ScanSteps</code>，已发布并同步 22 个 worktree）。</li>
+      <li><b>分类怎么补</b>：✅ <b>已定</b> —— 保留 8 个空间桶 + 新增「清理类」分区（<code>CLEANUP CLASSES</code>）。否掉：把 21 行提升成一级分类、替换现有 8 桶（趋势断档、media/downloads 也不适合）。</li>
+      <li><b>尺寸来源</b>：✅ <b>已定（实施时换了方案）</b> —— 不复用扫描报告，清理面板自己 <code>ScanSteps</code> 这 21 条路径：先回骨架、后台测、前端轮询，实测一轮 ~50s。否掉：扫描时顺带记（bucket 前缀 ≠ 清理类根目录，会算错）、每次打开都重扫（3 分钟以上）。</li>
+      <li><b>默认勾选</b>：✅ <b>已定</b> —— 只勾 default tier（user 动过手就尊重用户选择）。否掉：默认全不勾（多点击一次）、default + aggressive 全勾（静默触发重新下载）。</li>
+      <li><b>清理按钮放哪</b>：✅ <b>已定</b> —— 标题行 <code>Clear XX GB</code>（选中 0 个时隐藏）+ 回收行「Preview ›」两处入口，都开同一张 sheet。否掉：只放报告卡 / 只放分区底部。</li>
+      <li><b>清完之后的报告</b>：✅ <b>已定</b> —— 不自动重扫：run 结束重新拉 plan（尺寸归零/变小），报告本身保持上一份并提示可 <code>Scan</code> 重扫。否掉：自动接着扫（3 分钟）/ 直接把该类 bytes 归零（数字不可信）。</li>
+      <li><b><code>reclaimable</code> 口径</b>：✅ <b>已定</b> —— 改成清理类实测之和（<code>cleanup.plan.totals.selectedBytes</code>），说明文案「measured per cleanup class, not by path prefix」；没有 plan 时回落到报告的 <code>reclaimable</code>。否掉：保持前缀口径另起一行。</li>
+      <li><b>go mod 缓存怎么显示</b>：✅ <b>已定</b> —— 列为 <code>NEVER CLEARED</code> 的只读行，显示 <code>go clean -modcache</code> 原文与尺寸；<code>resolveRun</code>/<code>measureClass</code> 都拒绝只读 id（<code>--only go-mod-cache</code> 仍是 unknown step）。否掉：完全不显示 / 允许清理。</li>
+      <li><b>system tier 是否进 UI</b>：✅ <b>已定</b> —— 显示但不默认勾选；勾选时才 <code>POST /cleanup/measure</code> 按需测尺寸（后台测量轮会跳过它们，<code>xcrun</code>/<code>log show</code> 可能挂住）。否掉：隐藏、只在 CLI / 默认勾选。</li>
+      <li><b>是否同时加 CLI</b>：⏸ <b>本轮未做（只落地了 UI 侧 3 个 HTTP 路由）</b> —— 复用同一 <code>diskmon</code> service 加 <code>remote-agent disk clean</code> 是后续跟进项；<code>clear-tmp</code> 本身仍是最好的 CLI 形态。</li>
+      <li><b>清理历史</b>：✅ <b>已定</b> —— 不落盘（SSE 的 <code>done</code> 帧一次性返回，关掉页面即失去）。写 <code>~/.ai-critic/disk/clean/&lt;id&gt;.json</code> 会让清理也有自己的 schema 与 TTL，收益不抵成本。</li>
+      <li><b>公共库测试放哪</b>：✅ <b>已定</b> —— 跟着包走 <code>go-pkgs/disk/reclaim/*_test.go</code>（8 个测试文件，<code>go test ./disk/... → ok 2.186s</code>），靠 CI 已有的 <code>go -C go-pkgs test ./...</code>；ai-critic 侧另有 <code>server/diskmon/cleanup_api_test.go</code> 12 个用例。否掉：在 clear-tmp 里再留一套端到端。</li>
+    </ol>
+  </div>
+</div>
+</body>
+</html>

@@ -15,6 +15,10 @@ import { formatBytes } from '../../../api/processes';
 import SpaceProgressCard from './SpaceProgressCard';
 import SpaceResultCard from './SpaceResultCard';
 import SpaceEntryList from './SpaceEntryList';
+import SpaceCleanupSection from './SpaceCleanupSection';
+import SpaceCleanupSheet from './SpaceCleanupSheet';
+import { useCleanupPlan } from './useCleanupPlan';
+import { sumSelected } from './spaceCleanupTone';
 import { clockTime, isStale, reclaimableTotal, relativeTime, shortWhen } from './spaceTone';
 import './SystemView.css';
 import './SpaceAnalysis.css';
@@ -39,6 +43,7 @@ export default function SpaceAnalysisView() {
     const [stopping, setStopping] = useState(false);
     const [starting, setStarting] = useState(false);
     const [nonce, setNonce] = useState(0);
+    const cleanup = useCleanupPlan();
 
     const running = status?.running ?? false;
 
@@ -148,6 +153,24 @@ export default function SpaceAnalysisView() {
     const showingIndex = showing ? reports.findIndex(r => r.id === showing.id) : -1;
     const previous = showingIndex >= 0 ? reports[showingIndex + 1] ?? null : reports[1] ?? null;
     const attemptNote = attemptLine(status);
+    const cleanupTotal = sumSelected(cleanup.plan, cleanup.selected);
+    const cleanupDefaultBytes = cleanup.plan?.totals.selectedBytes ?? 0;
+    const cleanupSection = cleanup.plan ? (
+        <SpaceCleanupSection
+            plan={cleanup.plan}
+            selected={cleanup.selected}
+            pending={cleanup.pending}
+            sizing={cleanup.sizing}
+            onToggle={cleanup.toggle}
+            onSelectSafe={cleanup.selectSafe}
+        />
+    ) : null;
+    const previewProps = cleanup.plan
+        ? {
+            cleanupBytes: cleanupDefaultBytes > 0 ? cleanupDefaultBytes : null,
+            onPreview: () => cleanup.setOpen(true),
+        }
+        : {};
 
     const openTrend = (categoryId: string) => {
         navigate(`trend/${encodeURIComponent(categoryId)}`);
@@ -187,6 +210,15 @@ export default function SpaceAnalysisView() {
                                 History {reports.length}
                             </button>
                         )}
+                        {cleanupTotal > 0 && (
+                            <button
+                                type="button"
+                                className="mcc-system-chip clean"
+                                onClick={() => cleanup.setOpen(true)}
+                            >
+                                Clear {formatBytes(cleanupTotal)}
+                            </button>
+                        )}
                         <button
                             type="button"
                             className="mcc-system-chip on"
@@ -205,6 +237,7 @@ export default function SpaceAnalysisView() {
             </div>
 
             {error && <div className="mcc-system-alert">{error}</div>}
+            {cleanup.error && <div className="mcc-system-alert">cleanup: {cleanup.error}</div>}
             {!loaded && !status && <div className="mcc-system-empty">Loading scan state…</div>}
 
             {isHistoric && (
@@ -229,13 +262,27 @@ export default function SpaceAnalysisView() {
             )}
 
             {!running && latest && !showing && reports.length > 0 && (
-                <SpaceResultCard summary={latest} previous={previous} onPickCategory={openTrend} />
+                <>
+                    <SpaceResultCard
+                        summary={latest}
+                        previous={previous}
+                        onPickCategory={openTrend}
+                        {...previewProps}
+                    />
+                    {!running && cleanupSection}
+                </>
             )}
 
             {showing && (
                 <>
                     {running && <div className="mcc-space-sect">PREVIOUS REPORT</div>}
-                    <SpaceResultCard summary={showing} previous={previous} onPickCategory={openTrend} />
+                    <SpaceResultCard
+                        summary={showing}
+                        previous={previous}
+                        onPickCategory={openTrend}
+                        {...previewProps}
+                    />
+                    {!running && cleanupSection}
                     <div className="mcc-space-sect">
                         BIGGEST DIRECTORIES
                         <span>{showing.entries?.length ?? 0} recorded</span>
@@ -243,6 +290,8 @@ export default function SpaceAnalysisView() {
                     <SpaceEntryList report={showing} onPickCategory={openTrend} />
                 </>
             )}
+
+            {!latest && !running && cleanupSection}
 
             {!running && latest && reports.length > 1 && (
                 <div className="mcc-space-links">
@@ -266,6 +315,24 @@ export default function SpaceAnalysisView() {
             <div className="mcc-space-foot">
                 reports live in ~/.ai-critic/disk/ · newest 5 keep directory detail · sizes are apparent bytes
             </div>
+
+            {cleanup.open && cleanup.plan && (
+                <SpaceCleanupSheet
+                    plan={cleanup.plan}
+                    selected={cleanup.selected}
+                    sudo={cleanup.sudo}
+                    onSudo={cleanup.setSudo}
+                    running={cleanup.running}
+                    rows={cleanup.rows}
+                    result={cleanup.result}
+                    notice={cleanup.notice}
+                    error={cleanup.error}
+                    pending={cleanup.pending}
+                    sizing={cleanup.sizing}
+                    onClose={() => cleanup.setOpen(false)}
+                    onRun={() => void cleanup.run()}
+                />
+            )}
         </div>
     );
 }

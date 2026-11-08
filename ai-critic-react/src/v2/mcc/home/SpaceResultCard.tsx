@@ -18,10 +18,19 @@ interface Props {
     summary: AnalysisReport | AnalysisReportSummary;
     previous?: AnalysisReportSummary | null;
     onPickCategory: (categoryId: string) => void;
+    /** Measured sum of the default cleanup classes; null while unmeasured. */
+    cleanupBytes?: number | null;
+    onPreview?: () => void;
 }
 
 /** One finished report: rollup bar, reclaimable total, category rows. */
-export default function SpaceResultCard({ summary, previous, onPickCategory }: Props) {
+export default function SpaceResultCard({
+    summary,
+    previous,
+    onPickCategory,
+    cleanupBytes,
+    onPreview,
+}: Props) {
     const categories = sortedCategories(summary);
     const total = categories.reduce((sum, c) => sum + c.bytes, 0) || 1;
     const largest = categories.length > 0 ? categories[0].bytes : 1;
@@ -74,18 +83,39 @@ export default function SpaceResultCard({ summary, previous, onPickCategory }: P
 
             <div className="mcc-space-reclaim">
                 <div>
-                    <div className="mcc-space-reclaim-value">≈ {formatBytes(reclaimable)} reclaimable</div>
-                    <div className="mcc-space-reclaim-sub">
-                        {reclaimDelta === null ? 'first report, no comparison yet' : `${signedBytes(reclaimDelta)} since the last scan`}
-                        {' · '}
-                        {formatBytes(summary.scanned_bytes)} walked of {formatBytes(summary.used_bytes)} used
-                    </div>
+                    {cleanupBytes !== null && cleanupBytes !== undefined && cleanupBytes > 0 ? (
+                        <>
+                            <div className="mcc-space-reclaim-value">≈ {formatBytes(cleanupBytes)} can be cleared</div>
+                            <div className="mcc-space-reclaim-sub">
+                                measured per cleanup class, not by path prefix ·{' '}
+                                {formatBytes(summary.scanned_bytes)} walked of {formatBytes(summary.used_bytes)} used
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="mcc-space-reclaim-value">≈ {formatBytes(reclaimable)} reclaimable</div>
+                            <div className="mcc-space-reclaim-sub">
+                                {reclaimDelta === null
+                                    ? 'first report, no comparison yet'
+                                    : `${signedBytes(reclaimDelta)} since the last scan`}
+                                {' · '}
+                                {formatBytes(summary.scanned_bytes)} walked of {formatBytes(summary.used_bytes)} used
+                            </div>
+                        </>
+                    )}
                 </div>
-                {previous && (
-                    <span className={`mcc-space-delta ${deltaTone(reclaimDelta ?? 0)}`}>
-                        {signedBytes(reclaimDelta ?? 0)}
-                    </span>
-                )}
+                <div className="mcc-space-reclaim-actions">
+                    {previous && cleanupBytes !== null && cleanupBytes !== undefined && cleanupBytes > 0 && (
+                        <span className={`mcc-space-delta ${deltaTone(reclaimDelta ?? 0)}`}>
+                            {signedBytes(reclaimDelta ?? 0)}
+                        </span>
+                    )}
+                    {onPreview && (
+                        <button type="button" className="mcc-space-preview" onClick={onPreview}>
+                            Preview ›
+                        </button>
+                    )}
+                </div>
             </div>
 
             <div className="mcc-space-cats">

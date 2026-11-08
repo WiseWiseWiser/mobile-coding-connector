@@ -621,3 +621,540 @@
     line-height: 1.5;
     color: #475569;
 }
+
+/* ---- cleanup classes (space analysis → clear) ---- */
+
+.mcc-space-reclaim-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mcc-space-preview {
+    border: 1px solid rgba(34, 211, 238, 0.4);
+    background: rgba(34, 211, 238, 0.1);
+    color: #22d3ee;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 9px;
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.mcc-system-chip.clean {
+    background: rgba(34, 211, 238, 0.12);
+    color: #22d3ee;
+    border-color: rgba(34, 211, 238, 0.45);
+}
+
+.mcc-cl-wrap {
+    margin: 12px 0 4px;
+}
+
+.mcc-cl-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #94a3b8;
+}
+
+.mcc-cl-count {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: #64748b;
+}
+
+.mcc-cl-all {
+    margin-left: auto;
+    border: none;
+    background: none;
+    color: #22d3ee;
+    font-size: 10px;
+    font-weight: 650;
+    padding: 0;
+    cursor: pointer;
+}
+
+.mcc-cl-pending {
+    margin: 0 16px 8px;
+    font-size: 10px;
+    line-height: 1.5;
+    color: #f59e0b;
+}
+
+.mcc-cl-group {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    margin: 0 16px 8px;
+    padding: 8px 10px 6px;
+}
+
+.mcc-cl-tier {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    margin-bottom: 2px;
+}
+
+.mcc-cl-tier.default {
+    color: #34d399;
+}
+
+.mcc-cl-tier.aggressive {
+    color: #f59e0b;
+}
+
+.mcc-cl-tier.system {
+    color: #f472b6;
+}
+
+.mcc-cl-tier.inventory {
+    color: #64748b;
+}
+
+.mcc-cl-tier-note {
+    margin-left: auto;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: #475569;
+    text-align: right;
+}
+
+.mcc-cl {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 2px;
+    color: inherit;
+    cursor: pointer;
+}
+
+.mcc-cl:active {
+    background: #182030;
+}
+
+.mcc-cl.dis {
+    cursor: default;
+    opacity: 0.65;
+}
+
+.mcc-cl-box {
+    flex: 0 0 auto;
+    width: 13px;
+    height: 13px;
+    margin-top: 2px;
+    border-radius: 4px;
+    border: 1px solid #475569;
+}
+
+.mcc-cl-box.on {
+    background: #22d3ee;
+    border-color: #22d3ee;
+}
+
+.mcc-cl-box.dash {
+    border-style: dashed;
+}
+
+.mcc-cl-main {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.mcc-cl-name {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 650;
+    color: #e2e8f0;
+}
+
+.mcc-cl-tag {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(148, 163, 184, 0.16);
+    color: #94a3b8;
+    white-space: nowrap;
+}
+
+.mcc-cl-tag.added {
+    background: rgba(245, 158, 11, 0.14);
+    color: #f59e0b;
+}
+
+.mcc-cl-tag.admin {
+    background: rgba(244, 114, 182, 0.14);
+    color: #f472b6;
+}
+
+.mcc-cl-tag.never {
+    background: rgba(148, 163, 184, 0.1);
+    color: #64748b;
+}
+
+.mcc-cl-tag.readonly {
+    background: rgba(148, 163, 184, 0.1);
+    color: #64748b;
+}
+
+.mcc-cl-cmd {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    margin-top: 2px;
+    min-width: 0;
+}
+
+.mcc-cl-badge {
+    flex: 0 0 auto;
+    font-size: 9px;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.mcc-cl-badge.official {
+    color: #60a5fa;
+}
+
+.mcc-cl-badge.sudo {
+    color: #f472b6;
+}
+
+.mcc-cl-line {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-cl-hint {
+    margin-top: 2px;
+    font-size: 9.5px;
+    line-height: 1.35;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcc-cl-size small {
+    display: block;
+    font-size: 8.5px;
+    font-weight: 600;
+    color: #64748b;
+    text-align: right;
+}
+
+.mcc-cl-size {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 12px;
+    font-weight: 700;
+    color: #cbd5e1;
+    white-space: nowrap;
+}
+
+.mcc-cl-size small {
+    font-size: 9px;
+    font-weight: 500;
+    color: #64748b;
+}
+
+.mcc-cl-gfoot {
+    margin-top: 2px;
+    font-size: 9px;
+    color: #475569;
+}
+
+.mcc-cl-foot {
+    margin: 0 16px;
+    font-size: 10px;
+    line-height: 1.5;
+    color: #475569;
+}
+
+.mcc-cl-empty {
+    padding: 6px 2px;
+    font-size: 11px;
+    color: #64748b;
+}
+
+.mcc-cl-note {
+    margin: 0 16px 8px;
+    font-size: 10px;
+    line-height: 1.6;
+    color: #64748b;
+}
+
+.mcc-cl-note b {
+    color: #94a3b8;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.mcc-cl-warn {
+    margin: 0 0 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 10px;
+    line-height: 1.6;
+    background: #182030;
+    color: #94a3b8;
+}
+
+.mcc-cl-warn.ok {
+    border-left: 2px solid #22d3ee;
+}
+
+.mcc-cl-alert {
+    margin: 0 0 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border-left: 2px solid #f87171;
+    background: rgba(248, 113, 113, 0.1);
+    font-size: 11px;
+    color: #fca5a5;
+}
+
+.mcc-cl-log {
+    margin: 6px 0 0;
+    font-size: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #64748b;
+}
+
+/* ---- run progress ---- */
+
+.mcc-run {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mcc-run-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    background: #182030;
+    border-radius: 8px;
+}
+
+.mcc-run-dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    margin-top: 4px;
+    border-radius: 50%;
+    background: #475569;
+}
+
+.mcc-run-dot.running {
+    background: #22d3ee;
+}
+
+.mcc-run-dot.done {
+    background: #34d399;
+}
+
+.mcc-run-dot.warn {
+    background: #f59e0b;
+}
+
+.mcc-run-dot.skipped {
+    background: #64748b;
+}
+
+.mcc-run-main {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.mcc-run-name {
+    font-size: 12px;
+    font-weight: 650;
+    color: #e2e8f0;
+}
+
+.mcc-run-note {
+    font-size: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mcc-run-tag {
+    flex: 0 0 auto;
+    font-size: 9px;
+    font-weight: 700;
+    color: #64748b;
+}
+
+.mcc-run-tag.done {
+    color: #34d399;
+}
+
+.mcc-run-tag.warn {
+    color: #f59e0b;
+}
+
+/* ---- preview / progress sheet ---- */
+
+.mcc-sheet-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: rgba(2, 6, 23, 0.72);
+}
+
+/* The sheet is the dry-run contract: show each command in full, wrapped. */
+.mcc-clean-sheet .mcc-cl-line {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.mcc-clean-sheet {
+    display: flex;
+    flex-direction: column;
+    width: min(560px, 100%);
+    max-height: 86vh;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -12px 40px rgba(2, 6, 23, 0.6);
+}
+
+.mcc-sheet-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid #1e293b;
+}
+
+.mcc-sheet-head h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 750;
+    color: #e2e8f0;
+}
+
+.mcc-sheet-meta {
+    margin-top: 2px;
+    font-size: 10px;
+    color: #64748b;
+}
+
+.mcc-sheet-x {
+    margin-left: auto;
+    border: none;
+    background: none;
+    color: #64748b;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px 4px;
+}
+
+.mcc-sheet-scroll {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 10px 16px 12px;
+}
+
+.mcc-sheet-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px 14px;
+    border-top: 1px solid #1e293b;
+}
+
+.mcc-sheet-line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+.mcc-sheet-line b {
+    font-size: 14px;
+    font-weight: 750;
+    color: #22d3ee;
+}
+
+.mcc-sheet-sudo {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+    font-size: 10px;
+    color: #64748b;
+}
+
+.mcc-sheet-opt {
+    border: 1px solid #334155;
+    background: transparent;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 650;
+    padding: 3px 7px;
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.mcc-sheet-opt.on {
+    background: rgba(96, 165, 250, 0.12);
+    color: #60a5fa;
+    border-color: rgba(96, 165, 250, 0.4);
+}
+
+.mcc-sheet-run {
+    width: 100%;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: #22d3ee;
+    color: #0b1220;
+    font-size: 13px;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.mcc-sheet-run:disabled {
+    background: #1e293b;
+    color: #475569;
+    cursor: default;
+}

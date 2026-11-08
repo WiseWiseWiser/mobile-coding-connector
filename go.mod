@@ -13,7 +13,7 @@ require (
 	github.com/xhd2015/agent-pro v0.0.199
 	github.com/xhd2015/bak-files v0.0.5
 	github.com/xhd2015/doctest v0.0.117
-	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.200
+	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.204
 	github.com/xhd2015/gitops v0.0.39
 	github.com/xhd2015/kool v0.0.151
 	github.com/xhd2015/less-gen v0.0.19
@@ -23,6 +23,7 @@ require (
 	github.com/xhd2015/wrk v0.0.108
 	github.com/xhd2015/xgo v1.2.8
 	golang.org/x/crypto v0.47.0
+	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -63,6 +64,5 @@ require (
 	golang.org/x/image v0.28.0 // indirect
 	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect
 	golang.org/x/mod v0.36.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 )
