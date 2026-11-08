@@ -95,7 +95,9 @@ func (a *cleanupAPI) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	if len(ids) == 0 {
+	// Every selected class can be skipped by the sudo policy: still answer with a
+	// stream so the caller sees why each one was skipped instead of a bare 400.
+	if len(ids) == 0 && len(skipped) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "no clearable classes selected"})
 		return
 	}
@@ -124,20 +126,23 @@ func (a *cleanupAPI) handleRun(w http.ResponseWriter, r *http.Request) {
 	})
 	_ = out.EmitSection("Clearing")
 
-	result, runErr := a.service.run(reclaim.Options{
-		Only:          ids,
-		Stdout:        io.Discard,
-		Stderr:        io.Discard,
-		ElevateMode:   reclaim.ElevateOSAScript,
-		ElevatePrompt: "ai-critic",
-		OnStep:        cleanupStepEmitter(out, labels),
-	})
-
-	// The engine reports per-step failures inside Result; only a failure to run
-	// at all (bad selection, unusable temp dir) is an error frame.
-	if runErr != nil {
-		_ = out.EmitError(runErr.Error())
-		return
+	var result *reclaim.Result
+	if len(ids) > 0 {
+		var runErr error
+		result, runErr = a.service.run(reclaim.Options{
+			Only:          ids,
+			Stdout:        io.Discard,
+			Stderr:        io.Discard,
+			ElevateMode:   reclaim.ElevateOSAScript,
+			ElevatePrompt: "ai-critic",
+			OnStep:        cleanupStepEmitter(out, labels),
+		})
+		// The engine reports per-step failures inside Result; only a failure to run
+		// at all (bad selection, unusable temp dir) is an error frame.
+		if runErr != nil {
+			_ = out.EmitError(runErr.Error())
+			return
+		}
 	}
 	for _, skip := range skipped {
 		_ = out.EmitProgress(progress.Item{
@@ -150,7 +155,11 @@ func (a *cleanupAPI) handleRun(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	done := CleanupRunResult{Skipped: skipped}
-	for _, st := range result.Steps {
+	var steps []reclaim.StepResult
+	if result != nil {
+		steps = result.Steps
+	}
+	for _, st := range steps {
 		item := CleanupStepResult{ID: st.ID, Label: labels[st.ID], Freed: st.Freed, Error: st.Error}
 		done.Steps = append(done.Steps, item)
 		done.FreedBytes += st.Freed

@@ -288,6 +288,36 @@ func TestCleanupRunSudoNeverSkipsAdminClasses(t *testing.T) {
 	}
 }
 
+func TestCleanupRunAllClassesSkippedStillStreams(t *testing.T) {
+	svc, _ := newCleanupTestService(t)
+	svc.run = func(opts reclaim.Options) (*reclaim.Result, error) {
+		t.Fatalf("engine ran %v, want no run when every class is skipped", opts.Only)
+		return nil, nil
+	}
+
+	body := strings.NewReader(`{"ids":["ios-sim-runtimes","dirs-cleaner"],"sudo":"never"}`)
+	mux := http.NewServeMux()
+	(&cleanupAPI{service: svc}).register(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/server/disk/cleanup/run", body))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("run status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	out := rec.Body.String()
+	for _, id := range []string{"ios-sim-runtimes", "dirs-cleaner"} {
+		if !strings.Contains(out, id) {
+			t.Errorf("skipped frame missing %q", id)
+		}
+	}
+	if !strings.Contains(out, "needs administrator authorization") {
+		t.Errorf("skipped reason missing:\n%s", out)
+	}
+	if !strings.Contains(out, `"type":"done"`) {
+		t.Errorf("stream has no done frame:\n%s", out)
+	}
+}
+
 func TestCleanupRunRejectsReadOnlyClass(t *testing.T) {
 	svc, _ := newCleanupTestService(t)
 	svc.run = func(reclaim.Options) (*reclaim.Result, error) {
